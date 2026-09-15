@@ -12,23 +12,21 @@ enum UsageHistoryAggregator {
     ) -> [String: ProviderUsageHistory] {
         var inputs: [String: [ProviderUsageHistory]] = [:]
         let peerDocuments = UsageHistoryDocument.newestByDevice(peerDocuments)
-        let localClaudeCards = Set(descriptors.keys.filter {
-            ProviderAccountID.family(of: $0) == "claude"
-        }).union(providerIdentityKeys.keys.filter {
-            ProviderAccountID.family(of: $0) == "claude"
-        })
+        let localCardIDs = Set(descriptors.keys).union(providerIdentityKeys.keys)
         for (providerID, descriptor) in descriptors where descriptor.scope == .machineLocal {
             if let local = localSnapshots[providerID]?.usageHistory {
                 inputs[providerID, default: []].append(local)
             }
+            let family = ProviderAccountID.family(of: providerID)
+            let localFamilyCards = localCardIDs.count { ProviderAccountID.family(of: $0) == family }
             for document in peerDocuments {
                 let peer: ProviderUsageHistory?
-                if ProviderAccountID.family(of: providerID) == "claude" {
-                    peer = claudeHistory(
+                if ProviderAccountID.families.contains(family) {
+                    peer = accountHistory(
                         in: document,
-                        providerID: providerID,
+                        family: family,
                         identity: providerIdentityKeys[providerID],
-                        allowsUnattributedHistory: localClaudeCards.count <= 1
+                        allowsUnattributedHistory: localFamilyCards <= 1
                     )
                 } else {
                     peer = document.providers[providerID]
@@ -42,28 +40,26 @@ enum UsageHistoryAggregator {
         return inputs.mapValues { merge($0, includedDays: includedDays) }
     }
 
-    private static func claudeHistory(
+    private static func accountHistory(
         in document: UsageHistoryDocument,
-        providerID: String,
+        family: String,
         identity: String?,
         allowsUnattributedHistory: Bool
     ) -> ProviderUsageHistory? {
         if let identities = document.identities,
-           identities.keys.contains(where: { ProviderAccountID.family(of: $0) == "claude" })
+           identities.keys.contains(where: { ProviderAccountID.family(of: $0) == family })
         {
             guard let identity,
                   let matchingID = identities.first(where: {
-                      ProviderAccountID.family(of: $0.key) == "claude"
+                      ProviderAccountID.family(of: $0.key) == family
                           && $0.value.caseInsensitiveCompare(identity) == .orderedSame
                   })?.key
             else { return nil }
             return document.providers[matchingID]
         }
 
-        guard document.schema == UsageHistoryDocument.currentSchema,
-              allowsUnattributedHistory
-        else { return nil }
-        return document.providers["claude"]
+        guard allowsUnattributedHistory else { return nil }
+        return document.providers[family]
     }
 
     private static func merge(

@@ -10,7 +10,7 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
     var deviceName: String
     var updatedAt: Date
     var providers: [String: ProviderUsageHistory]
-    /// Claude card ownership, when known. Older clients ignore this optional v1 field.
+    /// Account-card ownership (Claude, Codex), when known. Older clients ignore this optional v1 field.
     var identities: [String: String]? = nil
 
     var id: String { deviceID }
@@ -37,11 +37,8 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
         var seenIdentities = Set<String>()
         for (providerID, identity) in identities ?? [:] {
             let family = ProviderAccountID.family(of: providerID)
-            // Earlier v2 writers also included the bare Codex account identity. It is valid
-            // metadata, though only Claude identities participate in account-aware merging.
-            let isLegacyCodexIdentity = schema == Self.accountSchema && providerID == "codex"
             guard providers[providerID] != nil,
-                  family == "claude" || isLegacyCodexIdentity,
+                  ProviderAccountID.families.contains(family),
                   !identity.isEmpty,
                   identity.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil,
                   !identity.contains("/"), !identity.contains("\\")
@@ -59,7 +56,7 @@ struct UsageHistoryDocument: Hashable, Sendable, Codable, Identifiable {
                 throw UsageHistoryDocumentError.invalidProvider(providerID)
             }
             if providerID.contains("@") {
-                guard ProviderAccountID.family(of: providerID) == "claude",
+                guard ProviderAccountID.families.contains(ProviderAccountID.family(of: providerID)),
                       identities?[providerID] != nil
                 else { throw UsageHistoryDocumentError.invalidIdentity(providerID) }
             }

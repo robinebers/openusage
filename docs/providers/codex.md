@@ -22,6 +22,16 @@ If Codex reports only a 7-day window, it maps to Weekly without inventing a 5-ho
 
 Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
 
+## Multiple accounts
+
+Each ChatGPT account gets its own Codex card with separate limits, reset credits, and spending. On launch OpenUsage looks in every Codex home on the Mac: `$CODEX_HOME` (comma-separated lists work), `~/.codex`, `~/.config/codex`, and any sibling folder named `~/.codex-*` or `~/.config/codex-*`. That's how side-by-side logins usually run (`CODEX_HOME=~/.codex-work codex`). It also reads the Codex logins in [pi](https://github.com/earendil-works/pi)'s `~/.pi/agent/auth.json`, including the extra `openai-codex-2`, `openai-codex-3`, … entries that pi's multi-account extensions create.
+
+Logins are matched by ChatGPT account id, so the same account signed in through two homes and pi still makes one card. The account signed in at the default home keeps the plain `codex` card; every other account gets a card named after its pi label from `multi-pass.json` when you set one, otherwise its email ("Codex: work", "Codex: you@example.com"). A login that can't name its account never becomes a card. Restart OpenUsage after adding or removing a login.
+
+Spend tiles stay per account: each card reads the rollouts under its own homes, and pi usage lands on the card whose pi login ran it. The keychain credential and OpenCode's Codex usage, which can't name an account, stay on the default card.
+
+Codex home credentials refresh and rotate back into their `auth.json` as before. pi credentials are read-only: OpenUsage never refreshes or rewrites pi's tokens, because pi rotates them itself. If a card relies on a pi login whose token has expired, it reads "Token expired. Use this account in pi to refresh it." Use that account in pi once and refresh.
+
 ## The spend tiles
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
@@ -38,6 +48,7 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 - **"Not logged in"** — run `codex` and sign in, then refresh.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
 - **Spend tiles show "No data"** — OpenUsage found no qualifying Codex usage in Codex, pi, or OpenCode logs from the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
+- **A second account is missing** — its home must sit at one of the paths above and its `auth.json` must carry a ChatGPT login (an API key alone can't read usage). If the Codex CLI stores its login in the keychain, OpenUsage can't tell which account the keychain entry belongs to and keeps a single Codex card.
 - **OpenCode usage is missing** — OpenCode must currently have an `openai` OAuth credential in its
   `auth.json`. An OpenAI API key is deliberately excluded from Codex subscription totals.
 

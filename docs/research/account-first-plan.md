@@ -100,6 +100,9 @@ tests land in-slice (repo policy). Estimated source LOC excludes tests.
 
 ### Phase 5 — Codex multi-account + per-card resets (~700 LOC)
 
+Shipped as 5a (Codex homes + pi `auth.json` logins, merged by account id; per-card reset claims;
+Codex identities in v2 sync documents). Keyring-mode homes (5b) still leave the family unscoped.
+
 - **5a:** `CODEX_HOME` candidate scan with the strict identity rule — `tokens.account_id` or the
   id_token's ChatGPT account claim; a credential file that can't name its account never becomes a
   card (port `93e741e`). Scoped auth stores, per-identity log-root grouping, and the

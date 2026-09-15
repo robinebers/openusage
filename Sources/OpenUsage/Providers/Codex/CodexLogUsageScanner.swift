@@ -44,6 +44,7 @@ actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
     private let scanner: IncrementalJSONLScanner<Event>
+    private let explicitHomes: [String]?
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` records whether the session was on the fast/priority service tier when the turn
@@ -74,11 +75,13 @@ actor CodexLogUsageScanner {
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        incrementalScanner: IncrementalJSONLScanner<Event>? = nil
+        incrementalScanner: IncrementalJSONLScanner<Event>? = nil,
+        explicitHomes: [String]? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.scanner = incrementalScanner ?? Self.sharedScanner
+        self.explicitHomes = explicitHomes
     }
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
@@ -113,6 +116,9 @@ actor CodexLogUsageScanner {
 
     /// `CODEX_HOME` entries (comma-separated) when set, else `~/.codex` — same as ccusage.
     private func codexHomes() -> [URL] {
+        if let explicitHomes {
+            return explicitHomes.map { URL(fileURLWithPath: expandHome($0)) }
+        }
         if let raw = environment.value(for: "CODEX_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty {
             return raw.split(separator: ",")

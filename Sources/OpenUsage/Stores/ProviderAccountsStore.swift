@@ -31,6 +31,8 @@ struct ProviderAccountSource: Codable, Equatable, Sendable {
         /// The provider's standard home for this machine (`~/.claude`, `~/.codex`, env override).
         case defaultHome
         case claudeSwap
+        case codexHome
+        case piAuth
     }
 
     var kind: Kind

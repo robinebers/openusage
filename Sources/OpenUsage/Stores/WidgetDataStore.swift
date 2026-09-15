@@ -415,37 +415,36 @@ final class WidgetDataStore {
     func localHistoryDocument(deviceID: String, deviceName: String, updatedAt: Date = Date()) -> UsageHistoryDocument {
         var providers: [String: ProviderUsageHistory] = [:]
         var identities: [String: String] = [:]
-        let hasMultipleClaudeCards = registry.providers.count {
-            ProviderAccountID.family(of: $0.id) == "claude"
-        } > 1
+        let cardCountsByFamily = Dictionary(grouping: registry.providers.map(\.id), by: ProviderAccountID.family(of:))
+            .mapValues(\.count)
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
             if let history = localSnapshots[providerID]?.usageHistory {
-                if ProviderAccountID.family(of: providerID) == "claude" {
+                let family = ProviderAccountID.family(of: providerID)
+                if ProviderAccountID.families.contains(family) {
                     if let identity = providerIdentityKeys[providerID] {
                         identities[providerID] = identity.lowercased()
-                    } else if hasMultipleClaudeCards || providerID != "claude" {
-                        AppLog.warn(.config, "sync: omitting Claude history without account ownership")
+                    } else if cardCountsByFamily[family, default: 0] > 1 || providerID != family {
+                        AppLog.warn(.config, "sync: omitting \(family) history without account ownership")
                         continue
                     }
                 }
                 providers[providerID] = history
             }
         }
-        let exportedClaudeIDs = providers.keys.filter {
-            ProviderAccountID.family(of: $0) == "claude"
+        for family in ProviderAccountID.families {
+            let exportedIDs = providers.keys.filter { ProviderAccountID.family(of: $0) == family }
+            if let onlyID = exportedIDs.first, exportedIDs.count == 1, onlyID != family {
+                providers[family] = providers.removeValue(forKey: onlyID)
+                identities[family] = identities.removeValue(forKey: onlyID)
+            }
         }
-        if let onlyClaudeID = exportedClaudeIDs.first,
-           exportedClaudeIDs.count == 1, onlyClaudeID != "claude"
-        {
-            providers["claude"] = providers.removeValue(forKey: onlyClaudeID)
-            identities["claude"] = identities.removeValue(forKey: onlyClaudeID)
-        }
-        let hasClaudeAccountCards = providers.keys.contains {
-            ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
+        let hasAccountCards = providers.keys.contains { $0.contains("@") }
+        if !hasAccountCards {
+            identities = identities.filter { ProviderAccountID.family(of: $0.key) == "claude" }
         }
         return UsageHistoryDocument(
-            schema: hasClaudeAccountCards ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
+            schema: hasAccountCards ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,

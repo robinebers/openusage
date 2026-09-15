@@ -186,7 +186,10 @@ final class UsageHistoryAggregatorTests: XCTestCase {
 
         XCTAssertEqual(try XCTUnwrap(merged[personalID]).series.daily.first?.totalTokens, 130)
         XCTAssertEqual(try XCTUnwrap(merged[workID]).series.daily.first?.totalTokens, 240)
-        XCTAssertEqual(try XCTUnwrap(merged["codex"]).series.daily.first?.totalTokens, 350)
+        XCTAssertEqual(
+            try XCTUnwrap(merged["codex"]).series.daily.first?.totalTokens, 300,
+            "a peer's Codex history stamped with another account never lands on this account's card"
+        )
     }
 
     func testMismatchedClaudeIdentityNeverFallsBackToMatchingCardID() throws {
@@ -317,7 +320,11 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         ).localHistoryDocument(deviceID: "this-mac", deviceName: "This Mac")
 
         XCTAssertEqual(multiple.schema, UsageHistoryDocument.accountSchema)
-        XCTAssertEqual(multiple.identities, ["claude": "user|personal", "claude@1234abcd": "user|work"])
+        XCTAssertEqual(
+            multiple.identities,
+            ["claude": "user|personal", "claude@1234abcd": "user|work", "codex": "codex-account"],
+            "v2 documents carry the Codex stamp too; v1 documents leave it out for older readers"
+        )
         XCTAssertEqual(Set(multiple.providers.keys), ["claude", "claude@1234abcd", "codex"])
         XCTAssertNoThrow(try multiple.validate())
     }

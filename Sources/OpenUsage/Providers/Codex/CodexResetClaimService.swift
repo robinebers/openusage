@@ -63,6 +63,9 @@ final class CodexResetClaimService {
             usageClient: usageClient,
             credentialCandidates: {
                 var candidates = authStore.loadAuthCandidates()
+                if let pi = authStore.loadPiAuth() {
+                    candidates.append(pi)
+                }
                 if let keychain = await loadOffMainActor({ authStore.loadKeychainAuth() }) {
                     candidates.append(keychain)
                 }
@@ -246,15 +249,16 @@ final class CodexResetClaimService {
     }
 }
 
-/// Hands the claim service to the resets popover through the environment: `nil` (the default — previews,
-/// share-card renders, reorder previews) renders the timeline read-only with no "Use" affordance.
-private struct CodexResetClaimServiceKey: EnvironmentKey {
-    static let defaultValue: CodexResetClaimService? = nil
+/// Hands the claim services to the resets popover through the environment, keyed by Codex card id.
+/// Empty (the default — previews, share-card renders, reorder previews) renders the timeline
+/// read-only with no "Use" affordance.
+private struct CodexResetClaimServicesKey: EnvironmentKey {
+    static let defaultValue: [String: CodexResetClaimService] = [:]
 }
 
 extension EnvironmentValues {
-    var codexResetClaim: CodexResetClaimService? {
-        get { self[CodexResetClaimServiceKey.self] }
-        set { self[CodexResetClaimServiceKey.self] = newValue }
+    var codexResetClaims: [String: CodexResetClaimService] {
+        get { self[CodexResetClaimServicesKey.self] }
+        set { self[CodexResetClaimServicesKey.self] = newValue }
     }
 }

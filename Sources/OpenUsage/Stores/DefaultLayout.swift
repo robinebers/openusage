@@ -111,3 +111,20 @@ enum DefaultLayout {
         "zai.webSearches"
     ]
 }
+
+extension DefaultLayout {
+    static func translatedForAccountCards(providerIDs: [String]) -> ([String]) -> [String] {
+        let extraIDsByFamily = Dictionary(grouping: providerIDs.filter { $0.contains("@") }) {
+            ProviderAccountID.family(of: $0)
+        }
+        return { metricIDs in
+            metricIDs.flatMap { metricID -> [String] in
+                guard let dot = metricID.firstIndex(of: "."),
+                      let extras = extraIDsByFamily[String(metricID[..<dot])]
+                else { return [metricID] }
+                let suffix = metricID[dot...]
+                return [metricID] + extras.map { "\($0)\(suffix)" }
+            }
+        }
+    }
+}

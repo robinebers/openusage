@@ -77,7 +77,7 @@ extension CodexAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
         case .notLoggedIn: .notLoggedIn
-        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired: .authExpired
+        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired, .piTokenExpired: .authExpired
         case .usageAPIKey: .notAvailable
         case .invalidAuthPayload: .authInvalid
         }

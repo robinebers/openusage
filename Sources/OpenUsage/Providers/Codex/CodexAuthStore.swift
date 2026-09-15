@@ -30,6 +30,7 @@ struct CodexAuthState: Hashable, Sendable {
     enum Source: Hashable, Sendable {
         case file(path: String)
         case keychain
+        case piAuth(providerID: String)
     }
 
     var auth: CodexAuth
@@ -51,9 +52,12 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
     case tokenExpired
     case usageAPIKey
     case invalidAuthPayload
+    case piTokenExpired
 
     var errorDescription: String? {
         switch self {
+        case .piTokenExpired:
+            return "Token expired. Use this account in pi to refresh it."
         case .notLoggedIn:
             return "Not logged in. Run `codex` to authenticate."
         case .sessionExpired:
@@ -73,7 +77,7 @@ enum CodexAuthError: Error, LocalizedError, Equatable {
 
     var allowsAuthFallback: Bool {
         switch self {
-        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired:
+        case .sessionExpired, .tokenConflict, .tokenRevoked, .tokenExpired, .piTokenExpired:
             return true
         case .notLoggedIn, .usageAPIKey, .invalidAuthPayload:
             return false
@@ -93,17 +97,26 @@ struct CodexAuthStore: Sendable {
     var files: TextFileAccessing
     var keychain: KeychainAccessing
     var now: @Sendable () -> Date
+    var explicitAuthPaths: [String]?
+    var includesKeychain: Bool
+    var piLogin: PiCodexLogin?
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         files: TextFileAccessing = LocalTextFileAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        explicitAuthPaths: [String]? = nil,
+        includesKeychain: Bool = true,
+        piLogin: PiCodexLogin? = nil
     ) {
         self.environment = environment
         self.files = files
         self.keychain = keychain
         self.now = now
+        self.explicitAuthPaths = explicitAuthPaths
+        self.includesKeychain = includesKeychain
+        self.piLogin = piLogin
     }
 
     func loadAuthCandidates() -> [CodexAuthState] {
@@ -125,8 +138,24 @@ struct CodexAuthStore: Sendable {
         return CodexAuthState(auth: auth, source: .file(path: path))
     }
 
+    func loadPiAuth() -> CodexAuthState? {
+        guard let piLogin else { return nil }
+        let tokens = CodexTokens(accessToken: piLogin.accessToken, refreshToken: nil, idToken: nil, accountID: piLogin.accountID)
+        return CodexAuthState(auth: CodexAuth(tokens: tokens), source: .piAuth(providerID: piLogin.providerID))
+    }
+
+    func piTokenIsExpired(_ state: CodexAuthState) -> Bool {
+        guard case .piAuth = state.source else { return false }
+        if let expiresAt = piLogin?.expiresAt { return expiresAt <= now() }
+        if let token = state.auth.tokens?.accessToken, let expiresAt = accessTokenExpiresAt(token) {
+            return expiresAt <= now()
+        }
+        return false
+    }
+
     func loadKeychainAuth() -> CodexAuthState? {
-        guard let value = try? keychain.readGenericPassword(service: Self.keychainService),
+        guard includesKeychain,
+              let value = try? keychain.readGenericPassword(service: Self.keychainService),
               let auth = Self.parseAuth(value),
               Self.hasTokenLikeAuth(auth)
         else {
@@ -148,6 +177,8 @@ struct CodexAuthStore: Sendable {
             try files.writeText(path, text)
         case .keychain:
             try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+        case .piAuth:
+            throw CodexAuthError.invalidAuthPayload
         }
     }
 
@@ -181,6 +212,7 @@ struct CodexAuthStore: Sendable {
     }
 
     func authPaths() -> [String] {
+        if let explicitAuthPaths { return explicitAuthPaths }
         if let codexHome = codexHome() {
             return [joinPath(codexHome, Self.authFile)]
         }

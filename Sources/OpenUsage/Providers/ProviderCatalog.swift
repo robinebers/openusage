@@ -7,7 +7,8 @@ enum ProviderCatalog {
     static func make(
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
-        claudeIdentityKeys: [String: String] = [:]
+        claudeIdentityKeys: [String: String] = [:],
+        codexCards: [CodexAccountCard] = []
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name.
@@ -41,8 +42,8 @@ enum ProviderCatalog {
                 )
             }
         }
+        providers += codexCards.isEmpty ? [CodexProvider()] : codexCards.map(CodexProvider.make(card:))
         providers += [
-            CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),

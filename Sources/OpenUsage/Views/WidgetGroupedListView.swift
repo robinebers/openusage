@@ -231,7 +231,8 @@ struct WidgetGroupedListView: View {
             data: data,
             onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
             onToggleMeterStyle: { dataStore.meterStyle.toggle() },
-            condensedTop: condensedTop
+            condensedTop: condensedTop,
+            providerID: providerID
         )
             .contentShape(Rectangle())
             .opacity(activeMetricID == descriptor.id ? 0 : 1)
