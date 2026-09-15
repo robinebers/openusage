@@ -140,6 +140,34 @@ final class ClaudeLivePlanTests: XCTestCase {
         ])
     }
 
+    func testIdentityBoundCardShowsLivePlanOnRateLimitedBadgeBeforeAnyUsageSucceeds() async {
+        // Verification succeeded (so the live profile is in hand) but the very first usage call 429s:
+        // the rate-limited badge must already carry the live plan, not the stale stored one.
+        let account = "11111111-1111-4111-8111-111111111111"
+        let organization = "22222222-2222-4222-8222-222222222222"
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/api/oauth/usage":
+                return HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
+            case "/api/oauth/profile":
+                return Self.profileResponse(tier: "default_claude_max_20x", account: account, organization: organization)
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let provider = makeProvider(
+            credentials: Self.staleMax5x, http: http, expectedIdentityKey: "\(account)|\(organization)"
+        )
+
+        let first = await provider.refresh()
+        let second = await provider.refresh()
+
+        XCTAssertEqual(first.plan, "Max 20x")
+        XCTAssertEqual(second.plan, "Max 20x")
+        XCTAssertEqual(first.warning?.hasPrefix("Updates blocked by Anthropic"), true)
+        XCTAssertEqual(http.requests.map(\.url.path), ["/api/oauth/profile", "/api/oauth/usage"])
+    }
+
     func testInferenceOnlyLoginNeverLooksUpProfile() async {
         let http = RoutingHTTPClient { _ in
             XCTFail("An inference-only login must not call any Anthropic endpoint")

@@ -47,9 +47,6 @@ final class ClaudeProvider: ProviderRuntime {
         var plan: String?
     }
     private var livePlan: LivePlan?
-    /// The profile body identity verification just fetched, kept until `resolveLivePlan` consumes it so
-    /// the multi-account path reads the plan with zero extra requests.
-    private var verifiedProfile: (accessToken: String, profile: ClaudeAccountProfile)?
 
     init(
         provider: Provider = ClaudeProvider.makeProvider(),
@@ -364,9 +361,7 @@ final class ClaudeProvider: ProviderRuntime {
 
         var working = state
         defer { state = working }
-        var verificationResponse = try await verifyAccountIfNeeded(
-            accessToken: working.oauth.accessToken ?? ""
-        )
+        var verificationResponse = try await verifyAccountIfNeeded(credentials: working.oauth)
         let response = try await ProviderAuthRetry.fetch(
             token: working.oauth.accessToken ?? "",
             attempt: { accessToken in
@@ -393,9 +388,8 @@ final class ClaudeProvider: ProviderRuntime {
                 if refreshed.persisted {
                     expectedGeneration = expectedGeneration.replacing(working)
                 }
-                verificationResponse = try await self.verifyAccountIfNeeded(
-                    accessToken: refreshed.accessToken
-                )
+                // `refreshAccessToken` already moved `working` onto the rotated token.
+                verificationResponse = try await self.verifyAccountIfNeeded(credentials: working.oauth)
                 return refreshed.accessToken
             },
             connectionFailed: ClaudeUsageError.connectionFailed,
@@ -428,10 +422,11 @@ final class ClaudeProvider: ProviderRuntime {
         return mapped
     }
 
-    private func verifyAccountIfNeeded(accessToken: String) async throws -> HTTPResponse? {
+    private func verifyAccountIfNeeded(credentials: ClaudeOAuth) async throws -> HTTPResponse? {
         guard let identity = authStore.expectedIdentityKey,
               identity.split(separator: "|").count == 2
         else { return nil }
+        let accessToken = credentials.accessToken ?? ""
         let fingerprint = Data(SHA256.hash(data: Data("\(identity)\u{0}\(accessToken)".utf8)))
         guard verifiedCredentialFingerprint != fingerprint else { return nil }
         switch try await usageClient.verifyAccount(
@@ -441,48 +436,54 @@ final class ClaudeProvider: ProviderRuntime {
             return response
         case .verified(let profile):
             verifiedCredentialFingerprint = fingerprint
-            verifiedProfile = (accessToken: accessToken, profile: profile)
+            // Record the plan right away so it also reaches a rate-limited badge when the usage call that
+            // follows 429s, and so the post-usage lookup below finds it and makes no request of its own.
+            rememberLivePlan(from: profile, credentials: credentials)
             return nil
         }
     }
 
     /// Live plan for the given login, fetching the profile at most once per access token.
     private func resolveLivePlan(credentials: ClaudeOAuth) async -> String? {
-        let accessToken = credentials.accessToken ?? ""
-        let fingerprint = Data(SHA256.hash(data: Data(accessToken.utf8)))
-        if let livePlan, livePlan.accessTokenFingerprint == fingerprint {
+        if let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) {
             return livePlan.plan
         }
-
         let profile: ClaudeAccountProfile
-        if let verified = verifiedProfile, verified.accessToken == accessToken {
-            profile = verified.profile
-        } else {
-            do {
-                let response = try await usageClient.fetchProfile(accessToken: accessToken, config: authStore.oauthConfig())
-                profile = try ClaudeUsageClient.decodeProfile(response)
-            } catch {
-                // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again.
-                guard !Task.isCancelled else { return nil }
-                AppLog.warn(LogTag.plugin("claude"), "live plan lookup failed; showing the stored plan until the token rotates: \(error.localizedDescription)")
-                livePlan = LivePlan(accessTokenFingerprint: fingerprint, plan: nil)
-                return nil
-            }
+        do {
+            let response = try await usageClient.fetchProfile(
+                accessToken: credentials.accessToken ?? "", config: authStore.oauthConfig()
+            )
+            profile = try ClaudeUsageClient.decodeProfile(response)
+        } catch {
+            // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again.
+            guard !Task.isCancelled else { return nil }
+            AppLog.warn(LogTag.plugin("claude"), "live plan lookup failed; showing the stored plan until the token rotates: \(error.localizedDescription)")
+            livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: nil)
+            return nil
         }
-        verifiedProfile = nil
+        return rememberLivePlan(from: profile, credentials: credentials)
+    }
+
+    @discardableResult
+    private func rememberLivePlan(from profile: ClaudeAccountProfile, credentials: ClaudeOAuth) -> String? {
         let plan = ClaudeUsageMapper.formatLivePlan(profile: profile, credentials: credentials)
         if plan == nil {
             AppLog.info(LogTag.plugin("claude"), "live profile carries no organization plan; showing the stored plan")
         }
-        livePlan = LivePlan(accessTokenFingerprint: fingerprint, plan: plan)
+        livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: plan)
         return plan
     }
 
     /// Cached live plan for the login, without making a request (the rate-limited paths use this).
     private func cachedLivePlan(for credentials: ClaudeOAuth) -> String? {
-        let fingerprint = Data(SHA256.hash(data: Data((credentials.accessToken ?? "").utf8)))
-        guard let livePlan, livePlan.accessTokenFingerprint == fingerprint else { return nil }
+        guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) else {
+            return nil
+        }
         return livePlan.plan
+    }
+
+    private static func accessTokenFingerprint(_ credentials: ClaudeOAuth) -> Data {
+        Data(SHA256.hash(data: Data((credentials.accessToken ?? "").utf8)))
     }
 
     /// Last-good usage with an appended staleness note when we have it; otherwise the plain rate-limited
