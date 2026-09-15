@@ -28,7 +28,9 @@ Each ChatGPT account gets its own Codex card with separate limits, reset credits
 
 Logins are matched by ChatGPT account id, so the same account signed in through two homes and pi still makes one card. The account signed in at the default home keeps the plain `codex` card; every other account gets a card named after its pi label from `multi-pass.json` when you set one, otherwise its email ("Codex: work", "Codex: you@example.com"). A login that can't name its account never becomes a card. Restart OpenUsage after adding or removing a login.
 
-Spend tiles stay per account: each card reads the rollouts under its own homes, and pi usage lands on the card whose pi login ran it. The keychain credential and OpenCode's Codex usage, which can't name an account, stay on the default card.
+Spend tiles stay per account: each card reads the rollouts under its own homes, and pi usage lands on the card whose pi login ran it.
+
+![Two Codex cards, one per account, each with its own limits and spend](../screenshots/codex-accounts-after-dark.png) The keychain credential and OpenCode's Codex usage, which can't name an account, stay on the default card.
 
 Codex home credentials refresh and rotate back into their `auth.json` as before. pi credentials are read-only: OpenUsage never refreshes or rewrites pi's tokens, because pi rotates them itself. If a card relies on a pi login whose token has expired, it reads "Token expired. Use this account in pi to refresh it." Use that account in pi once and refresh.
 
