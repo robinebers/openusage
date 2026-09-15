@@ -103,7 +103,9 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"usage":{"input_tokens":1,"output_tokens":2,"speed":null}}}"#, false),
             (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
             (#"{"timestamp":"2026-02-20T12:00:00Z","sessionId":null,"message":{"usage":{"input_tokens":1,"output_tokens":2}}}"#, false),
-            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"content":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, true)
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"content":null,"usage":{"input_tokens":1,"output_tokens":2}}}"#, true),
+            // Claude Code 2.1.270 writes ordinary message iterations with a null nested model (#1253).
+            (#"{"timestamp":"2026-02-20T12:00:00Z","message":{"model":"claude-fable-5-1","usage":{"input_tokens":2,"output_tokens":100,"iterations":[{"type":"message","model":null,"input_tokens":2,"output_tokens":100}]}}}"#, true)
         ]
 
         for entry in cases {
