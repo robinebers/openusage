@@ -26,6 +26,11 @@ enum DevinUsageMapper {
 
         let dailyRemaining = ProviderParse.number(planStatus["dailyQuotaRemainingPercent"])
         let weeklyRemaining = ProviderParse.number(planStatus["weeklyQuotaRemainingPercent"])
+        // A present-but-unparsable percentage is schema drift, not an omitted zero: fail loudly
+        // instead of letting the exhausted-quota fallback below turn it into a credible 100% used.
+        if planStatus["weeklyQuotaRemainingPercent"] != nil, weeklyRemaining == nil {
+            throw DevinUsageError.invalidResponse
+        }
         let dailyReset = hideDailyQuota ? nil : unixSecondsToDate(planStatus["dailyQuotaResetAtUnix"])
         let weeklyReset = unixSecondsToDate(planStatus["weeklyQuotaResetAtUnix"])
         let extraUsageBalance = dollarsFromMicros(planStatus["overageBalanceMicros"])

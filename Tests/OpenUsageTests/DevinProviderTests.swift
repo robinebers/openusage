@@ -104,6 +104,21 @@ final class DevinUsageMapperTests: XCTestCase {
         }
     }
 
+    func testMalformedWeeklyRemainingWithResetThrowsInsteadOfExhausted() {
+        for malformed: Any in ["abc", true, Double.nan] {
+            var userStatus = makeUserStatus()
+            var planStatus = userStatus["planStatus"] as! [String: Any]
+            planStatus["weeklyQuotaRemainingPercent"] = malformed
+            planStatus["weeklyQuotaResetAtUnix"] = "1789286400"
+            userStatus["planStatus"] = planStatus
+
+            // Present but unparsable is schema drift → reject, never "100% used".
+            XCTAssertThrowsError(try DevinUsageMapper.mapUserStatus(userStatus)) { error in
+                XCTAssertEqual(error as? DevinUsageError, .invalidResponse)
+            }
+        }
+    }
+
     func testThrowsQuotaUnavailableWhenNoDisplayableFieldsExist() {
         let userStatus: [String: Any] = [
             "planStatus": [
