@@ -7,6 +7,7 @@ enum ProviderCatalog {
     static func make(
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
+        codexCards: [CodexAccountCard] = [],
         claudeIdentityKeys: [String: String] = [:]
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
@@ -41,8 +42,22 @@ enum ProviderCatalog {
                 )
             }
         }
+        if codexCards.isEmpty {
+            providers.append(CodexProvider())
+        } else {
+            providers += codexCards.map { card in
+                CodexProvider(
+                    provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
+                    authStore: CodexAuthStore(expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
+                    logUsageScanner: CodexLogUsageScanner(
+                        allowsUnattributedHistory: card.allowsUnattributedHistory,
+                        additionalHomes: card.logHomes
+                    ),
+                    allowsUnattributedHistory: card.allowsUnattributedHistory
+                )
+            }
+        }
         providers += [
-            CodexProvider(),
             CursorProvider(),
             AntigravityProvider(),
             CopilotProvider(defaults: defaults),

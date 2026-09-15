@@ -9,6 +9,7 @@ final class UsageReaderTests: XCTestCase {
             [WidgetDescriptor.percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent")]
         }
+        var allowsCachedLocalHistory = true
         var refreshCount = 0
         var refreshError: String?
         var refreshedAt = Date()
@@ -52,6 +53,31 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
         XCTAssertEqual(provider.refreshCount, 0)
         XCTAssertTrue(result.warnings.isEmpty)
+    }
+
+    func testCacheHitRemovesExcludedHistoryWithoutRefreshingLimits() async throws {
+        for allowsHistory in [false, true] {
+            let defaults = defaults()
+            let provider = StubProvider(id: "codex")
+            provider.allowsCachedLocalHistory = allowsHistory
+            var snapshot = await provider.refresh()
+            snapshot.usageHistory = ProviderUsageHistory(series: DailyUsageSeries(daily: [
+                DailyUsageEntry(date: DailyUsageAccumulator.dayKey(from: Date()), totalTokens: 123, costUSD: 1)
+            ]))
+            snapshot.lines.append(.values(label: "Today", values: [.init(number: 1, kind: .dollars)]))
+            ProviderSnapshotCache(userDefaults: defaults).store(snapshot, producedByIdentityKey: "workspace|user@example.com")
+            provider.refreshCount = 0
+
+            let result = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "codex")
+            XCTAssertTrue(result.warnings.isEmpty)
+            XCTAssertEqual(provider.refreshCount, 0, "The CLI should still serve fresh limits from its cache")
+            let cache = ProviderSnapshotCache(userDefaults: defaults)
+            let cached = try XCTUnwrap(cache.loadSnapshots(providerIDs: ["codex"])["codex"])
+            XCTAssertEqual(cached.usageHistory != nil, allowsHistory)
+            XCTAssertEqual(cached.line(label: "Today") != nil, allowsHistory)
+            XCTAssertEqual(cached.line(label: "Weekly"), snapshot.line(label: "Weekly"))
+            XCTAssertEqual(cache.producedByIdentityKey(providerID: "codex"), "workspace|user@example.com")
+        }
     }
 
     func testForceUsesSharedProviderAndStoresResult() async throws {

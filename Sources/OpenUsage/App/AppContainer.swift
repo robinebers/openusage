@@ -37,10 +37,9 @@ final class AppContainer {
     /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
     let onboarding: OnboardingStore
     /// Claims Codex rate-limit reset credits from the resets popover (the app's only provider-API
-    /// write). Shares the Codex provider's auth store and usage client; `nil` only if the Codex
-    /// provider were ever removed from the registry. Injected into the view tree via
-    /// `\.codexResetClaim`.
-    let codexResetClaim: CodexResetClaimService?
+    /// write). Each service shares its card's auth store and usage client. The view tree selects
+    /// the matching service from `\.codexResetClaims` for each card's resets popover.
+    let codexResetClaims: [String: CodexResetClaimService]
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
     /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
     private let providers: [ProviderRuntime]
@@ -59,7 +58,7 @@ final class AppContainer {
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
-    init(isFreshInstall: Bool = false) {
+    init(isFreshInstall: Bool = false) async {
         // Capture the user's login-shell environment off-main so provider keys exported in a shell
         // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
@@ -69,31 +68,25 @@ final class AppContainer {
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
         // the snapshot cache's account stamp and reconciles the account registry.
-        let accountAssembly = ProviderAccountAssembly.make(waitsForLoginShell: true)
+        let accountAssembly = await ProviderAccountAssembly.make(waitsForLoginShell: true)
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
+            codexCards: accountAssembly.codexCards,
             claudeIdentityKeys: accountAssembly.identityKeysByCard
         )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
-        let additionalClaudeIDs = providers.map(\.provider.id).filter {
-            $0 != "claude" && ProviderAccountID.family(of: $0) == "claude"
-        }
-        let claudeAccountDefaults: ([String]) -> [String] = { metricIDs in
-            metricIDs.flatMap { metricID -> [String] in
-                guard metricID.hasPrefix("claude.") else { return [metricID] }
-                let suffix = metricID.dropFirst("claude".count)
-                return [metricID] + additionalClaudeIDs.map { "\($0)\(suffix)" }
-            }
+        let accountDefaults: ([String]) -> [String] = { metricIDs in
+            DefaultLayout.expandingAccounts(metricIDs, providerIDs: registry.providers.map(\.id))
         }
         let layout = LayoutStore(
             registry: registry,
-            defaultMetricIDs: claudeAccountDefaults(DefaultLayout.metricIDs),
-            defaultPinnedMetricIDs: claudeAccountDefaults(DefaultLayout.pinnedMetricIDs),
-            defaultExpandedMetricIDs: claudeAccountDefaults(DefaultLayout.expandedMetricIDs),
+            defaultMetricIDs: accountDefaults(DefaultLayout.metricIDs),
+            defaultPinnedMetricIDs: accountDefaults(DefaultLayout.pinnedMetricIDs),
+            defaultExpandedMetricIDs: accountDefaults(DefaultLayout.expandedMetricIDs),
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
         let dataStore = WidgetDataStore(
@@ -144,8 +137,8 @@ final class AppContainer {
         // forced refresh returns `.skipped` when another refresh already owns the provider — and that
         // in-flight probe may carry *pre-claim* usage — so retry until this refresh actually runs
         // (bounded; the racing probe finishes in seconds).
-        self.codexResetClaim = providers.compactMap { $0 as? CodexProvider }.first.map { codex in
-            CodexResetClaimService(
+        self.codexResetClaims = Dictionary(uniqueKeysWithValues: providers.compactMap { $0 as? CodexProvider }.map { codex in
+            (codex.provider.id, CodexResetClaimService(
                 authStore: codex.authStore,
                 usageClient: codex.usageClient,
                 refreshAfterClaim: { [weak dataStore] in
@@ -177,8 +170,8 @@ final class AppContainer {
                     }
                     AppLog.error(LogTag.plugin("codex"), "post-claim refresh kept being skipped; meters may lag until the next cycle")
                 }
-            )
-        }
+            ))
+        })
 
         // Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
         // Its state lives in a dedicated UserDefaults suite, kept separate from app settings so the user's

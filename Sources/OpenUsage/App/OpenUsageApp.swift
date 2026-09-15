@@ -75,15 +75,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 await Task.detached(priority: .userInitiated) {
                     _ = LoginShellEnvironment.shared.ensureCaptured()
                 }.value
-                self?.finishLaunching(isFreshInstall: isFreshInstall)
+                await self?.finishLaunching(isFreshInstall: isFreshInstall)
             }
             return
         }
-        finishLaunching(isFreshInstall: isFreshInstall)
+        Task { [weak self] in
+            await self?.finishLaunching(isFreshInstall: isFreshInstall)
+        }
     }
 
-    private func finishLaunching(isFreshInstall: Bool) {
-        let container = AppContainer(isFreshInstall: isFreshInstall)
+    private func finishLaunching(isFreshInstall: Bool) async {
+        let container = await AppContainer(isFreshInstall: isFreshInstall)
         self.container = container
         statusItemController = StatusItemController(container: container, updater: updater)
         // Starts background update checks (release build only; dormant under preview/`swift run`).

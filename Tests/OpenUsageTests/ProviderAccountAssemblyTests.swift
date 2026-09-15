@@ -13,7 +13,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
         return defaults
     }
 
-    func testResolvedFamiliesFeedIdentityKeysAndTheRegistry() throws {
+    func testResolvedFamiliesFeedIdentityKeysAndTheRegistry() async throws {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -27,7 +27,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertEqual(assembly.identityKeysByCard, ["claude": "acct-1"])
         // The registry recorded the resolved account under the bare id, holding the default badge.
@@ -42,7 +42,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
     /// A family whose home facts aren't readable this launch (first Finder/Dock launch racing a
     /// slow shell) is left out of the pass entirely: not observed, not reconciled — while a family
     /// whose home override is already in the process environment still resolves.
-    func testFamiliesOutsideThePassAreNeitherObservedNorReconciled() {
+    func testFamiliesOutsideThePassAreNeitherObservedNorReconciled() async {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -55,13 +55,13 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
 
         XCTAssertEqual(assembly.identityKeysByCard, ["codex": "codex-1"])
         XCTAssertNil(store.defaultBadgeHolder(family: "claude"), "an out-of-pass family must not be reconciled")
     }
 
-    func testNothingObservedLeavesRegistryAndKeysEmpty() {
+    func testNothingObservedLeavesRegistryAndKeysEmpty() async {
         let defaults = makeScratchDefaults()
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(
@@ -71,7 +71,7 @@ final class ProviderAccountAssemblyTests: XCTestCase {
             homeDirectory: { URL(fileURLWithPath: "/Users/dev") }
         )
 
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertTrue(assembly.identityKeysByCard.isEmpty)
         XCTAssertTrue(store.records.isEmpty)

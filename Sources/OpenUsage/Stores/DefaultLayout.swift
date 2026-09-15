@@ -6,6 +6,20 @@ import Foundation
 /// define an ID (e.g. the test fixtures) silently ignore it. The provider-section order isn't seeded
 /// here: an empty saved order reconciles to plain registry order in `LayoutStore`.
 enum DefaultLayout {
+    /// Account cards inherit their family's existing defaults. Keep the migration baseline unexpanded
+    /// so a newly discovered card also receives its metrics on an existing installation.
+    static func expandingAccounts(_ metricIDs: [String], providerIDs: [String]) -> [String] {
+        metricIDs.flatMap { metricID -> [String] in
+            guard let separator = metricID.firstIndex(of: ".") else { return [metricID] }
+            let family = String(metricID[..<separator])
+            let suffix = metricID[separator...]
+            let additionalIDs = providerIDs.filter {
+                $0 != family && ProviderAccountID.family(of: $0) == family
+            }
+            return [metricID] + additionalIDs.map { "\($0)\(suffix)" }
+        }
+    }
+
     static let metricIDs: [String] = [
         "antigravity.geminiPro", "antigravity.geminiWeekly", "antigravity.claude", "antigravity.claudeWeekly",
         "antigravity.trend", "antigravity.today", "antigravity.yesterday", "antigravity.last30",

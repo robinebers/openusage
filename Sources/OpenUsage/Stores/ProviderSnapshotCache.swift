@@ -91,6 +91,26 @@ struct ProviderSnapshotCache {
         return loaded
     }
 
+    /// Remove history invalidated by the current account set without refreshing cached limits.
+    /// Both app launch and the one-shot CLI call this before reading any cached snapshot.
+    @MainActor
+    func removeExcludedHistory(for providers: [ProviderRuntime]) {
+        let excludedIDs = providers.filter { !$0.allowsCachedLocalHistory }.map { $0.provider.id }
+        guard !excludedIDs.isEmpty else { return }
+        var payload = loadPayload()
+        var changed = false
+        for id in excludedIDs {
+            guard let snapshot = payload.snapshots[id] else { continue }
+            let stripped = UsageHistorySnapshotRenderer.removingHistory(from: snapshot)
+            guard stripped != snapshot else { continue }
+            payload.snapshots[id] = stripped
+            changed = true
+            AppLog.info(.cache, "excluded local history removed for \(id)")
+        }
+        // Do not call store(): neither the timestamp, account stamp, nor session freshness changed.
+        if changed { save(payload) }
+    }
+
     func snapshot(providerID: String) -> ProviderSnapshot? {
         let snapshot = loadPayload().snapshots[providerID]
         guard let snapshot else { return nil }

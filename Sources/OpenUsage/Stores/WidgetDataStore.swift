@@ -176,6 +176,7 @@ final class WidgetDataStore {
         // paint under the new account until the first successful refresh. A card whose current
         // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
         // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
+        cache.removeExcludedHistory(for: providers)
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
             .filter { cardID, _ in
                 guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {
@@ -429,6 +430,11 @@ final class WidgetDataStore {
                         continue
                     }
                 }
+                if ProviderAccountID.family(of: providerID) == "codex",
+                   let identity = providerIdentityKeys[providerID], identity.contains("|") {
+                    guard CodexAccountIdentity.isComplete(key: identity) else { continue }
+                    identities[providerID] = identity.lowercased()
+                }
                 providers[providerID] = history
             }
         }
@@ -444,8 +450,17 @@ final class WidgetDataStore {
         let hasClaudeAccountCards = providers.keys.contains {
             ProviderAccountID.family(of: $0) == "claude" && $0 != "claude"
         }
+        let usesAccountSchema = hasClaudeAccountCards || identities.keys.contains {
+            ProviderAccountID.family(of: $0) == "codex"
+        }
+        // v2 requires ownership for every Claude entry, even a legacy bare card. One unresolved
+        // login must not invalidate the document and block syncing every other provider.
+        if usesAccountSchema, providers["claude"] != nil, identities["claude"] == nil {
+            providers.removeValue(forKey: "claude")
+            AppLog.warn(.config, "sync: omitting unresolved Claude history from account-aware export")
+        }
         return UsageHistoryDocument(
-            schema: hasClaudeAccountCards ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
+            schema: usesAccountSchema ? UsageHistoryDocument.accountSchema : UsageHistoryDocument.currentSchema,
             deviceID: deviceID,
             deviceName: deviceName,
             updatedAt: updatedAt,

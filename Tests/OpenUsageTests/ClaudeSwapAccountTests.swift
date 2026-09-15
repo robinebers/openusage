@@ -16,7 +16,7 @@ final class ClaudeSwapAccountTests: XCTestCase {
         #"{"claudeAiOauth":{"accessToken":"\#(access)","refreshToken":"refresh","expiresAt":4102444800000,"scopes":["user:profile"]}}"#
     }
 
-    func testDiscoversThreeAccountsAndDeduplicatesDefaultLogin() throws {
+    func testDiscoversThreeAccountsAndDeduplicatesDefaultLogin() async throws {
         let files = FakeFiles([
             home.path + "/.claude.json": #"{"oauthAccount":{"accountUuid":"\#(user)","organizationUuid":"\#(org)"}}"#,
             account.root + "/sequence.json": #"""
@@ -33,7 +33,7 @@ final class ClaudeSwapAccountTests: XCTestCase {
         let store = ProviderAccountsStore(defaults: defaults)
         let observer = DefaultAccountObserver(environment: FakeEnvironment([:]), files: files,
                                               keychain: FakeKeychain(), homeDirectory: { [home] in home })
-        let assembly = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertEqual(assembly.claudeCards.count, 3)
         XCTAssertEqual(Set(assembly.claudeCards.map(\.displayName)), [
@@ -45,7 +45,7 @@ final class ClaudeSwapAccountTests: XCTestCase {
         XCTAssertTrue(assembly.claudeCards.allSatisfy { !$0.allowsUnattributedPiUsage })
         XCTAssertTrue(assembly.claudeCards.allSatisfy { $0.additionalLogDirectories.count == 3 })
         XCTAssertEqual(store.defaultBadgeHolder(family: "claude")?.sources.map(\.kind), [.defaultHome, .claudeSwap])
-        let again = ProviderAccountAssembly.make(observer: observer, accountsStore: store)
+        let again = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
         XCTAssertEqual(assembly.claudeCards, again.claudeCards)
         let providers = ProviderCatalog.make(defaults: defaults, claudeCards: assembly.claudeCards)
             .compactMap { $0 as? ClaudeProvider }

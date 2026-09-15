@@ -170,7 +170,10 @@ enum LayoutBootstrap {
             seededDefaults: nextSeededDefaults,
             shouldPersistPlaced: !toAdd.isEmpty,
             shouldPersistSeededDefaults: shouldPersistSeededDefaults,
-            newlyPlaced: toAdd
+            // A pristine install may have saved section choices but no placed-widget array yet.
+            // Its synthesized starting layout already contains the new defaults, so `toAdd` alone
+            // would lose their On Demand placement when a second account first appears.
+            newlyPlaced: hasStoredLayout ? toAdd : knownDefaults.filter { !seededDefaults.contains($0) }
         )
     }
 }

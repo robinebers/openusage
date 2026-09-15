@@ -22,7 +22,29 @@ If Codex reports only a 7-day window, it maps to Weekly without inventing a 5-ho
 
 Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a keychain fallback. Tokens refresh automatically and rotate back into the auth file.
 
+### Codex Swap accounts
+
+OpenUsage shows accounts saved by [Codex Swap (`xswap`)](https://github.com/maddada/codex-swap).
+Each account and workspace gets its own card, labeled with its alias and email. Cards and pins stay
+with the same account when you switch the default login. Restart OpenUsage after adding, removing,
+or renaming an account. Custom locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
+
+- Matching file, Keychain, and Swap logins share a card. If one expires, OpenUsage tries another
+  login for that account. Keychain-only accounts and Swap custom main homes are included, even
+  when they have no saved Swap slot. Keychain reads run in the background.
+- OpenUsage only reads Swap credentials; Codex handles renewing them. If a card needs a login,
+  run `xswap run <account>` or `xswap login <account>`, then refresh OpenUsage.
+- Concurrent `xswap run` sessions are supported. Close Codex sessions before using `xswap switch`
+  to change the global login, as required by Swap.
+
 ## The spend tiles
+
+With multiple Codex accounts, spending without a reliable account owner is excluded, including
+previously cached spending. Excluded history is removed before cached data appears or syncs,
+even if the login has expired or the usage request fails. Cached live limits keep their original
+freshness. A shared session folder does not establish who paid for a turn.
+With one known account, shared and copied sessions count once. Synced history must match the
+card's account and workspace. Live usage limits continue to work for every account.
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
 
@@ -36,6 +58,7 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 ## Troubleshooting
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.
+- **A Codex Swap account needs login**: run `xswap login <account>` for the named account, then refresh.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
 - **Spend tiles show "No data"** — OpenUsage found no qualifying Codex usage in Codex, pi, or OpenCode logs from the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
 - **OpenCode usage is missing** — OpenCode must currently have an `openai` OAuth credential in its
@@ -44,6 +67,10 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 ## Under the hood
 
 `GET https://chatgpt.com/backend-api/wham/usage` with the Codex OAuth token; refresh via `auth.openai.com`. A 401/403 triggers one token refresh and retry. Session and Weekly are classified by each usage window's duration rather than by its primary/secondary slot. This matters when Codex temporarily removes one limit and moves the remaining weekly window into the primary slot. Payloads without a recognized duration retain the primary-as-Session and secondary-as-Weekly compatibility fallback; response headers fill percentages missing from the corresponding window.
+
+For Codex Swap cards, a 401/403 instead tries the next matching access token without refreshing tokens.
+Credential changes while a request is pending discard that result and retry from current matching
+logins. The reset-credit action is also bound to its card's account, including after a default switch.
 
 Spark and Spark Weekly come from the same response's `additional_rate_limits` array — model-specific limits that reuse the duration-based Session/Weekly classification. OpenUsage surfaces the entry whose name identifies GPT-5.3-Codex-Spark as those two meters; accounts without the limit simply omit the entry, so the rows read "No data". Other model limits in that array aren't shown.
 

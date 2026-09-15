@@ -252,7 +252,16 @@ private struct CodexResetClaimServiceKey: EnvironmentKey {
     static let defaultValue: CodexResetClaimService? = nil
 }
 
+private struct CodexResetClaimsKey: EnvironmentKey {
+    static let defaultValue: [String: CodexResetClaimService] = [:]
+}
+
 extension EnvironmentValues {
+    var codexResetClaims: [String: CodexResetClaimService] {
+        get { self[CodexResetClaimsKey.self] }
+        set { self[CodexResetClaimsKey.self] = newValue }
+    }
+
     var codexResetClaim: CodexResetClaimService? {
         get { self[CodexResetClaimServiceKey.self] }
         set { self[CodexResetClaimServiceKey.self] = newValue }

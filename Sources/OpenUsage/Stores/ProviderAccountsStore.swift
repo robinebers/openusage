@@ -31,6 +31,7 @@ struct ProviderAccountSource: Codable, Equatable, Sendable {
         /// The provider's standard home for this machine (`~/.claude`, `~/.codex`, env override).
         case defaultHome
         case claudeSwap
+        case codexSwap
     }
 
     var kind: Kind
@@ -152,6 +153,18 @@ final class ProviderAccountsStore {
                 && !record.removedTombstone
                 && record.sources.contains(where: \.holdsDefaultSource)
         }
+    }
+
+    /// Preserve the existing card and pins when adding xswap's user component to a workspace id.
+    func upgradeCodexIdentity(_ identity: CodexAccountIdentity) {
+        guard !identity.accountID.isEmpty,
+              !records.contains(where: { $0.family == "codex" && $0.identityKey == identity.key }),
+              let index = records.firstIndex(where: {
+                  $0.family == "codex" && $0.identityKey == identity.accountID
+                      && ($0.label == nil || $0.label?.lowercased() == identity.email)
+              }) else { return }
+        records[index].identityKey = identity.key
+        persist()
     }
 
     /// The bare family id when free (the migration-killing rule: the first account observed at the

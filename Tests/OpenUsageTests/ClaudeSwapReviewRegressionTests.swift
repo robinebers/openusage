@@ -33,7 +33,7 @@ final class ClaudeSwapReviewRegressionTests: XCTestCase {
             let observer = DefaultAccountObserver(environment: FakeEnvironment([:]), files: files,
                 keychain: keychain, homeDirectory: { [home] in home })
             let accounts = ProviderAccountsStore(defaults: defaults)
-            let first = ProviderAccountAssembly.make(observer: observer, accountsStore: accounts)
+            let first = await ProviderAccountAssembly.make(observer: observer, accountsStore: accounts)
             XCTAssertEqual(first.claudeCards.count, 2)
             let defaultCard = try XCTUnwrap(first.claudeCards.first { $0.identityKey == defaultUser })
             XCTAssertEqual(defaultCard.id, "claude")
@@ -42,8 +42,8 @@ final class ClaudeSwapReviewRegressionTests: XCTestCase {
             XCTAssertFalse(defaultCard.usesDesktopCredentials)
             XCTAssertTrue(first.claudeCards.allSatisfy { !$0.allowsUnattributedPiUsage })
             XCTAssertEqual(first.identityKeysByCard[defaultCard.id], defaultUser)
-            XCTAssertEqual(ProviderAccountAssembly.make(observer: observer, accountsStore: accounts).claudeCards,
-                first.claudeCards)
+            let repeated = await ProviderAccountAssembly.make(observer: observer, accountsStore: accounts)
+            XCTAssertEqual(repeated.claudeCards, first.claudeCards)
 
             let providers = ProviderCatalog.make(defaults: defaults, claudeCards: first.claudeCards)
                 .compactMap { $0 as? ClaudeProvider }
