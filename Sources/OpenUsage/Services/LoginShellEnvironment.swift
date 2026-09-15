@@ -124,7 +124,7 @@ final class LoginShellEnvironment: @unchecked Sendable {
     /// and end markers and ignoring any shell banner printed outside them.
     static func parse(_ output: String) -> [String: String] {
         let tokens = output.components(separatedBy: "\0")
-        guard let begin = tokens.firstIndex(of: beginMarker) else { return [:] }
+        guard let begin = tokens.firstIndex(where: { $0.hasSuffix(beginMarker) }) else { return [:] }
         let end = tokens.firstIndex(of: endMarker) ?? tokens.count
         guard begin < end else { return [:] }
 
