@@ -53,7 +53,10 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         )
         let httpClient = RoutingHTTPClient { request in
             XCTAssertEqual(request.headers["Authorization"], "Bearer desktop-token")
-            XCTAssertTrue(request.url.absoluteString.hasSuffix("/api/oauth/usage"))
+            // The live-plan profile lookup follows a successful usage fetch; only usage is under test here.
+            guard request.url.absoluteString.hasSuffix("/api/oauth/usage") else {
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(
                 #"{"five_hour":{"utilization":25,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8
             ))
@@ -64,7 +67,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.warning)
-        XCTAssertEqual(httpClient.requests.count, 1)
+        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 1)
         XCTAssertEqual(fixture.keyReader.calls, [false])
     }
 
@@ -440,8 +443,9 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         }
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
-        XCTAssertEqual(httpClient.requests.count, 2)
-        XCTAssertTrue(httpClient.requests.last?.headers["Authorization"]?.contains("desktop-token") == true)
+        let usageRequests = httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }
+        XCTAssertEqual(usageRequests.count, 2)
+        XCTAssertTrue(usageRequests.last?.headers["Authorization"]?.contains("desktop-token") == true)
     }
 
     @MainActor

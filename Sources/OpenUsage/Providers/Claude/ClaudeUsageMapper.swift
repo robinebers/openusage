@@ -107,6 +107,22 @@ enum ClaudeUsageMapper {
         return "\(base) \(tier[match])"
     }
 
+    /// Plan label from the live profile, formatted like the stored one so the badge reads the same either
+    /// way. `organization_type` arrives as `claude_max` / `claude_pro`; the `claude_` prefix is dropped so it
+    /// title-cases to "Max" / "Pro". Fields the profile omits fall back to the stored login so a partial
+    /// payload still corrects whatever it does report. `nil` when the profile carries no organization —
+    /// the caller keeps the stored plan.
+    static func formatLivePlan(profile: ClaudeAccountProfile, credentials: ClaudeOAuth) -> String? {
+        guard let organization = profile.organization else { return nil }
+        let subscriptionType = organization.organizationType.map { type in
+            type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type
+        }
+        return formatPlan(
+            subscriptionType: subscriptionType ?? credentials.subscriptionType,
+            rateLimitTier: organization.rateLimitTier ?? credentials.rateLimitTier
+        )
+    }
+
     private static func appendUsageWindow(_ value: Any?, label: String, periodDurationMs: Int, to lines: inout [MetricLine]) {
         guard let object = value as? [String: Any],
               let used = ProviderParse.number(object["utilization"])

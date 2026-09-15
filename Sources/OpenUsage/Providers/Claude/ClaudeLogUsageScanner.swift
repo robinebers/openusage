@@ -54,7 +54,9 @@ actor ClaudeLogUsageScanner {
     /// in-memory and disk caches and the rest reuse it. Tests inject an isolated memory-only scanner.
     private static let sharedScanner = IncrementalJSONLScanner<Entry>(
         logTag: LogTag.plugin("claude"),
-        persistence: JSONLScanCachePersistence(namespace: "claude", schemaVersion: 1)
+        // v2: accept records whose nested `usage.iterations[].model` is null (#1253); cached
+        // parses from v1 silently dropped them, so every file must re-parse once.
+        persistence: JSONLScanCachePersistence(namespace: "claude", schemaVersion: 2)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -362,7 +364,6 @@ actor ClaudeLogUsageScanner {
         var entries: [Entry] = []
         for line in data.split(separator: UInt8(ascii: "\n")) {
             guard line.range(of: marker) != nil else { continue }
-            if hasUnsupportedNullField(line) { continue }
             entries.append(contentsOf: parseEntries(Data(line)))
         }
         return entries
@@ -384,6 +385,7 @@ actor ClaudeLogUsageScanner {
               let timestamp = OpenUsageISO8601.date(from: timestampRaw),
               let message = object["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any],
+              !hasUnsupportedNullField(object, message: message, usage: usage),
               let parsedUsage = tokenBreakdown(from: usage),
               isValidEntry(object, message: message)
         else { return [] }
@@ -485,36 +487,24 @@ actor ClaudeLogUsageScanner {
         return index < bytes.count && bytes[index].isASCIIDigit
     }
 
-    /// Claude never writes `null` into these fields; a line that does is a foreign/corrupt shape that
-    /// ccusage skips before JSON parsing, and we match it byte-for-byte.
-    static func hasUnsupportedNullField(_ line: Data.SubSequence) -> Bool {
-        let nullMarker = Data(":null".utf8)
-        let quote = UInt8(ascii: "\"")
-        let bytes = Data(line) // fresh copy → indices are 0-based
-        var offset = bytes.startIndex
-        while let markerRange = bytes.range(of: nullMarker, in: offset..<bytes.endIndex) {
-            let start = markerRange.lowerBound
-            var fieldEnd = start > 0 ? start - 1 : 0
-            if bytes[fieldEnd] != quote {
-                while fieldEnd > 0, bytes[fieldEnd] != quote { fieldEnd -= 1 }
-            }
-            if bytes[fieldEnd] == quote, fieldEnd > 0 {
-                var fieldStart = fieldEnd - 1
-                while fieldStart > 0, bytes[fieldStart] != quote { fieldStart -= 1 }
-                if bytes[fieldStart] == quote {
-                    let field = String(decoding: bytes[(fieldStart + 1)..<fieldEnd], as: UTF8.self)
-                    if Self.unsupportedNullableFields.contains(field) { return true }
-                }
-            }
-            offset = markerRange.upperBound
+    /// Claude never writes `null` into the schema fields we consume; a line that does is a
+    /// foreign/corrupt shape that ccusage skips. The check is scoped to the exact objects we read
+    /// (top level, `message`, `message.usage`) so unrelated nested keys sharing a name — such as
+    /// `usage.iterations[].model`, which Claude Code 2.1.270 writes as `null` for ordinary message
+    /// iterations — don't invalidate an otherwise valid record.
+    static func hasUnsupportedNullField(
+        _ object: [String: Any], message: [String: Any], usage: [String: Any]
+    ) -> Bool {
+        let levels: [([String: Any], [String])] = [
+            (object, ["cwd", "costUSD", "version", "sessionId", "requestId", "isApiErrorMessage"]),
+            (message, ["id", "model"]),
+            (usage, ["speed", "cache_read_input_tokens", "cache_creation_input_tokens"])
+        ]
+        for (container, fields) in levels {
+            for field in fields where container[field] is NSNull { return true }
         }
         return false
     }
-
-    private static let unsupportedNullableFields: Set<String> = [
-        "id", "cwd", "model", "speed", "costUSD", "version", "sessionId", "requestId",
-        "isApiErrorMessage", "cache_read_input_tokens", "cache_creation_input_tokens"
-    ]
 
     // MARK: - Deduplication
 
