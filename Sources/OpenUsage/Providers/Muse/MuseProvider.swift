@@ -109,8 +109,9 @@ final class MuseProvider: ProviderRuntime {
         // order as the Codex card. Best-effort: a quota failure only logs and
         // the local scan stands alone.
         let quota = await fetchQuotaBestEffort()
-        // User-attested label wins over the tier-derived name (which is an opaque
-        // numeric ID on the primary probe path). Off the main actor: file read.
+        // User-attested label wins over the quota-derived name (an opaque
+        // numeric ID on the probe path, server-provided on the account path).
+        // Off the main actor: file read.
         let planOverride = await loadOffMainActor { [quotaClient] in quotaClient.planNameOverride() }
         lines += quota.lines
         if let scan {
@@ -157,6 +158,34 @@ final class MuseProvider: ProviderRuntime {
     /// The first keychain read is off the main actor so a locked keychain
     /// (up to 5s `security` wait) does not freeze the UI (P1-3).
     private func fetchQuotaBestEffort() async -> (lines: [MetricLine], planName: String?) {
+        // OAuth account endpoint first: same meters plus the server-provided
+        // plan name, with no inference cost. Any failure falls through to
+        // the Responses probe below, which also covers API-key-only setups.
+        if let oauth: String = try? await loadOffMainActor({ [quotaClient] in
+            try quotaClient.oauthToken()
+        }), !oauth.isEmpty {
+            do {
+                let usage = try await quotaClient.fetchKeyQuota(oauthToken: oauth)
+                let name = usage.planDisplayName.flatMap(MuseQuotaClient.planName)
+                    ?? MuseQuotaClient.planName(tier: usage.tier)
+                return (MuseQuotaClient.quotaLines(usage: usage), name)
+            } catch let error as MuseQuotaError where error == .unauthorized {
+                // The owned copy may have gone stale while the CLI refreshed
+                // its own token. Re-bootstrap once from the keychain and
+                // retry before paying for a probe.
+                if let fresh: String = try? await loadOffMainActor({ [quotaClient] in
+                    try quotaClient.refreshOAuthToken()
+                }), !fresh.isEmpty, fresh != oauth,
+                   let usage = try? await quotaClient.fetchKeyQuota(oauthToken: fresh) {
+                    let name = usage.planDisplayName.flatMap(MuseQuotaClient.planName)
+                        ?? MuseQuotaClient.planName(tier: usage.tier)
+                    return (MuseQuotaClient.quotaLines(usage: usage), name)
+                }
+                AppLog.info(LogTag.plugin("muse"), "account quota endpoint rejected; falling back to probe")
+            } catch {
+                AppLog.info(LogTag.plugin("muse"), "account quota endpoint failed; falling back to probe: \(error.localizedDescription)")
+            }
+        }
         do {
             // Move the blocking keychain/file read off the main actor.
             let apiKey: String? = try await loadOffMainActor { [quotaClient] in
@@ -175,7 +204,15 @@ final class MuseProvider: ProviderRuntime {
             // windows (P1-1).
             if case .quotaExhausted(let resetsAt) = error {
                 AppLog.info(LogTag.plugin("muse"), "quota exhausted, resets at \(String(describing: resetsAt))")
-                return ([MuseQuotaClient.blockedQuotaLine(resetsAt: resetsAt)], nil)
+                // A 429 carries only a reset instant, no window marker: attribute
+                // it against the remembered weekly reset so a 5h session block
+                // doesn't render as a weekly one. No memory means the legacy
+                // weekly assumption.
+                let memory = MuseQuotaMemory.load(from: MuseQuotaMemory.fileURL(
+                    in: quotaClient.quotaMemoryDirectory()))
+                let label = MuseQuotaClient.blockedWindowLabel(
+                    resetsAt: resetsAt, now: now(), memory: memory)
+                return ([MuseQuotaClient.blockedQuotaLine(resetsAt: resetsAt, label: label)], nil)
             }
             AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
             return ([], nil)

@@ -1,12 +1,17 @@
 import Foundation
 
-/// Live subscription quota for Muse Code, parsed from the
+/// Live subscription quota for Muse Code: POST `api.meta.ai/muse-code/key`
+/// with the CLI's OAuth token returns the subscription snapshot (weekly +
+/// window percentages, resets, server-provided plan name) with no inference
+/// cost. When OAuth is absent or rejected it falls back to the
 /// `response.subscription_usage` SSE event on POST `api.meta.ai/v1/responses` —
-/// the same event the `muse` TUI's `/usage` view renders. A minimal streamed
-/// probe returns weekly + window percentages with no browser session or
-/// page-load tokens, authenticated by the CLI's own keychain `api_key`.
+/// the same event the `muse` TUI's `/usage` view renders — authenticated by
+/// the CLI's own keychain `api_key`. No browser session or page-load tokens.
 struct MuseQuotaUsage: Sendable, Equatable {
     var tier: String?
+    /// Server-provided display label (`subs_tier_name`), present only on the
+    /// account-endpoint path. The probe path carries just the opaque tier ID.
+    var planDisplayName: String? = nil
     // Percentages are optional: nil means unknown/unavailable, not 0%.
     // This preserves the distinction between a genuine 0% reading and a
     // missing field in an undocumented response (P2-6).
@@ -81,12 +86,18 @@ private final class MuseKeychainMemo: @unchecked Sendable {
     func set(_ newValue: String?) {
         lock.lock(); value = newValue; isSet = true; lock.unlock()
     }
+    /// Forget everything, including a cached miss — the next read goes back
+    /// to the source. Used when a 401 proves the memoized token stale.
+    func reset() {
+        lock.lock(); value = nil; isSet = false; lock.unlock()
+    }
 }
 
 struct MuseQuotaClient: Sendable {
     static let keychainService = "ai.meta.dev.credentials"
     static let keychainAccount = "meta"
     static let responsesURL = URL(string: "https://api.meta.ai/v1/responses")!
+    static let keyURL = URL(string: "https://api.meta.ai/muse-code/key")!
     static let probeModel = "muse-spark-1.3-contributor"
     /// App-owned override file (mirrors the OpenRouter `openrouter.json` convention).
     static let userConfigPaths = ["~/.config/openusage/muse.json"]
@@ -102,20 +113,34 @@ struct MuseQuotaClient: Sendable {
     /// Explicit user key (Settings card): saved file first, `META_API_KEY` env
     /// second. Wins over the auto-detected CLI keychain entry below.
     let userStore: UserAPIKeyStore
+    /// Directory holding the shared 429-attribution memory file (the same
+    /// `muse-quota-memory.json` the Go TUI/daemon reads and writes). Defaults
+    /// to the real state dir; tests inject a temp dir so fixtures never touch
+    /// the user's live attribution memory.
+    let quotaMemoryDirectory: @Sendable () -> URL
     /// One-prompt memo for the keychain fallback. Instance-scoped (reference
     /// type) so copies of this struct share the memo; a new client in tests
     /// starts unmemoized and does not pollute other tests.
     private let keychainMemo = MuseKeychainMemo()
+    /// Separate memo for the OAuth token: same blob, different field, and a
+    /// different lifetime from the API key.
+    private let oauthMemo = MuseKeychainMemo()
 
     init(
         http: any HTTPClient = URLSessionHTTPClient(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
-        userStore: UserAPIKeyStore? = nil
+        userStore: UserAPIKeyStore? = nil,
+        quotaMemoryDirectory: (@Sendable () -> URL)? = nil
     ) {
         self.http = http
         self.keychain = keychain
         self.environment = environment
+        self.quotaMemoryDirectory = quotaMemoryDirectory ?? {
+            MuseQuotaMemory.stateDirectory(
+                environment: ProcessInfo.processInfo.environment,
+                home: FileManager.default.homeDirectoryForCurrentUser)
+        }
         self.userStore = userStore ?? UserAPIKeyStore(
             configPaths: Self.userConfigPaths,
             environmentNames: Self.userEnvironmentNames,
@@ -176,6 +201,201 @@ struct MuseQuotaClient: Sendable {
         return key
     }
 
+    /// The OAuth token for the muse-code/key account endpoint. Owned copy
+    /// first (`oauthToken` in the same `muse.json` the API-key store uses —
+    /// silent, no keychain prompt after the first boot), then the
+    /// `access_token` field of the CLI keychain blob, bootstrapping the
+    /// owned copy on success. `nil` means no OAuth login (API-key-only
+    /// setups carry no `access_token`) — the caller falls back to the
+    /// Responses probe. The explicit saved key and `META_API_KEY` carry the
+    /// Model API key only and are never OAuth, so they are not consulted.
+    func oauthToken() throws -> String? {
+        // Owned copy first: silent, no keychain prompt after the first boot.
+        if let cached = oauthTokenFromOwnedFile() {
+            return cached
+        }
+        if let cached = oauthMemo.getIfSet() {
+            return cached
+        }
+        let blob: String?
+        do {
+            blob = try keychain.readGenericPassword(
+                service: Self.keychainService, account: Self.keychainAccount
+            )
+        } catch {
+            oauthMemo.set(nil)
+            throw error
+        }
+        guard let blob, let data = blob.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = (json["access_token"] as? String)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty
+        else {
+            oauthMemo.set(nil)
+            return nil
+        }
+        // Bootstrap the owned copy so later boots never touch the CLI entry.
+        _ = saveOAuthTokenToOwnedFile(token)
+        oauthMemo.set(token)
+        return token
+    }
+
+    /// Drop the owned copy and its memo, then re-read from the keychain
+    /// (which the CLI keeps fresh) and cache the result. Called once after
+    /// a 401 before falling back to the Responses probe. Throws
+    /// `unauthorized` when no token exists anywhere, which the caller
+    /// treats like any other key failure.
+    func refreshOAuthToken() throws -> String {
+        clearOAuthTokenOwnedFile()
+        oauthMemo.reset()
+        guard let token = try oauthToken(), !token.isEmpty else {
+            throw MuseQuotaError.unauthorized
+        }
+        return token
+    }
+
+    /// Cached OAuth token from app-owned storage (`oauthToken` in the
+    /// `muse.json` the API-key store manages; the API-key logic ignores the
+    /// field and vice versa). Silent and prompt-free.
+    func oauthTokenFromOwnedFile() -> String? {
+        guard let text = try? userStore.files.readTextIfPresent(Self.userConfigPaths[0]),
+              let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = (json["oauthToken"] as? String)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.isEmpty
+        else {
+            return nil
+        }
+        return token
+    }
+
+    /// Cache the OAuth token in the owned file, preserving a saved API key.
+    /// Refuses (returning false, touching nothing) when existing content
+    /// isn't a JSON object it can merge into — e.g. a hand-maintained
+    /// raw-string key file.
+    @discardableResult
+    func saveOAuthTokenToOwnedFile(_ token: String) -> Bool {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        var object: [String: Any] = [:]
+        if let text = try? userStore.files.readTextIfPresent(Self.userConfigPaths[0]) {
+            guard let data = text.data(using: .utf8),
+                  let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
+                return false
+            }
+            object = parsed
+        }
+        if (object["oauthToken"] as? String) == trimmed {
+            return true // already cached
+        }
+        object["oauthToken"] = trimmed
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let out = String(data: data, encoding: .utf8)
+        else {
+            return false
+        }
+        do {
+            try userStore.files.writeText(Self.userConfigPaths[0], out)
+        } catch {
+            return false
+        }
+        return true
+    }
+
+    /// Drop the cached OAuth token while preserving a saved API key.
+    /// Removes the file when nothing else remains. Absent file or field,
+    /// or unparseable content, is a no-op.
+    func clearOAuthTokenOwnedFile() {
+        guard let text = try? userStore.files.readTextIfPresent(Self.userConfigPaths[0]),
+              let data = text.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              parsed["oauthToken"] != nil
+        else {
+            return
+        }
+        var object = parsed
+        object.removeValue(forKey: "oauthToken")
+        if object.isEmpty {
+            try? userStore.files.remove(Self.userConfigPaths[0])
+        } else if let data = try? JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys]),
+            let out = String(data: data, encoding: .utf8) {
+            try? userStore.files.writeText(Self.userConfigPaths[0], out)
+        }
+    }
+
+    /// Account subscription snapshot: same meters as the probe plus the
+    /// server-provided plan display name, with no inference cost. 401/403
+    /// means an expired credential — the caller falls back to the Responses
+    /// probe rather than failing the refresh.
+    func fetchKeyQuota(oauthToken: String) async throws -> MuseQuotaUsage {
+        let body = try JSONSerialization.data(withJSONObject: [:], options: [])
+        let response = try await http.send(HTTPRequest(
+            method: "POST",
+            url: Self.keyURL,
+            headers: [
+                "Authorization": "Bearer \(oauthToken)",
+                "Content-Type": "application/json",
+            ],
+            body: body,
+            timeout: 15
+        ))
+        guard response.statusCode == 200 else {
+            if response.statusCode == 401 || response.statusCode == 403 {
+                throw MuseQuotaError.unauthorized
+            }
+            throw MuseQuotaError.requestFailed(response.statusCode)
+        }
+        let usage = try Self.parseKeyPayload(response.body)
+        // Same attribution memory as the probe path: the blocked-state
+        // 429 carries only a reset instant, so a later fallback-probe 429
+        // still attributes against these meters. Shared file with Go.
+        if let memory = MuseQuotaMemory.fromUsage(usage, now: Date()) {
+            memory.save(to: MuseQuotaMemory.fileURL(in: quotaMemoryDirectory()))
+        }
+        return usage
+    }
+
+    /// Parse POST muse-code/key. Requires at least one window's
+    /// `used_percent`, mirroring the probe parser: an empty `subs_usage`
+    /// must not become two 0% meters.
+    static func parseKeyPayload(_ data: Data) throws -> MuseQuotaUsage {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MuseQuotaError.invalidResponse
+        }
+        let subsUsage = json["subs_usage"] as? [String: Any]
+        let weeklyDict = subsUsage?["weekly"] as? [String: Any]
+        let windowDict = subsUsage?["window"] as? [String: Any]
+        let weeklyUsedRaw = weeklyDict?["used_percent"].flatMap(ProviderParse.number)
+        let windowUsedRaw = windowDict?["used_percent"].flatMap(ProviderParse.number)
+        let hasWeekly = weeklyUsedRaw?.isFinite == true
+        let hasWindow = windowUsedRaw?.isFinite == true
+        guard hasWeekly || hasWindow else {
+            throw MuseQuotaError.invalidResponse
+        }
+        let tier = ((subsUsage?["tier"] as? String) ?? (json["subs_tier_id"] as? String))?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let displayName = (json["subs_tier_name"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let windowDuration: Int? = {
+            if let v = windowDict?["window_duration_mins"] as? Int, v > 0 { return v }
+            if let n = windowDict?["window_duration_mins"].flatMap(ProviderParse.number), n > 0 { return Int(n) }
+            return nil
+        }()
+        return MuseQuotaUsage(
+            tier: tier,
+            planDisplayName: displayName,
+            weeklyUsedPercent: hasWeekly ? weeklyUsedRaw : nil,
+            windowUsedPercent: hasWindow ? windowUsedRaw : nil,
+            weeklyResetsAt: weeklyDict?["resets_at"].flatMap(epochDate),
+            windowResetsAt: windowDict?["resets_at"].flatMap(epochDate),
+            windowDurationMinutes: windowDuration
+        )
+    }
+
     func fetchQuota(apiKey: String) async throws -> MuseQuotaUsage {
         let payload: [String: Any] = [
             "model": Self.probeModel,
@@ -223,7 +443,15 @@ struct MuseQuotaClient: Sendable {
         guard let text = String(data: response.body, encoding: .utf8) else {
             throw MuseQuotaError.invalidResponse
         }
-        return try Self.parseUsageEvent(from: text)
+        let usage = try Self.parseUsageEvent(from: text)
+        // Remember the payload so a later 429 (reset instant only, no window
+        // marker) can be attributed to the right window. Best-effort: the
+        // poll outcome never depends on this write, and the file is shared
+        // with the Go TUI/daemon.
+        if let memory = MuseQuotaMemory.fromUsage(usage, now: Date()) {
+            memory.save(to: MuseQuotaMemory.fileURL(in: quotaMemoryDirectory()))
+        }
+        return usage
     }
 
     /// First `response.subscription_usage` SSE event in a stream.
@@ -385,19 +613,31 @@ struct MuseQuotaClient: Sendable {
         return lines
     }
 
+    /// Which window a 429 reset belongs to: "Session" when the reset sits far
+    /// sooner than the remembered weekly reset, else "Weekly" (or unknown —
+    /// the legacy assumption). Pure for testability.
+    static func blockedWindowLabel(resetsAt: Date?, now: Date, memory: MuseQuotaMemory?) -> String {
+        guard let resetsAt,
+              MuseQuotaMemory.isSessionBlock(resetsAt: resetsAt, now: now, memory: memory)
+        else {
+            return "Weekly"
+        }
+        return "Session"
+    }
+
     /// Single blocked-state indicator for the 429 quota-exhausted signal.
     /// The error supplies only a reset instant, not per-window percentages, so
-    /// we surface the weekly window as blocked with the reset (P1-1) rather
-    /// than two fabricated 100% bars. The weekly window is the one whose reset
-    /// is typically ~6 days out (observed Sep 14), matching the error's date.
-    static func blockedQuotaLine(resetsAt: Date?) -> MetricLine {
+    /// we surface the attributed window as blocked with the reset (P1-1)
+    /// rather than two fabricated 100% bars.
+    static func blockedQuotaLine(resetsAt: Date?, label: String) -> MetricLine {
+        let period: Int = label == "Session" ? 5 * 3_600 * 1_000 : 7 * 24 * 3_600 * 1_000
         return .progress(
-            label: "Weekly",
+            label: label,
             used: 100,
             limit: 100,
             format: .percent,
             resetsAt: resetsAt,
-            periodDurationMs: 7 * 24 * 3_600 * 1_000
+            periodDurationMs: period
         )
     }
 }
