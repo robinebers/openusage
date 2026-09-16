@@ -511,6 +511,10 @@ final class CodexProviderTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: httpClient),
             logUsageScanner: CodexLogFixture.scanner(home: home),
+            // Assert the rollout scanner's own output: keep the unattributed sources out of the
+            // snapshot. Otherwise a developer machine with local OpenCode/pi Codex history folds that
+            // real spend in, and this assertion compares it against these fixture numbers.
+            allowsUnattributedHistory: false,
             now: { now },
             pricing: {
                 // 150 tokens -> $0.25 at these fixture rates: (100 x 1000 + 50 x 3000) / 1M.
