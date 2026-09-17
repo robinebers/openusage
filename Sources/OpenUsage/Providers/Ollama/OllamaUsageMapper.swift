@@ -6,11 +6,12 @@ import Foundation
 ///
 ///     {"activity": {"cost": "0.00000", "period": {"type": "last_4_weeks", …}, "models": []},
 ///      "limits": {"session": {"usage": 0.349, "models": […]},
-///                 "weekly":  {"usage": 0.316, "models": […]}}}
+///                 "weekly":  {"usage": 0.316, "models": […]},
+///                 "monthly": {"usage": 0.053, "models": […]}}}
 ///
 /// `usage` is a **fraction** of the plan's allowance (0.349 → 34.9%), not a percentage.
 ///
-/// Neither limit carries a reset instant. Ollama documents the window *lengths* (session every 5 hours,
+/// The limits carry no reset instant. Ollama documents the window *lengths* (session every 5 hours,
 /// weekly every 7 days) but not when the current window started, so the meters deliberately carry no
 /// `resetsAt` and no `periodDurationMs`: a period with no reset date renders as a flat "Resets in 5h"
 /// that never counts down, which reads as a real countdown while being pure guesswork. The window
@@ -27,7 +28,7 @@ enum OllamaUsageMapper {
         return (plan, try usageLines(usageBody))
     }
 
-    /// Session + weekly meters and the recent-activity spend row.
+    /// Session, weekly, and monthly meters plus the recent-activity spend row.
     static func usageLines(_ body: Data) throws -> [MetricLine] {
         guard let root = ProviderParse.jsonObject(body) else {
             throw OllamaUsageError.invalidResponse
@@ -44,6 +45,9 @@ enum OllamaUsageMapper {
         }
         if let weekly = percentLine(limits["weekly"], label: "Weekly") {
             lines.append(weekly)
+        }
+        if let monthly = percentLine(limits["monthly"], label: "Monthly") {
+            lines.append(monthly)
         }
         if let activity = activityLine(root["activity"]) {
             lines.append(activity)

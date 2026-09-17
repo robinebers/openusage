@@ -36,6 +36,9 @@ final class OllamaProvider: ProviderRuntime {
             .percent(id: "ollama.weekly", provider: provider, title: "Weekly",
                      metricLabel: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
+            .percent(id: "ollama.monthly", provider: provider, title: "Monthly",
+                     metricLabel: "Monthly")
+                .exportingLimit("monthly", unit: "percent"),
             // Ollama reports recent spend as a single rolling four-week total, not a daily history, so
             // this is one unbounded dollar row rather than the Today/Yesterday/Last 30 Days tiles the
             // local-scanner providers ship.

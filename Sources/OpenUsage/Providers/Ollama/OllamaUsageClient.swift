@@ -18,9 +18,9 @@ enum OllamaRequestSigner {
 
 /// Calls ollama.com's account endpoints with a signed request.
 ///
-/// - `GET /api/usage` — the session and weekly limit meters plus recent activity spend. This is the
-///   endpoint Ollama's own settings page reads; it is undocumented, so the mapper treats every field as
-///   optional rather than assuming a shape.
+/// - `GET /api/usage` — the session, weekly, and monthly limit meters plus recent activity spend.
+///   This is the endpoint Ollama's own settings page reads; it is undocumented, so the mapper treats
+///   every field as optional rather than assuming a shape.
 /// - `POST /api/me` — the account's plan name (`free` / `pro` / `max`), used only for the plan badge.
 struct OllamaUsageClient: Sendable {
     static let host = "https://ollama.com"
@@ -36,7 +36,7 @@ struct OllamaUsageClient: Sendable {
         self.now = now
     }
 
-    /// Session + weekly limits and recent activity. Required for a usable snapshot.
+    /// Session, weekly, and monthly limits plus recent activity. Required for a usable snapshot.
     func fetchUsage(key: OllamaSigningKey) async throws -> HTTPResponse {
         try await send(method: "GET", path: Self.usagePath, key: key)
     }

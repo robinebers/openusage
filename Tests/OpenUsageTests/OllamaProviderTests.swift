@@ -243,7 +243,8 @@ final class OllamaUsageMapperTests: XCTestCase {
         let mapped = try OllamaUsageMapper.map(usageBody: data(usageJSON), accountBody: nil)
         let labels = await MainActor.run { OllamaProvider().widgetDescriptors.map(\.metricLabel) }
 
-        XCTAssertEqual(mapped.lines.map(\.label), labels)
+        // This captured response predates the monthly meter and must still omit absent limits.
+        XCTAssertEqual(mapped.lines.map(\.label), labels.filter { $0 != "Monthly" })
     }
 
     func testMissingLimitsIsALoudFailureRatherThanAnEmptyDashboard() {
