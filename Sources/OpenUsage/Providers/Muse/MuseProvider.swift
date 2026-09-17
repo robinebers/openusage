@@ -18,6 +18,8 @@ final class MuseProvider: ProviderRuntime {
     let authStore: MuseAuthStore
     let usageScanner: MuseUsageScanner
     let quotaClient: MuseQuotaClient
+    let cookieStore: MuseSessionCookieStore
+    let usagePage: MuseUsagePageClient
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -33,12 +35,16 @@ final class MuseProvider: ProviderRuntime {
         authStore: MuseAuthStore = MuseAuthStore(),
         usageScanner: MuseUsageScanner = MuseUsageScanner(),
         quotaClient: MuseQuotaClient = MuseQuotaClient(),
+        cookieStore: MuseSessionCookieStore = MuseSessionCookieStore(),
+        usagePage: MuseUsagePageClient = MuseUsagePageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
         self.authStore = authStore
         self.usageScanner = usageScanner
         self.quotaClient = quotaClient
+        self.cookieStore = cookieStore
+        self.usagePage = usagePage
         self.now = now
         self.pricing = pricing
     }
@@ -77,6 +83,14 @@ final class MuseProvider: ProviderRuntime {
         // should still count as a credential for detection, and `refresh()` can use
         // it via `quotaClient.apiKey()` even when `authStore` is nil.
         if await loadOffMainActor({ [quotaClient] in quotaClient.userStore.loadKey() != nil }) {
+            return true
+        }
+        // Browser-session cookie sources for the usage-page quota path: manual
+        // cookie/env first, then a keychain-free presence probe across browsers.
+        if await loadOffMainActor({ [cookieStore] in cookieStore.loadManualCookie() != nil }) {
+            return true
+        }
+        if await loadOffMainActor({ [cookieStore] in cookieStore.browserCookiePresent() }) {
             return true
         }
         return await usageScanner.hasLocalUsage()
@@ -191,12 +205,13 @@ final class MuseProvider: ProviderRuntime {
             let apiKey: String? = try await loadOffMainActor { [quotaClient] in
                 try quotaClient.apiKey()
             }
-            guard let apiKey else { return ([], nil) }
-            let usage = try await quotaClient.fetchQuota(apiKey: apiKey)
-            return (
-                MuseQuotaClient.quotaLines(usage: usage),
-                MuseQuotaClient.planName(tier: usage.tier)
-            )
+            if let apiKey {
+                let usage = try await quotaClient.fetchQuota(apiKey: apiKey)
+                return (
+                    MuseQuotaClient.quotaLines(usage: usage),
+                    MuseQuotaClient.planName(tier: usage.tier)
+                )
+            }
         } catch let error as MuseQuotaError {
             // Quota exhausted is a known blocked state, not a transient error.
             // Surface it as a single 100% Quota meter with the reset so the
@@ -214,11 +229,74 @@ final class MuseProvider: ProviderRuntime {
                     resetsAt: resetsAt, now: now(), memory: memory)
                 return ([MuseQuotaClient.blockedQuotaLine(resetsAt: resetsAt, label: label)], nil)
             }
-            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
-            return ([], nil)
+            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; trying usage page: \(error.localizedDescription)")
         } catch {
-            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; showing local spend only: \(error.localizedDescription)")
-            return ([], nil)
+            AppLog.warn(LogTag.plugin("muse"), "quota probe failed; trying usage page: \(error.localizedDescription)")
+        }
+        // Last resort: cookie-authenticated usage page (ported from lassejlv's
+        // upstream PR #1248). Needs no API key, no OAuth, and no page-load
+        // tokens — just the `llm_sess` browser cookie. Still best-effort.
+        if let page = await fetchPageQuotaBestEffort() {
+            return page
+        }
+        return ([], nil)
+    }
+
+    /// Usage-page quota via browser-session cookie. A manually saved cookie (or
+    /// env var) wins; a rejected one falls through to the browser so a stale
+    /// saved value doesn't wedge refresh while the browser is signed in. A
+    /// cookie rejected everywhere means the session died — the caller keeps
+    /// local spend and the log tells the user to revisit dev.meta.ai.
+    private func fetchPageQuotaBestEffort() async -> (lines: [MetricLine], planName: String?)? {
+        if let manual = await loadOffMainActor({ [cookieStore] in cookieStore.loadManualCookie() }) {
+            if let page = await attemptPageQuota(cookie: manual) {
+                return page
+            }
+            AppLog.info(LogTag.plugin("muse"), "saved usage-page cookie rejected; trying browser")
+        }
+        switch await loadOffMainActor({ [cookieStore] in cookieStore.loadBrowserCookie() }) {
+        case .found(let cookie):
+            if let page = await attemptPageQuota(cookie: cookie) {
+                return page
+            }
+            AppLog.warn(LogTag.plugin("muse"), "browser usage-page cookie rejected; visit dev.meta.ai and refresh")
+            return nil
+        case .unreadable:
+            AppLog.warn(LogTag.plugin("muse"), "browser cookies unreadable; grant Full Disk Access or save the llm_sess cookie manually")
+            return nil
+        case .absent:
+            return nil
+        }
+    }
+
+    private func attemptPageQuota(cookie: String) async -> (lines: [MetricLine], planName: String?)? {
+        let response: HTTPResponse
+        do {
+            response = try await usagePage.fetchUsagePage(sessionCookie: cookie)
+        } catch {
+            AppLog.warn(LogTag.plugin("muse"), "usage page fetch failed: \(error.localizedDescription)")
+            return nil
+        }
+        guard (200..<300).contains(response.statusCode),
+              let html = String(data: response.body, encoding: .utf8)
+        else {
+            return nil
+        }
+        do {
+            let usage = try MuseUsagePageMapper.mapUsagePage(html)
+            if let memory = MuseQuotaMemory.fromUsage(usage, now: now()) {
+                memory.save(to: MuseQuotaMemory.fileURL(in: quotaClient.quotaMemoryDirectory()))
+            }
+            return (
+                MuseQuotaClient.quotaLines(usage: usage),
+                MuseQuotaClient.planName(tier: usage.tier)
+            )
+        } catch let error as MuseQuotaError where error == .unauthorized {
+            // Page loaded but carries no quota blob: the cookie was rejected.
+            return nil
+        } catch {
+            AppLog.warn(LogTag.plugin("muse"), "usage page unusable: \(error.localizedDescription)")
+            return nil
         }
     }
 }
