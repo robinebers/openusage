@@ -73,9 +73,20 @@ struct OpenCodeUsageScanner: Sendable {
         var failures: [String: String] = [:]
 
         for path in paths {
+            let tables: OpenCodeMessageTables
+            do {
+                // Skip files with no message tables before counting the path, or one readable but
+                // table-less file would mask every real failure as an empty scan.
+                guard let probed = try messageTables(in: path) else { continue }
+                tables = probed
+            } catch {
+                checked.insert(path)
+                failures[path] = error.localizedDescription
+                continue
+            }
             checked.insert(path)
             do {
-                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs, tables: tables)) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
             } catch {
@@ -89,12 +100,15 @@ struct OpenCodeUsageScanner: Sendable {
         for path in newlyFailing.sorted() {
             AppLog.warn(LogTag.plugin("opencode"), "usage query failed for \(path): \(failures[path] ?? "unknown error")")
         }
-        if failures.count == checked.count {
+        // Only databases with message tables vote; all-skipped is an empty scan, not an error.
+        if !checked.isEmpty && failures.count == checked.count {
             throw OpenCodeUsageError.databaseUnreadable
         }
 
         var accumulator = DailyUsageAccumulator()
-        for row in rows {
+        // OpenCode 2.0.3 copies legacy rows into `session_message` under their original IDs, so the
+        // union holds both copies. Deduplicate before accumulating, across tables and channel databases.
+        for row in Self.deduplicated(rows) {
             let date = Date(timeIntervalSince1970: row.ms / 1000)
             guard date >= tileSince else { continue }
             accumulator.add(
@@ -119,7 +133,8 @@ struct OpenCodeUsageScanner: Sendable {
         }
         for path in paths {
             do {
-                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL), !value.isEmpty {
+                guard let tables = try messageTables(in: path) else { continue }
+                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL(tables: tables)), !value.isEmpty {
                     return true
                 }
             } catch {
@@ -129,6 +144,15 @@ struct OpenCodeUsageScanner: Sendable {
         return false
     }
 
+    /// The message tables a database actually holds, or `nil` when it holds neither — a database the
+    /// scanners can't read usage from. Statement preparation fails on a missing table, so every query
+    /// is built from this answer rather than assuming a schema.
+    private func messageTables(in path: String) throws -> OpenCodeMessageTables? {
+        let output = try sqlite.queryValue(path: path, sql: OpenCodePaths.messageTablesSQL) ?? ""
+        let tables = OpenCodePaths.messageTables(fromProbeOutput: output)
+        return tables.isEmpty ? nil : tables
+    }
+
     // MARK: - Parsing
 
     private struct Row {
@@ -136,11 +160,12 @@ struct OpenCodeUsageScanner: Sendable {
         var cost: Double
         var tokens: Int
         var model: String
+        var id: String?
     }
 
     /// Parse the `json_group_array(json_array(...))` payload: an array of
-    /// `[time_created, cost, tokensTotal, modelID, providerID]`. Rows with a missing timestamp/cost or a
-    /// non-string providerID are skipped at this boundary.
+    /// `[time_created, cost, tokensTotal, modelID, providerID, id?]`. Rows with a missing
+    /// timestamp/cost or a non-string providerID are skipped at this boundary.
     private static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
               let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
@@ -158,9 +183,33 @@ struct OpenCodeUsageScanner: Sendable {
             // (Int(Double) crashes above Int.max). 1e15 is far above any real token total.
             let tokens = Int(min(max(ProviderParse.number(entry[2]) ?? 0, 0), 1e15))
             let model = (entry[3] as? String) ?? ""
-            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model))
+            let id = (entry.count >= 6 ? entry[5] as? String : nil)?
+                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model, id: id))
         }
         return rows
+    }
+
+    /// Migrated and channel-copied rows share their original ID; keep one copy, preferring the later
+    /// timestamp and then the larger token count. Rows without an ID stay independent.
+    private static func deduplicated(_ rows: [Row]) -> [Row] {
+        var withoutID: [Row] = []
+        var byID: [String: Row] = [:]
+        for row in rows {
+            guard let id = row.id else {
+                withoutID.append(row)
+                continue
+            }
+            guard let existing = byID[id] else {
+                byID[id] = row
+                continue
+            }
+            if row.ms > existing.ms ||
+                (row.ms == existing.ms && row.tokens > existing.tokens) {
+                byID[id] = row
+            }
+        }
+        return withoutID + byID.values
     }
 
     // MARK: - SQL
@@ -168,29 +217,86 @@ struct OpenCodeUsageScanner: Sendable {
     /// SQL literal built from `hostedProviderIDs`, so the tracked list has one source of truth.
     private static let providerFilter = "(" + hostedProviderIDs.map { "'\($0)'" }.joined(separator: ",") + ")"
 
-    static func dataSQL(cutoffMs: Int) -> String {
-        """
+    static func dataSQL(cutoffMs: Int, tables: OpenCodeMessageTables = .all) -> String {
+        let source = rowsSource(tables, v1: v1Rows(cutoffMs: cutoffMs), v2: v2Rows(cutoffMs: cutoffMs))
+        return "\(dataProjection)\n\(source);"
+    }
+
+    static func probeSQL(tables: OpenCodeMessageTables = .all) -> String {
+        let source = rowsSource(tables, v1: v1Probe, v2: v2Probe)
+        return "SELECT 1 FROM\n\(source)\nLIMIT 1;"
+    }
+
+    /// The row shape every variant returns, written once so the three table combinations can't drift.
+    private static let dataProjection = """
         SELECT json_group_array(json_array(
                  time_created,
                  json_extract(data,'$.cost'),
-                 COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
-                 json_extract(data,'$.providerID')))
-        FROM message
+                 COALESCE(json_extract(data,'$.tokens.total'), COALESCE(json_extract(data,'$.tokens.input'),0)+COALESCE(json_extract(data,'$.tokens.output'),0)+COALESCE(json_extract(data,'$.tokens.reasoning'),0)+COALESCE(json_extract(data,'$.tokens.cache.read'),0)+COALESCE(json_extract(data,'$.tokens.cache.write'),0)),
+                 COALESCE(json_extract(data,'$.model.id'), json_extract(data,'$.modelID')),
+                 COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')),
+                 id))
+        FROM
+        """
+
+    /// One table or two, the body is always a subquery so the projection above can read `FROM` it
+    /// uniformly. Callers never pass an empty set — a database with no message tables is skipped
+    /// before any SQL is built.
+    private static func rowsSource(_ tables: OpenCodeMessageTables, v1: String, v2: String) -> String {
+        let bodies = [
+            tables.contains(.v1) ? v1 : nil,
+            tables.contains(.v2) ? v2 : nil,
+        ].compactMap { $0 }
+        return "(\n" + bodies.map(indented).joined(separator: "\n          UNION ALL\n") + "\n        )"
+    }
+
+    private static func indented(_ body: String) -> String {
+        body.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "  " + $0 }
+            .joined(separator: "\n")
+    }
+
+    /// `message` names the role and provider flatly; `session_message` moved the role into its `type`
+    /// column and namespaced the model under `$.model`, so each branch is filtered for its own schema.
+    /// Compaction summaries exist only on the v2 table and complete via `$.status`, not the assistant
+    /// markers, so they carry their own condition.
+    private static func v1Rows(cutoffMs: Int) -> String {
+        """
+        SELECT time_created, data FROM message
         WHERE time_created >= \(cutoffMs)
           AND json_valid(data)
           AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real');
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+          AND json_type(data,'$.cost') IN ('integer','real')
         """
     }
 
-    static let probeSQL = """
+    private static func v2Rows(cutoffMs: Int) -> String {
+        """
+        SELECT time_created, data FROM session_message
+        WHERE time_created >= \(cutoffMs)
+          AND json_valid(data)
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+          AND json_type(data,'$.cost') IN ('integer','real')
+          AND (type = 'assistant'
+               OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))
+        """
+    }
+
+    private static let v1Probe = """
         SELECT 1 FROM message
         WHERE json_valid(data)
           AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
           AND json_type(data,'$.cost') IN ('integer','real')
-        LIMIT 1;
+        """
+
+    private static let v2Probe = """
+        SELECT 1 FROM session_message
+        WHERE json_valid(data)
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) IN \(providerFilter)
+          AND json_type(data,'$.cost') IN ('integer','real')
+          AND (type = 'assistant'
+               OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))
         """
 }

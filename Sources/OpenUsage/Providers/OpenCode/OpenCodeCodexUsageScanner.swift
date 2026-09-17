@@ -4,6 +4,9 @@ import Foundation
 /// as Codex's native and pi scanners. OpenCode records both ChatGPT OAuth and ordinary OpenAI API-key
 /// traffic as `providerID = openai`, so rows are eligible only while the local OpenCode credential is
 /// explicitly OAuth. This avoids charging API-key traffic to the Codex subscription card.
+///
+/// Reads both the v1 `message` and v2 `session_message` tables: OpenCode 2 moved assistant messages
+/// to the new table, so a v1-only query returns zero rows there.
 struct OpenCodeCodexUsageScanner: Sendable {
     private let authStore: OpenCodeAuthStore
     private let sqlite: SQLiteAccessing
@@ -28,8 +31,15 @@ struct OpenCodeCodexUsageScanner: Sendable {
     /// Best-effort supplementary scan: failures are logged loudly but never hide Codex's live quota
     /// meters or native history. This matches pi's role as an optional local source.
     func scan(now: Date, daysBack: Int = 30, pricing: ModelPricing) async -> LogUsageScan? {
+        // Zero cost alone doesn't prove subscription usage: experimental 1.18.x builds recorded zero
+        // cost for every request, including paid API-key traffic. v2 rows older than the OAuth
+        // credential may be that paid history, so they are attributed only from the credential's
+        // creation on. v1 rows priced paid traffic correctly and need no such bound.
+        let oauthSince: Date?
         do {
-            guard try authStore.hasCodexOAuth() else { return nil }
+            let oauth = try authStore.openAICredential()
+            guard oauth.isOAuth else { return nil }
+            oauthSince = oauth.since
         } catch {
             AppLog.warn(LogTag.plugin("opencode"), "Codex OAuth attribution skipped: \(error.localizedDescription)")
             return nil
@@ -48,9 +58,23 @@ struct OpenCodeCodexUsageScanner: Sendable {
         let cutoffMs = Int(since.timeIntervalSince1970 * 1000)
         var rows: [Row] = []
         var failures: [String: String] = [:]
+        // Only databases with message tables vote on the empty-vs-missing decision below.
+        var usable: Set<String> = []
         for path in paths {
+            let tables: OpenCodeMessageTables
             do {
-                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                // A database with no message tables has nothing to contribute; skip it rather than let
+                // the query fail and drop every other database's rows.
+                guard let probed = try Self.messageTables(in: path, sqlite: sqlite) else { continue }
+                tables = probed
+            } catch {
+                usable.insert(path)
+                failures[path] = error.localizedDescription
+                continue
+            }
+            usable.insert(path)
+            do {
+                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs, tables: tables)) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
             } catch {
@@ -68,13 +92,14 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 "Codex usage query failed for \(path): \(failures[path] ?? "unknown error")"
             )
         }
-        guard failures.count < paths.count else { return nil }
+        guard usable.isEmpty || failures.count < usable.count else { return nil }
 
         var accumulator = DailyUsageAccumulator()
         // Codex pricing depends only on the model slug, and resolving one walks every supplement alias
         // rule. Real histories run to thousands of rows across a handful of models, so resolve once each.
         var preparedByModel: [String: CodexUsagePricing.Prepared?] = [:]
-        for row in Self.deduplicated(rows) where row.timestamp >= since {
+        for row in Self.deduplicated(rows)
+            where row.timestamp >= since && (row.source != "v2" || oauthSince.map({ row.timestamp >= $0 }) ?? true) {
             let day = DailyUsageAccumulator.dayKey(from: row.timestamp)
             guard let model = row.model.nilIfEmpty else { continue }
             let prepared: CodexUsagePricing.Prepared?
@@ -100,15 +125,27 @@ struct OpenCodeCodexUsageScanner: Sendable {
         return accumulator.build()
     }
 
+    /// The message tables a database actually holds, or `nil` when it holds neither. Statement
+    /// preparation fails on a missing table, so the query is built from this answer, not an assumption.
+    private static func messageTables(in path: String, sqlite: SQLiteAccessing) throws -> OpenCodeMessageTables? {
+        let output = try sqlite.queryValue(path: path, sql: OpenCodePaths.messageTablesSQL) ?? ""
+        let tables = OpenCodePaths.messageTables(fromProbeOutput: output)
+        return tables.isEmpty ? nil : tables
+    }
+
     struct Row: Sendable, Equatable {
         var id: String?
         var timestamp: Date
         var model: String
         var tokens: TokenBreakdown
         var reportedTotalTokens: Int
+        /// Which table the row came from. v2 rows are bound to the OAuth credential's age; v1 rows
+        /// priced paid traffic correctly and are not.
+        var source: String = "v1"
     }
 
-    /// Decodes `[completedAt, cost, total, model, input, cacheRead, cacheWrite, output, reasoning, id]`.
+    /// Decodes `[completedAt, cost, total, model, input, cacheRead, cacheWrite, output, reasoning,
+    /// id, source?]`. Older fixtures without the source marker decode as v1.
     static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
               let payload = (try? JSONSerialization.jsonObject(with: data)) as? [Any]
@@ -139,7 +176,8 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 model: ((values[3] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
                 tokens: tokens,
                 // OpenCode's own total is only a fallback: the parsed buckets are what gets priced.
-                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : clampedTokens(values[2])
+                reportedTotalTokens: tokens.totalTokens > 0 ? tokens.totalTokens : clampedTokens(values[2]),
+                source: (values.count >= 11 ? values[10] as? String : nil) ?? "v1"
             )
         }
     }
@@ -170,30 +208,82 @@ struct OpenCodeCodexUsageScanner: Sendable {
         Int(min(max(ProviderParse.number(value) ?? 0, 0), 1_000_000_000_000_000))
     }
 
-    static func dataSQL(cutoffMs: Int) -> String {
-        let creationCutoffMs = cutoffMs - 7 * 86_400_000
-        return """
+    /// Ten usage columns plus the source table, in `parseRows` order. The projection sits outside
+    /// the union so the table combinations can't drift; each branch tags its own rows.
+    private static let dataProjection = """
         SELECT json_group_array(json_array(
                  COALESCE(json_extract(data,'$.time.completed'),time_created),
                  json_extract(data,'$.cost'),
-                 COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
+                 COALESCE(json_extract(data,'$.tokens.total'), COALESCE(json_extract(data,'$.tokens.input'),0)+COALESCE(json_extract(data,'$.tokens.cache.read'),0)+COALESCE(json_extract(data,'$.tokens.cache.write'),0)+COALESCE(json_extract(data,'$.tokens.output'),0)+COALESCE(json_extract(data,'$.tokens.reasoning'),0)),
+                 COALESCE(json_extract(data,'$.model.id'), json_extract(data,'$.modelID')),
                  COALESCE(json_extract(data,'$.tokens.input'),0),
                  COALESCE(json_extract(data,'$.tokens.cache.read'),0),
                  COALESCE(json_extract(data,'$.tokens.cache.write'),0),
                  COALESCE(json_extract(data,'$.tokens.output'),0),
                  COALESCE(json_extract(data,'$.tokens.reasoning'),0),
-                 id))
-        FROM message
+                 id,
+                 source))
+        FROM
+        """
+
+    /// OpenCode recorded OAuth Codex traffic as `providerID = 'openai'` on the v1 table and
+    /// `$.model.providerID` on the v2 one, and moved the role from `$.role` into the `type` column.
+    /// Both branches keep the zero-cost filter: the built-in Codex OAuth plugin writes every model rate
+    /// as zero, so a positive cost is API-key traffic that must stay off the Codex card. Compaction
+    /// summaries complete via `$.status`, not the assistant markers, so they carry their own condition.
+    private static func v1Rows(cutoffMs: Int, creationCutoffMs: Int) -> String {
+        """
+        SELECT time_created, id, data, 'v1' AS source FROM message
         WHERE time_created >= \(creationCutoffMs)
           AND json_valid(data)
-          AND COALESCE(json_extract(data,'$.time.completed'),time_created) >= \(cutoffMs)
           AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') = 'openai'
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) = 'openai'
           AND json_type(data,'$.cost') IN ('integer','real')
           AND json_extract(data,'$.cost') = 0
           AND (json_type(data,'$.time.completed') IN ('integer','real')
-               OR json_type(data,'$.finish') = 'text');
+               OR json_type(data,'$.finish') = 'text')
         """
+    }
+
+    private static func v2Rows(cutoffMs: Int, creationCutoffMs: Int) -> String {
+        """
+        SELECT time_created, id, data, 'v2' AS source FROM session_message
+        WHERE time_created >= \(creationCutoffMs)
+          AND json_valid(data)
+          AND COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) = 'openai'
+          AND json_type(data,'$.cost') IN ('integer','real')
+          AND json_extract(data,'$.cost') = 0
+          AND ((type = 'assistant'
+                AND (json_type(data,'$.time.completed') IN ('integer','real')
+                     OR json_type(data,'$.finish') = 'text'))
+               OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))
+        """
+    }
+
+    /// One table or two, the body is always a subquery so the projection above can read `FROM` it
+    /// uniformly. Callers never pass an empty set — a database with no message tables is skipped
+    /// before any SQL is built.
+    private static func rowsSource(_ tables: OpenCodeMessageTables, v1: String, v2: String) -> String {
+        let bodies = [
+            tables.contains(.v1) ? v1 : nil,
+            tables.contains(.v2) ? v2 : nil,
+        ].compactMap { $0 }
+        return "(\n" + bodies.map(indented).joined(separator: "\n          UNION ALL\n") + "\n        )"
+    }
+
+    private static func indented(_ body: String) -> String {
+        body.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "  " + $0 }
+            .joined(separator: "\n")
+    }
+
+    static func dataSQL(cutoffMs: Int, tables: OpenCodeMessageTables = .all) -> String {
+        let creationCutoffMs = cutoffMs - 7 * 86_400_000
+        let source = rowsSource(
+            tables,
+            v1: v1Rows(cutoffMs: cutoffMs, creationCutoffMs: creationCutoffMs),
+            v2: v2Rows(cutoffMs: cutoffMs, creationCutoffMs: creationCutoffMs)
+        )
+        return "\(dataProjection)\n\(source)\nWHERE COALESCE(json_extract(data,'$.time.completed'),time_created) >= \(cutoffMs);"
     }
 }
