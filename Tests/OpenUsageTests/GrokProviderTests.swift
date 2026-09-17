@@ -176,6 +176,82 @@ final class GrokProviderTests: XCTestCase {
         }
     }
 
+    func testTeamBilling412KeepsPlanAndLocalSpend() async throws {
+        // SuperGrok Business / team principals 412 the credits endpoint with "No personal team."
+        // Auth and settings still work; blanking the whole card also hid local spend tiles.
+        let now = OpenUsageISO8601.date(from: "2026-06-18T12:00:00.000Z")!
+        let home = try GrokLogFixture.makeHome(files: [
+            "project/today/updates.jsonl": GrokLogFixture.completedTurn(
+                timestamp: "2026-06-18T10:00:00.000Z",
+                model: "grok-4.6-build",
+                input: 1_000_000,
+                costUsdTicks: 10_000_000_000
+            )
+        ])
+        defer { try? FileManager.default.removeItem(at: home) }
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.creditsConfigURL {
+                return HTTPResponse(
+                    statusCode: 412,
+                    headers: [:],
+                    body: Data(#"{"code":"The system is not in a state required for the operation's execution","error":"No personal team."}"#.utf8)
+                )
+            }
+            return Self.defaultRoutes(request)
+        }
+        let provider = makeProvider(
+            httpClient: httpClient,
+            scanner: GrokLogFixture.scanner(home: home),
+            now: now
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertEqual(snapshot.plan, "SuperGrok Heavy")
+        XCTAssertEqual(snapshot.warning, GrokUsageMapper.teamBillingUnavailableWarning)
+        XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
+        XCTAssertNil(badge(snapshot.lines, "Pay as you go"))
+        XCTAssertEqual(
+            values(snapshot.lines, "Today"),
+            [MetricValue(number: 1.0, kind: .dollars, estimated: true), MetricValue(number: 1_000_000, kind: .count, label: "tokens")]
+        )
+    }
+
+    func testUnrelated412StillFailsTheProvider() async {
+        let httpClient = RecordingHTTPClient { request in
+            if request.url == GrokUsageClient.creditsConfigURL {
+                return HTTPResponse(
+                    statusCode: 412,
+                    headers: [:],
+                    body: Data(#"{"error":"precondition failed"}"#.utf8)
+                )
+            }
+            return Self.defaultRoutes(request)
+        }
+
+        let snapshot = await makeProvider(httpClient: httpClient).refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, .http4xx)
+        XCTAssertNil(progress(snapshot.lines, "Weekly limit"))
+        XCTAssertNil(snapshot.warning)
+    }
+
+    func testIsTeamBillingUnavailableMatchesLive412BodyOnly() {
+        let live = HTTPResponse(
+            statusCode: 412,
+            headers: [:],
+            body: Data(#"{"code":"The system is not in a state required for the operation's execution","error":"resolve_personal_team_id(), No personal team."}"#.utf8)
+        )
+        XCTAssertTrue(GrokUsageMapper.isTeamBillingUnavailable(live))
+
+        let other412 = HTTPResponse(statusCode: 412, headers: [:], body: Data(#"{"error":"precondition failed"}"#.utf8))
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(other412))
+
+        let ok = HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"error":"No personal team."}"#.utf8))
+        XCTAssertFalse(GrokUsageMapper.isTeamBillingUnavailable(ok))
+    }
+
     func testNonWeeklyPeriodShowsNoWeeklyLineAndNoWarning() async {
         // A not-yet-migrated (monthly-period) account is a valid state, not a failure: the Weekly
         // tile reads "No data" without the amber triangle, and the badge still renders.

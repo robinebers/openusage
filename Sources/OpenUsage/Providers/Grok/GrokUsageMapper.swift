@@ -38,6 +38,20 @@ enum GrokUsageMapper {
         return GrokMappedUsage(lines: lines)
     }
 
+    /// HTTP 412 with this phrase is Grok's "this principal is a team, not a personal team"
+    /// signal from `GET /v1/billing?format=credits`. Auth is fine; the weekly pool and
+    /// pay-as-you-go cap simply aren't on this surface. Other 412s stay hard failures.
+    static func isTeamBillingUnavailable(_ response: HTTPResponse) -> Bool {
+        guard response.statusCode == 412 else { return false }
+        guard let text = String(data: response.body, encoding: .utf8) else { return false }
+        return text.localizedCaseInsensitiveContains("no personal team")
+    }
+
+    /// Provider header warning (the amber triangle) when the credits endpoint refuses a team
+    /// principal. Weekly / Extra Usage stay "No data"; local spend tiles still load.
+    static let teamBillingUnavailableWarning =
+        "Weekly usage isn't available for team accounts. Spend below is still from your Grok logs."
+
     static func planName(from response: HTTPResponse) -> String? {
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),

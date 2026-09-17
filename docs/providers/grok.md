@@ -26,6 +26,7 @@ Today / Yesterday / Last 30 Days are computed **locally** from completed Grok CL
 
 - **"Session expired" / auth errors** — run `grok login` again, then refresh.
 - **Weekly shows "No data"** — your account still reports a monthly (non-weekly) period, meaning it hasn't been migrated to Grok's unified weekly billing yet.
+- **Weekly and Extra Usage stay blank on a team/business login** — Grok's credits endpoint only resolves a personal team (`HTTP 412` / "No personal team"). OpenUsage keeps the Grok card up, shows the plan name when settings returns it, and still fills Today / Yesterday / Last 30 Days from local session logs. An amber warning on the Grok header explains the blank weekly rows.
 - **Spend tiles show "No data"** — they need completed Grok CLI turns under `~/.grok/sessions/`; a turn that is still running has not been recorded yet. Finish a Grok CLI session, then refresh.
 
 ## Under the hood
