@@ -53,7 +53,8 @@ struct ProviderAccountAssembly {
         return await make(
             observer: DefaultAccountObserver(),
             accountsStore: ProviderAccountsStore(defaults: defaults),
-            families: families
+            families: families,
+            codexDiscovery: CodexAccountDiscovery()
         )
     }
 
@@ -73,6 +74,7 @@ struct ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         families: Set<String> = ProviderAccountID.families,
+        codexDiscovery: CodexAccountDiscovery? = nil,
         desktop: ClaudeDesktopAuthStore? = nil,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String] = { root in
             let urls = (try? FileManager.default.contentsOfDirectory(
@@ -88,7 +90,11 @@ struct ProviderAccountAssembly {
         }
     ) async -> ProviderAccountAssembly {
         let codexCards = families.contains("codex")
-            ? await makeCodexCards(observer: observer, accountsStore: accountsStore) : []
+            ? await makeCodexCards(
+                observer: observer,
+                accountsStore: accountsStore,
+                discovery: codexDiscovery
+            ) : []
         var identityKeys = Dictionary(uniqueKeysWithValues: codexCards.map { ($0.id, $0.identity.key) })
         var observations: [ProviderAccountsStore.Observation] = []
 

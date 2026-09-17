@@ -117,13 +117,7 @@ struct DefaultAccountObserver: Sendable {
     /// the CLI itself copies into `account_id`). No path-derived fallback: an auth file that can't
     /// name its account (and keyring-mode logins, whose secret we never read here) stays unresolved.
     func observeCodex() -> Outcome {
-        let homes: [String]
-        if let raw = environment.value(for: "CODEX_HOME")?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-            homes = [raw]
-        } else {
-            homes = ["~/.config/codex", "~/.codex"]
-        }
+        let homes = CodexAccountDiscovery.configuredHomeValues(environment: environment)
 
         // `CodexProvider.refresh` falls back to the keychain credential when file auth fails, so
         // while a keychain item exists the file's identity is not provably the account that will
@@ -154,14 +148,8 @@ struct DefaultAccountObserver: Sendable {
             guard let auth = CodexAuthStore.parseAuth(text),
                   auth.tokens?.accessToken?.nilIfEmpty != nil
             else { continue }
-            let payload = auth.tokens?.idToken.flatMap { ProviderParse.jwtPayload($0) }
-            let email = (payload?["email"] as? String)?.nilIfEmpty
-            if let accountID = auth.tokens?.accountID?
-                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                return .resolved(identityKey: accountID.lowercased(), label: email, anchor: anchor)
-            }
-            if let claimID = Self.chatGPTAccountID(inIDTokenPayload: payload) {
-                return .resolved(identityKey: claimID.lowercased(), label: email, anchor: anchor)
+            if let identity = CodexAccountIdentity(auth: auth) {
+                return .resolved(identityKey: identity.accountID, label: identity.email, anchor: anchor)
             }
         }
         return sawFootprint

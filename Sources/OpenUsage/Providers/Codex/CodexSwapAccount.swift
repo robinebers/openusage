@@ -24,12 +24,16 @@ struct CodexAccountIdentity: Equatable, Hashable, Sendable {
     }
 
     init?(auth: CodexAuth) {
-        let payload = auth.tokens?.idToken.flatMap(ProviderParse.jwtPayload)
-        let claimID = DefaultAccountObserver.chatGPTAccountID(inIDTokenPayload: payload)
+        let idPayload = auth.tokens?.idToken.flatMap(ProviderParse.jwtPayload)
+        let accessPayload = auth.tokens?.accessToken.flatMap(ProviderParse.jwtPayload)
+        let claimID = DefaultAccountObserver.chatGPTAccountID(inIDTokenPayload: idPayload)
+            ?? DefaultAccountObserver.chatGPTAccountID(inIDTokenPayload: accessPayload)
         let storedID = auth.tokens?.accountID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         if let storedID, let claimID,
            storedID.caseInsensitiveCompare(claimID) != .orderedSame { return nil }
-        self.init(accountID: storedID ?? claimID, email: payload?["email"] as? String)
+        let email = CodexAccountDiscovery.email(inTokenPayload: idPayload)
+            ?? CodexAccountDiscovery.email(inTokenPayload: accessPayload)
+        self.init(accountID: storedID ?? claimID, email: email)
     }
 
     private static func validComponent(_ value: String) -> Bool {

@@ -26,10 +26,16 @@ struct CodexAuth: Codable, Hashable, Sendable {
     }
 }
 
+struct CodexPiCredentialSource: Hashable, Sendable {
+    let path: String
+    let providerID: String
+}
+
 struct CodexAuthState: Hashable, Sendable {
     enum Source: Hashable, Sendable {
         case file(path: String)
         case keychain
+        case pi(CodexPiCredentialSource)
     }
 
     var auth: CodexAuth
@@ -88,7 +94,6 @@ struct CodexAuthStore: Sendable {
     /// the `codex` CLI itself uses, so OpenUsage rotates on the same schedule rather than guessing.
     static let accessTokenRefreshWindow: TimeInterval = 5 * 60
     private static let authFile = "auth.json"
-    private static let defaultAuthHomes = ["~/.config/codex", "~/.codex"]
 
     var environment: EnvironmentReading
     var files: TextFileAccessing
@@ -96,6 +101,8 @@ struct CodexAuthStore: Sendable {
     var now: @Sendable () -> Date
     var expectedIdentity: CodexAccountIdentity?
     var additionalAuthHomes: [String]
+    var writableAuthHomes: Set<String>
+    var piCredentialSources: [CodexPiCredentialSource]
 
     init(
         environment: EnvironmentReading = ProcessEnvironmentReader(),
@@ -103,7 +110,9 @@ struct CodexAuthStore: Sendable {
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
         now: @escaping @Sendable () -> Date = Date.init,
         expectedIdentity: CodexAccountIdentity? = nil,
-        additionalAuthHomes: [String] = []
+        additionalAuthHomes: [String] = [],
+        writableAuthHomes: Set<String> = [],
+        piCredentialSources: [CodexPiCredentialSource] = []
     ) {
         self.environment = environment
         self.files = files
@@ -111,10 +120,20 @@ struct CodexAuthStore: Sendable {
         self.now = now
         self.expectedIdentity = expectedIdentity
         self.additionalAuthHomes = additionalAuthHomes
+        self.writableAuthHomes = writableAuthHomes
+        self.piCredentialSources = piCredentialSources
     }
 
     func loadAuthCandidates() -> [CodexAuthState] {
         authPaths().compactMap { loadAuth(at: $0) }
+            + piCredentialSources.compactMap(loadPiAuth)
+    }
+
+    func loadPiAuth(_ source: CodexPiCredentialSource) -> CodexAuthState? {
+        guard let auth = CodexAccountDiscovery.loadPiAuth(
+            files: files, path: source.path, providerID: source.providerID
+        ) else { return nil }
+        return scoped(CodexAuthState(auth: auth, source: .pi(source), readOnly: true))
     }
 
     /// Reads the credential from a single on-disk auth file — the targeted counterpart to
@@ -156,6 +175,8 @@ struct CodexAuthStore: Sendable {
             try files.writeText(path, text)
         case .keychain:
             try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+        case .pi:
+            throw CodexAuthError.tokenConflict
         }
     }
 
@@ -189,18 +210,20 @@ struct CodexAuthStore: Sendable {
     }
 
     func authPaths() -> [String] {
-        let homes = (codexHome().map { [$0] } ?? Self.defaultAuthHomes) + additionalAuthHomes
+        let homes = CodexAccountDiscovery.configuredHomeValues(environment: environment) + additionalAuthHomes
         var seen = Set<String>()
-        return homes.map { joinPath($0, Self.authFile) }.filter { seen.insert($0).inserted }
+        return homes.compactMap { home in
+            let path = joinPath(home, Self.authFile)
+            let key = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL.path
+            return seen.insert(key).inserted ? path : nil
+        }
     }
 
     func codexHome() -> String? {
-        guard let codexHome = environment.value(for: "CODEX_HOME")?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !codexHome.isEmpty
-        else {
-            return nil
-        }
-        return codexHome
+        environment.value(for: "CODEX_HOME")?
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 
     static func parseAuth(_ text: String) -> CodexAuth? {
