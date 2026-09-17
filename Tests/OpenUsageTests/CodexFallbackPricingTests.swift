@@ -62,7 +62,7 @@ final class CodexFallbackPricingTests: XCTestCase {
         )
 
         for label in ["Today", "Last 30 Days"] {
-            guard case .values(_, let values, _, _, let unknownModels, _) = lines.first(where: { $0.label == label }) else {
+            guard case .values(_, let values, _, _, let unknownModels, _, _) = lines.first(where: { $0.label == label }) else {
                 return XCTFail("Missing spend row")
             }
             XCTAssertGreaterThan(try XCTUnwrap(values.first(where: { $0.kind == .dollars })?.number), 0)
@@ -203,7 +203,7 @@ final class CodexFallbackPricingTests: XCTestCase {
             )
             let baseNote = combined ? "Across your Macs · logs" : "logs"
             for label in ["Today", "Yesterday", "Last 30 Days"] {
-                guard case .values(_, _, _, _, _, let breakdown) = rendered.lines.first(where: { $0.label == label }) else {
+                guard case .values(_, _, _, _, _, let breakdown, _) = rendered.lines.first(where: { $0.label == label }) else {
                     return XCTFail("Missing spend row")
                 }
                 XCTAssertEqual(breakdown?.sourceNote, label == "Today" ? baseNote : baseNote + " · Fallback estimates: GPT 5.6 Sol")

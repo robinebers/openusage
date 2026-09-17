@@ -460,7 +460,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
             scan.series, to: &lines, now: now, modelUsage: scan.modelUsage, modelSourceNote: "From Codex test logs"
         )
 
-        guard case .values(_, _, _, _, _, let breakdown) = lines.first(where: { $0.label == "Today" }) else {
+        guard case .values(_, _, _, _, _, let breakdown, _) = lines.first(where: { $0.label == "Today" }) else {
             return XCTFail("Expected a Today spend row")
         }
         XCTAssertEqual(try XCTUnwrap(breakdown).models,

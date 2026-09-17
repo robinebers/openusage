@@ -85,7 +85,7 @@ final class ClaudeSwapReviewRegressionTests: XCTestCase {
         XCTAssertEqual(auth.loadCredentialCandidates().map(\.oauth.accessToken), ["session", "limited-default"])
         XCTAssertNil(result.warning)
         for (label, expected) in [("Session", 37.0), ("Weekly", 64.0)] {
-            guard case let .progress(_, used, _, _, _, _, _) = result.line(label: label) else {
+            guard case let .progress(_, used, _, _, _, _, _, _) = result.line(label: label) else {
                 XCTFail("Missing live \(label) limits")
                 continue
             }
@@ -131,6 +131,47 @@ final class ClaudeSwapReviewRegressionTests: XCTestCase {
             organizationUUID: nil, allowsUnattributedSessions: false)
         let result = await scanner.scan(now: Date(timeIntervalSince1970: 1_771_603_200), pricing: TestPricing.bundled)
         XCTAssertNil(result, "An unknown organization cannot claim the saved organization's history")
+    }
+
+    func testOnlyPrimaryCardAllowsUnattributedSessions() async throws {
+        // Regression: every non-Desktop card was given allowsUnattributedSessions, so each swap card
+        // claimed the same ~/.claude sessions, duplicating local spend across providers.
+        let user2 = "22222222-2222-2222-2222-222222222222"
+        let org2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        let swapOnly = ClaudeSwapAccount(
+            root: home.path + "/.claude-swap-backup", slot: "1",
+            email: "swap@example.com", identityKey: "\(user2)|\(org2)", organizationID: org2
+        )
+        let files = FakeFiles([
+            home.path + "/.claude.json":
+                #"{"oauthAccount":{"accountUuid":"\#(user)","organizationUuid":"\#(organization)"}}"#,
+            swapOnly.root + "/sequence.json": """
+                {"accounts":{"1":{"email":"swap@example.com","uuid":"\(user2)","organizationUuid":"\(org2)"}}}
+                """
+        ])
+        let suite = "ClaudeSwapReview.Unattributed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let observer = DefaultAccountObserver(environment: FakeEnvironment([:]), files: files,
+            keychain: FakeKeychain(), homeDirectory: { [home] in home })
+        let assembly = await ProviderAccountAssembly.make(observer: observer,
+            accountsStore: ProviderAccountsStore(defaults: defaults))
+
+        XCTAssertEqual(assembly.claudeCards.count, 2)
+        let primaryCard = try XCTUnwrap(assembly.claudeCards.first { $0.swapAccount == nil })
+        let swapCard = try XCTUnwrap(assembly.claudeCards.first { $0.swapAccount != nil })
+        XCTAssertFalse(primaryCard.usesDesktopCredentials)
+        XCTAssertFalse(swapCard.usesDesktopCredentials)
+
+        let providers = ProviderCatalog.make(defaults: defaults, claudeCards: assembly.claudeCards)
+            .compactMap { $0 as? ClaudeProvider }
+        XCTAssertEqual(providers.count, 2)
+        let primaryProvider = try XCTUnwrap(providers.first { $0.provider.id == primaryCard.id })
+        let swapProvider = try XCTUnwrap(providers.first { $0.provider.id == swapCard.id })
+        XCTAssertTrue(primaryProvider.logUsageScanner.allowsUnattributedSessions,
+                      "primary CLI card must claim unattributed ~/.claude sessions")
+        XCTAssertFalse(swapProvider.logUsageScanner.allowsUnattributedSessions,
+                       "swap-account card must not duplicate unattributed ~/.claude sessions")
     }
 
     private func usageHTTP(profileOrganization: String? = nil) -> RoutingHTTPClient {

@@ -15,7 +15,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         let lines = try OpenCodeUsageMapper.meterLines(body: sampleBody)
         XCTAssertEqual(lines.map(\.label), ["Session", "Weekly", "Monthly"])
 
-        guard case let .progress(_, sessionUsed, sessionLimit, sessionFormat, sessionReset, sessionPeriod, _) = lines[0] else {
+        guard case let .progress(_, sessionUsed, sessionLimit, sessionFormat, sessionReset, sessionPeriod, _, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertEqual(sessionUsed, 12)
@@ -24,7 +24,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(sessionReset, OpenUsageISO8601.date(from: "2026-07-12T13:30:00.662Z"))
         XCTAssertEqual(sessionPeriod, MetricPeriod.sessionMs)
 
-        guard case let .progress(_, weeklyUsed, _, weeklyFormat, weeklyReset, weeklyPeriod, _) = lines[1] else {
+        guard case let .progress(_, weeklyUsed, _, weeklyFormat, weeklyReset, weeklyPeriod, _, _) = lines[1] else {
             return XCTFail("weekly is not a progress line")
         }
         XCTAssertEqual(weeklyUsed, 8)
@@ -32,7 +32,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(weeklyReset, OpenUsageISO8601.date(from: "2026-07-13T00:00:00.662Z"))
         XCTAssertEqual(weeklyPeriod, MetricPeriod.weekMs)
 
-        guard case let .progress(_, monthlyUsed, _, monthlyFormat, _, monthlyPeriod, _) = lines[2] else {
+        guard case let .progress(_, monthlyUsed, _, monthlyFormat, _, monthlyPeriod, _, _) = lines[2] else {
             return XCTFail("monthly is not a progress line")
         }
         XCTAssertEqual(monthlyUsed, 100)
@@ -49,7 +49,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body)
-        guard case let .progress(_, used, limit, format, _, _, _) = lines[0] else {
+        guard case let .progress(_, used, limit, format, _, _, _, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertEqual(used, 0)
@@ -66,8 +66,8 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body)
-        guard case let .progress(_, rolling, _, _, _, _, _) = lines[0],
-              case let .progress(_, weekly, _, _, _, _, _) = lines[1] else {
+        guard case let .progress(_, rolling, _, _, _, _, _, _) = lines[0],
+              case let .progress(_, weekly, _, _, _, _, _, _) = lines[1] else {
             return XCTFail("expected progress lines")
         }
         XCTAssertEqual(rolling, 100)

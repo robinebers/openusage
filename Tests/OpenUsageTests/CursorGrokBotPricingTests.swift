@@ -35,7 +35,7 @@ final class CursorGrokBotPricingTests: XCTestCase {
 
             for (label, days) in [("Today", 1), ("Yesterday", 1), ("Last 30 Days", 2)] {
                 let line = try XCTUnwrap(lines.first { $0.label == label })
-                guard case .values(_, let values, _, _, let unknownModels, _) = line else {
+                guard case .values(_, let values, _, _, let unknownModels, _, _) = line else {
                     return XCTFail("Expected spend values for \(label)")
                 }
                 // Cursor rounds each day's combined $0.0945 estimate to cents before summing days.

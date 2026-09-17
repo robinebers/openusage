@@ -134,7 +134,7 @@ final class StaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(refreshed.plan, "Current")
         XCTAssertEqual(store.data(for: quota).used, 60)
         XCTAssertEqual(refreshed.usageHistory, history)
-        guard case .values(_, _, _, _, _, let breakdown) = refreshed.line(label: "Today") else {
+        guard case .values(_, _, _, _, _, let breakdown, _) = refreshed.line(label: "Today") else {
             return XCTFail("The retained history should rebuild the spend rows")
         }
         XCTAssertEqual(breakdown?.sourceNote, historyDescriptor.sourceNote)

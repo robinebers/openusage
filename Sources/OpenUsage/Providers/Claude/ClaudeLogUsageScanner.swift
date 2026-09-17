@@ -29,7 +29,7 @@ actor ClaudeLogUsageScanner {
     private let organizationID: String?
     private let accountID: String?
     private let additionalConfigDirectories: [String]
-    private let allowsUnattributedSessions: Bool
+    nonisolated let allowsUnattributedSessions: Bool
     private var sessionOwnership: [String: (
         size: Int, mtime: Date, identity: ClaudeSessionIdentity
     )] = [:]
@@ -273,6 +273,11 @@ actor ClaudeLogUsageScanner {
         let coworkPrefix = homeDirectory()
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
             .resolvingSymlinksInPath().path + "/"
+        // Resolved path prefixes for the additional (swap-account) directories. Unattributed sessions
+        // there belong to the respective swap account — they must always be attributed, never claimed
+        // as fallback by this card, which would duplicate spend across cards.
+        let additionalRoots = additionalConfigDirectories
+            .map { URL(fileURLWithPath: expandHome($0)).resolvingSymlinksInPath().path + "/" }
         let filesByPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
         var seenPaths: Set<String> = []
         var ownedFiles: [JSONLScanning.DiscoveredFile] = []
@@ -307,6 +312,8 @@ actor ClaudeLogUsageScanner {
                     ownedFiles.append(file)
                 }
             } else if allowsUnattributedSessions {
+                let sessionPath = URL(fileURLWithPath: sessionFile.path).resolvingSymlinksInPath().path
+                guard !additionalRoots.contains(where: { sessionPath.hasPrefix($0) }) else { continue }
                 ownedFiles.append(file)
             } else if let accountID {
                 if desktopSessionIDs == nil {

@@ -161,7 +161,9 @@ struct WidgetGroupedListView: View {
     private func resolvedRows(_ widgets: [PlacedWidget]) -> [ResolvedRow] {
         widgets.compactMap { widget -> ResolvedRow? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return ResolvedRow(widget: widget, descriptor: descriptor, data: dataStore.data(for: descriptor))
+            let data = dataStore.data(for: descriptor)
+            guard !data.isHidden else { return nil }
+            return ResolvedRow(widget: widget, descriptor: descriptor, data: data)
         }
     }
 
@@ -341,7 +343,9 @@ struct WidgetGroupedListView: View {
         let visibleWidgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
         let rows = visibleWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return dataStore.data(for: descriptor)
+            let data = dataStore.data(for: descriptor)
+            guard !data.isHidden else { return nil }
+            return data
         }
         return ReorderLift.make(
             id: group.provider.id,

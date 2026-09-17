@@ -65,7 +65,7 @@ final class CodexSwapReviewRegressionTests: XCTestCase {
                 let snapshot = await provider.refresh()
                 if status == 200 {
                     XCTAssertNil(snapshot.errorCategory)
-                    guard case .progress(_, let used, _, _, _, _, _) = snapshot.line(label: "Session")
+                    guard case .progress(_, let used, _, _, _, _, _, _) = snapshot.line(label: "Session")
                     else { return XCTFail("The default login lost its live limits") }
                     XCTAssertEqual(used, 17)
                 } else {

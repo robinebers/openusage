@@ -69,13 +69,17 @@ final class ClaudeProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "\(provider.id).session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
-                .exportingLimit("session", unit: "percent"),
+                .exportingLimit("session", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
-                .exportingLimit("weekly", unit: "percent"),
+                .exportingLimit("weekly", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).fable", provider: provider, title: "Fable")
-                .exportingLimit("fable", unit: "percent"),
+                .exportingLimit("fable", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).sonnet", provider: provider, title: "Sonnet")
-                .exportingLimit("sonnet", unit: "percent"),
+                .exportingLimit("sonnet", unit: "percent")
+                .hidingWhenNoData(),
             .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
             .usageTrend(provider: provider)

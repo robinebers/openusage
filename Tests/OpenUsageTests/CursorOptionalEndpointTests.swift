@@ -285,7 +285,7 @@ final class CursorOptionalEndpointTests: XCTestCase {
         _ lines: [MetricLine],
         _ label: String
     ) -> (used: Double, limit: Double)? {
-        guard case .progress(_, let used, let limit, _, _, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .progress(_, let used, let limit, _, _, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return (used, limit)

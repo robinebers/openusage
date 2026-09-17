@@ -19,9 +19,20 @@ struct WidgetDescriptor: Identifiable, Hashable {
     /// Explicit aggregation semantics for this provider's normalized daily history. Exactly one
     /// descriptor carries it for every provider that exposes the shared spend tiles.
     var historyResource: UsageHistoryDescriptor? = nil
+    /// When true, the dashboard omits this tile entirely if no provider line backs it, instead of
+    /// rendering a "No data" placeholder. Use for metrics that are structurally absent on certain account
+    /// types (e.g. token-window limits that enterprise plans don't have).
+    var hideWhenNoData: Bool = false
 
     /// The metric's single display name.
     var title: String { sample.title }
+
+    /// Marks this descriptor so the dashboard omits it entirely when no provider line backs it.
+    func hidingWhenNoData() -> WidgetDescriptor {
+        var copy = self
+        copy.hideWhenNoData = true
+        return copy
+    }
 
     static func == (lhs: WidgetDescriptor, rhs: WidgetDescriptor) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
