@@ -26,8 +26,33 @@ protocol ClaudeDesktopSafeStorageKeyReading: Sendable {
 struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
     private static let service = "Claude Safe Storage"
     private static let account = "Claude Key"
+    /// Set after a read succeeds, cleared when one is refused.
+    static let accessGrantedKey = "claudeDesktopSafeStorageAccessGranted"
+
+    /// `nonisolated(unsafe)` is sound: `UserDefaults` is documented thread-safe.
+    nonisolated(unsafe) let defaults: UserDefaults
+    let copyMatching: @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>) -> OSStatus
+
+    init(
+        defaults: UserDefaults = .standard,
+        copyMatching: @escaping @Sendable (CFDictionary, UnsafeMutablePointer<CFTypeRef?>) -> OSStatus = {
+            SecItemCopyMatching($0, $1)
+        }
+    ) {
+        self.defaults = defaults
+        self.copyMatching = copyMatching
+    }
 
     func readPassword(allowInteraction: Bool) throws -> String? {
+        // `Claude Safe Storage` is a legacy file-keychain item owned by Claude Desktop. Its ACL
+        // confirmation dialog ignores both `LAContext.interactionNotAllowed` and
+        // `kSecUseAuthenticationUIFail`, so a "silent" background query still pops the dialog. And a
+        // Deny is not remembered, so it came back on every refresh (#1213). Background reads therefore
+        // skip the keychain entirely until a manual refresh has read the item once.
+        if !allowInteraction && !defaults.bool(forKey: Self.accessGrantedKey) {
+            throw ClaudeDesktopCredentialError.permissionRequired
+        }
+
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: Self.service,
@@ -42,7 +67,7 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
         }
 
         var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = copyMatching(query as CFDictionary, &result)
         switch status {
         case errSecSuccess:
             guard let data = result as? Data,
@@ -51,10 +76,12 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             else {
                 throw ClaudeDesktopCredentialError.invalidSafeStorageKey
             }
+            defaults.set(true, forKey: Self.accessGrantedKey)
             return password
         case errSecItemNotFound:
             return nil
         case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+            defaults.removeObject(forKey: Self.accessGrantedKey)
             throw ClaudeDesktopCredentialError.permissionRequired
         default:
             throw ClaudeDesktopCredentialError.keychainFailure(Int(status))
@@ -346,6 +373,10 @@ struct ClaudeDesktopAuthStore: Sendable {
 }
 
 final class SafeStorageKeyCache: @unchecked Sendable {
+    /// One process-wide copy, so account discovery and every card's refresh reuse a key that was read
+    /// once (for example after a one-time "Allow") instead of each asking the keychain again.
+    static let shared = SafeStorageKeyCache()
+
     private let lock = NSLock()
     private var stored: Data?
 

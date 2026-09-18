@@ -93,7 +93,7 @@ struct ClaudeAuthStore: Sendable {
         self.environment = environment
         self.files = files
         self.keychain = keychain
-        self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now)
+        self.desktop = desktop ?? ClaudeDesktopAuthStore(files: files, now: now, keyCache: .shared)
         self.desktopOrganization = desktopOrganization?.lowercased()
         self.expectedIdentityKey = expectedIdentityKey?.lowercased() ?? swapAccount?.identityKey
         self.desktopOnly = desktopOnly

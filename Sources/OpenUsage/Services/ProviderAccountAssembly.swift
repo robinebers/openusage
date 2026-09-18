@@ -145,7 +145,7 @@ struct ProviderAccountAssembly {
         }
 
         let desktop = desktop ?? ClaudeDesktopAuthStore(
-            files: observer.files, homeDirectory: observer.homeDirectory
+            files: observer.files, homeDirectory: observer.homeDirectory, keyCache: .shared
         )
         let desktopOrganizations = discoverDesktopOrganizations(
             desktop: desktop,
