@@ -36,10 +36,12 @@ final class ClaudeSwapAccountTests: XCTestCase {
         let assembly = await ProviderAccountAssembly.make(observer: observer, accountsStore: store)
 
         XCTAssertEqual(assembly.claudeCards.count, 3)
+        // Three different addresses, so each card is named after its own and the organization,
+        // which is generated here anyway, stays out of a narrow header.
         XCTAssertEqual(Set(assembly.claudeCards.map(\.displayName)), [
-            "Claude: Organization (work@example.com)",
-            "Claude: Organization bbbbbbbb (first@example.com)",
-            "Claude: Organization cccccccc (second@example.com)"
+            "Claude: work@example.com",
+            "Claude: first@example.com",
+            "Claude: second@example.com"
         ])
         XCTAssertEqual(assembly.identityKeysByCard.count, 3)
         XCTAssertTrue(assembly.claudeCards.allSatisfy { !$0.allowsUnattributedPiUsage })

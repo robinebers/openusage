@@ -10,6 +10,8 @@ struct PopoverTopBar: View {
 
     @Binding var isPresentingResetAllConfirm: Bool
 
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
+
     @ViewBuilder
     var body: some View {
         switch layout.screen {
@@ -43,7 +45,7 @@ struct PopoverTopBar: View {
     }
 
     private var customizeTitle: String {
-        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.displayName } ?? "Customize"
+        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.visibleName(hidingEmails: hideEmails) } ?? "Customize"
     }
 
     private func customizeBack() {
@@ -102,7 +104,7 @@ struct PopoverTopBar: View {
         .glassButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.large)
-        .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
+        .hoverTooltip("Reset \(layout.provider(id: providerID)?.visibleName(hidingEmails: hideEmails) ?? providerID)")
         .accessibilityLabel("Reset")
     }
 

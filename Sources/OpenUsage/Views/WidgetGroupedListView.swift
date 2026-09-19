@@ -21,6 +21,9 @@ struct WidgetGroupedListView: View {
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(MiniCardSetting.key) private var miniCardsEnabled = MiniCardSetting.fallback
+    @AppStorage(MiniCardStyle.key) private var miniCardStyle = MiniCardStyle.fallback
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
 
     @Environment(\.codexResetClaims) private var codexResetClaims
 
@@ -38,12 +41,55 @@ struct WidgetGroupedListView: View {
     }
 
     private func section(_ group: ProviderGroup) -> some View {
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
+        let minimized = isMinimized(group.provider.id)
+        // Collapsed, the section is its header and nothing else: no card, and no gap under it.
+        return VStack(alignment: .leading, spacing: minimized ? 0 : density.headerToCardSpacing) {
             header(group)
-            container(group)
+            if !minimized {
+                container(group)
+                    // Single Row shrinks the card toward the trailing edge its pill grows out of;
+                    // Detailed folds it straight down under the line that replaces it.
+                    .transition(
+                        .scale(
+                            scale: 0.94,
+                            anchor: miniCardStyle == .singleRow ? .topTrailing : .top
+                        )
+                        .combined(with: .opacity)
+                    )
+            }
         }
         .opacity(activeProviderID == group.provider.id ? 0 : 1)
         .reorderFrame(id: group.provider.id, in: .named(reorderSpaceName))
+    }
+
+    /// Whether this provider is showing as a mini card. The stored set is ignored while the setting is
+    /// off, so turning mini cards off restores every card without discarding what was collapsed.
+    private func isMinimized(_ providerID: String) -> Bool {
+        miniCardsEnabled && layout.isProviderMinimized(providerID)
+    }
+
+    /// The header's mini-card control, or `nil` while the feature is off (which also leaves the header
+    /// exactly as it was before mini cards existed).
+    private func miniCardModel(for group: ProviderGroup) -> MiniCardHeaderModel? {
+        guard miniCardsEnabled else { return nil }
+        let providerID = group.provider.id
+        let minimized = layout.isProviderMinimized(providerID)
+        return MiniCardHeaderModel(
+            isMinimized: minimized,
+            style: miniCardStyle,
+            // Only computed for a collapsed provider: an open card draws its own full-size meters.
+            meters: minimized ? miniMeters(for: group) : [],
+            toggle: { layout.setProviderMinimized(!minimized, for: providerID) }
+        )
+    }
+
+    /// The bars a collapsed provider shows: its always-visible rows, in card order, meterless ones
+    /// dropped and the rest capped by `MiniMeter.limit`. Deliberately not the On Demand rows: a mini
+    /// card summarizes what collapsing hid, never something the user tucked behind the caret.
+    private func miniMeters(for group: ProviderGroup) -> [MiniMeter] {
+        MiniMeter.meters(
+            from: resolvedRows(group.alwaysShownWidgets).map { (id: $0.descriptor.id, data: $0.data) }
+        )
     }
 
     private func header(_ group: ProviderGroup) -> some View {
@@ -53,7 +99,8 @@ struct WidgetGroupedListView: View {
             warning: dataStore.headerNotice(for: group.provider.id),
             refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
             staleness: dataStore.stalenessHint(for: group.provider.id),
-            onCopyScreenshot: { shareCard(group) }
+            onCopyScreenshot: { shareCard(group) },
+            miniCard: miniCardModel(for: group)
         )
         // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
         .padding(.horizontal, 8)
@@ -61,11 +108,11 @@ struct WidgetGroupedListView: View {
         .contextMenu {
             // Hides the whole provider section (the Customize provider list brings it back). Mirrors
             // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
-            Button("Hide \(group.provider.displayName)") {
+            Button("Hide \(group.provider.visibleName(hidingEmails: hideEmails))") {
                 container.enablement.setEnabled(false, for: group.provider.id)
             }
             Divider()
-            Button("Refresh \(group.provider.displayName)") {
+            Button("Refresh \(group.provider.visibleName(hidingEmails: hideEmails))") {
                 Task { await dataStore.refresh(providerID: group.provider.id, force: true) }
             }
             Button("Customize…") {
@@ -264,7 +311,7 @@ struct WidgetGroupedListView: View {
         }
         Divider()
         if let provider = layout.provider(id: providerID) {
-            Button("Refresh \(provider.displayName)") {
+            Button("Refresh \(provider.visibleName(hidingEmails: hideEmails))") {
                 Task { await dataStore.refresh(providerID: providerID, force: true) }
             }
         }
@@ -338,8 +385,10 @@ struct WidgetGroupedListView: View {
     private func makeProviderLift(for group: ProviderGroup, value: DragGesture.Value) -> ReorderLift? {
         // The floating preview should match what the card shows: only the always-shown rows unless this
         // provider's caret is currently open.
+        let minimized = isMinimized(group.provider.id)
         let visibleWidgets = layout.isProviderExpanded(group.provider.id) ? group.widgets : group.alwaysShownWidgets
-        let rows = visibleWidgets.compactMap { widget -> WidgetData? in
+        // A collapsed provider lifts as the mini card it is on screen: header line only, same meters.
+        let rows = minimized ? [] : visibleWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
             return dataStore.data(for: descriptor)
         }
@@ -348,7 +397,10 @@ struct WidgetGroupedListView: View {
             payload: .dashboardProvider(
                 provider: group.provider,
                 plan: dataStore.plan(for: group.provider.id),
-                rows: rows
+                rows: rows,
+                miniCard: minimized
+                    ? MiniCardHeaderModel(isMinimized: true, style: miniCardStyle, meters: miniMeters(for: group))
+                    : nil
             ),
             value: value,
             frames: frameStore.frames

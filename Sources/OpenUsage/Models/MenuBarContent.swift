@@ -64,7 +64,8 @@ enum MenuBarContentBuilder {
             guard !metrics.isEmpty else { return nil }
             return MenuBarContent.Group(
                 providerID: group.provider.id,
-                displayName: group.provider.displayName,
+                // Only feeds the VoiceOver summary, which still honors Hide Emails.
+                displayName: group.provider.visibleName(hidingEmails: HideEmailsSetting.isEnabled),
                 icon: group.provider.icon,
                 metrics: metrics
             )

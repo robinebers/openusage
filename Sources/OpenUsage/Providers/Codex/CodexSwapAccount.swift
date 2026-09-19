@@ -8,6 +8,23 @@ struct CodexAccountIdentity: Equatable, Hashable, Sendable {
 
     var key: String { accountID + "|" + (email ?? "") }
 
+    /// Name the account after whoever is signed in. The workspace id is generated, so a narrow
+    /// header spent its whole width on it and truncated the address that actually says whose account
+    /// this is; it is now dropped whenever an address is known. It remains the only label available
+    /// for a login whose token carries no email.
+    ///
+    /// One address can hold several ChatGPT workspaces, and those cards now read the same. That is
+    /// the deliberate trade for a readable header: a user-chosen alias tells them apart.
+    func displayName(alias: String? = nil) -> String {
+        if let alias {
+            return "Codex: \(alias) (\(email ?? accountID))"
+        }
+        guard let email else {
+            return "Codex: Workspace \(accountID.isEmpty ? "Unknown" : String(accountID.prefix(8)))"
+        }
+        return "Codex: \(email)"
+    }
+
     static func isComplete(key: String) -> Bool {
         let parts = key.split(separator: "|", omittingEmptySubsequences: false)
         return parts.count == 2 && parts.allSatisfy { !$0.isEmpty }
@@ -49,8 +66,7 @@ struct CodexSwapAccount: Equatable, Sendable {
     let shareHistory: Bool
 
     var displayName: String {
-        let label = alias ?? "Workspace \(identity.accountID.prefix(8))"
-        return "Codex: \(label) (\(identity.email ?? identity.accountID))"
+        identity.displayName(alias: alias)
     }
 
     static func discover(

@@ -45,8 +45,7 @@ extension ProviderAccountAssembly {
         for path in defaultPaths + mainPaths where seenPaths.insert(path).inserted {
             guard let state = auth.loadAuth(at: path), state.hasUsableAccessToken,
                   let identity = CodexAccountIdentity(auth: state.auth) else { continue }
-            let workspace = identity.accountID.isEmpty ? "Unknown" : String(identity.accountID.prefix(8))
-            observe(identity, label: "Codex: Workspace \(workspace) (\(identity.email ?? identity.accountID))",
+            observe(identity, label: identity.displayName(),
                     source: .init(kind: .defaultHome, anchor: URL(fileURLWithPath: path).deletingLastPathComponent().path,
                                   holdsDefaultSource: observations.isEmpty))
         }
@@ -54,8 +53,7 @@ extension ProviderAccountAssembly {
         // Discover it before saved slots so it retains the default card on a first launch.
         if let state = await loadOffMainActor({ auth.loadKeychainAuth() }), state.hasUsableAccessToken,
            let identity = CodexAccountIdentity(auth: state.auth) {
-            let workspace = identity.accountID.isEmpty ? "Unknown" : String(identity.accountID.prefix(8))
-            observe(identity, label: "Codex: Workspace \(workspace) (\(identity.email ?? identity.accountID))",
+            observe(identity, label: identity.displayName(),
                     source: .init(kind: .defaultHome, anchor: nil, holdsDefaultSource: observations.isEmpty))
         }
         for swap in swaps {

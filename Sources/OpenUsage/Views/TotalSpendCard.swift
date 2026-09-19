@@ -19,6 +19,7 @@ struct TotalSpendCard: View {
     /// The selected metric (Cost / Cost/MTok / Tokens) survives the same way.
     @AppStorage(TotalSpendSetting.metricKey) private var metricRawValue = TotalSpendMetric.cost.rawValue
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
 
     private var period: TotalSpendPeriod {
         TotalSpendPeriod(rawValue: periodRawValue) ?? .today
@@ -104,7 +105,7 @@ struct TotalSpendCard: View {
     /// hardcoded list, so disabling a provider (or a new spend provider shipping) can't make the
     /// tooltip lie about what the total reflects.
     private var infoTooltip: String {
-        let names = providers.map(\.displayName)
+        let names = providers.map { $0.visibleName(hidingEmails: hideEmails) }
         return "Only includes \(names.formatted(.list(type: .and)))."
     }
 
@@ -215,6 +216,7 @@ struct TotalSpendRingContent: View {
     let projection: TotalSpendProjection
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
 
     private static let ringDiameter: CGFloat = 104
 
@@ -332,7 +334,7 @@ struct TotalSpendRingContent: View {
             Circle()
                 .fill(TotalSpendPalette.color(for: slice.provider.id))
                 .frame(width: 8, height: 8)
-            Text(slice.provider.displayName)
+            Text(slice.provider.visibleName(hidingEmails: hideEmails))
                 .font(.system(size: density.supportingPointSize))
                 .foregroundStyle(.primary)
                 .lineLimit(1)

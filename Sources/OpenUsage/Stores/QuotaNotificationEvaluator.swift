@@ -92,7 +92,9 @@ final class QuotaNotificationEvaluator {
         providerName: @MainActor (String) -> String,
         post: @MainActor (String, String, String, String) async -> Bool
     ) async -> Bool {
-        let subtitle = "\(providerName(providerID)) \(data.title)"
+        // Banners land on screen and in Notification Center, so they honor Hide Emails like the UI.
+        let name = providerName(providerID)
+        let subtitle = "\(HideEmailsSetting.isEnabled ? EmailMask.mask(name) : name) \(data.title)"
         return await post("\(providerID).\(milestone.rawValue)", milestone.notificationTitle, subtitle, milestone.body)
     }
 

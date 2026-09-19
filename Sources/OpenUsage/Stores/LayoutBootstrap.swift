@@ -17,6 +17,7 @@ struct LayoutInitialState {
     let pinnedMetricIDs: Set<String>
     let expandedMetricIDs: Set<String>
     let expandedProviderIDs: Set<String>
+    let miniCardProviderIDs: Set<String>
     let defaultExpandedOnEnableIDs: Set<String>
     let menuBarStyle: MenuBarStyle
 
@@ -76,6 +77,12 @@ enum LayoutBootstrap {
             (persistence.loadExpandedProviders() ?? []).filter { registry.provider(id: $0) != nil }
         )
 
+        // Which providers sit collapsed as mini cards. Like the caret's expanded set this is a user
+        // choice that survives relaunch, and like it, nothing is collapsed on a fresh install.
+        let miniCardProviderIDs = Set(
+            (persistence.loadMiniCardProviders() ?? []).filter { registry.provider(id: $0) != nil }
+        )
+
         // A newly-shipped default metric is new to an existing user, so it may safely start below the
         // caret when that is its declared default. Metrics they already had are never silently hidden.
         let newlyExpanded = Set(seededResult.newlyPlaced)
@@ -115,6 +122,7 @@ enum LayoutBootstrap {
             pinnedMetricIDs: pinnedMetricIDs,
             expandedMetricIDs: expandedMetricIDs,
             expandedProviderIDs: expandedProviderIDs,
+            miniCardProviderIDs: miniCardProviderIDs,
             defaultExpandedOnEnableIDs: defaultExpandedOnEnableIDs,
             menuBarStyle: persistence.loadMenuBarStyle(),
             shouldPersistPlaced: seededResult.shouldPersistPlaced,

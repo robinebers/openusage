@@ -18,7 +18,9 @@ struct WidgetData: Hashable {
     let title: String          // "Claude 5h", "Cursor credits"
     let icon: IconSource
     let kind: MetricKind
-    let used: Double
+    /// `var` so a restored last-known reading can replace it (see `LastKnownMeterStore`); every
+    /// producer still sets it once at construction.
+    var used: Double
     var limit: Double?         // nil => unbounded (number tile); cleared when a .values line resolves
     var countSuffix: String?   // e.g. "credits", "requests"
     var valuePrefix: String?   // e.g. "~" for forecasts
@@ -99,6 +101,10 @@ struct WidgetData: Hashable {
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the
     /// row so the view draws the sparkline instead of the value layout; `chartNote` is the source line
     /// shown on hover (e.g. "From your Claude usage history (estimated)").
+    /// Set when this reading is the last one the provider managed to report rather than a current
+    /// one, because the provider is rate limited or otherwise cannot answer right now. Views draw it
+    /// faded; the header's warning and "Outdated" tag say why.
+    var isOutdated: Bool = false
     var isChart: Bool = false
     var chartPoints: [MetricChartPoint] = []
     var chartNote: String?
