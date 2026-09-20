@@ -76,8 +76,10 @@ struct OpenCodeAuthStore: Sendable {
         do {
             if let json = try sqlite.queryValue(path: databasePath, sql: Self.credentialSQLCurrentOpenAI)?
                 .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                let row = Self.parseOpenAICredentialRow(json)
-                return OpenAICredential(isOAuth: row.map { Self.isCodexOAuth($0.entry) } ?? false, since: row?.since)
+                guard let row = Self.parseOpenAICredentialRow(json) else {
+                    throw OpenCodeUsageError.credentialsUnreadable(detail: "credential row is malformed")
+                }
+                return OpenAICredential(isOAuth: Self.isCodexOAuth(row.entry), since: row.since)
             }
             // The table exists but holds no `openai` row: the user logged out of OpenCode 2, which
             // deletes the row and leaves the imported `auth.json` behind. That file must not revive it.
@@ -126,7 +128,12 @@ struct OpenCodeAuthStore: Sendable {
         var since: Date?
     }
 
-    /// `[value, time_created]` from `credentialSQLCurrentOpenAI`.
+    /// Epoch milliseconds through the year 33658: anything past this is not a timestamp, and it keeps
+    /// the later `Int(seconds * 1000)` conversion far from the trap at `Int.max`.
+    private static let maxTimestampMs: Double = 1e15
+
+    /// `[value, time_created]` from `credentialSQLCurrentOpenAI`. `nil` when the row is malformed,
+    /// including a `time_created` that is not a plausible timestamp.
     private static func parseOpenAICredentialRow(_ json: String) -> OpenAICredentialRow? {
         guard let data = json.data(using: .utf8),
               let values = (try? JSONSerialization.jsonObject(with: data)) as? [Any],
@@ -143,7 +150,10 @@ struct OpenCodeAuthStore: Sendable {
             return nil
         }
         var since: Date?
-        if !(values[1] is NSNull), let ms = ProviderParse.number(values[1]) {
+        if !(values[1] is NSNull) {
+            guard let ms = ProviderParse.number(values[1]), ms.isFinite, (0...maxTimestampMs).contains(ms) else {
+                return nil
+            }
             since = Date(timeIntervalSince1970: ms / 1000)
         }
         return OpenAICredentialRow(entry: entry, since: since)

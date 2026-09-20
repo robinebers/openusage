@@ -130,6 +130,21 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertNil(fromFile.since)
     }
 
+    func testImplausibleCredentialTimestampIsAReadFailureNotATrap() {
+        // `Int(Double)` traps past `Int.max`; a nonsense time_created must surface as a logged
+        // failure for that database instead of crashing the refresh.
+        for raw in ["1e300", "-1", "9223372036854775808"] {
+            XCTAssertThrowsError(try openAICredential(credentialStore(
+                credentials: [stable: #"{"type":"oauth","access":"token"}"#],
+                credentialTimes: [stable: raw]
+            )), raw) { error in
+                guard case OpenCodeUsageError.credentialsUnreadable = error else {
+                    return XCTFail("expected credentialsUnreadable, got \(error)")
+                }
+            }
+        }
+    }
+
     func testCredentialFallbackQueriesSelectTheCurrentRow() {
         let sql = OpenCodeAuthStore.credentialSQLCurrentOpenAI
         XCTAssertTrue(sql.contains("(active IS NULL OR active = 1)"), sql)
