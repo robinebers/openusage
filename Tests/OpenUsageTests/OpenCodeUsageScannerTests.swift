@@ -138,15 +138,36 @@ func openCodeRow(_ iso: String, _ cost: String, _ tokens: Int, _ model: String, 
 final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
+    var credentials: [String: String]
+    var tables: [String: String]
+    var credentialTimes: [String: String]
     var lastDataSQL: String?
 
-    init(data: [String: String] = [:], failing: Set<String> = []) {
+    init(
+        data: [String: String] = [:],
+        failing: Set<String> = [],
+        credentials: [String: String] = [:],
+        tables: [String: String] = [:],
+        credentialTimes: [String: String] = [:]
+    ) {
         self.data = data
         self.failing = failing
+        self.credentials = credentials
+        self.tables = tables
+        self.credentialTimes = credentialTimes
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
         if failing.contains(path) { throw SQLiteError.queryFailed("boom") }
+        if sql.contains("sqlite_master") {
+            return tables[path] ?? "1|1"
+        }
+        if sql.contains("FROM credential") && sql.contains("time_created") {
+            return credentialTimes[path]
+        }
+        if sql.contains("FROM credential") {
+            return credentials[path]
+        }
         if sql.contains("json_group_array") {
             lastDataSQL = sql
             return data[path]

@@ -35,14 +35,21 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         secondary: PricingCatalog(entries: [:])
     )
 
+    private let oauthAuth = #"{"openai":{"type":"oauth","access":"token"}}"#
+
+    private func fileOAuthStore(_ auth: String) -> OpenCodeAuthStore {
+        OpenCodeAuthStore(
+            files: FakeFiles(["/oc/auth.json": auth]),
+            environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+            homeDirectory: { URL(fileURLWithPath: "/unused") },
+            databasePaths: { [] }
+        )
+    }
+
     private func scanner(auth: String, rows: String, sqlite: OpenCodeFakeSQLite? = nil) -> OpenCodeCodexUsageScanner {
         let database = sqlite ?? OpenCodeFakeSQLite(data: ["/oc/opencode.db": rows])
         return OpenCodeCodexUsageScanner(
-            authStore: OpenCodeAuthStore(
-                files: FakeFiles(["/oc/auth.json": auth]),
-                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-                homeDirectory: { URL(fileURLWithPath: "/unused") }
-            ),
+            authStore: fileOAuthStore(auth),
             sqlite: database,
             databasePaths: { ["/oc/opencode.db"] }
         )
@@ -180,11 +187,7 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
             "/oc/opencode-next.db": "[\(duplicate)]"
         ])
         let scanner = OpenCodeCodexUsageScanner(
-            authStore: OpenCodeAuthStore(
-                files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
-                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-                homeDirectory: { URL(fileURLWithPath: "/unused") }
-            ),
+            authStore: fileOAuthStore(oauthAuth),
             sqlite: sqlite,
             databasePaths: { ["/oc/opencode.db", "/oc/opencode-next.db"] }
         )
@@ -195,11 +198,139 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
 
     func testQuerySelectsOnlyCompletedOpenAIRows() {
         let sql = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123)
-        XCTAssertTrue(sql.contains("providerID') = 'openai'"), sql)
+        XCTAssertTrue(
+            sql.contains("COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID')) = 'openai'"),
+            sql
+        )
         XCTAssertTrue(sql.contains("$.cost') = 0"), sql)
         XCTAssertTrue(sql.contains("$.time.completed"), sql)
         XCTAssertTrue(sql.contains("$.finish"), sql)
         XCTAssertTrue(sql.contains("$.tokens.reasoning"), sql)
+    }
+
+    func testQueryCoversV2SessionMessageSchema() {
+        let sql = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123)
+        XCTAssertTrue(sql.contains("session_message"), sql)
+        XCTAssertTrue(sql.contains("type = 'assistant'"), sql)
+        XCTAssertTrue(sql.contains("$.model.providerID"), sql)
+        XCTAssertTrue(sql.contains("type = 'compaction'"), sql)
+        XCTAssertTrue(sql.contains("json_extract(data,'$.status') = 'completed'"), sql)
+    }
+
+    func testCompletedCompactionIsAttributed() async throws {
+        let rows = "[" + row(
+            "2026-07-12T10:00:00.000Z", cost: "0", total: 151_000, model: "gpt-test",
+            input: 100_000, output: 51_000, id: "compaction-1", source: "v2"
+        ) + "]"
+        let scan = await scanner(auth: oauthAuth, rows: rows).scan(now: now, pricing: pricing)
+
+        let day = try XCTUnwrap(scan?.series.daily.first)
+        XCTAssertEqual(day.totalTokens, 151_000)
+        // 100K*$2/M + 51K*$10/M.
+        XCTAssertEqual(day.costUSD ?? -1, 0.71, accuracy: 0.0000001)
+    }
+
+    func testV2RowsOlderThanTheOAuthCredentialAreExcluded() async throws {
+        let credentialAt = OpenUsageISO8601.date(from: "2026-07-11T12:00:00.000Z")!
+        let rows = "[" + [
+            row(
+                "2026-07-10T10:00:00.000Z", cost: "0", total: 200, model: "gpt-test",
+                input: 150, output: 50, id: "v2-before", source: "v2"
+            ),
+            row(
+                "2026-07-12T10:00:00.000Z", cost: "0", total: 150, model: "gpt-test",
+                input: 100, output: 50, id: "v2-after", source: "v2"
+            ),
+            row(
+                "2026-07-10T11:00:00.000Z", cost: "0", total: 70, model: "gpt-test",
+                input: 50, output: 20, id: "v1-before"
+            )
+        ].joined(separator: ",") + "]"
+        let sqlite = OpenCodeFakeSQLite(
+            data: ["/oc/opencode.db": rows],
+            credentials: ["/oc/opencode.db": #"{"type":"oauth","access":"token"}"#],
+            credentialTimes: ["/oc/opencode.db": String(Int(credentialAt.timeIntervalSince1970 * 1000))]
+        )
+        let authStore = OpenCodeAuthStore(
+            files: FakeFiles(),
+            environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+            homeDirectory: { URL(fileURLWithPath: "/unused") },
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: authStore,
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        let tokensByDay = Dictionary(uniqueKeysWithValues: scan.series.daily.map { ($0.date, $0.totalTokens) })
+        XCTAssertEqual(
+            tokensByDay[DailyUsageAccumulator.dayKey(from: OpenUsageISO8601.date(from: "2026-07-12T10:00:00.000Z")!)],
+            150
+        )
+        XCTAssertEqual(
+            tokensByDay[DailyUsageAccumulator.dayKey(from: OpenUsageISO8601.date(from: "2026-07-10T11:00:00.000Z")!)],
+            70
+        )
+        XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 220)
+    }
+
+    func testV2OnlyDatabaseScansWithoutNamingTheMissingTable() async {
+        let sqlite = OpenCodeFakeSQLite(
+            data: ["/oc/opencode.db": "[]"],
+            tables: ["/oc/opencode.db": "0|1"]
+        )
+        _ = await scanner(auth: oauthAuth, rows: "[]", sqlite: sqlite).scan(now: now, pricing: pricing)
+
+        guard let sql = sqlite.lastDataSQL else { return XCTFail("expected a data query") }
+        XCTAssertTrue(sql.contains("session_message"), sql)
+        XCTAssertFalse(sql.contains("FROM message"), sql)
+    }
+
+    func testVariantSQLSelectsOnlyTheTablesItWasGiven() {
+        let v1 = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123, tables: .v1)
+        XCTAssertTrue(v1.contains("FROM message"), v1)
+        XCTAssertFalse(v1.contains("session_message"), v1)
+
+        let v2 = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123, tables: .v2)
+        XCTAssertTrue(v2.contains("session_message"), v2)
+        XCTAssertFalse(v2.contains("FROM message"), v2)
+    }
+
+    func testFailingUsableDatabaseReturnsNilWhenSchemaLessSiblingExists() async {
+        let sqlite = OpenCodeFakeSQLite(
+            failing: ["/oc/opencode-next.db"],
+            tables: ["/oc/opencode.db": "0|0"]
+        )
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: fileOAuthStore(oauthAuth),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db", "/oc/opencode-next.db"] }
+        )
+
+        let scan = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertNil(scan)
+    }
+
+    func testAllSchemaLessDatabasesYieldEmptySupplement() async {
+        let sqlite = OpenCodeFakeSQLite(tables: ["/oc/opencode.db": "0|0"])
+        guard let scan = await scanner(auth: oauthAuth, rows: "[]", sqlite: sqlite).scan(now: now, pricing: pricing) else {
+            return XCTFail("expected a scan")
+        }
+        XCTAssertTrue(scan.series.daily.isEmpty)
+    }
+
+    func testMessageTablesParsing() {
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "1|1"), .all)
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "0|1"), .v2)
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "1|0"), .v1)
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "0|0"), [])
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: ""), [])
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "not a probe result"), [])
+        XCTAssertEqual(OpenCodePaths.messageTables(fromProbeOutput: "1|1\n"), .all)
     }
 
     private func row(
@@ -212,9 +343,14 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         cacheWrite: Int = 0,
         output: Int,
         reasoning: Int = 0,
-        id: String = "message-1"
+        id: String = "message-1",
+        source: String? = nil
     ) -> String {
         let milliseconds = Int(OpenUsageISO8601.date(from: iso)!.timeIntervalSince1970 * 1000)
-        return "[\(milliseconds),\(cost),\(total),\"\(model)\",\(input),\(cacheRead),\(cacheWrite),\(output),\(reasoning),\"\(id)\"]"
+        var values = "\(milliseconds),\(cost),\(total),\"\(model)\",\(input),\(cacheRead),\(cacheWrite),\(output),\(reasoning),\"\(id)\""
+        if let source {
+            values += ",\"\(source)\""
+        }
+        return "[\(values)]"
     }
 }

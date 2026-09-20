@@ -12,7 +12,8 @@ final class OpenCodeProviderTests: XCTestCase {
         OpenCodeAuthStore(
             files: files,
             environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-            homeDirectory: { URL(fileURLWithPath: "/nonexistent") }
+            homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
+            databasePaths: { [] }
         )
     }
 

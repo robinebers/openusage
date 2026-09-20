@@ -555,7 +555,8 @@ final class CodexProviderTests: XCTestCase {
             authStore: OpenCodeAuthStore(
                 files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"token"}}"#]),
                 environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-                homeDirectory: { URL(fileURLWithPath: "/unused") }
+                homeDirectory: { URL(fileURLWithPath: "/unused") },
+                databasePaths: { [] }
             ),
             sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": openCodeRows]),
             databasePaths: { ["/oc/opencode.db"] }
