@@ -133,8 +133,25 @@ func openCodeRow(_ iso: String, _ cost: String, _ tokens: Int, _ model: String, 
     return "[\(epochMs),\(cost),\(tokens),\"\(model)\",\"\(provider)\"]"
 }
 
+/// An auth store rooted at `/oc` with no real filesystem or sqlite3 access. Shared by every OpenCode
+/// and Codex test that needs one.
+func openCodeAuthStore(
+    files: TextFileAccessing = FakeFiles(),
+    sqlite: SQLiteAccessing = OpenCodeFakeSQLite(),
+    databasePaths: [String] = []
+) -> OpenCodeAuthStore {
+    OpenCodeAuthStore(
+        files: files,
+        environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+        homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
+        sqlite: sqlite,
+        databasePaths: { databasePaths }
+    )
+}
+
 /// Stub that returns crafted payloads per database path and classifies the query by SQL shape.
-/// Shared by the OpenCode scanner and provider tests.
+/// Shared by the OpenCode scanner and provider tests. `tables` holds each database's
+/// `group_concat(name)` probe output (default: both message tables present).
 final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
@@ -159,19 +176,15 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
 
     func queryValue(path: String, sql: String) throws -> String? {
         if failing.contains(path) { throw SQLiteError.queryFailed("boom") }
-        if sql.contains("sqlite_master") {
-            return tables[path] ?? "1|1"
+        if sql == OpenCodeCodexUsageScanner.messageTablesSQL {
+            return tables[path] ?? "message,session_message"
         }
-        if sql.contains("FROM credential") {
+        if sql == OpenCodeAuthStore.credentialSQLCurrentOpenAI {
             guard let raw = credentials[path] else { return nil }
             // Production SQL returns `[value, active, time_updated, id, time_created]`. Tests may
             // pass that array, or just the credential object — wrap the object with a live ranking.
-            if sql.contains("json_array") {
-                if raw.first == "[" { return raw }
-                let time = credentialTimes[path] ?? "0"
-                return "[\(raw),1,1,\"cred\",\(time)]"
-            }
-            return raw
+            if raw.first == "[" { return raw }
+            return "[\(raw),1,1,\"cred\",\(credentialTimes[path] ?? "0")]"
         }
         if sql.contains("json_group_array") {
             lastDataSQL = sql

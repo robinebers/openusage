@@ -13,7 +13,8 @@ struct OpenCodeAuthStore: Sendable {
     var environment: EnvironmentReading
     var homeDirectory: @Sendable () -> URL
     var sqlite: SQLiteAccessing
-    var databasePaths: @Sendable () throws -> [String]
+    /// Test seam; `nil` globs `opencode*.db` under `dataDirectory`.
+    var databasePaths: (@Sendable () throws -> [String])?
 
     /// One current `openai` row per database: ranking fields ride with the value so the live row can
     /// be chosen across channel files (`opencode-next.db` sorts before `opencode.db`). Ordering
@@ -38,16 +39,7 @@ struct OpenCodeAuthStore: Sendable {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.sqlite = sqlite
-        if let databasePaths {
-            self.databasePaths = databasePaths
-        } else {
-            let env = environment
-            let home = homeDirectory
-            self.databasePaths = {
-                let dir = OpenCodePaths.dataDirectory(environment: env, homeDirectory: home())
-                return try OpenCodePaths.databaseFiles(in: dir)
-            }
-        }
+        self.databasePaths = databasePaths
     }
 
     var dataDirectory: String {
@@ -98,16 +90,11 @@ struct OpenCodeAuthStore: Sendable {
         return OpenAICredential(isOAuth: false, since: nil)
     }
 
-    /// Whether OpenCode's `openai` provider is currently authenticated through the built-in ChatGPT /
-    /// Codex OAuth flow. OpenCode stores API-key and OAuth credentials under the same provider key, so
-    /// checking the auth type is required before attributing its `providerID = openai` database rows to
-    /// the Codex card. Secrets stay inside the auth boundary and are never returned or logged.
-    func hasCodexOAuth() throws -> Bool {
-        try openAICredential().isOAuth
-    }
-
-    /// One OAuth entry is enough — OpenCode writes both fields, but a refresh-only or access-only row
-    /// still proves the OAuth flow rather than an API key.
+    /// Whether an `openai` entry is the built-in ChatGPT / Codex OAuth flow. OpenCode stores API-key
+    /// and OAuth credentials under the same provider key, so the type must be checked before
+    /// attributing `providerID = openai` rows to the Codex card. Secrets stay inside the auth boundary
+    /// and are never returned or logged. One OAuth field is enough — OpenCode writes both, but a
+    /// refresh-only or access-only row still proves the OAuth flow rather than an API key.
     private static func isCodexOAuth(_ entry: [String: Any]) -> Bool {
         guard entry["type"] as? String == "oauth" else { return false }
         return ["access", "refresh"].contains { field in
@@ -133,8 +120,9 @@ struct OpenCodeAuthStore: Sendable {
 
     private struct OpenAICredentialRow {
         var entry: [String: Any]
-        var active: Int?
-        var timeUpdated: Int64
+        /// Kept as `Double`: `Int(Double)` traps above `Int64.max`, and these only need ordering.
+        var active: Double?
+        var timeUpdated: Double
         var id: String
         var since: Date?
     }
@@ -144,7 +132,7 @@ struct OpenCodeAuthStore: Sendable {
     private func currentOpenAICredentialFromDatabases() -> (row: OpenAICredentialRow?, hadHardFailure: Bool) {
         let paths: [String]
         do {
-            paths = try databasePaths()
+            paths = try databasePaths?() ?? OpenCodePaths.databaseFiles(in: dataDirectory)
         } catch {
             AppLog.warn(
                 LogTag.plugin("opencode"),
@@ -163,7 +151,8 @@ struct OpenCodeAuthStore: Sendable {
                 rows.append(row)
             } catch {
                 // Pre-OpenCode-2 databases have no `credential` table — expected, not an error.
-                if Self.isMissingCredentialTable(error) { continue }
+                // `SQLiteError.errorDescription` is sqlite3's stderr, so this is the raw message.
+                if error.localizedDescription.localizedCaseInsensitiveContains("no such table") { continue }
                 hadHardFailure = true
                 AppLog.warn(
                     LogTag.plugin("opencode"),
@@ -190,13 +179,8 @@ struct OpenCodeAuthStore: Sendable {
         } else {
             return nil
         }
-        let active: Int?
-        if values[1] is NSNull {
-            active = nil
-        } else {
-            active = ProviderParse.number(values[1]).map { Int($0) }
-        }
-        let timeUpdated = Int64(ProviderParse.number(values[2]) ?? 0)
+        let active = values[1] is NSNull ? nil : ProviderParse.number(values[1])
+        let timeUpdated = ProviderParse.number(values[2]) ?? 0
         let id = (values[3] as? String) ?? ""
         var since: Date?
         if !(values[4] is NSNull), let ms = ProviderParse.number(values[4]) {
@@ -207,20 +191,10 @@ struct OpenCodeAuthStore: Sendable {
 
     /// Same order as the SQL `ORDER BY`: active DESC (NULL last), time_updated DESC, id DESC.
     private static func isPreferred(_ lhs: OpenAICredentialRow, over rhs: OpenAICredentialRow) -> Bool {
-        let leftActive = lhs.active ?? Int.min
-        let rightActive = rhs.active ?? Int.min
+        let leftActive = lhs.active ?? -.infinity
+        let rightActive = rhs.active ?? -.infinity
         if leftActive != rightActive { return leftActive > rightActive }
         if lhs.timeUpdated != rhs.timeUpdated { return lhs.timeUpdated > rhs.timeUpdated }
         return lhs.id > rhs.id
-    }
-
-    private static func isMissingCredentialTable(_ error: Error) -> Bool {
-        let detail: String
-        if let sqlite = error as? SQLiteError, case .queryFailed(let message) = sqlite {
-            detail = message
-        } else {
-            detail = error.localizedDescription
-        }
-        return detail.localizedCaseInsensitiveContains("no such table")
     }
 }
