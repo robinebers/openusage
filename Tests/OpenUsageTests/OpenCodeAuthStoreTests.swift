@@ -21,14 +21,18 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     private func credentialStore(
         files: TextFileAccessing = FakeFiles(),
         credentials: [String: String] = [:],
-        credentialTimes: [String: String] = [:]
+        credentialTimes: [String: String] = [:],
+        failing: Set<String> = [],
+        databasePaths: [String] = ["/oc/opencode.db"]
     ) -> OpenCodeAuthStore {
         OpenCodeAuthStore(
             files: files,
             environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
             homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
-            sqlite: OpenCodeFakeSQLite(credentials: credentials, credentialTimes: credentialTimes),
-            databasePaths: { ["/oc/opencode.db"] }
+            sqlite: OpenCodeFakeSQLite(
+                failing: failing, credentials: credentials, credentialTimes: credentialTimes
+            ),
+            databasePaths: { databasePaths }
         )
     }
 
@@ -123,24 +127,42 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     }
 
     func testCredentialFallbackQueriesSelectTheCurrentRow() {
-        for sql in [
-            OpenCodeAuthStore.credentialSQLCurrentOpenAI,
-            OpenCodeAuthStore.credentialSQLCurrentOpenAITime
-        ] {
-            XCTAssertTrue(sql.contains("(active IS NULL OR active = 1)"), sql)
-            XCTAssertTrue(sql.contains("ORDER BY active DESC, time_updated DESC, id DESC"), sql)
-        }
+        let sql = OpenCodeAuthStore.credentialSQLCurrentOpenAI
+        XCTAssertTrue(sql.contains("(active IS NULL OR active = 1)"), sql)
+        XCTAssertTrue(sql.contains("ORDER BY active DESC, time_updated DESC, id DESC"), sql)
+        XCTAssertTrue(sql.contains("json_array"), sql)
+    }
+
+    func testCurrentCredentialIsChosenAcrossChannelDatabases() throws {
+        // Path-sorted discovery visits opencode-next.db first. A leftover preview OAuth row must
+        // not beat a later stable API key, or zero-cost stable history would be attributed to Codex.
+        let nextOAuth = #"[ {"type":"oauth","access":"stale"}, 1, 5, "next", 100 ]"#
+        let stableKey = #"[ {"type":"key","key":"sk-x"}, 1, 9, "stable", 200 ]"#
+        XCTAssertFalse(try credentialStore(
+            credentials: [
+                "/oc/opencode-next.db": nextOAuth,
+                "/oc/opencode.db": stableKey
+            ],
+            databasePaths: ["/oc/opencode-next.db", "/oc/opencode.db"]
+        ).hasCodexOAuth())
+        XCTAssertTrue(try credentialStore(
+            credentials: [
+                "/oc/opencode-next.db": #"[ {"type":"key","key":"sk-old"}, 1, 5, "next", 100 ]"#,
+                "/oc/opencode.db": #"[ {"type":"oauth","access":"live"}, 1, 9, "stable", 200 ]"#
+            ],
+            databasePaths: ["/oc/opencode-next.db", "/oc/opencode.db"]
+        ).hasCodexOAuth())
     }
 
     func testCredentialDatabaseFailuresReturnNilInsteadOfThrowing() throws {
-        let store = OpenCodeAuthStore(
-            files: FakeFiles(),
-            environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-            homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
-            sqlite: OpenCodeFakeSQLite(failing: ["/oc/opencode.db"]),
-            databasePaths: { ["/oc/opencode.db"] }
-        )
-        XCTAssertFalse(try store.hasCodexOAuth())
+        XCTAssertFalse(try credentialStore(failing: ["/oc/opencode.db"]).hasCodexOAuth())
+    }
+
+    func testCredentialDatabaseFailureDoesNotFallBackToStaleAuthFile() throws {
+        XCTAssertFalse(try credentialStore(
+            files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"stale","refresh":"stale"}}"#]),
+            failing: ["/oc/opencode.db"]
+        ).hasCodexOAuth())
     }
 }
 

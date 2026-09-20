@@ -162,11 +162,16 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         if sql.contains("sqlite_master") {
             return tables[path] ?? "1|1"
         }
-        if sql.contains("FROM credential") && sql.contains("time_created") {
-            return credentialTimes[path]
-        }
         if sql.contains("FROM credential") {
-            return credentials[path]
+            guard let raw = credentials[path] else { return nil }
+            // Production SQL returns `[value, active, time_updated, id, time_created]`. Tests may
+            // pass that array, or just the credential object — wrap the object with a live ranking.
+            if sql.contains("json_array") {
+                if raw.first == "[" { return raw }
+                let time = credentialTimes[path] ?? "0"
+                return "[\(raw),1,1,\"cred\",\(time)]"
+            }
+            return raw
         }
         if sql.contains("json_group_array") {
             lastDataSQL = sql

@@ -15,13 +15,17 @@ struct OpenCodeAuthStore: Sendable {
     var sqlite: SQLiteAccessing
     var databasePaths: @Sendable () throws -> [String]
 
-    /// OpenCode 2 `credential` lookups, current row first: superseded rows stay in the table, so an
-    /// unordered `LIMIT 1` can return a previous account. Ordering mirrors OpenCode (`active DESC,
-    /// time_updated DESC, id DESC`); the filter admits NULL-flagged imports.
-    static let credentialSQLCurrentOpenAI =
-        "SELECT value FROM credential WHERE integration_id = 'openai' AND (active IS NULL OR active = 1) ORDER BY active DESC, time_updated DESC, id DESC LIMIT 1;"
-    static let credentialSQLCurrentOpenAITime =
-        "SELECT time_created FROM credential WHERE integration_id = 'openai' AND (active IS NULL OR active = 1) ORDER BY active DESC, time_updated DESC, id DESC LIMIT 1;"
+    /// One current `openai` row per database: ranking fields ride with the value so the live row can
+    /// be chosen across channel files (`opencode-next.db` sorts before `opencode.db`). Ordering
+    /// mirrors OpenCode (`active DESC, time_updated DESC, id DESC`); the filter admits NULL-flagged
+    /// imports. `json(value)` embeds the credential object so Swift does not re-parse a nested string.
+    static let credentialSQLCurrentOpenAI = """
+        SELECT json_array(json(value), active, time_updated, id, time_created)
+        FROM credential
+        WHERE integration_id = 'openai' AND (active IS NULL OR active = 1)
+        ORDER BY active DESC, time_updated DESC, id DESC
+        LIMIT 1;
+        """
 
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
@@ -76,16 +80,17 @@ struct OpenCodeAuthStore: Sendable {
 
     /// The current `openai` credential, database first so a retained `auth.json` cannot hide a later
     /// login. The row is chosen before its type is checked — OAuth-first filtering would resurrect an
-    /// inactive account while the live credential is an API key.
+    /// inactive account while the live credential is an API key. Ranking is global across channel
+    /// databases: the first file that returns a row is not automatically the live account.
     func openAICredential() throws -> OpenAICredential {
-        if let value = credentialValue(from: Self.credentialSQLCurrentOpenAI),
-           let data = value.data(using: .utf8),
-           let entry = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            var since: Date?
-            if let ms = credentialValue(from: Self.credentialSQLCurrentOpenAITime).flatMap(Double.init) {
-                since = Date(timeIntervalSince1970: ms / 1000)
-            }
-            return OpenAICredential(isOAuth: Self.isCodexOAuth(entry), since: since)
+        let lookup = currentOpenAICredentialFromDatabases()
+        if let row = lookup.row {
+            return OpenAICredential(isOAuth: Self.isCodexOAuth(row.entry), since: row.since)
+        }
+        // A locked or unreadable database is not "no credential" — falling through would revive the
+        // imported auth.json that OpenCode 2 no longer updates.
+        if lookup.hadHardFailure {
+            return OpenAICredential(isOAuth: false, since: nil)
         }
         if let entry = try authObject()?["openai"] as? [String: Any] {
             return OpenAICredential(isOAuth: Self.isCodexOAuth(entry), since: nil)
@@ -126,10 +131,17 @@ struct OpenCodeAuthStore: Sendable {
         return object
     }
 
-    /// Best-effort lookup across all `opencode*.db` files. Missing tables read as "not stored there";
-    /// anything else that fails is logged, since the Codex scanner exits at its auth guard and would
-    /// otherwise drop usage silently. Never throws — a missing OAuth credential is simply "not OAuth".
-    private func credentialValue(from sql: String) -> String? {
+    private struct OpenAICredentialRow {
+        var entry: [String: Any]
+        var active: Int?
+        var timeUpdated: Int64
+        var id: String
+        var since: Date?
+    }
+
+    /// Current `openai` row across every `opencode*.db`. Missing `credential` tables skip; any other
+    /// SQLite failure is a hard failure so `auth.json` cannot stand in.
+    private func currentOpenAICredentialFromDatabases() -> (row: OpenAICredentialRow?, hadHardFailure: Bool) {
         let paths: [String]
         do {
             paths = try databasePaths()
@@ -138,25 +150,68 @@ struct OpenCodeAuthStore: Sendable {
                 LogTag.plugin("opencode"),
                 "credential lookup skipped: data directory unreadable: \(error.localizedDescription)"
             )
-            return nil
+            return (nil, true)
         }
+        var rows: [OpenAICredentialRow] = []
+        var hadHardFailure = false
         for path in paths {
             do {
-                if let value = try sqlite.queryValue(path: path, sql: sql)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                    return value
-                }
+                guard let json = try sqlite.queryValue(path: path, sql: Self.credentialSQLCurrentOpenAI)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                      let row = Self.parseOpenAICredentialRow(json)
+                else { continue }
+                rows.append(row)
             } catch {
                 // Pre-OpenCode-2 databases have no `credential` table — expected, not an error.
                 if Self.isMissingCredentialTable(error) { continue }
+                hadHardFailure = true
                 AppLog.warn(
                     LogTag.plugin("opencode"),
                     "credential lookup failed for \(path): \(error.localizedDescription)"
                 )
-                continue
             }
         }
-        return nil
+        return (rows.max(by: { Self.isPreferred($1, over: $0) }), hadHardFailure)
+    }
+
+    /// `[value, active, time_updated, id, time_created]` from `credentialSQLCurrentOpenAI`.
+    private static func parseOpenAICredentialRow(_ json: String) -> OpenAICredentialRow? {
+        guard let data = json.data(using: .utf8),
+              let values = (try? JSONSerialization.jsonObject(with: data)) as? [Any],
+              values.count >= 5
+        else { return nil }
+        let entry: [String: Any]
+        if let object = values[0] as? [String: Any] {
+            entry = object
+        } else if let text = values[0] as? String,
+                  let nested = text.data(using: .utf8),
+                  let object = (try? JSONSerialization.jsonObject(with: nested)) as? [String: Any] {
+            entry = object
+        } else {
+            return nil
+        }
+        let active: Int?
+        if values[1] is NSNull {
+            active = nil
+        } else {
+            active = ProviderParse.number(values[1]).map { Int($0) }
+        }
+        let timeUpdated = Int64(ProviderParse.number(values[2]) ?? 0)
+        let id = (values[3] as? String) ?? ""
+        var since: Date?
+        if !(values[4] is NSNull), let ms = ProviderParse.number(values[4]) {
+            since = Date(timeIntervalSince1970: ms / 1000)
+        }
+        return OpenAICredentialRow(entry: entry, active: active, timeUpdated: timeUpdated, id: id, since: since)
+    }
+
+    /// Same order as the SQL `ORDER BY`: active DESC (NULL last), time_updated DESC, id DESC.
+    private static func isPreferred(_ lhs: OpenAICredentialRow, over rhs: OpenAICredentialRow) -> Bool {
+        let leftActive = lhs.active ?? Int.min
+        let rightActive = rhs.active ?? Int.min
+        if leftActive != rightActive { return leftActive > rightActive }
+        if lhs.timeUpdated != rhs.timeUpdated { return lhs.timeUpdated > rhs.timeUpdated }
+        return lhs.id > rhs.id
     }
 
     private static func isMissingCredentialTable(_ error: Error) -> Bool {

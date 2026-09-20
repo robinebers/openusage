@@ -278,6 +278,41 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 220)
     }
 
+    func testMigratedV2TwinOlderThanOAuthKeepsV1Copy() async throws {
+        // Filter v2-by-age before dedup: a migrated session_message copy older than the login
+        // must not drop the v1 twin that shares its id.
+        let credentialAt = OpenUsageISO8601.date(from: "2026-07-11T12:00:00.000Z")!
+        let rows = "[" + [
+            row(
+                "2026-07-10T10:00:00.000Z", cost: "0", total: 200, model: "gpt-test",
+                input: 150, output: 50, id: "migrated", source: "v2"
+            ),
+            row(
+                "2026-07-10T10:00:00.000Z", cost: "0", total: 70, model: "gpt-test",
+                input: 50, output: 20, id: "migrated"
+            )
+        ].joined(separator: ",") + "]"
+        let sqlite = OpenCodeFakeSQLite(
+            data: ["/oc/opencode.db": rows],
+            credentials: ["/oc/opencode.db": #"{"type":"oauth","access":"token"}"#],
+            credentialTimes: ["/oc/opencode.db": String(Int(credentialAt.timeIntervalSince1970 * 1000))]
+        )
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: OpenCodeAuthStore(
+                files: FakeFiles(),
+                environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
+                homeDirectory: { URL(fileURLWithPath: "/unused") },
+                sqlite: sqlite,
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+        let result = await scanner.scan(now: now, pricing: pricing)
+        let scan = try XCTUnwrap(result)
+        XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 70)
+    }
+
     func testV2OnlyDatabaseScansWithoutNamingTheMissingTable() async {
         let sqlite = OpenCodeFakeSQLite(
             data: ["/oc/opencode.db": "[]"],
