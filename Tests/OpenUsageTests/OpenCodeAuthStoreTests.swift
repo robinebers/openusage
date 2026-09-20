@@ -13,18 +13,23 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         openCodeAuthStore(files: files)
     }
 
+    private let stable = "/oc/opencode.db"
+
     private func credentialStore(
         files: TextFileAccessing = FakeFiles(),
         credentials: [String: String] = [:],
         credentialTimes: [String: String] = [:],
-        failing: Set<String> = [],
-        databasePaths: [String] = ["/oc/opencode.db"]
+        failing: Set<String> = []
     ) -> OpenCodeAuthStore {
         openCodeAuthStore(
             files: files,
-            sqlite: OpenCodeFakeSQLite(failing: failing, credentials: credentials, credentialTimes: credentialTimes),
-            databasePaths: databasePaths
+            sqlite: OpenCodeFakeSQLite(failing: failing, credentials: credentials, credentialTimes: credentialTimes)
         )
+    }
+
+    /// `auth.json`-only stores see an OpenCode 1 database: the fake has no `credential` table there.
+    private func openAICredential(_ store: OpenCodeAuthStore) throws -> OpenCodeAuthStore.OpenAICredential {
+        try store.openAICredential(databasePath: stable)
     }
 
     func testReadsGoKey() throws {
@@ -43,14 +48,14 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     }
 
     func testDetectsCodexOAuthWithoutExposingTokens() throws {
-        XCTAssertTrue(try store(#"{"openai":{"type":"oauth","access":"access-token","refresh":"refresh-token"}}"#).openAICredential().isOAuth)
-        XCTAssertTrue(try store(#"{"openai":{"type":"oauth","access":"access-token"}}"#).openAICredential().isOAuth)
+        XCTAssertTrue(try openAICredential(store(#"{"openai":{"type":"oauth","access":"access-token","refresh":"refresh-token"}}"#)).isOAuth)
+        XCTAssertTrue(try openAICredential(store(#"{"openai":{"type":"oauth","access":"access-token"}}"#)).isOAuth)
     }
 
     func testDoesNotTreatOpenAIAPIKeyAsCodexOAuth() throws {
-        XCTAssertFalse(try store(#"{"openai":{"type":"api","key":"sk-openai"}}"#).openAICredential().isOAuth)
-        XCTAssertFalse(try store(#"{"openai":{"type":"oauth","access":" ","refresh":" "}}"#).openAICredential().isOAuth)
-        XCTAssertFalse(try store(#"{"anthropic":{"type":"oauth","access":"token"}}"#).openAICredential().isOAuth)
+        XCTAssertFalse(try openAICredential(store(#"{"openai":{"type":"api","key":"sk-openai"}}"#)).isOAuth)
+        XCTAssertFalse(try openAICredential(store(#"{"openai":{"type":"oauth","access":" ","refresh":" "}}"#)).isOAuth)
+        XCTAssertFalse(try openAICredential(store(#"{"anthropic":{"type":"oauth","access":"token"}}"#)).isOAuth)
     }
 
     func testMissingEmptyOrAbsentKeyIsNil() throws {
@@ -78,33 +83,41 @@ final class OpenCodeAuthStoreTests: XCTestCase {
     }
 
     func testHasCodexOAuthFallsBackToCredentialTable() throws {
-        XCTAssertTrue(try credentialStore(
-            credentials: ["/oc/opencode.db": #"{"type":"oauth","access":"token"}"#]
-        ).openAICredential().isOAuth)
+        XCTAssertTrue(try openAICredential(credentialStore(
+            credentials: [stable: #"{"type":"oauth","access":"token"}"#]
+        )).isOAuth)
     }
 
     func testCredentialTableAPIKeyIsNotCodexOAuth() throws {
-        XCTAssertFalse(try credentialStore(
-            credentials: ["/oc/opencode.db": #"{"type":"key","key":"sk-x"}"#]
-        ).openAICredential().isOAuth)
+        XCTAssertFalse(try openAICredential(credentialStore(
+            credentials: [stable: #"{"type":"key","key":"sk-x"}"#]
+        )).isOAuth)
     }
 
     func testHasCodexOAuthPrefersDatabaseOverStaleAuthFile() throws {
-        XCTAssertFalse(try credentialStore(
+        XCTAssertFalse(try openAICredential(credentialStore(
             files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"stale","refresh":"stale"}}"#]),
-            credentials: ["/oc/opencode.db": #"{"type":"key","key":"sk-x"}"#]
-        ).openAICredential().isOAuth)
-        XCTAssertTrue(try credentialStore(
+            credentials: [stable: #"{"type":"key","key":"sk-x"}"#]
+        )).isOAuth)
+        XCTAssertTrue(try openAICredential(credentialStore(
             files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"api","key":"sk-x"}}"#]),
-            credentials: ["/oc/opencode.db": #"{"type":"oauth","access":"token"}"#]
-        ).openAICredential().isOAuth)
+            credentials: [stable: #"{"type":"oauth","access":"token"}"#]
+        )).isOAuth)
+    }
+
+    func testEmptyCredentialTableDoesNotFallBackToStaleAuthFile() throws {
+        // OpenCode 2 logout deletes the `openai` row but leaves the imported auth.json behind. An
+        // existing table with no row is "logged out", unlike an OpenCode 1 database with no table.
+        let staleFile = FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"stale","refresh":"stale"}}"#])
+        XCTAssertFalse(try openAICredential(credentialStore(files: staleFile, credentials: [stable: ""])).isOAuth)
+        XCTAssertTrue(try openAICredential(credentialStore(files: staleFile)).isOAuth)
     }
 
     func testOpenAICredentialReportsCreationTime() throws {
-        let fromDatabase = try credentialStore(
-            credentials: ["/oc/opencode.db": #"{"type":"oauth","access":"token"}"#],
-            credentialTimes: ["/oc/opencode.db": "1786487065715"]
-        ).openAICredential()
+        let fromDatabase = try openAICredential(credentialStore(
+            credentials: [stable: #"{"type":"oauth","access":"token"}"#],
+            credentialTimes: [stable: "1786487065715"]
+        ))
         XCTAssertTrue(fromDatabase.isOAuth)
         XCTAssertEqual(
             try XCTUnwrap(fromDatabase.since).timeIntervalSince1970,
@@ -112,7 +125,7 @@ final class OpenCodeAuthStoreTests: XCTestCase {
             accuracy: 0.000_000_1
         )
 
-        let fromFile = try store(#"{"openai":{"type":"oauth","access":"token"}}"#).openAICredential()
+        let fromFile = try openAICredential(store(#"{"openai":{"type":"oauth","access":"token"}}"#))
         XCTAssertTrue(fromFile.isOAuth)
         XCTAssertNil(fromFile.since)
     }
@@ -124,36 +137,24 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         XCTAssertTrue(sql.contains("json_array"), sql)
     }
 
-    func testCurrentCredentialIsChosenAcrossChannelDatabases() throws {
-        // Path-sorted discovery visits opencode-next.db first. A leftover preview OAuth row must
-        // not beat a later stable API key, or zero-cost stable history would be attributed to Codex.
-        let nextOAuth = #"[ {"type":"oauth","access":"stale"}, 1, 5, "next", 100 ]"#
-        let stableKey = #"[ {"type":"key","key":"sk-x"}, 1, 9, "stable", 200 ]"#
-        XCTAssertFalse(try credentialStore(
-            credentials: [
-                "/oc/opencode-next.db": nextOAuth,
-                "/oc/opencode.db": stableKey
-            ],
-            databasePaths: ["/oc/opencode-next.db", "/oc/opencode.db"]
-        ).openAICredential().isOAuth)
-        XCTAssertTrue(try credentialStore(
-            credentials: [
-                "/oc/opencode-next.db": #"[ {"type":"key","key":"sk-old"}, 1, 5, "next", 100 ]"#,
-                "/oc/opencode.db": #"[ {"type":"oauth","access":"live"}, 1, 9, "stable", 200 ]"#
-            ],
-            databasePaths: ["/oc/opencode-next.db", "/oc/opencode.db"]
-        ).openAICredential().isOAuth)
+    func testEachChannelDatabaseIsJudgedByItsOwnCredential() throws {
+        // OpenCode partitions credentials by release channel: a stable API key says nothing about a
+        // preview OAuth login, and vice versa.
+        let store = credentialStore(credentials: [
+            "/oc/opencode-next.db": #"{"type":"oauth","access":"live"}"#,
+            stable: #"{"type":"key","key":"sk-x"}"#
+        ])
+        XCTAssertTrue(try store.openAICredential(databasePath: "/oc/opencode-next.db").isOAuth)
+        XCTAssertFalse(try store.openAICredential(databasePath: stable).isOAuth)
     }
 
-    func testCredentialDatabaseFailuresReturnNilInsteadOfThrowing() throws {
-        XCTAssertFalse(try credentialStore(failing: ["/oc/opencode.db"]).openAICredential().isOAuth)
-    }
-
-    func testCredentialDatabaseFailureDoesNotFallBackToStaleAuthFile() throws {
-        XCTAssertFalse(try credentialStore(
+    func testCredentialDatabaseFailureThrowsInsteadOfFallingBackToStaleAuthFile() {
+        // A locked database is not "no credential": throwing keeps the caller from reading the
+        // retained auth.json in its place.
+        XCTAssertThrowsError(try openAICredential(credentialStore(
             files: FakeFiles(["/oc/auth.json": #"{"openai":{"type":"oauth","access":"stale","refresh":"stale"}}"#]),
-            failing: ["/oc/opencode.db"]
-        ).openAICredential().isOAuth)
+            failing: [stable]
+        )))
     }
 }
 

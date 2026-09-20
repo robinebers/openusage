@@ -2,8 +2,9 @@ import Foundation
 
 /// Reads Codex-subscription usage produced inside OpenCode and returns it in the same normalized shape
 /// as Codex's native and pi scanners. OpenCode records both ChatGPT OAuth and ordinary OpenAI API-key
-/// traffic as `providerID = openai`, so rows are eligible only while the local OpenCode credential is
-/// explicitly OAuth. This avoids charging API-key traffic to the Codex subscription card.
+/// traffic as `providerID = openai`, so a database's rows are eligible only while that database's
+/// current OpenCode credential is explicitly OAuth. This avoids charging API-key traffic to the
+/// Codex subscription card.
 ///
 /// Reads both the v1 `message` and v2 `session_message` tables: OpenCode 2 moved assistant messages
 /// to the new table, so a v1-only query returns zero rows there.
@@ -31,16 +32,6 @@ struct OpenCodeCodexUsageScanner: Sendable {
     /// Best-effort supplementary scan: failures are logged loudly but never hide Codex's live quota
     /// meters or native history. This matches pi's role as an optional local source.
     func scan(now: Date, daysBack: Int = 30, pricing: ModelPricing) async -> LogUsageScan? {
-        let oauthSinceMs: Int?
-        do {
-            let oauth = try authStore.openAICredential()
-            guard oauth.isOAuth else { return nil }
-            oauthSinceMs = oauth.since.map { Int($0.timeIntervalSince1970 * 1000) }
-        } catch {
-            AppLog.warn(LogTag.plugin("opencode"), "Codex OAuth attribution skipped: \(error.localizedDescription)")
-            return nil
-        }
-
         let paths: [String]
         do {
             paths = try databasePaths()
@@ -55,11 +46,18 @@ struct OpenCodeCodexUsageScanner: Sendable {
         var rows: [Row] = []
         var failures: [String: String] = [:]
         var readAny = false
+        var anyOAuth = false
         for path in paths {
             do {
+                // Each channel database is judged by its own credential: a stable API key must not
+                // hide preview OAuth usage, and one channel's login time must not bound another's rows.
+                let credential = try authStore.openAICredential(databasePath: path)
+                guard credential.isOAuth else { continue }
+                anyOAuth = true
                 // A database with no message tables has nothing to contribute; skip it rather than let
                 // the query fail and drop every other database's rows.
                 guard let tables = try Self.messageTables(in: path, sqlite: sqlite) else { continue }
+                let oauthSinceMs = credential.since.map { Int($0.timeIntervalSince1970 * 1000) }
                 let sql = Self.dataSQL(cutoffMs: cutoffMs, tables: tables, oauthSinceMs: oauthSinceMs)
                 if let json = try sqlite.queryValue(path: path, sql: sql) {
                     rows.append(contentsOf: Self.parseRows(json))
@@ -80,8 +78,9 @@ struct OpenCodeCodexUsageScanner: Sendable {
                 "Codex usage query failed for \(path): \(failures[path] ?? "unknown error")"
             )
         }
-        // Databases without message tables never vote: every readable one either succeeded or failed.
-        guard readAny || failures.isEmpty else { return nil }
+        // No OAuth channel means nothing to attribute. Databases without message tables never vote:
+        // every readable one either succeeded or failed.
+        guard anyOAuth, readAny || failures.isEmpty else { return nil }
 
         var accumulator = DailyUsageAccumulator()
         // Codex pricing depends only on the model slug, and resolving one walks every supplement alias

@@ -31,7 +31,9 @@ When OpenCode uses its built-in ChatGPT Pro/Plus OAuth login, that usage belongs
 subscription and appears in OpenUsage's **Codex** spend tiles and trend, including OpenCode 2's
 local logs. It is not mixed into the OpenCode-hosted Go + Zen totals. Its separate per-request token
 buckets are estimated with the same cache, long-context, and fast/priority rules as native Codex
-usage. Ordinary OpenAI API-key traffic is not attributed to Codex.
+usage. Each release channel (stable `opencode.db`, preview `opencode-next.db`) is judged by its own
+login, so one channel on an API key never hides another channel's ChatGPT usage. Ordinary OpenAI
+API-key traffic is not attributed to Codex.
 
 ## The meters and spend tiles
 

@@ -137,21 +137,21 @@ func openCodeRow(_ iso: String, _ cost: String, _ tokens: Int, _ model: String, 
 /// and Codex test that needs one.
 func openCodeAuthStore(
     files: TextFileAccessing = FakeFiles(),
-    sqlite: SQLiteAccessing = OpenCodeFakeSQLite(),
-    databasePaths: [String] = []
+    sqlite: SQLiteAccessing = OpenCodeFakeSQLite()
 ) -> OpenCodeAuthStore {
     OpenCodeAuthStore(
         files: files,
         environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
         homeDirectory: { URL(fileURLWithPath: "/nonexistent") },
-        sqlite: sqlite,
-        databasePaths: { databasePaths }
+        sqlite: sqlite
     )
 }
 
 /// Stub that returns crafted payloads per database path and classifies the query by SQL shape.
 /// Shared by the OpenCode scanner and provider tests. `tables` holds each database's
-/// `group_concat(name)` probe output (default: both message tables present).
+/// `group_concat(name)` probe output (default: both message tables present). `credentials` holds
+/// each OpenCode 2 database's current `openai` row; a database without an entry is OpenCode 1 (no
+/// `credential` table), and `""` is a table with no `openai` row.
 final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
@@ -159,6 +159,7 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var tables: [String: String]
     var credentialTimes: [String: String]
     var lastDataSQL: String?
+    var dataSQL: [String: String] = [:]
 
     init(
         data: [String: String] = [:],
@@ -180,14 +181,15 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
             return tables[path] ?? "message,session_message"
         }
         if sql == OpenCodeAuthStore.credentialSQLCurrentOpenAI {
-            guard let raw = credentials[path] else { return nil }
-            // Production SQL returns `[value, active, time_updated, id, time_created]`. Tests may
-            // pass that array, or just the credential object — wrap the object with a live ranking.
-            if raw.first == "[" { return raw }
-            return "[\(raw),1,1,\"cred\",\(credentialTimes[path] ?? "0")]"
+            guard let raw = credentials[path] else {
+                throw SQLiteError.queryFailed("Parse error: no such table: credential")
+            }
+            // Production SQL returns `[value, time_created]`; tests pass just the credential object.
+            return raw.isEmpty ? nil : "[\(raw),\(credentialTimes[path] ?? "0")]"
         }
         if sql.contains("json_group_array") {
             lastDataSQL = sql
+            dataSQL[path] = sql
             return data[path]
         }
         if sql.contains("SELECT 1") {

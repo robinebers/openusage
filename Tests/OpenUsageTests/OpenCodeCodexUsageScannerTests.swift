@@ -191,6 +191,87 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first).totalTokens, 150)
     }
 
+    /// Two channel databases with their own OpenCode 2 credentials; the same fake serves both the
+    /// scanner and its auth store so per-database credentials and rows line up.
+    private func channelScanner(
+        credentials: [String: String],
+        credentialTimes: [String: String] = [:],
+        rows: [String: String]
+    ) -> (OpenCodeCodexUsageScanner, OpenCodeFakeSQLite) {
+        let sqlite = OpenCodeFakeSQLite(data: rows, credentials: credentials, credentialTimes: credentialTimes)
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: openCodeAuthStore(sqlite: sqlite),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode-next.db", "/oc/opencode.db"] }
+        )
+        return (scanner, sqlite)
+    }
+
+    func testEachChannelDatabaseIsGatedByItsOwnCredential() async throws {
+        // Stable holds a newer API key while preview is still on OAuth: preview usage counts, stable
+        // usage does not — regardless of which credential was touched last.
+        let (scanner, _) = channelScanner(
+            credentials: [
+                "/oc/opencode-next.db": #"{"type":"oauth","access":"live"}"#,
+                "/oc/opencode.db": #"{"type":"key","key":"sk-x"}"#
+            ],
+            rows: [
+                "/oc/opencode-next.db": "[" + row(
+                    "2026-07-12T10:00:00.000Z", cost: "0", total: 150, model: "gpt-test",
+                    input: 100, output: 50, id: "preview-oauth"
+                ) + "]",
+                "/oc/opencode.db": "[" + row(
+                    "2026-07-12T11:00:00.000Z", cost: "0", total: 900, model: "gpt-test",
+                    input: 600, output: 300, id: "stable-api-key"
+                ) + "]"
+            ]
+        )
+
+        let scan = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first).totalTokens, 150)
+    }
+
+    func testEachOAuthChannelUsesItsOwnLoginTimeAsTheV2Bound() async {
+        // Preview logged in later than stable. Stable's older rows must stay bounded by stable's own
+        // login, not cut off by preview's.
+        let stableLogin = Int(OpenUsageISO8601.date(from: "2026-07-01T00:00:00.000Z")!.timeIntervalSince1970 * 1000)
+        let previewLogin = Int(OpenUsageISO8601.date(from: "2026-07-10T00:00:00.000Z")!.timeIntervalSince1970 * 1000)
+        let (scanner, sqlite) = channelScanner(
+            credentials: [
+                "/oc/opencode-next.db": #"{"type":"oauth","access":"preview"}"#,
+                "/oc/opencode.db": #"{"type":"oauth","access":"stable"}"#
+            ],
+            credentialTimes: [
+                "/oc/opencode-next.db": String(previewLogin),
+                "/oc/opencode.db": String(stableLogin)
+            ],
+            rows: ["/oc/opencode-next.db": "[]", "/oc/opencode.db": "[]"]
+        )
+
+        _ = await scanner.scan(now: now, pricing: pricing)
+        let previewSQL = sqlite.dataSQL["/oc/opencode-next.db"] ?? ""
+        let stableSQL = sqlite.dataSQL["/oc/opencode.db"] ?? ""
+        XCTAssertTrue(previewSQL.contains(">= \(previewLogin)"), previewSQL)
+        XCTAssertFalse(previewSQL.contains(">= \(stableLogin)"), previewSQL)
+        XCTAssertTrue(stableSQL.contains(">= \(stableLogin)"), stableSQL)
+        XCTAssertFalse(stableSQL.contains(">= \(previewLogin)"), stableSQL)
+    }
+
+    func testLoggedOutV2DatabaseIsSkippedWhileAuthFileStillHoldsOAuth() async {
+        // OpenCode 2 logout empties the credential table but leaves the imported auth.json behind;
+        // that file must not authorize the database's rows.
+        let sqlite = OpenCodeFakeSQLite(data: ["/oc/opencode.db": "[]"], credentials: ["/oc/opencode.db": ""])
+        let scanner = OpenCodeCodexUsageScanner(
+            authStore: openCodeAuthStore(files: FakeFiles(["/oc/auth.json": oauthAuth]), sqlite: sqlite),
+            sqlite: sqlite,
+            databasePaths: { ["/oc/opencode.db"] }
+        )
+
+        let scan = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertNil(scan)
+        XCTAssertNil(sqlite.lastDataSQL)
+    }
+
     func testQuerySelectsOnlyCompletedOpenAIRows() {
         let sql = OpenCodeCodexUsageScanner.dataSQL(cutoffMs: 123)
         XCTAssertTrue(
@@ -246,7 +327,7 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
             credentialTimes: ["/oc/opencode.db": String(sinceMs)]
         )
         let databaseBacked = OpenCodeCodexUsageScanner(
-            authStore: openCodeAuthStore(sqlite: sqlite, databasePaths: ["/oc/opencode.db"]),
+            authStore: openCodeAuthStore(sqlite: sqlite),
             sqlite: sqlite,
             databasePaths: { ["/oc/opencode.db"] }
         )
