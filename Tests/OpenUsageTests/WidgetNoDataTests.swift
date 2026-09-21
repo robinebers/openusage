@@ -22,6 +22,35 @@ final class WidgetNoDataTests: XCTestCase {
         XCTAssertNotEqual(real.valueText, WidgetData.noDataHeadline)
     }
 
+    func testHideWhenNoDataIsHiddenAndOrdinaryMissingLineIsNot() async {
+        // A descriptor marked `hidingWhenNoData()` must set `isHidden = true` when the snapshot has no
+        // matching line — the dashboard omits the row entirely. A plain missing line (no flag) must NOT
+        // set `isHidden`, so only enterprise-suppressed rows disappear while ordinary "No data" rows stay.
+        let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("cursor"))
+        let hidden = boundedPercent(provider, id: "test.session", metric: "Session", sampleUsed: 50).hidingWhenNoData()
+        let visible = boundedPercent(provider, id: "test.weekly", metric: "Weekly", sampleUsed: 80)
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [hidden, visible],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: []
+            )
+        )
+        let defaults = makeUserDefaults("hide-when-no-data")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [hidden, visible]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        XCTAssertTrue(store.data(for: hidden).isHidden, "a descriptor with hideWhenNoData should be hidden when the line is absent")
+        XCTAssertFalse(store.data(for: visible).isHidden, "a plain missing line must not set isHidden")
+    }
+
     // Menu-bar ordering / no-data-skip / fallback are exercised on the real tray path
     // (MenuBarContentBuilder + LayoutStore.pinnedGroups) in MenuBarContentTests and MenuBarPinTests.
 

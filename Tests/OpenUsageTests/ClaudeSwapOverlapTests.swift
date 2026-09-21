@@ -132,7 +132,7 @@ extension ClaudeDesktopAuthStoreTests {
             let provider = ClaudeProvider(authStore: auth, usageClient: ClaudeUsageClient(httpClient: http),
                 logUsageScanner: ClaudeLogFixture.scanner(home: nil), pricing: { TestPricing.bundled })
             let result = await provider.refresh()
-            guard case .progress(_, let used, _, _, _, _, _) = result.line(label: "Session") else {
+            guard case .progress(_, let used, _, _, _, _, _, _) = result.line(label: "Session") else {
                 return XCTFail("Missing refreshed limits")
             }
             XCTAssertEqual(used, Double(20 + index * 50))

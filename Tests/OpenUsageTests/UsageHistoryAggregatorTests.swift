@@ -22,7 +22,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         let rendered = UsageHistorySnapshotRenderer.render(
             local: local, history: merged, descriptor: descriptor, now: localDay(2026, 7, 13)
         )
-        guard case .values(_, _, _, _, let unknownModels, let breakdown) = rendered.lines.first(where: { $0.label == "Today" }) else {
+        guard case .values(_, _, _, _, let unknownModels, let breakdown, _) = rendered.lines.first(where: { $0.label == "Today" }) else {
             return XCTFail("missing spend row")
         }
         XCTAssertEqual(unknownModels, ["unlisted-model-a", "unlisted-model-b"])
@@ -129,7 +129,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         )
         for line in rendered.lines {
             switch line {
-            case .values(_, _, _, _, _, let breakdown):
+            case .values(_, _, _, _, _, let breakdown, _):
                 XCTAssertEqual(breakdown?.sourceNote, "Across your Macs · logs")
             case .chart(_, _, let note):
                 XCTAssertEqual(note, "Across your Macs · logs")
@@ -349,7 +349,7 @@ final class UsageHistoryAggregatorTests: XCTestCase {
         XCTAssertEqual(rendered.refreshedAt, local.refreshedAt)
         XCTAssertEqual(rendered.line(label: "Session"), local.line(label: "Session"))
         XCTAssertEqual(rendered.line(label: "Local notice"), local.line(label: "Local notice"))
-        guard case .values(_, let values, _, _, _, let breakdown) = rendered.line(label: "Today") else {
+        guard case .values(_, let values, _, _, _, let breakdown, _) = rendered.line(label: "Today") else {
             return XCTFail("Today should be rebuilt as a values row")
         }
         XCTAssertEqual(values.map(\.number), [3, 350])

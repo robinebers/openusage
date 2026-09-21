@@ -73,11 +73,13 @@ enum ShareCardRenderer {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
         let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return dataStore.data(for: descriptor)
+            let data = dataStore.data(for: descriptor)
+            return data.isHidden ? nil : data
         }
         let expandedRows = group.expandedWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return dataStore.data(for: descriptor)
+            let data = dataStore.data(for: descriptor)
+            return data.isHidden ? nil : data
         }
         let rows = isExpanded ? alwaysRows + expandedRows : alwaysRows
         let view = ShareCardView(

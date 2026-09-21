@@ -549,6 +549,7 @@ final class WidgetDataStore {
             // Flag it as no-data; the tile renders "No data" instead of inventing usage.
             result = descriptor.sample
             result.hasData = false
+            result.isHidden = descriptor.hideWhenNoData
         }
 
         // Single global choke point: dashboard/share rows and menu-bar values all funnel through here,
@@ -591,7 +592,7 @@ final class WidgetDataStore {
 
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {
         switch line {
-        case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs, _):
+        case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs, _, let titleOverride):
             // A percent meter is a bounded 0...100 domain; sanitize an out-of-range sample (a provider
             // reporting a negative or >100 utilization) here, at the single construction choke point
             // every provider funnels through, so no surface — headline, flip tooltip, menu bar — can
@@ -601,7 +602,7 @@ final class WidgetDataStore {
             // conveyed by the meter's spent state rather than hidden.
             let normalizedUsed = format == .percent ? ProviderParse.clampPercent(used) : used
             var result = WidgetData(
-                title: descriptor.sample.title,
+                title: titleOverride ?? descriptor.sample.title,
                 icon: descriptor.sample.icon,
                 kind: format.metricKind,
                 used: normalizedUsed,
@@ -621,10 +622,11 @@ final class WidgetDataStore {
             // Text lines carry provider notices for the local API; no dashboard descriptor consumes
             // them. Numeric widgets use typed progress/values lines and must never parse display text.
             return nil
-        case .values(_, let values, _, let expiriesAt, let unknownModels, let modelBreakdown):
+        case .values(_, let values, _, let expiriesAt, let unknownModels, let modelBreakdown, let titleOverride):
             // The number is carried raw — no regex re-parse. Presentation (title, icon, selection,
             // trailing word) comes from the descriptor's sample; the live numbers come from the line.
             var data = descriptor.sample
+            if let titleOverride { data.title = titleOverride }
             data.values = values
             // A `.values` line is unbounded by definition (see `MetricLine`), so it never renders as a
             // meter even when the descriptor template carries a placeholder limit — e.g. Claude's

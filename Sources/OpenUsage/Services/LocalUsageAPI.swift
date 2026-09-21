@@ -135,7 +135,7 @@ enum LocalUsageAPI {
                 try container.encode(value, forKey: .value)
                 try container.encode(color, forKey: .color)        // explicit null, like the original
                 try container.encode(subtitle, forKey: .subtitle)
-            case .values(let label, let values, let color, let expiriesAt, _, _):
+            case .values(let label, let values, let color, let expiriesAt, _, _, _):
                 // Serialize as the original `text` shape (one combined `value` string) so existing
                 // local-API integrations keep working: dollars in full, counts compact — exactly the
                 // string the mapper used to produce (e.g. "$5.17 · 9.2M tokens").
@@ -149,7 +149,7 @@ enum LocalUsageAPI {
                 // Expose the soonest expiry (Codex reset credits) as ISO-8601 so consumers get the next
                 // one without us baking a display string — same `resetsAt` field a progress row uses.
                 try container.encodeIfPresent(expiriesAt.min().map(OpenUsageISO8601.string(from:)), forKey: .resetsAt)
-            case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, let color):
+            case .progress(let label, let used, let limit, let format, let resetsAt, let periodDurationMs, let color, _):
                 try container.encode("progress", forKey: .type)
                 try container.encode(label, forKey: .label)
                 try container.encode(used, forKey: .used)

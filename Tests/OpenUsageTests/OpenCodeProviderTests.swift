@@ -94,7 +94,7 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.first?.url, OpenCodeUsageClient.usageURL)
         XCTAssertEqual(http.requests.first?.headers["Authorization"], "Bearer sk-test")
 
-        guard case let .progress(_, used, limit, format, _, _, _)? = snapshot.line(label: "Session") else {
+        guard case let .progress(_, used, limit, format, _, _, _, _)? = snapshot.line(label: "Session") else {
             return XCTFail("expected a Session meter")
         }
         XCTAssertEqual(used, 12)
@@ -177,7 +177,7 @@ final class OpenCodeProviderTests: XCTestCase {
                 databasePaths: { ["/oc/opencode.db"] }
             )
         ).refresh()
-        guard case .values(_, let values, _, _, _, _)? = snapshot.line(label: "Today") else {
+        guard case .values(_, let values, _, _, _, _, _)? = snapshot.line(label: "Today") else {
             return XCTFail("expected a Today tile")
         }
         XCTAssertFalse(values.contains(where: \.estimated))

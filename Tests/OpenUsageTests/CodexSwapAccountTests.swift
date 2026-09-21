@@ -182,7 +182,7 @@ final class CodexSwapAccountTests: XCTestCase {
                     XCTAssertTrue(hasCredentials)
                     let snapshot = await candidate.refresh()
                     XCTAssertNil(snapshot.errorCategory)
-                    guard case .progress(_, let used, _, _, _, _, _) = snapshot.line(label: "Session") else {
+                    guard case .progress(_, let used, _, _, _, _, _, _) = snapshot.line(label: "Session") else {
                         return XCTFail("Missing limits")
                     }
                     XCTAssertEqual(used, 37)
@@ -215,7 +215,7 @@ final class CodexSwapAccountTests: XCTestCase {
                         return Self.response(stale ? 99 : 24)
                     }
                     let result = await provider(auth(identity, files: files, keychain: keychain), http: http).refresh()
-                    guard case .progress(_, let used, _, _, _, _, _) = result.line(label: "Session") else {
+                    guard case .progress(_, let used, _, _, _, _, _, _) = result.line(label: "Session") else {
                         return XCTFail("Missing current limits")
                     }
                     XCTAssertEqual(used, 24)

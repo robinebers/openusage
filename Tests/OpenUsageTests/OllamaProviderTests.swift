@@ -209,7 +209,7 @@ final class OllamaUsageMapperTests: XCTestCase {
         XCTAssertEqual(mapped.lines.count, 3)
 
         // `usage` arrives as a fraction of the plan allowance, so 0.349 is 34.9%, not 0.349%.
-        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodMs, _) =
+        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodMs, _, _) =
                 mapped.lines[0] else {
             return XCTFail("expected a session meter, got \(mapped.lines[0])")
         }
@@ -222,7 +222,7 @@ final class OllamaUsageMapperTests: XCTestCase {
         XCTAssertNil(resetsAt)
         XCTAssertNil(periodMs)
 
-        guard case .progress(let weeklyLabel, let weeklyUsed, _, _, _, let weeklyPeriod, _) =
+        guard case .progress(let weeklyLabel, let weeklyUsed, _, _, _, let weeklyPeriod, _, _) =
                 mapped.lines[1] else {
             return XCTFail("expected a weekly meter, got \(mapped.lines[1])")
         }
@@ -231,7 +231,7 @@ final class OllamaUsageMapperTests: XCTestCase {
         XCTAssertNil(weeklyPeriod)
 
         // `cost` is a decimal string, not a number.
-        guard case .values(let spendLabel, let values, _, _, _, _) = mapped.lines[2] else {
+        guard case .values(let spendLabel, let values, _, _, _, _, _) = mapped.lines[2] else {
             return XCTFail("expected a spend row, got \(mapped.lines[2])")
         }
         XCTAssertEqual(spendLabel, "Last 4 Weeks")
