@@ -26,12 +26,13 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 
 ## Spend history
 
-Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity. OpenUsage leaves isolated malformed rows out instead of silently counting broken values as zero. A failed download, invalid export schema, or broken CSV structure leaves spend history unavailable for that refresh. Each failure is recorded in the diagnostic log without including the exported usage data.
+Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity. OpenUsage leaves isolated malformed rows out instead of silently counting broken values as zero. A failed download, slow multi-minute export, invalid export schema, or broken CSV structure leaves spend history unavailable for that refresh — plan usage meters still refresh. Each failure is recorded in the diagnostic log without including the exported usage data.
 
 ## Troubleshooting
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
 - **Some metrics missing** — Cursor omits fields depending on plan type; missing metrics simply show "No data".
+- **Spend history stuck on "No data" / log says usage CSV timed out** — heavy accounts can take minutes to export; OpenUsage caps that download so plan usage still updates. Spend tiles catch up on a later refresh when the export is faster.
 - **Optional lookup failed** — Grok Bot, plan, credit-grant, prepaid-balance, and request-fallback failures stay nonfatal when primary usage is available. OpenUsage records fixed, credential-free reasons in the diagnostic log.
 
 ## Under the hood

@@ -64,8 +64,9 @@ final class WidgetDataStore {
     /// the per-request timeouts a healthy provider can legitimately spend, or a slow network would turn
     /// working providers into errors. The worst legitimate case is Cursor, whose probe is sequential:
     /// token refresh (15s) → usage (10s, plus a 401 refresh-and-retry of another 25s) → plan (10s) →
-    /// usage summary (10s) → credits (10s) → usage CSV (30s), i.e. up to ~110s. Slowness short of the
-    /// deadline is already reported separately by `slowProviderRefreshThreshold`.
+    /// usage summary (10s) → credits (10s) → usage CSV (hard-capped at
+    /// `CursorProvider.defaultUsageCSVTimeout`, not the idle-only URLRequest timeout). Slowness short of
+    /// the deadline is already reported separately by `slowProviderRefreshThreshold`.
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
     /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync

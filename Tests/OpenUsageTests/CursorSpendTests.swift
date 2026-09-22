@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import OpenUsage
 
 // MARK: - CSV parser
@@ -381,6 +382,76 @@ final class CursorSpendProviderTests: XCTestCase {
         XCTAssertEqual(unknownModels(snapshot.lines, "Today"), ["totally-unknown-model-xyz"])
         XCTAssertEqual(unknownModels(snapshot.lines, "Yesterday"), [])
         XCTAssertEqual(unknownModels(snapshot.lines, "Last 30 Days"), ["totally-unknown-model-xyz"])
+    }
+
+    func testHungUsageCSVDoesNotBlockLivePlanUsage() async {
+        // Ultra / heavy accounts can stream a multi-MB CSV for minutes. URLRequest.timeoutInterval is
+        // idle-only, so without a hard CSV budget the store's 120s provider deadline cancelled the whole
+        // Cursor probe — including plan usage that had already succeeded. Cap the CSV and keep meters.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let csvStarted = OSAllocatedUnfairLock(initialState: false)
+        let csvCancelled = OSAllocatedUnfairLock(initialState: false)
+        let http = RoutingHTTPClient { request in
+            let url = request.url.absoluteString
+            if url.contains("export-usage-events-csv") {
+                csvStarted.withLock { $0 = true }
+                do {
+                    try await Task.sleep(for: .seconds(10))
+                } catch is CancellationError {
+                    csvCancelled.withLock { $0 = true }
+                    throw CancellationError()
+                }
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("Date,Model\n".utf8))
+            }
+            if url.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "enabled": true,
+                  "billingCycleEnd": 1772592000000,
+                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
+                }
+                """.utf8))
+            }
+            if url.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"ultra"}}"#.utf8))
+            }
+            if url.contains("GetCreditGrantsBalance") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { now },
+            pricing: { TestPricing.bundled },
+            usageCSVTimeout: 0.05
+        )
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.errorCategory, "hung CSV must not fail the Cursor refresh")
+        XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        XCTAssertEqual(snapshot.plan?.lowercased(), "ultra")
+        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+            XCTAssertNil(snapshot.lines.first { $0.label == label }, "\(label) must stay absent when CSV times out")
+        }
+        XCTAssertTrue(csvStarted.withLock { $0 }, "CSV download must have been attempted")
+        let cancelled = await waitUntil { csvCancelled.withLock { $0 } }
+        XCTAssertTrue(cancelled, "timed-out CSV work must be cancelled so it does not keep downloading")
+    }
+
+    private func waitUntil(_ condition: @Sendable () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while ContinuousClock.now < deadline {
+            if condition() { return true }
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        return condition()
     }
 
     private func unknownModels(_ lines: [MetricLine], _ label: String) -> [String]? {

@@ -16,17 +16,27 @@ final class CursorProvider: ProviderRuntime {
     let usageClient: CursorUsageClient
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
+    /// Hard wall-clock budget for the additive usage-CSV download. Kept well under the store's 120s
+    /// provider deadline so a multi-minute Ultra export cannot cancel the live plan-usage snapshot.
+    /// Injected in tests so a hung CSV can be proven nonfatal without waiting tens of seconds.
+    let usageCSVTimeout: TimeInterval
+
+    /// Default CSV budget: long enough for a modest export on a slow link, short enough that the rest
+    /// of Cursor's sequential probe still fits under the 120s provider backstop with room to spare.
+    static let defaultUsageCSVTimeout: TimeInterval = 20
 
     init(
         authStore: CursorAuthStore = CursorAuthStore(),
         usageClient: CursorUsageClient = CursorUsageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
-        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
+        pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
+        usageCSVTimeout: TimeInterval = CursorProvider.defaultUsageCSVTimeout
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.now = now
         self.pricing = pricing
+        self.usageCSVTimeout = usageCSVTimeout
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -179,17 +189,33 @@ final class CursorProvider: ProviderRuntime {
     }
 
     /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
-    /// (no session, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping is never
-    /// affected and the spend tiles fall back to "No data".
+    /// (timeout, no session, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping
+    /// is never affected and the spend tiles fall back to "No data". The download runs under
+    /// `usageCSVTimeout` because `URLRequest.timeoutInterval` is idle-only — a large export that keeps
+    /// streaming would otherwise hold the whole Cursor probe until the store's 120s deadline cancels it.
     private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> ProviderUsageHistory? {
         let calendar = Calendar.current
         let end = now()
         let startOfToday = calendar.startOfDay(for: end)
         let start = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
 
+        let client = usageClient
+        let csvTimeout = usageCSVTimeout
         let response: HTTPResponse?
         do {
-            response = try await usageClient.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
+            let outcome = try await AsyncHardDeadline.run(timeout: csvTimeout) {
+                try await client.fetchUsageCSV(accessToken: accessToken, start: start, end: end)
+            }
+            switch outcome {
+            case .timedOut:
+                AppLog.warn(
+                    LogTag.plugin("cursor"),
+                    "usage CSV request timed out after \(Int(csvTimeout))s"
+                )
+                return nil
+            case .completed(let value):
+                response = value
+            }
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
             return nil
