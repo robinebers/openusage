@@ -49,7 +49,10 @@ final class PricingBundledResourceTests: XCTestCase {
             ("grok-4.5-fast-high", 4), ("grok-4.5-high-fast", 4),
             ("cursor-grok-4.5-high-fast", 4), ("cursor-grok-4.6-high", 2),
             ("cursor-grok-4.6-high-fast", 4), ("grok-4-6-xhigh", 2),
-            ("grok-4-6-xhigh-fast", 4), ("kimi-k2p5", 0.6),
+            ("grok-4-6-xhigh-fast", 4), ("cursor-grok-4.7-high", 2),
+            ("cursor-grok-4.7-high-fast", 4), ("grok-4-7-xhigh", 2),
+            ("grok-4.7-500k", 4), ("grok-4.7-500k-fast", 6),
+            ("grok-4.7[500k]-high-fast", 6), ("kimi-k2p5", 0.6),
             ("kimi-k2.7-code", 0.95), ("kimi-k2p7", 0.95), ("kimi-k3-max", 3),
             ("claude-4.7-opus-high-thinking", 5), ("claude-4.7-opus-max-thinking-fast", 30),
             ("glm-5.2-max", 1.4), ("glm-5.3-max", 1.4),
@@ -232,6 +235,10 @@ final class PricingBundledResourceTests: XCTestCase {
             "Composer 2.5 (Auto)": "composer-2.5",
             "Composer 2.5 Fast (Auto)": "composer-2.5-fast",
             "Composer 2 (Auto Balanced)": "composer-2",
+            "Grok 4.7 (Auto Intelligence)": "grok-4.7",
+            "Cursor Grok 4.7 Fast (Auto)": "grok-4.7-fast",
+            "Grok 4.7 500k (Auto Intelligence)": "grok-4.7-500k",
+            "Cursor Grok 4.7 500k Fast (Auto)": "grok-4.7-500k-fast",
             "Grok 4.6 (Auto Intelligence)": "grok-4.6",
             "Cursor Grok 4.6 Fast (Auto)": "grok-4.6-fast",
             "Grok 4.5 (Auto Intelligence)": "grok-4.5",
@@ -347,10 +354,11 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-composer-2.5-fast")?.inputPerMillion, 3)
     }
 
-    /// Both first-party Grok versions share rates and accept effort, separator, and Cursor-prefix variants.
+    /// Cursor's first-party Grok 4.5, 4.6, and 4.7 standard/fast rates match, and accept effort,
+    /// separator, and Cursor-prefix variants. 4.7 also has a 500k long-context tier.
     func testGrokPricingAndAliases() throws {
         let pricing = Self.pricing
-        for version in ["4.5", "4.6"] {
+        for version in ["4.5", "4.6", "4.7"] {
             let dashedVersion = version.replacingOccurrences(of: ".", with: "-")
             let standard = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-high"))
             let fast = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-fast"))
@@ -381,6 +389,29 @@ final class PricingBundledResourceTests: XCTestCase {
             XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high"), "grok-\(version)")
             XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high-fast"), "grok-\(version)-fast")
         }
+
+        let longContext = try XCTUnwrap(pricing.resolve(model: "grok-4.7-500k"))
+        let longContextFast = try XCTUnwrap(pricing.resolve(model: "grok-4.7-500k-fast"))
+        XCTAssertEqual(
+            [longContext.inputPerMillion, longContext.cacheWritePerMillion, longContext.cacheReadPerMillion, longContext.outputPerMillion],
+            [4, 4, 1, 12]
+        )
+        XCTAssertEqual(
+            [longContextFast.inputPerMillion, longContextFast.cacheWritePerMillion, longContextFast.cacheReadPerMillion, longContextFast.outputPerMillion],
+            [6, 6, 1.5, 18]
+        )
+        for alias in [
+            "grok-4.7-500k-high", "grok-4-7-500k", "grok-4.7[500k]", "cursor-grok-4.7-500k-xhigh"
+        ] {
+            XCTAssertEqual(pricing.resolve(model: alias), longContext, alias)
+        }
+        for alias in [
+            "grok-4.7-500k-fast-high", "grok-4.7-500k-high-fast", "grok-4.7[500k]-fast",
+            "cursor-grok-4.7-500k-fast-xhigh"
+        ] {
+            XCTAssertEqual(pricing.resolve(model: alias), longContextFast, alias)
+        }
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "grok-4.7[500k]-high-fast"), "grok-4.7-500k-fast")
     }
 
     func testGrokBotModesUseDistinctPricing() throws {
