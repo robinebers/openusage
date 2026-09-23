@@ -21,6 +21,8 @@ struct SettingsScreen: View {
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(MiniCardSetting.key) private var miniCardsEnabled = MiniCardSetting.fallback
+    @AppStorage(MiniCardStyle.key) private var miniCardStyle = MiniCardStyle.fallback
     @AppStorage(ReduceAnimationsSetting.key) private var reduceAnimations = ReduceAnimationsSetting.fallback
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.fallback
     /// Surfaced under the Advanced rows when copying the path or revealing the file fails.
@@ -134,6 +136,20 @@ struct SettingsScreen: View {
             }
             row("Density") {
                 picker($density, options: DensitySetting.allCases, label: \.label)
+            }
+            // Lets a provider collapse to a single header line. Turning this on only adds the
+            // affordance (hovering a provider's mark or name on the dashboard turns the mark into a
+            // chevron), so nothing collapses until the user clicks one.
+            row("Enable Mini Cards") {
+                Toggle("", isOn: $miniCardsEnabled.animation(Motion.modeSwitch))
+                    .settingsSwitchStyle()
+            }
+            // Only meaningful once mini cards are on, so it appears with them rather than sitting
+            // dimmed in a 320pt popover.
+            if miniCardsEnabled {
+                row("Mini Card Style") {
+                    picker($miniCardStyle, options: MiniCardStyle.allCases, label: \.label)
+                }
             }
             row("Reduce Animations") {
                 Toggle("", isOn: $reduceAnimations)

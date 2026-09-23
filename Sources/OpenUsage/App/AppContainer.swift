@@ -257,19 +257,27 @@ final class AppContainer {
         // Same as flipping the Settings toggle off: stops syncing and removes this Mac's document
         // from the shared iCloud container (peers keep their own history).
         iCloudSync.enabled = false
-        // Removing an `@AppStorage` key restores its declared default; the Settings screen's
-        // `@AppStorage` properties observe the change. New settings must be added here.
-        for key in [
-            AppearanceSetting.key, TimeFormatSetting.key, DensitySetting.key,
-            ReduceAnimationsSetting.key, LogLevelSetting.key, TotalSpendSetting.key,
-            TotalSpendSetting.periodKey, TotalSpendSetting.metricKey,
-        ] {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
+        Self.removeResettableSettings(from: .standard)
         KeyboardShortcuts.reset(.togglePopover)
         AppearanceSetting.applyCurrent()
         AppLog.reloadLevel()
         AppLog.info(.config, "All settings reset to defaults")
+    }
+
+    /// The `@AppStorage` settings Reset All Settings clears. Removing a key restores its declared
+    /// default, and the Settings screen's `@AppStorage` properties observe the change. New settings
+    /// must be added here.
+    static let resettableSettingKeys = [
+        AppearanceSetting.key, TimeFormatSetting.key, DensitySetting.key,
+        ReduceAnimationsSetting.key, LogLevelSetting.key, TotalSpendSetting.key,
+        TotalSpendSetting.periodKey, TotalSpendSetting.metricKey,
+        MiniCardSetting.key, MiniCardStyle.key,
+    ]
+
+    static func removeResettableSettings(from defaults: UserDefaults) {
+        for key in resettableSettingKeys {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     /// Drives live updates: refresh on launch, then again every refresh interval. Each pass honors the

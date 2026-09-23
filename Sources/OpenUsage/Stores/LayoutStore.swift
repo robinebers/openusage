@@ -60,6 +60,12 @@ final class LayoutStore {
     /// stay open across popover closes and app restarts.
     private(set) var expandedProviderIDs: Set<String>
 
+    /// Provider IDs currently collapsed to a mini card (Settings → Appearance → Enable Mini Cards).
+    /// Kept separately from `expandedProviderIDs` on purpose: the caret controls what a card shows,
+    /// this controls whether the card shows at all, and a provider must remember both so expanding a
+    /// mini card returns it exactly as the user left it. Ignored entirely while the setting is off.
+    private(set) var miniCardProviderIDs: Set<String>
+
     /// The three transient popover pills, each an auto-clearing `TransientNotice` (was three copy-pasted
     /// value+trigger+clearTask machines). The public `pinLimitNotice`/`shareConfirmation`/
     /// `customizationNotice` surface below forwards to these, so call sites are unchanged.
@@ -144,6 +150,7 @@ final class LayoutStore {
         pinnedMetricIDs = initial.pinnedMetricIDs
         expandedMetricIDs = initial.expandedMetricIDs
         expandedProviderIDs = initial.expandedProviderIDs
+        miniCardProviderIDs = initial.miniCardProviderIDs
         defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
         menuBarStyle = initial.menuBarStyle
 
@@ -167,6 +174,23 @@ final class LayoutStore {
             expandedProviderIDs.remove(providerID)
         }
         persistExpandedProviders()
+        return true
+    }
+
+    func isProviderMinimized(_ providerID: String) -> Bool {
+        miniCardProviderIDs.contains(providerID)
+    }
+
+    @discardableResult
+    func setProviderMinimized(_ minimized: Bool, for providerID: String) -> Bool {
+        guard registry.provider(id: providerID) != nil else { return false }
+        guard miniCardProviderIDs.contains(providerID) != minimized else { return false }
+        if minimized {
+            miniCardProviderIDs.insert(providerID)
+        } else {
+            miniCardProviderIDs.remove(providerID)
+        }
+        persistMiniCardProviders()
         return true
     }
 
@@ -358,6 +382,10 @@ final class LayoutStore {
         persistence.saveExpandedProviders(expandedProviderIDs)
     }
 
+    private func persistMiniCardProviders() {
+        persistence.saveMiniCardProviders(miniCardProviderIDs)
+    }
+
     // MARK: - Mutations
 
     func add(_ descriptorID: String) {
@@ -395,6 +423,8 @@ final class LayoutStore {
         persistExpandOnEnable()
         expandedProviderIDs = []
         persistExpandedProviders()
+        miniCardProviderIDs = []
+        persistMiniCardProviders()
         persistSeededDefaults(Set(LayoutOrdering.knownMetricIDs(defaultMetricIDs, registry: registry)))
         persist()
     }
@@ -442,6 +472,11 @@ final class LayoutStore {
         // Default is a collapsed card.
         if expandedProviderIDs.remove(providerID) != nil {
             persistExpandedProviders()
+        }
+
+        // Default is a full card, not a mini one.
+        if miniCardProviderIDs.remove(providerID) != nil {
+            persistMiniCardProviders()
         }
 
         syncPlacedOrder() // persists `placed`

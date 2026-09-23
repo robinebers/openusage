@@ -49,6 +49,50 @@ account-wide. Quotas, plans, balances, and provider errors always describe this 
 
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
 
+## Mini cards
+
+Turn on **Enable Mini Cards** (Settings → Appearance) to collapse a provider you don't need open right
+now. The dashboard looks unchanged until you point at one: hovering a provider's icon or its name turns
+the icon into a chevron, pointing down while the card is open and right while it's collapsed. Click the
+icon or the name to collapse that provider. On an open card nothing else in the header responds, so the
+plan badge, the warning triangle, and the screenshot button keep doing what they always did. A
+collapsed card is one target: point anywhere on it, its meters included, to see the chevron, and click
+anywhere on it to expand it.
+
+A collapsed provider keeps its meters at a glance, showing up to three of the metrics it was displaying
+above the fold, each with its percentage and a small bar in the same color the full-size bar had. Only
+metrics with a limit can shrink this way, because a spend row has no bar to miniaturize and the Usage
+Trend chart has no single number, so a provider whose visible metrics are all unbounded collapses to its
+name. Metrics you tucked behind the caret never appear here; a mini card summarizes what collapsing hid.
+
+The two layouts come from **Mini Card Style**:
+
+- **Single Row** puts the meters on the header line as a small pill at the trailing edge. The tightest
+  form: the plan badge folds away and a long provider name truncates to make room.
+- **Detailed** gives the meters their own line under the header, each labeled with its metric name. The
+  header keeps its full name and plan badge.
+
+Which providers are collapsed is remembered across popover closes and restarts, separately from the
+caret. Expanding a mini card returns the card exactly as you left it. Turning the setting off restores
+every card without forgetting what was collapsed, so turning it back on picks up where you were.
+Resetting a provider (or all settings) restores its full card.
+
+## When a provider cannot answer
+
+Some providers rate limit their usage endpoints, and a rate-limited card has no meters to report. The
+card keeps showing the last real reading instead of blanking, drawn faded so it never passes for
+current, with the header's warning saying what happened. A faded row makes no timing claims (no reset
+countdown, no "Not started"), since the stored reading has no current window behind it.
+
+A few rules keep it honest:
+
+- It only stands in while the provider reports no meters at all. If a successful response simply
+  leaves a metric out (Claude's Extra Usage once you turn it off), that row reads "No data".
+- It belongs to the account that measured it. After switching accounts on the same card, the old
+  account's reading never shows.
+- Its age counts from when the provider measured it. Past a week it stops standing in and the row
+  reads "No data" again.
+
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)

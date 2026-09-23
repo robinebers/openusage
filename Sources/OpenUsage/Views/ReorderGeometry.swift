@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ReorderLift {
     enum Payload {
-        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData])
+        /// `miniCard` is non-nil only for a provider dragged while collapsed, so the floating chip
+        /// stays the one-line mini card the user grabbed instead of expanding into a full card.
+        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData], miniCard: MiniCardHeaderModel? = nil)
         case dashboardMetric(data: WidgetData)
         case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
         case customizeMetric(title: String)
@@ -61,8 +63,8 @@ struct ReorderLiftPreview: View {
     @ViewBuilder
     private var preview: some View {
         switch lift.payload {
-        case .dashboardProvider(let provider, let plan, let rows):
-            dashboardProviderPreview(provider: provider, plan: plan, rows: rows)
+        case .dashboardProvider(let provider, let plan, let rows, let miniCard):
+            dashboardProviderPreview(provider: provider, plan: plan, rows: rows, miniCard: miniCard)
         case .dashboardMetric(let data):
             dashboardMetricPreview(data)
         case .customizeProviderRow(let provider, let isEnabled, let metricCount):
@@ -72,16 +74,24 @@ struct ReorderLiftPreview: View {
         }
     }
 
-    private func dashboardProviderPreview(provider: Provider, plan: String?, rows: [WidgetData]) -> some View {
+    private func dashboardProviderPreview(
+        provider: Provider,
+        plan: String?,
+        rows: [WidgetData],
+        miniCard: MiniCardHeaderModel?
+    ) -> some View {
         // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `container`):
-        // header over the shared metric card, at the density's header→card spacing.
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            ProviderSectionHeader(provider: provider, plan: plan)
+        // header over the shared metric card, at the density's header→card spacing. A collapsed
+        // provider has no card, so the chip is the header alone, matching what it looks like in place.
+        VStack(alignment: .leading, spacing: rows.isEmpty ? 0 : density.headerToCardSpacing) {
+            ProviderSectionHeader(provider: provider, plan: plan, miniCard: miniCard)
                 .padding(.horizontal, 8)
 
-            DashboardMetricCard {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    WidgetRowView(data: row)
+            if !rows.isEmpty {
+                DashboardMetricCard {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        WidgetRowView(data: row)
+                    }
                 }
             }
         }

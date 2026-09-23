@@ -15,6 +15,9 @@ final class WidgetDataStore {
     private let registry: WidgetRegistry
     private let providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
+    /// Last real reading per bounded metric, so a provider that cannot answer right now keeps its
+    /// bars on screen (faded) instead of blanking them. See `LastKnownMeterStore`.
+    private let lastKnownMeters: LastKnownMeterStore
     private let defaults: UserDefaults
     /// Whether a provider is currently enabled. Injected so the store consults the single
     /// `ProviderEnablementStore` without owning it; defaults to "all enabled" for tests and previews.
@@ -150,6 +153,8 @@ final class WidgetDataStore {
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         self.cache = cache
+        // Shares the store's defaults so a test suite's isolated suite stays isolated.
+        self.lastKnownMeters = LastKnownMeterStore(defaults: defaults, now: now)
         self.defaults = defaults
         self.isProviderEnabled = isProviderEnabled
         self.orderedDescriptors = orderedDescriptors ?? { registry.descriptors }
@@ -371,6 +376,13 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "preserved last-good history for \(providerID) after scan miss")
         }
         localSnapshots[providerID] = snapshot
+        // A response with meters answered for every metric, so one it leaves out was removed (Claude's
+        // Extra Usage turned off) and its last-known reading must never stand in again.
+        if snapshot.lines.contains(where: \.isProgress) {
+            lastKnownMeters.forget(registry.descriptors
+                .filter { $0.providerID == providerID && snapshot.line(label: $0.metricLabel) == nil }
+                .map(\.id))
+        }
         // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
         // non-account providers and for cards whose identity didn't resolve this launch.
         cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[providerID])
@@ -540,10 +552,20 @@ final class WidgetDataStore {
 
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
         var result: WidgetData
-        if let snapshot = snapshots[descriptor.providerID],
+        let snapshot = snapshots[descriptor.providerID]
+        let identityKey = providerIdentityKeys[descriptor.providerID]
+        if let snapshot,
            let line = snapshot.line(label: descriptor.metricLabel),
            let data = resolve(line, descriptor: descriptor) {
             result = data
+            lastKnownMeters.record(data, for: descriptor.id, capturedAt: snapshot.refreshedAt, identityKey: identityKey)
+        } else if !(snapshot?.lines.contains(where: \.isProgress) ?? false),
+                  let restored = lastKnownMeters.restore(onto: descriptor.sample, for: descriptor.id, identityKey: identityKey) {
+            // The provider cannot answer right now (Claude's usage endpoint rate limits, and a limited
+            // card reports no meters at all). Keep the last real reading on screen, faded and flagged,
+            // rather than dropping a bar the user was watching. A response that still carries meters
+            // answered, so a metric missing from it (Extra Usage turned off) is gone, not unavailable.
+            result = restored
         } else {
             // No real metric line backs this placed tile, so the sample's numbers are placeholders.
             // Flag it as no-data; the tile renders "No data" instead of inventing usage.

@@ -137,6 +137,12 @@ enum MetricLine: Hashable, Sendable, Codable {
         return false
     }
 
+    /// A meter line. A snapshot without any means the provider reported no usage limits at all.
+    var isProgress: Bool {
+        if case .progress = self { return true }
+        return false
+    }
+
     /// The shared "no usage data" placeholder badge, shown when a provider returns no metric lines.
     static let noUsageData = MetricLine.badge(label: "Status", text: "No usage data", colorHex: "#A3A3A3")
 

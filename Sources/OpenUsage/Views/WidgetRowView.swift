@@ -472,6 +472,7 @@ struct WidgetRowView: View {
             }
         }
         .frame(height: density.meterHeight)
+        .opacity(data.isOutdated ? LastKnownMeterStore.outdatedOpacity : 1)
         .animation(Motion.spring, value: data.fraction)
         .accessibilityHidden(true)
         .hoverTooltip(state.tooltip)

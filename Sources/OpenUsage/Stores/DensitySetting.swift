@@ -91,4 +91,24 @@ enum DensitySetting: String, Hashable, Sendable, CaseIterable {
     /// Gap between cells in the provider quick-links grid. Kept tight so two narrow cells still read
     /// as one cluster.
     var expandedGridSpacing: CGFloat { self == .compact ? 4 : 6 }
+
+    // MARK: - Mini cards (collapsed provider headers)
+
+    /// Micro meter height. Thinner than the card's own bar, because at this size the bar is a glance cue
+    /// beside a number, not something anyone reads a level off.
+    var miniMeterHeight: CGFloat { self == .compact ? 2.5 : 3 }
+
+    /// Type for a mini card's percentages and metric names: one step below the plan badge, the
+    /// smallest the header hierarchy goes.
+    var miniMeterPointSize: CGFloat { self == .compact ? 8 : 9 }
+
+    /// Bar width inside the Single Row pill. Fixed, so the pill's segments stay even across providers.
+    var miniMeterBarWidth: CGFloat { self == .compact ? 12 : 14 }
+
+    /// The Single Row pill's capsule height, sized to sit inside the header line without growing it.
+    var miniMeterPillHeight: CGFloat { self == .compact ? 16 : 18 }
+
+    /// Column width for one Detailed meter (name over bar), so columns align across providers rather
+    /// than stretching to fill whatever room a provider's meter count leaves.
+    var miniMeterColumnWidth: CGFloat { self == .compact ? 72 : 80 }
 }
