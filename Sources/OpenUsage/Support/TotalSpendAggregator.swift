@@ -168,10 +168,28 @@ enum TotalSpendAggregator {
         providers: [Provider],
         snapshots: [String: ProviderSnapshot]
     ) -> TotalSpend {
+        // Each enabled account repeats the same local history. Select its freshest copy once,
+        // including when the default card is hidden or another account's refresh failed.
+        var sharedRepresentatives: [String: ProviderSnapshot] = [:]
+        for provider in providers {
+            guard let snapshot = snapshots[provider.id], let group = snapshot.sharedHistoryGroup else { continue }
+            if let current = sharedRepresentatives[group],
+               current.refreshedAt > snapshot.refreshedAt
+                || (current.refreshedAt == snapshot.refreshedAt && current.providerID < snapshot.providerID) {
+                continue
+            }
+            sharedRepresentatives[group] = snapshot
+        }
         let slices = providers.compactMap { provider -> TotalSpendSlice? in
             guard let snapshot = snapshots[provider.id],
                   let line = snapshot.line(label: period.lineLabel),
                   case .values(_, let values, _, _, _, _) = line else { return nil }
+            var displayProvider = provider
+            if let group = snapshot.sharedHistoryGroup {
+                guard sharedRepresentatives[group]?.providerID == provider.id else { return nil }
+                displayProvider = Provider(id: "\(group)-shared", displayName: "\(group.capitalized) (All Accounts)",
+                                           icon: provider.icon)
+            }
 
             let dollars = values.filter { $0.kind == .dollars }
             let amount = dollars.reduce(0) { $0 + $1.number }
@@ -181,7 +199,7 @@ enum TotalSpendAggregator {
             guard amount > 0 || tokens > 0 else { return nil }
 
             return TotalSpendSlice(
-                provider: provider,
+                provider: displayProvider,
                 amountUSD: max(amount, 0),
                 tokenCount: max(tokens, 0),
                 estimated: dollars.contains(where: \.estimated)

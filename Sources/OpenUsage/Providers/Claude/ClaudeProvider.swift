@@ -20,6 +20,16 @@ final class ClaudeProvider: ProviderRuntime {
     let usageClient: ClaudeUsageClient
     let logUsageScanner: ClaudeLogUsageScanner
     let allowsUnattributedPiUsage: Bool
+    /// True once several Claude accounts are signed in. Claude Code writes no account id into a
+    /// session log, so per-account attribution throws away nearly everything; the group shows one
+    /// combined local history instead, badged "Shared". Mirrors Codex.
+    let sharesLocalHistory: Bool
+    var allowsCachedLocalHistory: Bool { !sharesLocalHistory }
+    /// The pi slice this card reads. pi maps Anthropic usage to the "claude" family and filters by
+    /// exact card ID, so a shared card asks for the family: an account card such as
+    /// `claude@1234abcd` would otherwise get nothing and, as the freshest shared source, drop pi usage
+    /// from every card in the group.
+    var piCardID: String { sharesLocalHistory ? "claude" : provider.id }
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -54,6 +64,7 @@ final class ClaudeProvider: ProviderRuntime {
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
         allowsUnattributedPiUsage: Bool = true,
+        sharesLocalHistory: Bool = false,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
@@ -62,12 +73,13 @@ final class ClaudeProvider: ProviderRuntime {
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.allowsUnattributedPiUsage = allowsUnattributedPiUsage
+        self.sharesLocalHistory = sharesLocalHistory
         self.now = now
         self.pricing = pricing
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
-        [
+        let descriptors: [WidgetDescriptor] = [
             .percent(id: "\(provider.id).session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
@@ -86,9 +98,20 @@ final class ClaudeProvider: ProviderRuntime {
                 .exportingHistory(
                     scope: .machineLocal,
                     estimatedCost: true,
-                    sourceNote: "From your Claude usage history (estimated)"
+                    sourceNote: "From your Claude usage history (estimated)",
+                    sharedGroup: sharesLocalHistory ? "claude" : nil
                 )
         ] + WidgetDescriptor.spendTiles(provider: provider)
+        return descriptors.map { descriptor in
+            var sample = descriptor.sample
+            if descriptor.isSpendTile || descriptor.sample.isChart {
+                sample.isSharedHistory = sharesLocalHistory
+            }
+            return WidgetDescriptor(id: descriptor.id, providerID: descriptor.providerID,
+                metricLabel: descriptor.metricLabel, sample: sample, pinnable: descriptor.pinnable,
+                isSpendTile: descriptor.isSpendTile, limitResources: descriptor.limitResources,
+                historyResource: descriptor.historyResource)
+        }
     }
 
     func hasLocalCredentials() async -> Bool {
@@ -301,8 +324,9 @@ final class ClaudeProvider: ProviderRuntime {
         // Both scans run on their scanner actors, off the main actor, and do not require an OAuth login.
         let pricing = await pricing()
         let nativeScan = await logUsageScanner.scan(now: now(), pricing: pricing)
-        let piScan = allowsUnattributedPiUsage
-            ? await PiUsageScanner.shared.scan(cardID: provider.id, now: now(), pricing: pricing)
+        // Shared mode already means "everything this Mac did", so pi usage belongs in it too.
+        let piScan = allowsUnattributedPiUsage || sharesLocalHistory
+            ? await PiUsageScanner.shared.scan(cardID: piCardID, now: now(), pricing: pricing)
             : nil
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the native and pi scans. Treat the pair as one unit so a
@@ -332,6 +356,7 @@ final class ClaudeProvider: ProviderRuntime {
             lines: mapped.lines,
             refreshedAt: now(),
             usageHistory: usageHistory,
+            sharedHistoryGroup: sharesLocalHistory ? "claude" : nil,
             warning: warning
         )
     }

@@ -104,7 +104,7 @@ enum LocalUsageAPI {
         init(_ snapshot: ProviderSnapshot) { self.snapshot = snapshot }
 
         enum CodingKeys: String, CodingKey {
-            case providerId, displayName, plan, lines, fetchedAt
+            case providerId, displayName, plan, lines, fetchedAt, sharedHistoryGroup
         }
 
         func encode(to encoder: Encoder) throws {
@@ -112,6 +112,7 @@ enum LocalUsageAPI {
             try container.encode(snapshot.providerID, forKey: .providerId)
             try container.encode(snapshot.displayName, forKey: .displayName)
             try container.encode(snapshot.plan, forKey: .plan)
+            try container.encodeIfPresent(snapshot.sharedHistoryGroup, forKey: .sharedHistoryGroup)
             try container.encode(snapshot.lines.map(WireLine.init), forKey: .lines)
             try container.encode(OpenUsageISO8601.string(from: snapshot.refreshedAt), forKey: .fetchedAt)
         }

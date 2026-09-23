@@ -95,12 +95,17 @@ struct ProviderSnapshotCache {
     /// Both app launch and the one-shot CLI call this before reading any cached snapshot.
     @MainActor
     func removeExcludedHistory(for providers: [ProviderRuntime]) {
-        let excludedIDs = providers.filter { !$0.allowsCachedLocalHistory }.map { $0.provider.id }
-        guard !excludedIDs.isEmpty else { return }
         var payload = loadPayload()
         var changed = false
-        for id in excludedIDs {
+        for provider in providers {
+            let id = provider.provider.id
             guard let snapshot = payload.snapshots[id] else { continue }
+            let sharedGroup = provider.widgetDescriptors.compactMap(\.historyResource).first?.sharedGroup
+            // Shared and account-owned histories are not interchangeable across mode changes.
+            // Previously unmarked history must also be cleared before the first shared refresh.
+            guard snapshot.sharedHistoryGroup != sharedGroup
+                || (!provider.allowsCachedLocalHistory && sharedGroup == nil)
+            else { continue }
             let stripped = UsageHistorySnapshotRenderer.removingHistory(from: snapshot)
             guard stripped != snapshot else { continue }
             payload.snapshots[id] = stripped

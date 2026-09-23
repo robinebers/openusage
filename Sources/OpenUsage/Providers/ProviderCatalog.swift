@@ -19,9 +19,14 @@ enum ProviderCatalog {
             providers = claudeCards.map { card in
                 let identity = claudeIdentityKeys[card.id] ?? card.identityKey
                 let user = identity.split(separator: "|").first.map(String.init)
+                // With one account, history stays attributed to it. With several, Claude Code's
+                // session logs carry no account id, so attribution would discard nearly all of it;
+                // the group shares one combined history instead (see `sharesLocalHistory`).
+                let sharesLocalHistory = claudeCards.count > 1
                 let scanner = ClaudeLogUsageScanner(
                     accountUUID: user, organizationUUID: card.organizationID,
                     allowsUnattributedSessions: card.allowsUnattributedPiUsage,
+                    sharesLocalHistory: sharesLocalHistory,
                     additionalConfigDirectories: card.additionalLogDirectories
                 )
                 return ClaudeProvider(
@@ -38,7 +43,8 @@ enum ProviderCatalog {
                             && card.organizationID != nil && !card.usesDesktopCredentials
                     ),
                     logUsageScanner: scanner,
-                    allowsUnattributedPiUsage: card.allowsUnattributedPiUsage
+                    allowsUnattributedPiUsage: card.allowsUnattributedPiUsage,
+                    sharesLocalHistory: sharesLocalHistory
                 )
             }
         }
@@ -50,10 +56,9 @@ enum ProviderCatalog {
                     provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
                     authStore: CodexAuthStore(expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
                     logUsageScanner: CodexLogUsageScanner(
-                        allowsUnattributedHistory: card.allowsUnattributedHistory,
                         additionalHomes: card.logHomes
                     ),
-                    allowsUnattributedHistory: card.allowsUnattributedHistory
+                    sharesLocalHistory: !card.allowsUnattributedHistory
                 )
             }
         }

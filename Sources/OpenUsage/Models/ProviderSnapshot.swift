@@ -10,6 +10,9 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// Raw normalized daily history used to build spend rows. This always belongs to this Mac; peer
     /// history is combined only in the in-memory rendered view and is never written into the cache.
     var usageHistory: ProviderUsageHistory?
+    /// Shared local history repeated on account cards. Limits still belong to the card's account.
+    /// Consumers must count this group once and never export it as account-owned history.
+    var sharedHistoryGroup: String?
     /// A soft, non-blocking notice carried on a *successful* snapshot — e.g. Claude's "Re-login for live
     /// usage" when the saved login lacks the `user:profile` scope. Distinct from `errorCategory` (which is
     /// only on error snapshots): the refresh succeeded and partial data (spend tiles) still loads, so this
@@ -27,6 +30,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines: [MetricLine],
         refreshedAt: Date = Date(),
         usageHistory: ProviderUsageHistory? = nil,
+        sharedHistoryGroup: String? = nil,
         warning: String? = nil,
         errorCategory: ErrorCategory? = nil
     ) {
@@ -36,6 +40,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         self.lines = lines
         self.refreshedAt = refreshedAt
         self.usageHistory = usageHistory
+        self.sharedHistoryGroup = sharedHistoryGroup
         self.warning = warning
         self.errorCategory = errorCategory
     }
@@ -53,6 +58,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines: [MetricLine],
         refreshedAt: Date,
         usageHistory: ProviderUsageHistory? = nil,
+        sharedHistoryGroup: String? = nil,
         warning: String? = nil
     ) -> ProviderSnapshot {
         ProviderSnapshot(
@@ -62,6 +68,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
             lines: lines,
             refreshedAt: refreshedAt,
             usageHistory: usageHistory,
+            sharedHistoryGroup: sharedHistoryGroup,
             warning: warning
         )
     }

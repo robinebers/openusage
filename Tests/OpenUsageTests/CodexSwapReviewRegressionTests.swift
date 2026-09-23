@@ -61,7 +61,7 @@ final class CodexSwapReviewRegressionTests: XCTestCase {
                 let provider = CodexProvider(provider: CodexProvider.makeProvider(id: card.id),
                     authStore: auth, usageClient: CodexUsageClient(http: http),
                     logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-                    allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+                    sharesLocalHistory: true, pricing: { TestPricing.bundled })
                 let snapshot = await provider.refresh()
                 if status == 200 {
                     XCTAssertNil(snapshot.errorCategory)

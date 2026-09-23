@@ -151,7 +151,7 @@ final class CodexSwapAccountTests: XCTestCase {
     private func provider(_ auth: CodexAuthStore, http: RoutingHTTPClient) -> CodexProvider {
         CodexProvider(authStore: auth, usageClient: CodexUsageClient(http: http),
                       logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-                      allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+                      sharesLocalHistory: true, pricing: { TestPricing.bundled })
     }
 
     nonisolated private static func response(_ used: Int, status: Int = 200) -> HTTPResponse {

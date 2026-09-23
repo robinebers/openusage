@@ -40,12 +40,17 @@ Upgrading from a version without Swap support refreshes saved shell settings bef
 
 ## The spend tiles
 
-With multiple Codex accounts, spending without a reliable account owner is excluded, including
-previously cached spending. Excluded history is removed before cached data appears or syncs,
-even if the login has expired or the usage request fails. Cached live limits keep their original
-freshness. A shared session folder does not establish who paid for a turn.
-With one known account, shared and copied sessions count once. Synced history must match the
-card's account and workspace. Live usage limits continue to work for every account.
+With multiple known Codex accounts, each card shows the same combined local spending and usage
+trend. One **Shared** pill, meaning **Combined data for all accounts**, sits above the run of those
+rows rather than on each one. The rows do not claim which account paid for a turn: Codex history
+does not reliably record that ownership.
+Shared and copied sessions count once, and Total Spend includes the combined Codex history only
+once as **Codex (All Accounts)**. Session, Weekly, Spark, and credit balances remain account-specific.
+
+Shared history stays on this Mac. It is neither exported under an account identity nor combined
+with account-specific iCloud history. With one known account, the existing account-matched history
+sync continues to work. Changing between shared and account-specific history clears incompatible
+cached history without changing cached live limits or their freshness.
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
 

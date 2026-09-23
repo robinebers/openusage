@@ -73,6 +73,8 @@ struct WidgetData: Hashable {
     /// they leave this false and never get the "No usage in this period" note. Set by the spend-tile
     /// factory; rides the descriptor sample through `WidgetDataStore.resolve`.
     var isUsagePeriod: Bool = false
+    /// This history combines local usage from all accounts, unlike the card's live limits.
+    var isSharedHistory: Bool = false
     /// A tray-only unit word appended after this tile's menu-bar value for an unbounded count (e.g. Codex
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.

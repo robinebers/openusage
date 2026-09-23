@@ -27,10 +27,12 @@ struct UsageSparkline: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(data.title)
-                .font(.system(size: density.supportingPointSize, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            HStack(spacing: 4) {
+                Text(data.title)
+                    .font(.system(size: density.supportingPointSize, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 8)
             // Anchor the popover to the bar strip (not the whole row), so its arrow points straight up
             // at the chart rather than at the row's center, off to the left of the bars.
@@ -102,8 +104,9 @@ struct UsageSparkline: View {
     }
 
     private var accessibilityLabel: String {
+        let title = data.isSharedHistory ? "\(data.title), Shared: Combined data for all accounts" : data.title
         guard let peak = points.max(by: { $0.value < $1.value }),
-              let first = points.first, let last = points.last else { return data.title }
-        return "\(data.title): \(points.count) days, \(first.label) to \(last.label), peak \(peak.readout)."
+              let first = points.first, let last = points.last else { return title }
+        return "\(title): \(points.count) days, \(first.label) to \(last.label), peak \(peak.readout)."
     }
 }

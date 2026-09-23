@@ -18,6 +18,8 @@ enum UsageHistoryAggregator {
             ProviderAccountID.family(of: $0) == "claude"
         })
         for (providerID, descriptor) in descriptors where descriptor.scope == .machineLocal {
+            // Combined local history cannot be reconciled with account-owned peer documents.
+            guard descriptor.sharedGroup == nil else { continue }
             if let local = localSnapshots[providerID]?.usageHistory {
                 inputs[providerID, default: []].append(local)
             }
@@ -187,6 +189,7 @@ enum UsageHistorySnapshotRenderer {
     static func removingHistory(from snapshot: ProviderSnapshot) -> ProviderSnapshot {
         var result = snapshot
         result.usageHistory = nil
+        result.sharedHistoryGroup = nil
         result.lines.removeAll { historyLabels.contains($0.label) }
         return result
     }

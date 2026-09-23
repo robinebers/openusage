@@ -75,8 +75,8 @@ adding or removing a saved account.
 
 If the default login identifies an account but has no organization ID, it remains available as a
 separate default card alongside saved Swap accounts. OpenUsage does not guess which saved
-organization it belongs to. Its spending stays excluded while multiple accounts are known, until
-the login identifies its organization.
+organization it belongs to. Its live limits stay its own; its spending joins the shared local
+history that every card shows while multiple accounts are known.
 
 Saved accounts use the active default login when it names that exact account, followed by their own
 Claude Swap session profile's Keychain entry and credential file. They
@@ -90,10 +90,20 @@ Logins that can read live usage are tried before logins with limited permissions
 without `user:profile` does not hide working Session and Weekly limits from a matching saved session.
 Session profile credentials can renew normally, with updates saved back to that same profile.
 
-Local spending includes Claude Swap session histories as well as the default Claude history. Shared
-history is deduplicated and filtered by its recorded account and organization; entries without account
-ownership stay excluded when multiple accounts are known. Broader SDK and Conductor history
-attribution is outside this change's scope; missing ownership is not inferred from the current login.
+Local spending includes Claude Swap session histories as well as the default Claude history, and it
+is deduplicated.
+
+With several known Claude accounts, every card shows the same combined local spending and usage
+trend. One **Shared** pill, meaning **Combined data for all accounts**, sits above the run of those
+rows rather than on each one. It includes Cowork sessions from every account and Claude usage from
+pi, so every card in the group shows the same total. Claude Code does not record
+which account paid for a turn, so filtering by account would discard nearly the whole history and
+leave every card reading "No data". The cards do not claim ownership of a turn; Session, Weekly,
+Fable, and Extra Usage stay account-specific. Total Spend counts the combined history once.
+
+Shared history stays on this Mac. It is neither exported under an account identity nor combined with
+account-specific iCloud history. With one known account, history stays matched to that account and
+pi usage folds in as before.
 
 ## The spend tiles
 

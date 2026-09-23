@@ -10,11 +10,13 @@ final class CodexProvider: ProviderRuntime {
     }
 
     let provider: Provider
-    let allowsUnattributedHistory: Bool
-    var allowsCachedLocalHistory: Bool { allowsUnattributedHistory }
+    let sharesLocalHistory: Bool
+    var allowsCachedLocalHistory: Bool { !sharesLocalHistory }
 
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
+    /// Injected so a test can point pi at an empty directory; production reads the shared scanner.
+    let piUsageScanner: PiUsageScanner
     let logUsageScanner: CodexLogUsageScanner
     let openCodeUsageScanner: OpenCodeCodexUsageScanner
     let now: @Sendable () -> Date
@@ -27,13 +29,15 @@ final class CodexProvider: ProviderRuntime {
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
-        allowsUnattributedHistory: Bool = true,
+        piUsageScanner: PiUsageScanner = .shared,
+        sharesLocalHistory: Bool = false,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
     ) {
         self.provider = provider
-        self.allowsUnattributedHistory = allowsUnattributedHistory
+        self.sharesLocalHistory = sharesLocalHistory
+        self.piUsageScanner = piUsageScanner
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
@@ -44,7 +48,7 @@ final class CodexProvider: ProviderRuntime {
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
-        [
+        let descriptors: [WidgetDescriptor] = [
             .percent(id: "\(provider.id).session", provider: provider, title: "Session")
                 .exportingLimit("session", unit: "percent"),
             .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
@@ -65,9 +69,20 @@ final class CodexProvider: ProviderRuntime {
                 .exportingHistory(
                     scope: .machineLocal,
                     estimatedCost: true,
-                    sourceNote: "From your Codex logs (estimated)"
+                    sourceNote: "From your Codex logs (estimated)",
+                    sharedGroup: sharesLocalHistory ? "codex" : nil
                 )
         ] + WidgetDescriptor.spendTiles(provider: provider)
+        return descriptors.map { descriptor in
+            var sample = descriptor.sample
+            if descriptor.isSpendTile || descriptor.sample.isChart {
+                sample.isSharedHistory = sharesLocalHistory
+            }
+            return WidgetDescriptor(id: descriptor.id, providerID: descriptor.providerID,
+                metricLabel: descriptor.metricLabel, sample: sample, pinnable: descriptor.pinnable,
+                isSpendTile: descriptor.isSpendTile, limitResources: descriptor.limitResources,
+                historyResource: descriptor.historyResource)
+        }
     }
 
     func hasLocalCredentials() async -> Bool {
@@ -163,13 +178,11 @@ final class CodexProvider: ProviderRuntime {
         async let native = logUsageScanner.scan(
             now: now(), pricing: pricing, fallbackModel: selectedFallbackModel
         )
-        async let pi = allowsUnattributedHistory ? PiUsageScanner.shared.scan(
-            cardID: provider.id, now: now(), pricing: pricing,
+        async let pi = piUsageScanner.scan(
+            cardID: "codex", now: now(), pricing: pricing,
             estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
         )
-            : nil
-        async let openCode = allowsUnattributedHistory
-            ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
+        async let openCode = openCodeUsageScanner.scan(now: now(), pricing: pricing)
         let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the local scans. Treat them as one unit so a
@@ -201,7 +214,8 @@ final class CodexProvider: ProviderRuntime {
             plan: mapped.plan,
             lines: mapped.lines,
             refreshedAt: now(),
-            usageHistory: usageHistory
+            usageHistory: usageHistory,
+            sharedHistoryGroup: sharesLocalHistory ? "codex" : nil
         )
     }
 

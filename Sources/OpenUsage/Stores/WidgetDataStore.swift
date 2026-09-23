@@ -186,7 +186,9 @@ final class WidgetDataStore {
                 return false
             }
         self.localSnapshots = loaded
-        self.snapshots = loaded
+        self.snapshots = SharedHistorySnapshotRenderer.render(
+            snapshots: loaded, providers: registry.providers,
+            descriptors: registry.historyDescriptorsByProvider, now: now())
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
@@ -357,6 +359,7 @@ final class WidgetDataStore {
         // limits, warnings, and timestamp still win. A non-nil empty history remains authoritative and
         // clears the old rows, because it proves the scan completed and found no usage.
         if snapshot.usageHistory == nil,
+           snapshot.sharedHistoryGroup == localSnapshots[providerID]?.sharedHistoryGroup,
            let history = localSnapshots[providerID]?.usageHistory,
            let descriptor = registry.historyDescriptorsByProvider[providerID]
         {
@@ -421,6 +424,8 @@ final class WidgetDataStore {
         } > 1
         for (providerID, descriptor) in registry.historyDescriptorsByProvider
         where descriptor.scope == .machineLocal && isProviderEnabled(providerID) {
+            guard descriptor.sharedGroup == nil,
+                  localSnapshots[providerID]?.sharedHistoryGroup == nil else { continue }
             if let history = localSnapshots[providerID]?.usageHistory {
                 if ProviderAccountID.family(of: providerID) == "claude" {
                     if let identity = providerIdentityKeys[providerID] {
@@ -470,8 +475,11 @@ final class WidgetDataStore {
     }
 
     private func rebuildRenderedSnapshots() {
+        let sharedSnapshots = SharedHistorySnapshotRenderer.render(
+            snapshots: localSnapshots, providers: registry.providers,
+            descriptors: registry.historyDescriptorsByProvider, now: now())
         guard !peerHistoryDocuments.isEmpty else {
-            snapshots = localSnapshots
+            snapshots = sharedSnapshots
             return
         }
         let renderDate = now()
@@ -487,7 +495,7 @@ final class WidgetDataStore {
             providerIdentityKeys: providerIdentityKeys,
             now: renderDate
         )
-        var rendered = localSnapshots
+        var rendered = sharedSnapshots
         for (providerID, history) in merged {
             guard let descriptor = registry.historyDescriptorsByProvider[providerID],
                   let provider = registry.provider(id: providerID)

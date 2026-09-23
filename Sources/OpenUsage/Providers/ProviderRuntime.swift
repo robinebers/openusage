@@ -29,7 +29,8 @@ protocol ProviderRuntime: AnyObject {
     var provider: Provider { get }
     var widgetDescriptors: [WidgetDescriptor] { get }
 
-    /// Whether stored local spending still has usable account ownership for this card.
+    /// Whether unmarked stored local spending still has usable account ownership for this card.
+    /// Explicitly shared history is checked separately against the descriptor's shared group.
     /// Applied before cached data can paint or be exported, including when refresh fails.
     var allowsCachedLocalHistory: Bool { get }
 

@@ -39,7 +39,7 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
                                      expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
             usageClient: CodexUsageClient(http: http),
             logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-            allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+            sharesLocalHistory: true, pricing: { TestPricing.bundled })
     }
 
     private func card(_ identity: CodexAccountIdentity, id: String = "codex") -> CodexAccountCard {

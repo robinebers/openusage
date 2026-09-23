@@ -19,10 +19,12 @@ Claude card is visible, and is ignored when multiple cards are visible. If Codex
 requires an account-aware sync file, Claude history without a known account is omitted from that
 file. Other providers continue syncing.
 
-Codex Swap cards combine history only when its account and workspace match. Older Codex history
-without that information is excluded from Swap cards. Codex installations without account cards
-keep their existing sync behavior. Spending with no reliable owner is excluded when multiple Codex
-accounts are known, so shared history cannot appear on both cards.
+Single-account Codex Swap cards combine peer history only when its account and workspace match.
+Older Codex history without that information is excluded from Swap cards. Codex installations
+without account cards keep their existing sync behavior. With multiple known Codex accounts,
+the cards instead show combined local history marked **Shared**. That history stays on its source
+Mac and is not mixed with account-specific peer history or exported as belonging to any account.
+Total Spend counts the shared local history once, even when it appears on several cards.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
 unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total

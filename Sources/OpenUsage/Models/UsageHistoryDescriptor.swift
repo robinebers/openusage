@@ -11,6 +11,7 @@ struct UsageHistoryDescriptor: Hashable, Sendable {
     let scope: Scope
     let estimatedCost: Bool
     let sourceNote: String
+    var sharedGroup: String? = nil
 }
 
 extension WidgetDescriptor {
@@ -18,13 +19,15 @@ extension WidgetDescriptor {
     func exportingHistory(
         scope: UsageHistoryDescriptor.Scope,
         estimatedCost: Bool,
-        sourceNote: String
+        sourceNote: String,
+        sharedGroup: String? = nil
     ) -> WidgetDescriptor {
         var copy = self
         copy.historyResource = UsageHistoryDescriptor(
             scope: scope,
             estimatedCost: estimatedCost,
-            sourceNote: sourceNote
+            sourceNote: sourceNote,
+            sharedGroup: sharedGroup
         )
         return copy
     }

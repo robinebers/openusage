@@ -39,6 +39,10 @@ the same iCloud-combined usage as the dashboard; `/v1/usage` returns the old UI-
 
 ### `GET /v1/usage/:id`
 
+Snapshots with combined local history include `sharedHistoryGroup` (currently `"codex"`).
+Their Today, Yesterday, Last 30 Days, and Usage Trend rows combine all local accounts. Count each
+group once when totaling those rows. The card's live limits and balances remain account-specific.
+
 Returns the latest snapshots for every provider the ID names (same matching as `/v1/limits/:id`).
 Works for disabled providers too.
 
