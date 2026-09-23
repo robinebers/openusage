@@ -34,7 +34,9 @@ The picker lists public text/code models from the supplement's `fallback_models.
 
 Cursor's Grok Bot modes use separate aliases: `grok-bot-default` uses Grok 4.6 Fast rates, while `grok-bot-automation` uses Grok 4.6 base rates. This follows the per-event list-price comparison in [#1229](https://github.com/robinebers/openusage/issues/1229); the rates themselves come from [Cursor's pricing table](https://cursor.com/docs/models-and-pricing.md). `grok-bot-cua` stays unpriced until its own rates are confirmed, so affected spend tiles flag it as an unpriced model and exclude its usage from their estimates.
 
-Cursor Grok 4.7 is priced in the supplement from that same table: $2 input, $0.50 cache read, and $6 output per million tokens (Fast is 2x). Cursor lists a 500k long-context tier separately at 2x standard and 3x for Fast; CSV and log slugs follow the same `cursor-` prefix, effort, Fast, and dashed-version patterns as Grok 4.5 and 4.6, plus `-500k` / `[500k]` variants.
+Cursor Grok 4.7 is priced in the supplement from that same table: $2 input, $0.50 cache read, and $6 output per million tokens (Fast is 2x). Cursor lists a 500k long-context tier separately at 2x standard and 3x for Fast; CSV and log slugs follow the same `cursor-` prefix, effort, Fast, and dashed-version patterns as Grok 4.5 and 4.6, plus `-500k` / `[500k]` variants. The `-slow` slug uses the standard Grok 4.7 rate; a trailing effort or `-fast` suffix selects the same variant as other 4.7 slugs.
+
+Claude Opus 5.5 uses [Anthropic's published rates](https://platform.claude.com/docs/en/about-claude/pricing): $4 input, $5 five-minute cache write, $0.20 cache read, and $20 output per million tokens. Fast mode is 2x across those token types. The supplement resolves Claude log IDs, Cursor CSV slugs, and Router labels to those rates until the public pricing catalogs include the model.
 
 ## What the estimate includes
 

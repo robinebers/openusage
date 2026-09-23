@@ -50,6 +50,8 @@ final class PricingBundledResourceTests: XCTestCase {
             ("cursor-grok-4.5-high-fast", 4), ("cursor-grok-4.6-high", 2),
             ("cursor-grok-4.6-high-fast", 4), ("grok-4-6-xhigh", 2),
             ("grok-4-6-xhigh-fast", 4), ("cursor-grok-4.7-high", 2),
+            ("grok-4-7-slow", 2), ("grok-4-7-slow-xhigh", 2),
+            ("grok-4.7-xhigh-fast", 4),
             ("cursor-grok-4.7-high-fast", 4), ("grok-4-7-xhigh", 2),
             ("grok-4.7-500k", 4), ("grok-4.7-500k-fast", 6),
             ("grok-4.7[500k]-high-fast", 6), ("kimi-k2p5", 0.6),
@@ -192,6 +194,33 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(opus5.costDollars(for: fastTokens), opus5.costDollars(for: tokens) * 2, accuracy: 0.000_001)
     }
 
+    func testClaudeOpus55PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let standard = try XCTUnwrap(pricing.resolve(model: "claude-opus-5-5"))
+        XCTAssertEqual(standard.inputPerMillion, 4.0)
+        XCTAssertEqual(standard.cacheWritePerMillion, 5.0)
+        XCTAssertEqual(standard.cacheReadPerMillion, 0.2)
+        XCTAssertEqual(standard.outputPerMillion, 20.0)
+        XCTAssertEqual(standard.fastMultiplier, 2.0)
+
+        for slug in ["claude-opus-5.5", "claude-opus-5-5[1m]", "claude-opus-5-5-thinking-xhigh", "claude-5.5-opus-high-thinking"] {
+            XCTAssertEqual(pricing.resolve(model: slug), standard, slug)
+        }
+
+        let fast = try XCTUnwrap(pricing.resolve(model: "claude-opus-5-5-fast"))
+        XCTAssertEqual(fast.inputPerMillion, 8.0)
+        XCTAssertEqual(fast.cacheWritePerMillion, 10.0)
+        XCTAssertEqual(fast.cacheReadPerMillion, 0.4)
+        XCTAssertEqual(fast.outputPerMillion, 40.0)
+        XCTAssertEqual(pricing.resolve(model: "claude-opus-5.5-thinking-high-fast"), fast)
+        XCTAssertEqual(pricing.resolve(model: "claude-5.5-opus-high-thinking-fast"), fast)
+
+        let tokens = TokenBreakdown(input: 1_000_000, cacheWrite5m: 1_000_000, cacheRead: 1_000_000, output: 1_000_000)
+        var fastTokens = tokens
+        fastTokens.isFast = true
+        XCTAssertEqual(standard.costDollars(for: fastTokens), standard.costDollars(for: tokens) * 2, accuracy: 0.000_001)
+    }
+
     /// Kimi K3: Cursor's published rates. Cursor lists no separate cache-write fee, so cache writes
     /// bill at the input rate, and the effort suffixes Cursor's CSV uses fold into the one entry.
     func testKimiK3PricingAndAliases() throws {
@@ -226,6 +255,8 @@ final class PricingBundledResourceTests: XCTestCase {
         let expected: [String: String] = [
             "Opus 5 (Auto Balanced)": "claude-opus-5",
             "Claude Opus 5 (Auto)": "claude-opus-5",
+            "Opus 5.5 (Auto Balanced)": "claude-opus-5-5",
+            "Claude Opus 5.5 Fast (Auto)": "claude-opus-5-5-fast",
             "Opus 4.8 (Auto)": "claude-opus-4-8",
             "Sonnet 5 (Auto Intelligence)": "claude-sonnet-5",
             "Fable 5 (Auto Balanced)": "claude-fable-5",
