@@ -30,9 +30,10 @@ actor ClaudeLogUsageScanner {
     private let accountID: String?
     private let additionalConfigDirectories: [String]
     private let allowsUnattributedSessions: Bool
-    /// The card signed in to the default Claude home also owns that home's sessions that record no
-    /// account, which is how plain terminal sessions look. Desktop-indexed sessions stay excluded.
-    private let claimsUnattributedDefaultHomeSessions: Bool
+    /// The identity Claude Code is signed in to right now, re-read every scan. The card matching it
+    /// also owns the default home's sessions that record no account, which is how plain terminal
+    /// sessions look; Desktop-indexed sessions stay excluded.
+    private let currentDefaultLoginIdentity: @Sendable () -> String?
     private var sessionOwnership: [String: (
         size: Int, mtime: Date, identity: ClaudeSessionIdentity
     )] = [:]
@@ -75,7 +76,7 @@ actor ClaudeLogUsageScanner {
         accountUUID: String? = nil,
         organizationUUID: String? = nil,
         allowsUnattributedSessions: Bool = false,
-        claimsUnattributedDefaultHomeSessions: Bool = false,
+        currentDefaultLoginIdentity: (@Sendable () -> String?)? = nil,
         additionalConfigDirectories: [String] = [],
         readOwnershipData: @escaping @Sendable (URL) throws -> Data = {
             try Data(contentsOf: $0, options: .mappedIfSafe)
@@ -90,7 +91,11 @@ actor ClaudeLogUsageScanner {
         self.accountID = accountUUID?.lowercased()
         self.additionalConfigDirectories = additionalConfigDirectories
         self.allowsUnattributedSessions = allowsUnattributedSessions
-        self.claimsUnattributedDefaultHomeSessions = claimsUnattributedDefaultHomeSessions
+        self.currentDefaultLoginIdentity = currentDefaultLoginIdentity ?? {
+            let observer = DefaultAccountObserver(environment: environment, homeDirectory: homeDirectory)
+            guard case let .resolved(identityKey, _, _) = observer.observeClaude() else { return nil }
+            return identityKey
+        }
         self.readOwnershipData = readOwnershipData
     }
 
@@ -99,9 +104,9 @@ actor ClaudeLogUsageScanner {
     /// exist but have no usage in the window.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
         // A UUID-only login cannot claim any organization's history once multiple identities are
-        // known; as the default login it still claims the default home's unattributed sessions.
-        if accountID != nil, organizationID == nil, !allowsUnattributedSessions,
-           !claimsUnattributedDefaultHomeSessions {
+        // known; while it is the default login it still claims the default home's unattributed sessions.
+        let claimsDefaultHome = !allowsUnattributedSessions && isCurrentDefaultLogin()
+        if accountID != nil, organizationID == nil, !allowsUnattributedSessions, !claimsDefaultHome {
             AppLog.info(LogTag.plugin("claude"), "local spending excluded: login has no organization and multiple accounts are known")
             return nil
         }
@@ -116,8 +121,8 @@ actor ClaudeLogUsageScanner {
         }
 
         var files = Self.usageFiles(under: roots)
-        if organizationID != nil || (claimsUnattributedDefaultHomeSessions && !allowsUnattributedSessions) {
-            files = ownedUsageFiles(files)
+        if organizationID != nil || claimsDefaultHome {
+            files = ownedUsageFiles(files, claimsDefaultHome: claimsDefaultHome)
         }
         guard !Task.isCancelled else { return nil }
         guard !files.isEmpty else {
@@ -277,7 +282,8 @@ actor ClaudeLogUsageScanner {
     /// in a bridge event or Desktop's account-and-organization-scoped session index; subagent files
     /// inherit their parent session's ownership. Keep this outside the shared parsed-entry cache.
     private func ownedUsageFiles(
-        _ files: [JSONLScanning.DiscoveredFile]
+        _ files: [JSONLScanning.DiscoveredFile],
+        claimsDefaultHome: Bool
     ) -> [JSONLScanning.DiscoveredFile] {
         let coworkPrefix = homeDirectory()
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
@@ -287,7 +293,7 @@ actor ClaudeLogUsageScanner {
         var ownedFiles: [JSONLScanning.DiscoveredFile] = []
         var desktopSessionIDs: Set<String>?
         var allDesktopSessionIDs: Set<String>?
-        let defaultProjectPrefixes = claimsUnattributedDefaultHomeSessions
+        let defaultProjectPrefixes = claimsDefaultHome
             ? defaultConfigRoots().map { $0.appendingPathComponent("projects").resolvingSymlinksInPath().path + "/" }
             : []
         // Optional values retain read failures for this pass without persisting them.
@@ -342,6 +348,12 @@ actor ClaudeLogUsageScanner {
             }
         }
         return ownedFiles
+    }
+
+    /// Only a scoped card whose identity is the one Claude Code is signed in to right now.
+    private func isCurrentDefaultLogin() -> Bool {
+        guard let accountID, let current = currentDefaultLoginIdentity()?.lowercased() else { return false }
+        return current == (organizationID.map { "\(accountID)|\($0)" } ?? accountID)
     }
 
     private var desktopSessionIndexRoot: URL {

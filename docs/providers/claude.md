@@ -106,7 +106,7 @@ accounts are discovered, most unattributed usage is left out instead of being as
 The exception is plain terminal sessions. Claude Code only records the account for sessions run
 through Claude Desktop or Remote Control, so ordinary `claude` sessions in the default Claude folder
 (`~/.claude` or `$CLAUDE_CONFIG_DIR`) record none. These count on the card for the account Claude Code
-is currently signed in to. Sessions Claude Desktop lists as its own are left to the Desktop cards. If
+is currently signed in to, checked again on every refresh. Sessions Claude Desktop lists as its own are left to the Desktop cards. If
 you switched Claude Code to another account in the last 30 days, sessions from before the switch
 also count on the current account's card.
 

@@ -696,26 +696,46 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             to: swapHome.appendingPathComponent("projects/workspace/swap.jsonl"), atomically: true, encoding: .utf8
         )
 
-        func tokens(organization: String?, claims: Bool) async -> Int? {
-            let scanner = ClaudeLogUsageScanner(
+        func signIn(organization: String?) throws {
+            let org = organization.map { #","organizationUuid":"\#($0)""# } ?? ""
+            try #"{"oauthAccount":{"accountUuid":"USER-A"\#(org)}}"#
+                .write(to: home.appendingPathComponent(".claude.json"), atomically: true, encoding: .utf8)
+        }
+        func scanner(organization: String?) -> ClaudeLogUsageScanner {
+            ClaudeLogUsageScanner(
                 environment: FakeEnvironment([:]), homeDirectory: { home },
                 incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a",
-                organizationUUID: organization, claimsUnattributedDefaultHomeSessions: claims,
-                additionalConfigDirectories: [swapHome.path]
+                organizationUUID: organization, additionalConfigDirectories: [swapHome.path]
             )
-            return await scanner.scan(now: now, pricing: pricing)?.series.daily.first?.totalTokens
         }
+        func tokens(_ scanner: ClaudeLogUsageScanner) async -> Int? {
+            await scanner.scan(now: now, pricing: pricing)?.series.daily.first?.totalTokens
+        }
+        let personal = scanner(organization: "org-personal")
+        let team = scanner(organization: "org-team")
+
+        // Without a known default login, nobody claims the terminal session.
+        let unclaimedTokens = await tokens(personal)
+        XCTAssertNil(unclaimedTokens)
 
         // Terminal session and its subagent, but not the Desktop-indexed, Team-owned, or Swap sessions.
-        let defaultTokens = await tokens(organization: "org-personal", claims: true)
-        XCTAssertEqual(defaultTokens, 110)
-        let organizationlessTokens = await tokens(organization: nil, claims: true)
-        XCTAssertEqual(organizationlessTokens, 110)
+        try signIn(organization: "org-personal")
+        let personalTokens = await tokens(personal)
+        XCTAssertEqual(personalTokens, 110)
         // The Team card keeps its owned and indexed sessions without the terminal session.
-        let teamTokens = await tokens(organization: "org-team", claims: false)
+        let teamTokens = await tokens(team)
         XCTAssertEqual(teamTokens, 3000)
-        let unclaimedTokens = await tokens(organization: "org-personal", claims: false)
-        XCTAssertNil(unclaimedTokens)
+
+        // Switching Claude Code's login while OpenUsage runs moves the claim on the next scan.
+        try signIn(organization: "org-team")
+        let switchedPersonalTokens = await tokens(personal)
+        XCTAssertNil(switchedPersonalTokens)
+        let switchedTeamTokens = await tokens(team)
+        XCTAssertEqual(switchedTeamTokens, 3110)
+
+        try signIn(organization: nil)
+        let organizationlessTokens = await tokens(scanner(organization: nil))
+        XCTAssertEqual(organizationlessTokens, 110)
     }
 
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
