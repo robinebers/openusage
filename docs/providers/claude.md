@@ -75,8 +75,8 @@ adding or removing a saved account.
 
 If the default login identifies an account but has no organization ID, it remains available as a
 separate default card alongside saved Swap accounts. OpenUsage does not guess which saved
-organization it belongs to. Its spending stays excluded while multiple accounts are known, until
-the login identifies its organization.
+organization it belongs to. While multiple accounts are known, its spending covers only terminal
+sessions that record no account (see below), until the login identifies its organization.
 
 Saved accounts use the active default login when it names that exact account, followed by their own
 Claude Swap session profile's Keychain entry and credential file. They
@@ -92,8 +92,8 @@ Session profile credentials can renew normally, with updates saved back to that 
 
 Local spending includes Claude Swap session histories as well as the default Claude history. Shared
 history is deduplicated and filtered by its recorded account and organization; entries without account
-ownership stay excluded when multiple accounts are known. Broader SDK and Conductor history
-attribution is outside this change's scope; missing ownership is not inferred from the current login.
+ownership in Swap session histories stay excluded when multiple accounts are known. Broader SDK and
+Conductor history attribution is outside this change's scope.
 
 ## The spend tiles
 
@@ -101,7 +101,14 @@ Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the C
 
 Sessions that do not identify their account, including usage from pi and third-party tools such as
 Conductor, count as long as OpenUsage has never seen more than one Claude account. Once multiple
-accounts are discovered, unattributed usage is left out instead of being assigned to the wrong card.
+accounts are discovered, most unattributed usage is left out instead of being assigned to the wrong card.
+
+The exception is plain terminal sessions. Claude Code only records the account for sessions run
+through Claude Desktop or Remote Control, so ordinary `claude` sessions in the default Claude folder
+(`~/.claude` or `$CLAUDE_CONFIG_DIR`) record none. These count on the card for the account Claude Code
+is currently signed in to. Sessions Claude Desktop lists as its own are left to the Desktop cards. If
+you switched Claude Code to another account in the last 30 days, sessions from before the switch
+also count on the current account's card.
 
 Subagent logs inherit their parent session's ownership, even when that parent is older than the
 spend window. Sessions with conflicting account or organization records are excluded. OpenUsage

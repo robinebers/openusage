@@ -184,6 +184,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertEqual(assembly.claudeCards.map(\.id), [workID, "claude"])
         XCTAssertEqual(assembly.identityKeysByCard, [workID: currentIdentity, "claude": previousIdentity])
         XCTAssertEqual(assembly.claudeCards.map(\.displayName), ["Claude — SUNSTORY", "Claude — Personal"])
+        XCTAssertEqual(assembly.claudeCards.map(\.isDefaultLogin), [true, false])
         let providers = ProviderCatalog.make(
             claudeCards: assembly.claudeCards, claudeIdentityKeys: assembly.identityKeysByCard
         ).compactMap { $0 as? ClaudeProvider }

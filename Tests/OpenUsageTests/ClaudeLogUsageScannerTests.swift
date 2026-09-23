@@ -663,6 +663,61 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
     }
 
+    /// Regression: plain terminal sessions record no account, so once a second Claude account was
+    /// known they were dropped from every card. The default login's card now owns them.
+    func testDefaultLoginClaimsUnattributedDefaultHomeSessionsWhenMultipleAccountsAreKnown() async throws {
+        let now = Date()
+        let timestamp = OpenUsageISO8601.string(from: now)
+        let terminal = "11111111-1111-4111-8111-111111111111"
+        let desktop = "22222222-2222-4222-8222-222222222222"
+        func line(_ id: String, input: Int, cost: Double) -> String {
+            ClaudeLogFixture.usageLine(
+                timestamp: timestamp, input: input, output: 0, costUSD: cost, messageID: id, requestID: id
+            )
+        }
+        let home = try ClaudeLogFixture.makeUserHome(claudeFiles: [
+            "workspace/\(terminal).jsonl": line(terminal, input: 100, cost: 1),
+            "workspace/\(terminal)/subagents/agent.jsonl": line("agent", input: 10, cost: 0.1),
+            "workspace/\(desktop).jsonl": line(desktop, input: 1000, cost: 10),
+            "workspace/team.jsonl": #"{"ownerOrganizationUuid":"org-team","ownerAccountUuid":"user-a"}"# + "\n" +
+                line("team", input: 2000, cost: 20),
+        ])
+        let indexDirectory = home.appendingPathComponent(
+            "Library/Application Support/Claude/claude-code-sessions/user-a/org-team"
+        )
+        try FileManager.default.createDirectory(at: indexDirectory, withIntermediateDirectories: true)
+        try #"{"cliSessionId":"\#(desktop)"}"#
+            .write(to: indexDirectory.appendingPathComponent("local_a.json"), atomically: true, encoding: .utf8)
+        let swapHome = home.appendingPathComponent("swap/sessions/1-user")
+        try FileManager.default.createDirectory(
+            at: swapHome.appendingPathComponent("projects/workspace"), withIntermediateDirectories: true
+        )
+        try line("swap", input: 5000, cost: 50).write(
+            to: swapHome.appendingPathComponent("projects/workspace/swap.jsonl"), atomically: true, encoding: .utf8
+        )
+
+        func tokens(organization: String?, claims: Bool) async -> Int? {
+            let scanner = ClaudeLogUsageScanner(
+                environment: FakeEnvironment([:]), homeDirectory: { home },
+                incrementalScanner: IncrementalJSONLScanner<Entry>(), accountUUID: "user-a",
+                organizationUUID: organization, claimsUnattributedDefaultHomeSessions: claims,
+                additionalConfigDirectories: [swapHome.path]
+            )
+            return await scanner.scan(now: now, pricing: pricing)?.series.daily.first?.totalTokens
+        }
+
+        // Terminal session and its subagent, but not the Desktop-indexed, Team-owned, or Swap sessions.
+        let defaultTokens = await tokens(organization: "org-personal", claims: true)
+        XCTAssertEqual(defaultTokens, 110)
+        let organizationlessTokens = await tokens(organization: nil, claims: true)
+        XCTAssertEqual(organizationlessTokens, 110)
+        // The Team card keeps its owned and indexed sessions without the terminal session.
+        let teamTokens = await tokens(organization: "org-team", claims: false)
+        XCTAssertEqual(teamTokens, 3000)
+        let unclaimedTokens = await tokens(organization: "org-personal", claims: false)
+        XCTAssertNil(unclaimedTokens)
+    }
+
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare
     /// with `ccusage daily --json --offline`. Gated like the other live tests.
     func testParityAgainstRealLocalLogs() async throws {

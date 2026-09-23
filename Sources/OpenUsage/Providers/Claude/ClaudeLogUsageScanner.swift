@@ -30,6 +30,9 @@ actor ClaudeLogUsageScanner {
     private let accountID: String?
     private let additionalConfigDirectories: [String]
     private let allowsUnattributedSessions: Bool
+    /// The card signed in to the default Claude home also owns that home's sessions that record no
+    /// account, which is how plain terminal sessions look. Desktop-indexed sessions stay excluded.
+    private let claimsUnattributedDefaultHomeSessions: Bool
     private var sessionOwnership: [String: (
         size: Int, mtime: Date, identity: ClaudeSessionIdentity
     )] = [:]
@@ -72,6 +75,7 @@ actor ClaudeLogUsageScanner {
         accountUUID: String? = nil,
         organizationUUID: String? = nil,
         allowsUnattributedSessions: Bool = false,
+        claimsUnattributedDefaultHomeSessions: Bool = false,
         additionalConfigDirectories: [String] = [],
         readOwnershipData: @escaping @Sendable (URL) throws -> Data = {
             try Data(contentsOf: $0, options: .mappedIfSafe)
@@ -86,6 +90,7 @@ actor ClaudeLogUsageScanner {
         self.accountID = accountUUID?.lowercased()
         self.additionalConfigDirectories = additionalConfigDirectories
         self.allowsUnattributedSessions = allowsUnattributedSessions
+        self.claimsUnattributedDefaultHomeSessions = claimsUnattributedDefaultHomeSessions
         self.readOwnershipData = readOwnershipData
     }
 
@@ -93,10 +98,11 @@ actor ClaudeLogUsageScanner {
     /// no log files exist (the spend tiles then render "No data"); returns an empty series when logs
     /// exist but have no usage in the window.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
-        // A UUID-only default login still has a card, but cannot claim any organization's history
-        // once multiple identities are known. The unscoped single-account scanner remains unchanged.
-        if accountID != nil, organizationID == nil, !allowsUnattributedSessions {
-            AppLog.info(LogTag.plugin("claude"), "local spending excluded: default login has no organization and multiple accounts are known")
+        // A UUID-only login cannot claim any organization's history once multiple identities are
+        // known; as the default login it still claims the default home's unattributed sessions.
+        if accountID != nil, organizationID == nil, !allowsUnattributedSessions,
+           !claimsUnattributedDefaultHomeSessions {
+            AppLog.info(LogTag.plugin("claude"), "local spending excluded: login has no organization and multiple accounts are known")
             return nil
         }
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
@@ -110,8 +116,8 @@ actor ClaudeLogUsageScanner {
         }
 
         var files = Self.usageFiles(under: roots)
-        if let organizationID {
-            files = ownedUsageFiles(files, organizationID: organizationID)
+        if organizationID != nil || (claimsUnattributedDefaultHomeSessions && !allowsUnattributedSessions) {
+            files = ownedUsageFiles(files)
         }
         guard !Task.isCancelled else { return nil }
         guard !files.isEmpty else {
@@ -137,12 +143,21 @@ actor ClaudeLogUsageScanner {
     private func parseCacheIdentity() -> String {
         if let cacheIdentityOverride { return cacheIdentityOverride }
         let home = homeDirectory().resolvingSymlinksInPath().path
-        let configuredRoots: [URL]
+        let allRoots = defaultConfigRoots() + additionalConfigDirectories.map { URL(fileURLWithPath: expandHome($0)) }
+        let roots = Set(allRoots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+            .sorted()
+            .joined(separator: "\n")
+        return "home=\(home)\nroots=\(roots)"
+    }
+
+    /// The default Claude home(s) the terminal CLI writes to: `CLAUDE_CONFIG_DIR` entries, else
+    /// `$XDG_CONFIG_HOME/claude` and `~/.claude`. Swap and Cowork roots are not included.
+    private func defaultConfigRoots() -> [URL] {
         if let raw = environment.value(for: "CLAUDE_CONFIG_DIR")?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty
         {
-            configuredRoots = raw.split(separator: ",").compactMap { part in
+            return raw.split(separator: ",").compactMap { part in
                 let value = part.trimmingCharacters(in: .whitespaces)
                 guard !value.isEmpty else { return nil }
                 var url = URL(fileURLWithPath: expandHome(value))
@@ -154,16 +169,11 @@ actor ClaudeLogUsageScanner {
             let xdg = environment.value(for: "XDG_CONFIG_HOME")?.nilIfEmpty
                 .map { URL(fileURLWithPath: expandHome($0)) }
                 ?? homeURL.appendingPathComponent(".config")
-            configuredRoots = [
+            return [
                 xdg.appendingPathComponent("claude"),
                 homeURL.appendingPathComponent(".claude"),
             ]
         }
-        let allRoots = configuredRoots + additionalConfigDirectories.map { URL(fileURLWithPath: expandHome($0)) }
-        let roots = Set(allRoots.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
-            .sorted()
-            .joined(separator: "\n")
-        return "home=\(home)\nroots=\(roots)"
     }
 
     // MARK: - Root and file discovery
@@ -267,8 +277,7 @@ actor ClaudeLogUsageScanner {
     /// in a bridge event or Desktop's account-and-organization-scoped session index; subagent files
     /// inherit their parent session's ownership. Keep this outside the shared parsed-entry cache.
     private func ownedUsageFiles(
-        _ files: [JSONLScanning.DiscoveredFile],
-        organizationID: String
+        _ files: [JSONLScanning.DiscoveredFile]
     ) -> [JSONLScanning.DiscoveredFile] {
         let coworkPrefix = homeDirectory()
             .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
@@ -277,6 +286,10 @@ actor ClaudeLogUsageScanner {
         var seenPaths: Set<String> = []
         var ownedFiles: [JSONLScanning.DiscoveredFile] = []
         var desktopSessionIDs: Set<String>?
+        var allDesktopSessionIDs: Set<String>?
+        let defaultProjectPrefixes = claimsUnattributedDefaultHomeSessions
+            ? defaultConfigRoots().map { $0.appendingPathComponent("projects").resolvingSymlinksInPath().path + "/" }
+            : []
         // Optional values retain read failures for this pass without persisting them.
         var identities: [String: ClaudeSessionIdentity?] = [:]
 
@@ -308,13 +321,22 @@ actor ClaudeLogUsageScanner {
                 }
             } else if allowsUnattributedSessions {
                 ownedFiles.append(file)
-            } else if let accountID {
-                if desktopSessionIDs == nil {
-                    desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)
-                }
+            } else {
                 let sessionID = URL(fileURLWithPath: sessionFile.path)
                     .deletingPathExtension().lastPathComponent.lowercased()
-                if desktopSessionIDs?.contains(sessionID) == true {
+                if let accountID, let organizationID {
+                    if desktopSessionIDs == nil {
+                        desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)
+                    }
+                    if desktopSessionIDs?.contains(sessionID) == true {
+                        ownedFiles.append(file)
+                        continue
+                    }
+                }
+                // Desktop indexes every session it runs; an indexed session belongs to that Desktop login.
+                guard defaultProjectPrefixes.contains(where: { canonicalPath.hasPrefix($0) }) else { continue }
+                if allDesktopSessionIDs == nil { allDesktopSessionIDs = allIndexedDesktopSessionIDs() }
+                if allDesktopSessionIDs?.contains(sessionID) != true {
                     ownedFiles.append(file)
                 }
             }
@@ -322,11 +344,28 @@ actor ClaudeLogUsageScanner {
         return ownedFiles
     }
 
+    private var desktopSessionIndexRoot: URL {
+        homeDirectory().appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
+    }
+
     private func indexedDesktopSessionIDs(accountID: String, organizationID: String) -> Set<String> {
-        let directory = homeDirectory()
-            .appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
-            .appendingPathComponent(accountID)
-            .appendingPathComponent(organizationID)
+        indexedDesktopSessionIDs(
+            in: desktopSessionIndexRoot.appendingPathComponent(accountID).appendingPathComponent(organizationID)
+        )
+    }
+
+    private func allIndexedDesktopSessionIDs() -> Set<String> {
+        func subdirectories(of url: URL) -> [URL] {
+            ((try? FileManager.default.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+            )) ?? []).filter { $0.hasDirectoryPath }
+        }
+        return subdirectories(of: desktopSessionIndexRoot)
+            .flatMap(subdirectories(of:))
+            .reduce(into: Set<String>()) { $0.formUnion(indexedDesktopSessionIDs(in: $1)) }
+    }
+
+    private func indexedDesktopSessionIDs(in directory: URL) -> Set<String> {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]

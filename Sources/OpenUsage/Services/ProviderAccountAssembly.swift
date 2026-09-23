@@ -10,6 +10,8 @@ struct ClaudeAccountCard: Equatable, Sendable {
     var swapAccount: ClaudeSwapAccount? = nil
     var additionalLogDirectories: [String] = []
     var organizationName: String? = nil
+    /// Signed in to the default Claude home, so it owns that home's sessions that record no account.
+    var isDefaultLogin = false
 }
 
 /// The launch-time account pass: read which account is signed in at each family's default home,
@@ -188,7 +190,8 @@ struct ProviderAccountAssembly {
             cards.append(ClaudeAccountCard(
                 id: record.id, identityKey: defaultIdentity, organizationID: String(organization),
                 displayName: "Claude — \(label)", usesDesktopCredentials: false,
-                allowsUnattributedPiUsage: allowsUnattributedPiUsage, organizationName: label
+                allowsUnattributedPiUsage: allowsUnattributedPiUsage, organizationName: label,
+                isDefaultLogin: true
             ))
             identityKeys.removeValue(forKey: "claude")
             identityKeys[record.id] = defaultIdentity
@@ -200,7 +203,7 @@ struct ProviderAccountAssembly {
             cards.append(ClaudeAccountCard(
                 id: record.id, identityKey: defaultIdentity, organizationID: nil,
                 displayName: "Claude: \(record.label ?? "Default Login")", usesDesktopCredentials: false,
-                allowsUnattributedPiUsage: allowsUnattributedPiUsage
+                allowsUnattributedPiUsage: allowsUnattributedPiUsage, isDefaultLogin: true
             ))
             identityKeys.removeValue(forKey: "claude")
             identityKeys[record.id] = defaultIdentity
@@ -228,7 +231,8 @@ struct ProviderAccountAssembly {
                     displayName: account.displayName(fallbackOrganization: existing.organizationName),
                     usesDesktopCredentials: existing.usesDesktopCredentials,
                     allowsUnattributedPiUsage: allowsUnattributedPiUsage,
-                    swapAccount: account, organizationName: account.organizationName ?? existing.organizationName
+                    swapAccount: account, organizationName: account.organizationName ?? existing.organizationName,
+                    isDefaultLogin: existing.isDefaultLogin
                 )
                 continue
             }
