@@ -14,13 +14,27 @@ the same account and organization through both Claude Code and Claude Desktop st
 | Fable | Separate weekly Fable limit (model-scoped window from the `limits` array) |
 | Sonnet | Separate weekly Sonnet limit (plan-dependent) |
 | Extra Usage | Extra-usage credits spent against your monthly cap |
+| Rate Limit Resets | One-off usage-limit resets Anthropic grants (e.g. a model-launch reset for Pro and Max), shown as a count (e.g. `1 available`); hover the value for a timeline of when each must be used by |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
 Fable is enabled and always visible directly below Weekly by default. Sonnet stays off until you
-enable it in Customize. When Claude reports your plan name, OpenUsage shows it beside the provider name.
+enable it in Customize. Rate Limit Resets is on but tucked behind the caret. When Claude reports your plan name, OpenUsage shows it beside the provider name.
 The plan comes from Anthropic's live account profile, so an upgrade (say, Max 5x to Max 20x) shows up on
 the next refresh without signing in to Claude Code again. If the profile can't be read, the badge falls
 back to the plan saved with your login.
+
+## Rate limit resets
+
+Anthropic occasionally grants free usage-limit resets — for example, one reset for Pro and Max
+subscribers when a new model launches. Using one refills your session and weekly limits right away.
+The Rate Limit Resets row counts the resets you have left, with a colored dot for the soonest deadline
+(blue beyond a week, yellow within a week, red within 48 hours), and hovering the value opens the same
+timeline popover Codex uses. A reset whose grant has no deadline still counts, but has no date to show.
+Accounts outside the program read `0 available`; if Anthropic doesn't report the program at all for
+your plan, the row shows **No data**.
+
+For now OpenUsage only shows your resets. To use one, run `/rate-limit-options` in Claude Code, or
+use it when Claude Code offers it at a usage limit.
 
 ## Where credentials come from
 
@@ -112,7 +126,9 @@ Local spend does not require a Claude OAuth login. If Claude Code uses an API-ke
 
 ## Under the hood
 
-`GET https://api.anthropic.com/api/oauth/usage` with the selected OAuth token. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
+`GET https://api.anthropic.com/api/oauth/usage?cedar_ember=1` with the selected OAuth token. The
+`cedar_ember=1` flag asks for the reset grants (Anthropic's internal name for the program), the same
+way Claude Code does. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
 
 The plan badge reads `GET https://api.anthropic.com/api/oauth/profile` (the organization's `rate_limit_tier`), because the plan Claude Code saves at sign-in never updates afterwards. To stay clear of Anthropic's rate limits, that lookup runs at most once per access token — after a usage fetch has succeeded — and cards bound to a specific account reuse the profile they already fetched to verify identity, so they make no extra request. Inference-only tokens skip it entirely.
 
