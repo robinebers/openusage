@@ -296,4 +296,31 @@ final class CodexSwapAccountTests: XCTestCase {
         XCTAssertEqual(result, .success)
         XCTAssertEqual(http.requests.filter { $0.method == "POST" }.count, 1)
     }
+
+    func testAccountsWithoutAliasesAreNamedByAddressAndKeepCardIDs() async throws {
+        for second in [b, CodexAccountIdentity(accountID: "another-workspace", email: a.email)!] {
+            let files = fixture(second: second)
+            let store = ProviderAccountsStore(defaults: try defaults())
+            let aliased = await assembly(files, store: store)
+            XCTAssertTrue(aliased.codexCards.contains { $0.displayName == "Codex: Personal (personal@example.com)" })
+            let registryPath = home.path + "/.local/share/codex-swap/accounts.json"
+            files.files[registryPath] = try XCTUnwrap(files.files[registryPath])
+                .replacingOccurrences(of: #""alias":"Personal","#, with: "")
+                .replacingOccurrences(of: #""alias":"Work","#, with: "")
+
+            let unaliased = await assembly(files, store: store)
+            XCTAssertEqual(unaliased.codexCards.map(\.id), aliased.codexCards.map(\.id))
+            XCTAssertEqual(unaliased.identityKeysByCard, aliased.identityKeysByCard)
+            XCTAssertEqual(Set(unaliased.codexCards.map(\.displayName)).count, 2)
+            // Different addresses need nothing else. One address in two workspaces would collide, so
+            // only then does the generated workspace come back, after the address.
+            let sharesAddress = second.email == a.email
+            for card in unaliased.codexCards {
+                XCTAssertTrue(card.displayName.hasPrefix("Codex: " + (card.identity.email ?? "missing")),
+                              "The email must lead a narrow card header")
+                XCTAssertEqual(card.displayName.contains("Workspace " + card.identity.accountID.prefix(8)),
+                               sharesAddress)
+            }
+        }
+    }
 }

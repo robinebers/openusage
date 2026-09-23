@@ -253,7 +253,7 @@ final class AppContainer {
         dataStore.resetDisplaySettings()
         notificationSettings.resetToDefaults()
         transparency.resetToDefaults()
-        privacy.hideUsageWhileScreenSharing = false
+        privacy.resetToDefaults()
         // Same as flipping the Settings toggle off: stops syncing and removes this Mac's document
         // from the shared iCloud container (peers keep their own history).
         iCloudSync.enabled = false

@@ -214,6 +214,11 @@ struct SettingsScreen: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            // Masks account emails everywhere the app shows them, the same way Ghostex does.
+            row("Hide Emails") {
+                Toggle("", isOn: $privacy.hideEmails.animation(Motion.modeSwitch))
+                    .settingsSwitchStyle()
+            }
             HStack(alignment: .center, spacing: 10) {
                 Text("Help make OpenUsage better by sharing anonymous usage analytics")
                     .fixedSize(horizontal: false, vertical: true)

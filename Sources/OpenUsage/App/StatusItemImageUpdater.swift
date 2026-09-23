@@ -68,6 +68,8 @@ final class StatusItemImageUpdater {
         }
         let content = MenuBarContentBuilder.build(
             groups: container.layout.pinnedGroups,
+            // Read through the observable store so flipping Hide Emails re-renders the summary.
+            hidingEmails: container.privacy.hideEmails,
             data: { container.dataStore.data(for: $0) }
         )
         return MenuBarStripRenderer.image(for: content, style: container.layout.menuBarStyle)

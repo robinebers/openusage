@@ -49,6 +49,24 @@ account-wide. Quotas, plans, balances, and provider errors always describe this 
 
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
 
+## Provider names with several accounts
+
+When more than one account of the same agent is signed in, each gets its own card, and the card
+header names the account alone: `jane@example.com` rather than `Claude: jane@example.com`. The
+provider icon beside it already says which agent the card belongs to, and in a 320pt popover the
+repeated agent name cost the width the account label needs. Menus, Customize, and share cards keep
+the full name. A provider with a single account looks the same as before.
+
+Each card is named after the address signed into it. The organization and workspace wording the
+providers generate, like `jane@example.com's Organization` or `Workspace 0e1e7f6e`, is left out: it
+repeats what the address already says and it was what survived truncation in a 320pt header. If one
+address is signed into more than one Claude organization or ChatGPT workspace, those cards show the
+organization or workspace again, because that is the only thing telling them apart.
+
+Account names often include an email address. **Hide Emails** (Settings, Privacy) masks them here and
+everywhere else the app shows an account, keeping just enough to tell accounts apart:
+`j•••e@•••••.•••`.
+
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)

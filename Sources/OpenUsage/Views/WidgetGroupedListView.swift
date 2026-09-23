@@ -21,6 +21,7 @@ struct WidgetGroupedListView: View {
     @State private var activeProviderID: String?
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
 
     @Environment(\.codexResetClaims) private var codexResetClaims
 
@@ -61,11 +62,11 @@ struct WidgetGroupedListView: View {
         .contextMenu {
             // Hides the whole provider section (the Customize provider list brings it back). Mirrors
             // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
-            Button("Hide \(group.provider.displayName)") {
+            Button("Hide \(group.provider.visibleName(hidingEmails: hideEmails))") {
                 container.enablement.setEnabled(false, for: group.provider.id)
             }
             Divider()
-            Button("Refresh \(group.provider.displayName)") {
+            Button("Refresh \(group.provider.visibleName(hidingEmails: hideEmails))") {
                 Task { await dataStore.refresh(providerID: group.provider.id, force: true) }
             }
             Button("Customize…") {
@@ -264,7 +265,7 @@ struct WidgetGroupedListView: View {
         }
         Divider()
         if let provider = layout.provider(id: providerID) {
-            Button("Refresh \(provider.displayName)") {
+            Button("Refresh \(provider.visibleName(hidingEmails: hideEmails))") {
                 Task { await dataStore.refresh(providerID: providerID, force: true) }
             }
         }

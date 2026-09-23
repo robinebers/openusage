@@ -25,7 +25,9 @@ Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (
 ### Codex Swap accounts
 
 OpenUsage shows accounts saved by [Codex Swap (`xswap`)](https://github.com/maddada/codex-swap).
-Each account and workspace gets its own card, labeled with its alias and email. Cards and pins stay
+Each account and workspace gets its own card. Without an alias the card is named by its email
+alone; the generated workspace ID only comes back, after the email, when one address is signed into
+more than one workspace. With an alias the card shows the alias and the email. Cards and pins stay
 with the same account when you switch the default login. Restart OpenUsage after adding, removing,
 or renaming an account. Custom locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
 Upgrading from a version without Swap support refreshes saved shell settings before account discovery.

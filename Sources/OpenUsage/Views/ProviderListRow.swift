@@ -15,6 +15,7 @@ struct ProviderListRow<Handle: View>: View {
     var onOpen: () -> Void = {}
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
 
     var body: some View {
         HStack(spacing: 10) {
@@ -29,7 +30,7 @@ struct ProviderListRow<Handle: View>: View {
                 ProviderIcon(source: provider.icon)
                     .frame(width: 18, height: 18)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(provider.displayName)
+                    Text(provider.visibleName(hidingEmails: hideEmails))
                         .font(.system(size: density.headerPointSize, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -54,7 +55,7 @@ struct ProviderListRow<Handle: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(provider.displayName)")
+            .accessibilityLabel("Open \(provider.visibleName(hidingEmails: hideEmails))")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, density.controlRowPadding)

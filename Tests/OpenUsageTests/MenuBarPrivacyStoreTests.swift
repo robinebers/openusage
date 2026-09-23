@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import OpenUsage
 
@@ -93,4 +94,53 @@ final class MenuBarPrivacyStoreTests: XCTestCase {
         XCTAssertTrue(relaunched.concealUsage)
     }
 
+
+    // MARK: - Hide Emails
+
+    func testHideEmailsDefaultsOffAndPersists() {
+        let defaults = makeDefaults("hideEmails")
+        let store = makeStore("hideEmails", defaults: defaults, captured: { false })
+        XCTAssertFalse(store.hideEmails)
+        store.hideEmails = true
+        XCTAssertTrue(defaults.bool(forKey: HideEmailsSetting.key), "Views read the same key via @AppStorage")
+        XCTAssertTrue(makeStore("hideEmails.reload", defaults: defaults, captured: { false }).hideEmails)
+    }
+
+    func testResetTurnsBothPrivacySettingsOff() {
+        // Regression: Reset All Settings left Hide Emails on.
+        let defaults = makeDefaults("reset")
+        let store = makeStore("reset", defaults: defaults, captured: { false })
+        store.hideUsageWhileScreenSharing = true
+        store.hideEmails = true
+        store.resetToDefaults()
+        XCTAssertFalse(store.hideUsageWhileScreenSharing)
+        XCTAssertFalse(store.hideEmails)
+        XCTAssertFalse(defaults.bool(forKey: HideEmailsSetting.key))
+    }
+
+    func testTogglingHideEmailsRerendersTheMenuBarSummary() {
+        // Regression: the menu bar read Hide Emails straight from defaults, which its observation
+        // loop can't see, so VoiceOver kept announcing the full address after the toggle.
+        let store = makeStore("menuBar", captured: { false })
+        let provider = Provider(id: "claude@1", displayName: "Claude: jane@example.com", icon: .providerMark("claude"))
+        let metric = WidgetDescriptor(
+            id: "claude@1.session", providerID: provider.id, metricLabel: "Session",
+            sample: WidgetData(title: "Session", icon: .providerMark("claude"), kind: .percent, used: 25, limit: 100)
+        )
+        let groups = [ProviderMetrics(provider: provider, metrics: [metric])]
+        final class Flag: @unchecked Sendable { var fired = false }
+        let changed = Flag()
+        let before = withObservationTracking {
+            MenuBarContentBuilder.build(groups: groups, hidingEmails: store.hideEmails, data: { $0.sample })
+        } onChange: {
+            changed.fired = true
+        }
+        XCTAssertEqual(before.accessibilityText, "Claude: jane@example.com Session 25%")
+
+        store.hideEmails = true
+
+        XCTAssertTrue(changed.fired, "The menu bar's render loop must re-arm on the toggle")
+        let after = MenuBarContentBuilder.build(groups: groups, hidingEmails: store.hideEmails, data: { $0.sample })
+        XCTAssertEqual(after.accessibilityText, "Claude: j•••e@•••••.••• Session 25%")
+    }
 }
