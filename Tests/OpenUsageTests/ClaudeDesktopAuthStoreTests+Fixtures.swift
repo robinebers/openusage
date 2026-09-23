@@ -54,14 +54,14 @@ extension ClaudeDesktopAuthStoreTests {
         let key = try ClaudeDesktopAuthStore.deriveKey(password: password)
         let cookieHost = ".claude.ai"
         let cookiePlaintext = Data(SHA256.hash(data: Data(cookieHost.utf8))) + Data(activeOrganization.utf8)
-        let encryptedCookie = try encrypt(cookiePlaintext, key: key)
+        let encryptedCookie = try Self.encrypt(cookiePlaintext, key: key)
         let v2Data = try JSONSerialization.data(withJSONObject: v2)
-        let encryptedV2 = try encrypt(v2Data, key: key)
+        let encryptedV2 = try Self.encrypt(v2Data, key: key)
         var config: [String: Any] = ["oauth:tokenCacheV2": encryptedV2.base64EncodedString()]
         if let accountUUID { config["lastKnownAccountUuid"] = accountUUID }
         if let v1 {
             let v1Data = try JSONSerialization.data(withJSONObject: v1)
-            config["oauth:tokenCache"] = try encrypt(v1Data, key: key).base64EncodedString()
+            config["oauth:tokenCache"] = try Self.encrypt(v1Data, key: key).base64EncodedString()
         }
         let configText = String(decoding: try JSONSerialization.data(withJSONObject: config), as: UTF8.self)
         let configPath = home.appendingPathComponent("Library/Application Support/Claude/config.json").path
@@ -102,7 +102,7 @@ extension ClaudeDesktopAuthStoreTests {
         ]
     }
 
-    func encrypt(_ plaintext: Data, key: Data) throws -> Data {
+    static func encrypt(_ plaintext: Data, key: Data) throws -> Data {
         let iv = Data(repeating: 0x20, count: kCCBlockSizeAES128)
         var output = Data(count: plaintext.count + kCCBlockSizeAES128)
         var outputLength = 0

@@ -17,6 +17,7 @@ final class CodexProvider: ProviderRuntime {
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
     let openCodeUsageScanner: OpenCodeCodexUsageScanner
+    let capyUsageScanner: CapyCodexUsageScanner
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
     let fallbackModel: @MainActor () -> String?
@@ -27,6 +28,7 @@ final class CodexProvider: ProviderRuntime {
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
+        capyUsageScanner: CapyCodexUsageScanner = .shared,
         allowsUnattributedHistory: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
@@ -38,6 +40,7 @@ final class CodexProvider: ProviderRuntime {
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.openCodeUsageScanner = openCodeUsageScanner
+        self.capyUsageScanner = capyUsageScanner
         self.now = now
         self.pricing = pricing
         self.fallbackModel = fallbackModel
@@ -148,17 +151,18 @@ final class CodexProvider: ProviderRuntime {
         )
         let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
 
-        return await snapshot(mapped: mapped)
+        return await snapshot(mapped: mapped, accountID: authState.auth.tokens?.accountID)
     }
 
-    func snapshot(mapped initial: CodexMappedUsage) async -> ProviderSnapshot {
+    /// `accountID` is the ChatGPT account this card's usage came from; it selects the Capy slice.
+    func snapshot(mapped initial: CodexMappedUsage, accountID: String? = nil) async -> ProviderSnapshot {
         var mapped = initial
         // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced through
-        // the shared pricing store, merged with Codex usage that happened inside pi or OpenCode. Those
-        // agents attribute their underlying Codex OAuth traffic back to this card.
+        // the shared pricing store, merged with Codex usage that happened inside pi, OpenCode, or Capy.
+        // Those agents attribute their underlying Codex OAuth traffic back to this card.
         let pricing = await pricing()
-        // Three independent local sources: reading rollout files, pi's JSONL, and OpenCode's SQLite
-        // concurrently keeps the slowest one — not their sum — on the refresh's critical path.
+        // Independent sources: reading rollout files, pi's JSONL, OpenCode's SQLite, and Capy's billing
+        // API concurrently keeps the slowest one — not their sum — on the refresh's critical path.
         let selectedFallbackModel = fallbackModel()
         async let native = logUsageScanner.scan(
             now: now(), pricing: pricing, fallbackModel: selectedFallbackModel
@@ -170,12 +174,21 @@ final class CodexProvider: ProviderRuntime {
             : nil
         async let openCode = allowsUnattributedHistory
             ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
-        let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
+        // Capy names the ChatGPT account it uses, so its slice is matched by account id rather than
+        // gated on unattributed history. It prompts for its Keychain item only on a manual refresh.
+        let capyAccountID = accountID?.nilIfEmpty
+        async let capy = capyAccountID != nil ? capyUsageScanner.scan(
+            now: now(), pricing: pricing, codexAccountID: capyAccountID ?? "",
+            allowInteraction: ProviderRefreshContext.isManual
+        ) : nil
+        let (nativeScan, piScan, openCodeScan, capyScan) = await (native, pi, openCode, capy)
         var usageHistory: ProviderUsageHistory?
         // Cancellation can land between the local scans. Treat them as one unit so a
         // partial result cannot replace the last-good combined history in WidgetDataStore.
-        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
-            let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
+        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan, capyScan]) {
+            let baseNote = Self.localUsageSourceNote(
+                hasPi: piScan != nil, hasOpenCode: openCodeScan != nil, hasCapy: capyScan != nil
+            )
             usageHistory = ProviderUsageHistory(
                 series: scan.series,
                 modelUsage: scan.modelUsage,
@@ -205,10 +218,11 @@ final class CodexProvider: ProviderRuntime {
         )
     }
 
-    private static func localUsageSourceNote(hasPi: Bool, hasOpenCode: Bool) -> String {
+    private static func localUsageSourceNote(hasPi: Bool, hasOpenCode: Bool, hasCapy: Bool) -> String {
         var sources = ["Codex logs"]
         if hasPi { sources.append("pi") }
         if hasOpenCode { sources.append("OpenCode") }
+        if hasCapy { sources.append("Capy") }
         let joined = sources.count > 2
             ? sources.dropLast().joined(separator: ", ") + ", and " + sources[sources.count - 1]
             : sources.joined(separator: " and ")

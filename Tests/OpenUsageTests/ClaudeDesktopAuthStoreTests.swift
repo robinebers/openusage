@@ -17,7 +17,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
     func testDecryptsElectronSafeStorageValue() throws {
         let key = try ClaudeDesktopAuthStore.deriveKey(password: password)
         let plaintext = Data(#"{"token":"secret"}"#.utf8)
-        let encrypted = try encrypt(plaintext, key: key)
+        let encrypted = try Self.encrypt(plaintext, key: key)
 
         XCTAssertEqual(try ClaudeDesktopAuthStore.decrypt(encrypted, key: key), plaintext)
         XCTAssertThrowsError(try ClaudeDesktopAuthStore.decrypt(Data("v11bad".utf8), key: key))

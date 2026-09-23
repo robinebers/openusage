@@ -49,6 +49,11 @@ Claude Desktop access is strictly read-only. OpenUsage may ask macOS for permiss
 `Claude Safe Storage` Keychain item so it can decrypt Desktop's current access token. It never uses
 Desktop's rotating refresh token and never modifies Desktop's config, cookies, or Keychain data.
 
+Capy desktop access is read-only in the same way. After you allow the `Capy Safe Storage` Keychain item,
+OpenUsage decrypts Capy's saved sign-in to request a short-lived token, then reads your own usage from
+Capy's billing API — the same calls the Capy app makes. It never modifies Capy's files or Keychain data.
+Because Capy runs in the cloud, its part of the Codex spend tiles comes from that API, not local logs.
+
 ## Other network requests
 
 Besides the provider API calls the vendor's own tools would make, OpenUsage fetches public [model price lists](pricing.md) about once an hour (from `raw.githubusercontent.com`, `models.dev`, and this project's GitHub Pages). These are plain downloads of public data — they carry no usage, log, or account information, and they run regardless of the analytics toggle. The spend tiles are computed from local CLI logs entirely on your Mac; no log data ever leaves it.

@@ -23,15 +23,17 @@ protocol ClaudeDesktopSafeStorageKeyReading: Sendable {
     func readPassword(allowInteraction: Bool) throws -> String?
 }
 
+/// Reads an Electron app's `safeStorage` password from the login Keychain. Defaults to Claude Desktop's
+/// item; other Electron apps (Capy) pass their own `<Name> Safe Storage` / `<Name> Key` pair.
 struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
-    private static let service = "Claude Safe Storage"
-    private static let account = "Claude Key"
+    var service = "Claude Safe Storage"
+    var account = "Claude Key"
 
     func readPassword(allowInteraction: Bool) throws -> String? {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
         ]

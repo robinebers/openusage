@@ -24,7 +24,7 @@ extension CodexProvider {
                     }
                     let resets = await accountResetCredits(candidate)
                     let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resets, now: now())
-                    let result = await snapshot(mapped: mapped)
+                    let result = await snapshot(mapped: mapped, accountID: candidate.auth.tokens?.accountID)
                     guard await authStore.isCurrent(candidate) else { changed = true; break }
                     return result
                 } catch {
