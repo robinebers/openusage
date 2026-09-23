@@ -1,5 +1,20 @@
 import Foundation
 
+/// Which assistant-message tables a given OpenCode database actually holds. OpenCode 2 creates both
+/// tables when it builds a database from its current schema and never drops the legacy one, so most
+/// installs have `OpenCodeMessageTables.all` — but a database written by an early 1.18.x build can
+/// hold only `session_message`. Naming a missing table fails statement preparation, which the scanner
+/// would otherwise report as an unreadable database, so it has to ask before it queries.
+struct OpenCodeMessageTables: OptionSet, Sendable {
+    let rawValue: Int
+
+    /// The legacy `message` table (OpenCode 1).
+    static let v1 = OpenCodeMessageTables(rawValue: 1)
+    /// The `session_message` table (OpenCode 2).
+    static let v2 = OpenCodeMessageTables(rawValue: 2)
+    static let all: OpenCodeMessageTables = [.v1, .v2]
+}
+
 /// Where OpenCode keeps its local data on this machine, shared by the auth store (reads `auth.json`)
 /// and the usage scanner (reads the SQLite logs). Resolution mirrors OpenCode itself: an explicit
 /// `OPENCODE_DATA_DIR` wins, then `$XDG_DATA_HOME/opencode`, then the default `~/.local/share/opencode`.
@@ -18,6 +33,27 @@ enum OpenCodePaths {
 
     static func authFilePath(dataDirectory: String) -> String {
         dataDirectory.trimmingTrailingSlashes + "/auth.json"
+    }
+
+    /// Asks one database which assistant-message tables it holds. Statement preparation fails when a
+    /// named table is absent, so the scanners must know before they build a query — see
+    /// `OpenCodeMessageTables`.
+    static let messageTablesSQL = """
+        SELECT (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='message'),
+               (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_message');
+        """
+
+    /// Reads that probe's `v1|v2` counts. Anything unparseable reads as "no tables", which makes the
+    /// caller skip the file rather than query it blind.
+    static func messageTables(fromProbeOutput output: String) -> OpenCodeMessageTables {
+        let counts = output
+            .split(whereSeparator: { $0 == "|" || $0.isWhitespace })
+            .compactMap { Int($0) }
+        guard counts.count >= 2 else { return [] }
+        var tables: OpenCodeMessageTables = []
+        if counts[0] > 0 { tables.insert(.v1) }
+        if counts[1] > 0 { tables.insert(.v2) }
+        return tables
     }
 
     /// Every `opencode*.db` file in the data dir. OpenCode partitions its database by release channel —

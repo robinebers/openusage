@@ -250,6 +250,43 @@ final class OpenCodeProviderTests: XCTestCase {
         ).refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
     }
+
+    func testConnectionFailureKeepsLocalTiles() async {
+        // A Zen-only user has local history but no Go windows: the failed meters request must not
+        // hide tiles that were readable before it ran. The failure is logged, not surfaced.
+        let db = "[" + openCodeRow("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let snapshot = await provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            client: OpenCodeUsageClient(http: ThrowingHTTPClient())
+        ).refresh()
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertNil(snapshot.plan)
+        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+    }
+
+    func testUnauthorizedKeyKeepsLocalTiles() async {
+        // Same degradation for a rejected key: local spend stays visible, meters stay absent.
+        let db = "[" + openCodeRow("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let snapshot = await provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(
+                sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                databasePaths: { ["/oc/opencode.db"] }
+            ),
+            client: OpenCodeUsageClient(http: FakeHTTPClient(response: HTTPResponse(
+                statusCode: 401,
+                headers: [:],
+                body: Data(#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#.utf8)
+            )))
+        ).refresh()
+        XCTAssertNil(snapshot.errorCategory)
+        XCTAssertNotNil(snapshot.line(label: "Today"))
+    }
 }
 
 private final class ThrowingHTTPClient: HTTPClient, @unchecked Sendable {
