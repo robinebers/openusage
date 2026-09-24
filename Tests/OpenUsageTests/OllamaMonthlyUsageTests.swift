@@ -12,7 +12,7 @@ final class OllamaMonthlyUsageTests: XCTestCase {
             accountBody: Data(#"{"Plan":"free"}"#.utf8)
         )
 
-        XCTAssertEqual(mapped.plan, "Free")
+        XCTAssertEqual(mapped.plan, .named("Free"))
         XCTAssertEqual(mapped.lines.map(\.label), ["Monthly", "Last 4 Weeks"])
         guard case .progress(_, let used, let limit, let format, let resetsAt, let periodMs, _) =
                 mapped.lines[0] else {

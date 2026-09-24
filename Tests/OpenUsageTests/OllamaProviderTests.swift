@@ -205,7 +205,7 @@ final class OllamaUsageMapperTests: XCTestCase {
     func testMapsLiveResponseToSessionWeeklyAndSpend() throws {
         let mapped = try OllamaUsageMapper.map(usageBody: data(usageJSON), accountBody: data(accountJSON))
 
-        XCTAssertEqual(mapped.plan, "Pro")
+        XCTAssertEqual(mapped.plan, .named("Pro"))
         XCTAssertEqual(mapped.lines.count, 3)
 
         // `usage` arrives as a fraction of the plan allowance, so 0.349 is 34.9%, not 0.349%.
@@ -267,10 +267,16 @@ final class OllamaUsageMapperTests: XCTestCase {
     }
 
     func testPlanNameAcceptsBothCasingsAndIsTitleCased() {
-        XCTAssertEqual(OllamaUsageMapper.planName(from: data(#"{"Plan":"pro"}"#)), "Pro")
-        XCTAssertEqual(OllamaUsageMapper.planName(from: data(#"{"plan":"max"}"#)), "Max")
-        XCTAssertNil(OllamaUsageMapper.planName(from: data(#"{"Plan":""}"#)))
-        XCTAssertNil(OllamaUsageMapper.planName(from: data("not json")))
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data(#"{"Plan":"pro"}"#)), .named("Pro"))
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data(#"{"plan":"max"}"#)), .named("Max"))
+        // An explicitly empty plan is an account without one — ordinary, and not a failure.
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data(#"{"Plan":""}"#)), .absent)
+        // Anything OpenUsage cannot read as an account is a failure, including a renamed or retyped
+        // field, so the provider can say why the badge is missing instead of dropping it silently.
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data("not json")), .unreadable)
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data("[]")), .unreadable)
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data(#"{"Name":"user"}"#)), .unreadable)
+        XCTAssertEqual(OllamaUsageMapper.plan(from: data(#"{"Plan":42}"#)), .unreadable)
     }
 }
 
@@ -348,6 +354,57 @@ final class OllamaProviderRefreshTests: XCTestCase {
         XCTAssertNil(snapshot.plan)
         XCTAssertNotNil(snapshot.warning)
         XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Last 4 Weeks"])
+    }
+
+    /// Regression: the failure path covered HTTP 500, but a `200 OK` carrying a body OpenUsage cannot
+    /// read dropped the plan badge with no warning at all — the silent disappearance this warning exists
+    /// to prevent.
+    func testUnreadablePlanResponseWarnsAndKeepsTheMeters() async {
+        for body in ["not json", "[]", #"{"Name":"user"}"#] {
+            let provider = makeProvider(http: RoutedHTTPClient([
+                OllamaUsageClient.usagePath: ok(usageJSON),
+                OllamaUsageClient.accountPath: ok(body)
+            ]))
+
+            let snapshot = await provider.refresh()
+
+            XCTAssertNil(snapshot.errorCategory, body)
+            XCTAssertNil(snapshot.plan, body)
+            XCTAssertNotNil(snapshot.warning, body)
+            XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Last 4 Weeks"], body)
+        }
+    }
+
+    /// The same warning text for both causes, so a failed request and an unreadable body are not two
+    /// different-looking problems to the user.
+    func testUnreadableAndFailedPlanLookupsShareOneWarning() async {
+        let unreadable = makeProvider(http: RoutedHTTPClient([
+            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.accountPath: ok("not json")
+        ]))
+        let failed = makeProvider(http: RoutedHTTPClient([
+            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.accountPath: HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        ]))
+
+        let unreadableWarning = await unreadable.refresh().warning
+        let failedWarning = await failed.refresh().warning
+
+        XCTAssertNotNil(unreadableWarning)
+        XCTAssertEqual(unreadableWarning, failedWarning)
+    }
+
+    /// An account with no plan is not a fault: the badge is simply absent, with nothing to warn about.
+    func testAccountWithoutAPlanIsNotTreatedAsAFailure() async {
+        let provider = makeProvider(http: RoutedHTTPClient([
+            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.accountPath: ok(#"{"Name":"user","Plan":""}"#)
+        ]))
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertNil(snapshot.plan)
+        XCTAssertNil(snapshot.warning)
     }
 
     func testSuccessfulPlanLookupCarriesNoWarning() async {
