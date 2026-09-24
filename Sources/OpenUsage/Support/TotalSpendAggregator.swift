@@ -187,6 +187,32 @@ enum TotalSpendAggregator {
                 estimated: dollars.contains(where: \.estimated)
             )
         }
-        return TotalSpend(period: period, slices: slices)
+        return TotalSpend(period: period, slices: combiningAccounts(slices))
+    }
+
+    /// Folds every account card of one family (`claude`, `claude@ab12cd34`, …) into a single slice
+    /// keyed by the family id, so the ring shows one Claude and one Codex however many accounts exist.
+    private static func combiningAccounts(_ slices: [TotalSpendSlice]) -> [TotalSpendSlice] {
+        var order: [String] = []
+        var groups: [String: [TotalSpendSlice]] = [:]
+        for slice in slices {
+            let family = ProviderAccountID.family(of: slice.provider.id)
+            if groups[family] == nil { order.append(family) }
+            groups[family, default: []].append(slice)
+        }
+        return order.compactMap { family in
+            guard let members = groups[family], let first = members.first else { return nil }
+            if members.count == 1, first.provider.id == family { return first }
+            return TotalSpendSlice(
+                provider: Provider(
+                    id: family,
+                    displayName: family.prefix(1).uppercased() + family.dropFirst(),
+                    icon: first.provider.icon
+                ),
+                amountUSD: members.reduce(0) { $0 + $1.amountUSD },
+                tokenCount: members.reduce(0) { $0 + $1.tokenCount },
+                estimated: members.contains(where: \.estimated)
+            )
+        }
     }
 }

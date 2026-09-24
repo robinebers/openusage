@@ -157,4 +157,28 @@ final class TotalSpendAggregatorTests: XCTestCase {
         XCTAssertTrue(total.projection(for: .tokens).isEmpty)
         XCTAssertTrue(total.projection(for: .costPerMtok).isEmpty)
     }
+
+    func testAccountCardsCombineIntoOneSlicePerFamily() {
+        let claude2 = Provider(id: "claude@ab12cd34", displayName: "Claude 2", icon: .providerMark("claude"))
+        let codex2 = Provider(id: "codex@d07a1f00", displayName: "Codex 2", icon: .providerMark("codex"))
+        let snapshots = [
+            "claude": snapshot(claude, lines: [spendLine("Today", dollars: 4, tokens: 100, estimated: true)]),
+            "claude@ab12cd34": snapshot(claude2, lines: [spendLine("Today", dollars: 6, tokens: 300)]),
+            "codex": snapshot(codex, lines: [spendLine("Today", dollars: 1, tokens: 10)]),
+            "codex@d07a1f00": snapshot(codex2, lines: [spendLine("Today", dollars: 2, tokens: 20)]),
+            "cursor": snapshot(cursor, lines: [spendLine("Today", dollars: 5, tokens: 50)])
+        ]
+
+        let total = TotalSpendAggregator.total(
+            for: .today, providers: [claude, claude2, codex, codex2, cursor], snapshots: snapshots
+        )
+
+        XCTAssertEqual(total.slices.map(\.provider.id), ["claude", "codex", "cursor"])
+        XCTAssertEqual(total.slices.map(\.provider.displayName), ["Claude", "Codex", "Cursor"])
+        XCTAssertEqual(total.slices[0].amountUSD, 10, accuracy: 0.0001)
+        XCTAssertEqual(total.slices[0].tokenCount, 400, accuracy: 0.0001)
+        XCTAssertTrue(total.slices[0].estimated)
+        XCTAssertEqual(total.slices[1].amountUSD, 3, accuracy: 0.0001)
+        XCTAssertEqual(total.totalUSD, 18, accuracy: 0.0001)
+    }
 }
