@@ -38,6 +38,21 @@ Upgrading from a version without Swap support refreshes saved shell settings bef
 - Concurrent `xswap run` sessions are supported. Close Codex sessions before using `xswap switch`
   to change the global login, as required by Swap.
 
+### Other Codex homes and pi logins
+
+OpenUsage also finds signed-in accounts in `CODEX_HOME`, `~/.codex`, `~/.config/codex`, sibling
+`~/.codex-*` folders, sibling `~/.config/codex-*` folders, and pi's `auth.json`. A comma-separated
+`CODEX_HOME` list is supported. Logins are matched by ChatGPT workspace and email, so two users in
+the same workspace remain separate cards. Restart OpenUsage after adding or removing a login.
+
+Codex home credentials can refresh and write back to their own `auth.json`. Pi credentials stay
+read-only. OpenUsage reloads pi's `auth.json` on every refresh, tries every matching pi login, and
+never rotates pi's tokens.
+
+When more than one Codex account is known, OpenUsage excludes Codex, pi, and OpenCode spending that
+cannot prove which account paid for it. Live limits and reset-credit actions remain available on each
+card.
+
 ## The spend tiles
 
 With multiple Codex accounts, spending without a reliable account owner is excluded, including
@@ -60,6 +75,7 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 
 - **"Not logged in"** — run `codex` and sign in, then refresh.
 - **A Codex Swap account needs login**: run `xswap login <account>` for the named account, then refresh.
+- **A pi-only account needs login**: use that account in pi to renew its token, then refresh OpenUsage.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
 - **Spend tiles show "No data"** — OpenUsage found no qualifying Codex usage in Codex, pi, or OpenCode logs from the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
 - **OpenCode usage is missing** — OpenCode must currently have an `openai` OAuth credential in

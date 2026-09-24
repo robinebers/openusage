@@ -9,26 +9,61 @@ extension CodexProvider {
                 candidates.append(keychain)
             }
             var changed = false
-            for candidate in candidates {
-                guard let token = candidate.auth.tokens?.accessToken else { continue }
-                guard await authStore.isCurrent(candidate) else { changed = true; break }
-                if let expiry = authStore.accessTokenExpiresAt(token), expiry <= now() { continue }
+            candidateLoop: for initialCandidate in candidates {
+                var candidate = initialCandidate
+                var currentState = initialCandidate
+                var renewed = false
+                var renewalForced = false
+                guard await authStore.isCurrent(currentState) else { changed = true; break }
                 do {
-                    let response = try await usageClient.fetchUsage(
-                        accessToken: token, accountID: candidate.auth.tokens?.accountID
-                    )
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
-                    if response.statusCode == 401 || response.statusCode == 403 {
-                        AppLog.warn(LogTag.auth("codex"), "account credential rejected; trying a matching login")
-                        continue
+                    while true {
+                        if renewalForced || authStore.needsRefresh(candidate.auth),
+                           let refreshToken = candidate.auth.tokens?.refreshToken?.nilIfEmpty {
+                            renewed = true
+                            let refreshed = try await usageClient.refreshToken(refreshToken)
+                            guard await authStore.isCurrent(currentState) else { changed = true; break candidateLoop }
+                            let currentIDToken = candidate.auth.tokens?.idToken
+                            candidate.auth.tokens?.accessToken = refreshed.accessToken
+                            candidate.auth.tokens?.refreshToken = refreshed.refreshToken ?? refreshToken
+                            candidate.auth.tokens?.idToken = refreshed.idToken ?? currentIDToken
+                            candidate.auth.lastRefresh = OpenUsageISO8601.string(from: now())
+                            guard authStore.scoped(candidate) != nil else { changed = true; break candidateLoop }
+                            do {
+                                try authStore.save(candidate)
+                                currentState = candidate
+                            } catch {
+                                AppLog.error(LogTag.auth("codex"), "failed to persist rotated account credentials: \(error.localizedDescription)")
+                            }
+                        }
+                        guard let token = candidate.auth.tokens?.accessToken,
+                              authStore.accessTokenExpiresAt(token).map({ $0 > now() }) ?? true
+                        else { continue candidateLoop }
+                        let response = try await usageClient.fetchUsage(
+                            accessToken: token, accountID: candidate.auth.tokens?.accountID
+                        )
+                        guard await authStore.isCurrent(currentState) else { changed = true; break candidateLoop }
+                        if response.statusCode == 401 || response.statusCode == 403 {
+                            if !renewed, candidate.auth.tokens?.refreshToken?.nilIfEmpty != nil {
+                                AppLog.info(LogTag.auth("codex"), "account credential rejected; renewing and retrying")
+                                renewalForced = true
+                                continue
+                            }
+                            AppLog.warn(LogTag.auth("codex"), "account credential rejected; trying a matching login")
+                            continue candidateLoop
+                        }
+                        let resets = await accountResetCredits(candidate)
+                        guard await authStore.isCurrent(currentState) else { changed = true; break candidateLoop }
+                        let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resets, now: now())
+                        let result = await snapshot(mapped: mapped)
+                        guard await authStore.isCurrent(currentState) else { changed = true; break candidateLoop }
+                        return result
                     }
-                    let resets = await accountResetCredits(candidate)
-                    let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resets, now: now())
-                    let result = await snapshot(mapped: mapped)
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
-                    return result
+                } catch let error as CodexAuthError where error.allowsAuthFallback {
+                    guard await authStore.isCurrent(currentState) else { changed = true; break }
+                    AppLog.warn(LogTag.auth("codex"), "account credential failed (\(error)); trying a matching login")
+                    continue
                 } catch {
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
+                    guard await authStore.isCurrent(currentState) else { changed = true; break }
                     return ProviderSnapshot.error(provider: provider, error: error)
                 }
             }
@@ -53,6 +88,6 @@ extension CodexProvider {
 private struct CodexSwapLoginError: LocalizedError, CategorizedError {
     var errorCategory: ErrorCategory { .authExpired }
     var errorDescription: String? {
-        "No valid login for this Codex account. Sign in with Codex or use `xswap login <account>`, then refresh."
+        "No valid login for this Codex account. Sign in with Codex, xswap, or pi, then refresh."
     }
 }

@@ -2,6 +2,8 @@ import SwiftUI
 
 /// A local estimation preference, separate from the model used by the coding client.
 struct CodexPricingSection: View {
+    let providerIDs: [String]
+
     @Environment(WidgetDataStore.self) private var dataStore
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
     @AppStorage(CodexFallbackModelSetting.key) private var selectedModel = CodexFallbackModelSetting.none
@@ -91,12 +93,14 @@ struct CodexPricingSection: View {
                 needsRecalculation = false
                 // A refresh already in flight may have captured the previous preference.
                 // Wait for it before requesting a new pass instead of having that pass skipped.
-                while dataStore.refreshingProviderIDs.contains("codex") {
+                while providerIDs.contains(where: dataStore.refreshingProviderIDs.contains) {
                     try? await Task.sleep(for: .milliseconds(100))
                     guard !Task.isCancelled else { return }
                 }
-                dataStore.clearFailureBackoff(for: "codex")
-                await dataStore.refresh(providerID: "codex", force: true)
+                for providerID in providerIDs {
+                    dataStore.clearFailureBackoff(for: providerID)
+                    await dataStore.refresh(providerID: providerID, force: true)
+                }
             }
         }
     }
