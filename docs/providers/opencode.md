@@ -43,6 +43,11 @@ Codex / Cursor. Those dollars come straight from the per-message cost OpenCode r
 gateways on this Mac, so they can be lower than account-wide Go usage. A period with no recorded local
 usage reads "No data" rather than a misleading `$0.00`. No log data leaves your Mac.
 
+While the rolling 5-hour session window has no usage in it, the Session row shows **Not started** on
+the trailing label; hover explains that the session begins after your first message. Once the window is
+running the row shows the countdown to its reset — including when OpenCode's whole-percent numbers
+still read 0% because less than 1% has been used.
+
 ## Troubleshooting
 
 - **No Session / Weekly / Monthly meters** — those are Go-plan windows. You'll see them when you're
