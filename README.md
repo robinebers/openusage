@@ -32,6 +32,7 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 - **[Ollama](docs/providers/ollama.md)** — Ollama Cloud session and weekly limits, recent activity spend
 - **[OpenCode](docs/providers/opencode.md)** — Go session/weekly/monthly caps, Zen spend, local daily spend
 - **[OpenRouter](docs/providers/openrouter.md)** — credit balance, daily/weekly/monthly spend (API key)
+- **[Mistral](docs/providers/mistral.md)** — included monthly API and Vibe Code allowances (browser session)
 - **[Z.ai](docs/providers/zai.md)** — session, weekly, web-search quotas (GLM Coding Plan, API key)
 
 Most providers read the credentials already on your machine (keychain, auth files, app state) — no extra login. OpenRouter and Z.ai are the exceptions: they have no local credential to reuse, so you supply an API key (see [OpenRouter setup](docs/providers/openrouter.md) or [Z.ai setup](docs/providers/zai.md)). Credentials are used only for the corresponding provider requests. OpenUsage's separate anonymous summaries and public pricing downloads are documented under [Privacy & usage data](docs/privacy.md).

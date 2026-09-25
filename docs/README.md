@@ -30,6 +30,7 @@ What each provider tracks, where its credentials come from, and what to do when 
 - [Cursor](providers/cursor.md)
 - [Devin](providers/devin.md)
 - [Grok](providers/grok.md)
+- [Mistral](providers/mistral.md)
 - [Ollama](providers/ollama.md)
 - [OpenCode](providers/opencode.md)
 - [OpenRouter](providers/openrouter.md)
