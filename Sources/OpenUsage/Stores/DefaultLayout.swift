@@ -49,7 +49,8 @@ enum DefaultLayout {
         "openrouter.credits", "openrouter.balance",
         "openrouter.today", "openrouter.week", "openrouter.month", "openrouter.keyLimit",
 
-        "zai.session", "zai.weekly", "zai.webSearches"
+        "zai.session", "zai.weekly", "zai.webSearches",
+        "mistral.api", "mistral.vibe"
     ]
 
     /// Frozen snapshot of the default-on metrics from the release that introduced default seeding.
@@ -83,7 +84,8 @@ enum DefaultLayout {
         "copilot.premium",
         "ollama.session", "ollama.weekly",
         "openrouter.credits",
-        "zai.session", "zai.weekly"
+        "zai.session", "zai.weekly",
+        "mistral.api", "mistral.vibe"
     ]
 
     /// Metrics placed in the per-provider On Demand section on a fresh install. This is

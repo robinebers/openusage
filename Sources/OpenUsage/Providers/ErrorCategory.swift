@@ -247,6 +247,27 @@ extension ZAIUsageError: CategorizedError {
     }
 }
 
+extension MistralAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .notSignedIn: .notLoggedIn
+        case .cookiesUnreadable: .credentialAccess
+        case .invalidCookieHeader: .authInvalid
+        }
+    }
+}
+
+extension MistralUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        case .sessionExpired: .authExpired
+        }
+    }
+}
+
 extension HTTPClientError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
