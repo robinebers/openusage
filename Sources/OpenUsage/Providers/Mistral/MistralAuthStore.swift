@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 struct MistralAuth: Hashable, Sendable {
@@ -176,7 +175,7 @@ struct MistralAuthStore: Sendable {
             let sql = """
             SELECT 'plain:' || name || '=' || value
             FROM moz_cookies
-            WHERE host LIKE '%mistral.ai'
+            WHERE (host = 'mistral.ai' OR host LIKE '%.mistral.ai')
               AND (name LIKE '\(Self.sessionCookiePrefix)%' OR name = 'csrftoken')
             ORDER BY lastAccessed DESC
             """

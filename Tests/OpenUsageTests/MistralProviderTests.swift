@@ -1,5 +1,4 @@
 import CommonCrypto
-import CryptoKit
 import XCTest
 @testable import OpenUsage
 
@@ -8,7 +7,7 @@ import XCTest
 /// The subscription page's flight stream carries the two allowance objects. Chunk shape mirrors
 /// Next.js: `self.__next_f.push([1, "…"])` with escaped quotes inside the JSON.
 private func subscriptionPage(apiJSON: String, vibeJSON: String) -> String {
-    let chunk = #"{"budget":{"api_budget":"# + apiJSON + #","vibe_budget":"# + vibeJSON + #"}}"#
+    let chunk = #"{"budget":{"api_budget":# + apiJSON + #,"vibe_budget":# + vibeJSON + #"}}"#
     let escaped = chunk
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"", with: "\\\"")

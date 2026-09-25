@@ -38,11 +38,8 @@ final class MistralProvider: ProviderRuntime {
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same local-only source as `refresh()`'s first step: a saved cookie header. The browser
-        // cookie stores are deliberately not probed — SQLite presence says nothing about a Mistral
-        // session and the Keychain read can prompt — so a browser-only user enables Mistral once
-        // in Customize and the browser read takes over from there.
-        await loadOffMainActor { [authStore] in authStore.hasSavedHeader() }
+        // Mirror `refresh()`: any usable saved header or browser session counts as a local login.
+        await loadOffMainActor { [authStore] in (try? authStore.loadAuth()) != nil }
     }
 
     func refresh() async -> ProviderSnapshot {

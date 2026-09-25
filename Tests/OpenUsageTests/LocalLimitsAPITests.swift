@@ -214,7 +214,8 @@ final class LocalLimitsAPITests: XCTestCase {
             "ollama": ["session", "weekly", "monthly"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["credits", "balance", "keyLimit"],
-            "zai": ["session", "weekly", "webSearches"]
+            "zai": ["session", "weekly", "webSearches"],
+            "mistral": ["api", "vibe"]
         ]
 
         XCTAssertEqual(actual, expected)
