@@ -259,8 +259,8 @@ final class CodexProvider: ProviderRuntime {
         switch source {
         case .file(let path):
             return authStore.loadAuth(at: path)
-        case .keychain:
-            return authStore.loadKeychainAuth()
+        case .keychain(let account):
+            return authStore.loadKeychainAuth(account: account)
         }
     }
 

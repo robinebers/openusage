@@ -1,3 +1,5 @@
+import CryptoKit
+import Darwin
 import Foundation
 
 struct CodexTokens: Codable, Hashable, Sendable {
@@ -29,7 +31,7 @@ struct CodexAuth: Codable, Hashable, Sendable {
 struct CodexAuthState: Hashable, Sendable {
     enum Source: Hashable, Sendable {
         case file(path: String)
-        case keychain
+        case keychain(account: String)
     }
 
     var auth: CodexAuth
@@ -133,13 +135,18 @@ struct CodexAuthStore: Sendable {
     }
 
     func loadKeychainAuth() -> CodexAuthState? {
-        guard let value = try? keychain.readGenericPassword(service: Self.keychainService),
+        loadKeychainAuth(account: Self.keychainAccount(codexHome: codexHome() ?? "~/.codex"))
+    }
+
+    /// Reload the same item even if the configured home or its symlink target has since changed.
+    func loadKeychainAuth(account: String) -> CodexAuthState? {
+        guard let value = try? keychain.readGenericPassword(service: Self.keychainService, account: account),
               let auth = Self.parseAuth(value),
               Self.hasTokenLikeAuth(auth)
         else {
             return nil
         }
-        return scoped(CodexAuthState(auth: auth, source: .keychain))
+        return scoped(CodexAuthState(auth: auth, source: .keychain(account: account)))
     }
 
     func save(_ state: CodexAuthState) throws {
@@ -154,8 +161,8 @@ struct CodexAuthStore: Sendable {
         switch state.source {
         case .file(let path):
             try files.writeText(path, text)
-        case .keychain:
-            try keychain.writeGenericPassword(service: Self.keychainService, value: text)
+        case .keychain(let account):
+            try keychain.writeGenericPassword(service: Self.keychainService, account: account, value: text)
         }
     }
 
@@ -201,6 +208,20 @@ struct CodexAuthStore: Sendable {
             return nil
         }
         return codexHome
+    }
+
+    /// Matches Codex's `compute_store_key`: SHA-256 of the canonical home, truncated to 16 hex
+    /// characters. If realpath fails, Codex hashes the original path rather than a partial resolve.
+    /// The CLI's default Keychain home is ~/.codex; the legacy file search order is independent.
+    static func keychainAccount(codexHome: String) -> String {
+        let expanded = expandHome(codexHome)
+        let canonical = expanded.withCString { path -> String in
+            guard let resolved = realpath(path, nil) else { return expanded }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        }
+        let digest = SHA256.hash(data: Data(canonical.utf8))
+        return "cli|" + digest.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     static func parseAuth(_ text: String) -> CodexAuth? {
