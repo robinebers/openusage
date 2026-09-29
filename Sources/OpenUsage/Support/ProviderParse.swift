@@ -66,7 +66,12 @@ enum ProviderParse {
     /// Decode `T` from JSON text, falling back to a hex-encoded JSON blob — some providers store their
     /// credentials/auth file as hex (optionally `0x`-prefixed) rather than plain JSON.
     static func decodeJSONWithHexFallback<T: Decodable>(_ text: String, as type: T.Type) -> T? {
-        if let decoded = decodeJSON(text, as: type) { return decoded }
+        decodeJSONWithHexFallback(text) { try? JSONDecoder().decode(type, from: $0) }
+    }
+
+    /// Also exposes the decoded bytes for callers that must preserve fields outside their model.
+    static func decodeJSONWithHexFallback<T>(_ text: String, decode: (Data) -> T?) -> T? {
+        if let decoded = decode(Data(text.utf8)) { return decoded }
 
         var hex = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if hex.hasPrefix("0x") || hex.hasPrefix("0X") {
@@ -85,12 +90,7 @@ enum ProviderParse {
             index = next
         }
         guard let decoded = String(bytes: bytes, encoding: .utf8) else { return nil }
-        return decodeJSON(decoded, as: type)
-    }
-
-    private static func decodeJSON<T: Decodable>(_ text: String, as type: T.Type) -> T? {
-        guard let data = text.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
+        return decode(Data(decoded.utf8))
     }
 
     /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object. Base64url is

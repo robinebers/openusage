@@ -66,6 +66,10 @@ A `CLAUDE_CODE_OAUTH_TOKEN` — usually a long-lived `claude setup-token` — ca
 
 If one source holds an expired or "locked out" token, OpenUsage falls back to the others — so signing in again with `claude` outside the app is picked up on the next refresh, without restarting OpenUsage. Claude Code tokens are refreshed automatically; rotated tokens are written back only while the ordered login candidates still match the start of the refresh, so a newly added higher-priority login wins. Claude Desktop tokens are never refreshed or written by OpenUsage.
 
+Saving a refreshed Claude Code token updates only its access token, refresh token, and expiry in the
+latest credential document. MCP logins and other Claude Code fields are preserved, including changes
+made while OpenUsage was refreshing.
+
 ## Claude Swap accounts
 
 OpenUsage discovers the saved accounts in Claude Swap's `~/.claude-swap-backup/sequence.json`
