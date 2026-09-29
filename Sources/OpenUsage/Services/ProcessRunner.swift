@@ -87,11 +87,19 @@ struct SystemProcessRunner: ProcessRunning {
     private func drain(_ handle: FileHandle, into output: SubprocessOutput, isStdout: Bool, group: DispatchGroup) {
         let box = FileHandleBox(handle)
         group.enter()
-        DispatchQueue.global(qos: .utility).async {
+        Self.makeDrainQueue(isStdout: isStdout).async {
             let data = box.handle.readDataToEndOfFile()
             if isStdout { output.setStdout(data) } else { output.setStderr(data) }
             group.leave()
         }
+    }
+
+    // A blocking caller can occupy the shared utility pool while waiting for these reads.
+    // Private serial queues can make progress independently of that constrained pool. Each pipe
+    // needs its own queue: sharing one would block stderr behind stdout waiting for EOF.
+    static func makeDrainQueue(isStdout: Bool) -> DispatchQueue {
+        let stream = isStdout ? "stdout" : "stderr"
+        return DispatchQueue(label: "com.openusage.process-drain.\(stream)", qos: .utility)
     }
 
     private func terminateProcessTree(rootPID: Int32) {
