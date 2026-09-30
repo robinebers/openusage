@@ -188,13 +188,17 @@ enum CodexLogFixture {
 
     /// An `event_msg`/`thread_settings_applied` line carrying the session's service tier, the way
     /// Codex CLI ≥ July 2026 records tier changes.
-    static func threadSettingsApplied(timestamp: String, serviceTier: String, model: String = "gpt-5.2") -> String {
-        jsonLine([
+    static func threadSettingsApplied(timestamp: String, serviceTier: String?, model: String = "gpt-5.2") -> String {
+        var threadSettings: [String: Any] = ["model": model]
+        if let serviceTier {
+            threadSettings["service_tier"] = serviceTier
+        }
+        return jsonLine([
             "timestamp": timestamp,
             "type": "event_msg",
             "payload": [
                 "type": "thread_settings_applied",
-                "thread_settings": ["model": model, "service_tier": serviceTier]
+                "thread_settings": threadSettings
             ]
         ])
     }
