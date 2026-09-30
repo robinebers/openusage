@@ -73,6 +73,7 @@ final class AppContainer {
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
             codexCards: accountAssembly.codexCards,
+            codexAllowsUnattributedHistory: accountAssembly.codexAllowsUnattributedHistory,
             claudeIdentityKeys: accountAssembly.identityKeysByCard
         )
         let registry = WidgetRegistry.from(providers)

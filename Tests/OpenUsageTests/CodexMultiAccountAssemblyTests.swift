@@ -53,6 +53,37 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(assembly.identityKeysByCard["codex"], "acct-a")
     }
 
+    func testIncompletePiLoginBesideOnePlainAccountHidesUnattributedSpend() async {
+        let files = FakeFiles([
+            "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test"),
+            "/Users/dev/.pi/agent/auth.json": Fixtures.piAuth([("openai-codex", "ACCT-B", "")]),
+        ])
+
+        let assembly = await assemble(files: files)
+        let codex = ProviderCatalog.make(
+            defaults: makeScratchDefaults(), codexCards: assembly.codexCards,
+            codexAllowsUnattributedHistory: assembly.codexAllowsUnattributedHistory
+        ).compactMap { $0 as? CodexProvider }
+
+        XCTAssertTrue(assembly.codexCards.isEmpty)
+        XCTAssertFalse(assembly.codexAllowsUnattributedHistory)
+        XCTAssertEqual(codex.map(\.provider.id), ["codex"])
+        XCTAssertEqual(codex.map(\.allowsUnattributedHistory), [false])
+    }
+
+    func testPiLoginNeverRenamesASwapAlias() async throws {
+        let swap = #"{"schemaVersion":1,"mainHome":"/Users/dev/.codex","accounts":[{"number":1,"alias":"Personal","home":"/Users/dev/.xswap/a","identity":{"accountId":"ACCT-A","email":"alice@test"}}]}"#
+        let files = FakeFiles([
+            "/Users/dev/.xswap/accounts.json": swap,
+            "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test"),
+            "/Users/dev/.pi/agent/auth.json": Fixtures.piAuth([("openai-codex", "ACCT-A", "alice@test")]),
+        ])
+
+        let assembly = await assemble(files: files, environment: ["XSWAP_HOME": "/Users/dev/.xswap"])
+
+        XCTAssertEqual(assembly.codexCards.map(\.displayName), ["Codex: Personal (alice@test)"])
+    }
+
     func testAccountIDOnlyDefaultHomeStaysOwnCardBesideCompleteSibling() async throws {
         let files = FakeFiles([
             "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: ""),

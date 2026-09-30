@@ -8,6 +8,7 @@ enum ProviderCatalog {
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
         codexCards: [CodexAccountCard] = [],
+        codexAllowsUnattributedHistory: Bool = true,
         claudeIdentityKeys: [String: String] = [:]
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
@@ -43,7 +44,10 @@ enum ProviderCatalog {
             }
         }
         if codexCards.isEmpty {
-            providers.append(CodexProvider())
+            providers.append(CodexProvider(
+                logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: codexAllowsUnattributedHistory),
+                allowsUnattributedHistory: codexAllowsUnattributedHistory
+            ))
         } else {
             providers += codexCards.map { card in
                 CodexProvider(

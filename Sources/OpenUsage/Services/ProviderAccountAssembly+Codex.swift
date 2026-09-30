@@ -18,7 +18,7 @@ extension ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         listDirectories: @escaping @Sendable (String) -> [String] = CodexHomeScanner.listSubdirectories
-    ) async -> [CodexAccountCard] {
+    ) async -> (cards: [CodexAccountCard], allowsUnattributedHistory: Bool) {
         let homeDirectory = observer.homeDirectory()
         let swaps = CodexSwapAccount.discover(
             environment: observer.environment, files: observer.files, home: homeDirectory
@@ -38,7 +38,13 @@ extension ProviderAccountAssembly {
         let knownIdentities = Set(
             homeLogins.map(\.identity) + piScan.logins.map(\.identity) + swaps.map(\.identity)
         )
-        guard !swaps.isEmpty || hasEstablishedAccounts || knownIdentities.count > 1 else { return [] }
+        // History with no provable owner counts only while exactly one account exists and no login
+        // is too incomplete to rule out a second one.
+        let hasIncompleteLogin = piScan.hasIncompleteLogin
+            || homeLogins.contains { !CodexAccountIdentity.isComplete(key: $0.identity.key) }
+        guard !swaps.isEmpty || hasEstablishedAccounts || knownIdentities.count > 1 else {
+            return ([], knownIdentities.isEmpty || !piScan.hasIncompleteLogin)
+        }
 
         let configuredHomes = Set(CodexHomeScanner.configuredHomes(
             environment: observer.environment, homeDirectory: homeDirectory
@@ -46,6 +52,7 @@ extension ProviderAccountAssembly {
         var observations: [ProviderAccountsStore.Observation] = []
         var identities: [CodexAccountIdentity] = []
         var labels: [String: String] = [:]
+        var namedByTool = Set<String>()
 
         func label(for identity: CodexAccountIdentity, preferred: String? = nil) -> String {
             if let preferred = preferred?.nilIfEmpty { return "Codex: \(preferred)" }
@@ -53,7 +60,9 @@ extension ProviderAccountAssembly {
             return "Codex: Workspace \(workspace) (\(identity.email ?? identity.accountID))"
         }
 
-        func observe(_ identity: CodexAccountIdentity, label: String, source: ProviderAccountSource) {
+        /// A name the user chose in xswap or pi beats the generic workspace label; the first such name wins.
+        func observe(_ identity: CodexAccountIdentity, label: String, named: Bool = false,
+                     source: ProviderAccountSource) {
             accountsStore.upgradeCodexIdentity(identity)
             if let index = observations.firstIndex(where: { $0.identityKey == identity.key }) {
                 if !observations[index].sources.contains(source) { observations[index].sources.append(source) }
@@ -62,7 +71,9 @@ extension ProviderAccountAssembly {
                 observations.append(.init(family: "codex", identityKey: identity.key,
                                           label: identity.email, sources: [source]))
             }
-            labels[identity.key] = label
+            if named ? namedByTool.insert(identity.key).inserted : labels[identity.key] == nil {
+                labels[identity.key] = label
+            }
         }
 
         var assignedDefault = false
@@ -85,26 +96,23 @@ extension ProviderAccountAssembly {
             assignedDefault = true
         }
         for swap in swaps {
-            observe(swap.identity, label: swap.displayName,
+            observe(swap.identity, label: swap.displayName, named: true,
                     source: .init(kind: .codexSwap, anchor: swap.home, holdsDefaultSource: false))
         }
         for login in piScan.logins {
             observe(login.identity, label: label(for: login.identity, preferred: login.label ?? login.identity.email),
+                    named: login.label != nil,
                     source: .init(kind: .pi, anchor: login.providerID, holdsDefaultSource: false))
         }
 
         let records = accountsStore.reconcile(with: observations)
-        // History with no provable owner counts only while exactly one account exists and no login
-        // is too incomplete to rule out a second one.
-        let hasIncompleteLogin = piScan.hasIncompleteLogin
-            || homeLogins.contains { !CodexAccountIdentity.isComplete(key: $0.identity.key) }
         let allowsUnattributed = !hasIncompleteLogin && records.count { $0.family == "codex" } == 1
         let swapHomes = swaps.flatMap { [$0.mainHome, $0.home] }
             .map { CodexHomeScanner.standardizedHome($0, homeDirectory: homeDirectory) }
         let logHomes = Set(homeLogins.map(\.home)).union(swapHomes).sorted()
         // Registry order is persistent; observation order follows the current default login.
         // Even an uncustomized layout must keep its cards in place after a switch and relaunch.
-        return records.compactMap { record in
+        let cards = records.compactMap { record -> CodexAccountCard? in
             guard record.family == "codex", !record.removedTombstone,
                   let identity = identities.first(where: { $0.key == record.identityKey })
             else { return nil }
@@ -119,5 +127,6 @@ extension ProviderAccountAssembly {
                 piCredentialSources: matchingPi,
                 logHomes: logHomes, allowsUnattributedHistory: allowsUnattributed)
         }
+        return (cards, allowsUnattributed)
     }
 }

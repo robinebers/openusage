@@ -46,8 +46,8 @@ OpenUsage also finds signed-in accounts in `CODEX_HOME`, `~/.codex`, `~/.config/
 `~/.codex-*` folders, sibling `~/.config/codex-*` folders, and pi's `auth.json` (`openai-codex`,
 `openai-codex-2`, …). Logins are matched by ChatGPT workspace and email, so two users in the same
 workspace remain separate cards, and the same account signed in through several homes and pi shares
-one card. A single account keeps the plain Codex card. Restart OpenUsage after adding or removing a
-login.
+one card, named by its xswap alias, then its pi label, then its workspace and email. A single account
+keeps the plain Codex card. Restart OpenUsage after adding or removing a login.
 
 These cards read their logins as they are. OpenUsage never rotates a token that belongs to another
 Codex home, xswap, or pi; it re-reads each source on every refresh and tries every matching login. If
@@ -56,8 +56,8 @@ token, then refresh OpenUsage.
 
 When more than one Codex account is known, OpenUsage excludes Codex, pi, and OpenCode spending that
 cannot prove which account paid for it. Live limits and reset-credit actions remain available on each
-card. A login missing its workspace or email also disables unattributed spending, even if it cannot
-form its own card.
+card. A pi login missing its workspace or email also disables unattributed spending, even when it cannot
+form its own card and the plain Codex card is all that shows.
 
 ## The spend tiles
 
