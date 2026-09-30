@@ -59,7 +59,7 @@ final class PricingBundledResourceTests: XCTestCase {
             ("claude-4.7-opus-high-thinking", 5), ("claude-4.7-opus-max-thinking-fast", 30),
             ("glm-5.2-max", 1.4), ("glm-5.3-max", 1.4),
             ("claude-fable-5-1-thinking-high", 10),
-            ("grok-bot-default", 4), ("grok-bot-automation", 2)
+            ("grok-bot-default", 4), ("grok-bot-automation", 2), ("grok-bot-cua", 2)
         ]
         for (model, expected) in expectedInputRates {
             XCTAssertEqual(pricing.resolve(model: model)?.inputPerMillion, expected, model)
@@ -464,12 +464,13 @@ final class PricingBundledResourceTests: XCTestCase {
         let pricing = Self.pricing
         for (bot, canonical) in [
             ("grok-bot-default", "grok-4.6-fast"),
-            ("grok-bot-automation", "grok-4.6")
+            ("grok-bot-automation", "grok-4.6"),
+            ("grok-bot-cua", "grok-4.7")
         ] {
             XCTAssertEqual(pricing.supplement.canonicalName(for: bot), canonical, bot)
             XCTAssertEqual(pricing.resolve(model: bot), try XCTUnwrap(pricing.resolve(model: canonical)), bot)
         }
-        for bot in ["grok-bot-cua", "grok-bot-unknown"] {
+        for bot in ["grok-bot-unknown"] {
             XCTAssertNil(pricing.supplement.canonicalName(for: bot), bot)
             XCTAssertNil(pricing.resolve(model: bot), bot)
         }

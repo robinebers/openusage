@@ -20,14 +20,10 @@ final class CursorGrokBotPricingTests: XCTestCase {
             XCTAssertEqual(parsed.rejectedRowCount, 0)
             XCTAssertEqual(parsed.rows.count, 6)
             for row in parsed.rows {
-                if row.model == "grok-bot-cua" {
-                    XCTAssertNil(row.imputedCostDollars)
-                } else {
-                    // Default: $4 input/write, $1 read, $12 output per million.
-                    // Automation: $2 input/write, $0.50 read, $6 output per million.
-                    let cost = row.model == "grok-bot-default" ? 0.063 : 0.0315
-                    XCTAssertEqual(try XCTUnwrap(row.imputedCostDollars), cost * Double(scale), accuracy: 1e-9)
-                }
+                // Default: $4 input/write, $1 read, $12 output per million.
+                // Automation and CUA use Grok 4.7 base: $2 input/write, $0.50 read, $6 output.
+                let cost = row.model == "grok-bot-default" ? 0.063 : 0.0315
+                XCTAssertEqual(try XCTUnwrap(row.imputedCostDollars), cost * Double(scale), accuracy: 1e-9)
             }
 
             var lines: [MetricLine] = []
@@ -38,14 +34,14 @@ final class CursorGrokBotPricingTests: XCTestCase {
                 guard case .values(_, let values, _, _, let unknownModels, _) = line else {
                     return XCTFail("Expected spend values for \(label)")
                 }
-                // Cursor rounds each day's combined $0.0945 estimate to cents before summing days.
-                let dailyDollars = scale == 1 ? 0.09 : 94.5
+                // Cursor rounds each day's combined $0.126 estimate to cents before summing days.
+                let dailyDollars = scale == 1 ? 0.13 : 126.0
                 let dollars = dailyDollars * Double(days)
                 XCTAssertEqual(values, [
                     MetricValue(number: dollars, kind: .dollars, estimated: true),
-                    MetricValue(number: Double(20_000 * scale * days), kind: .count, label: "tokens")
+                    MetricValue(number: Double(30_000 * scale * days), kind: .count, label: "tokens")
                 ], label)
-                XCTAssertEqual(unknownModels, ["grok-bot-cua"], label)
+                XCTAssertTrue(unknownModels.isEmpty, label)
             }
         }
     }
