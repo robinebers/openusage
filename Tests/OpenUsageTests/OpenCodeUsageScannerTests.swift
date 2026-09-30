@@ -170,7 +170,11 @@ final class OpenCodeUsageScannerTests: XCTestCase {
         XCTAssertFalse(empty.hasHostedUsage())
     }
 
-    /// The generated SQL against a real OpenCode 2 database that still holds the legacy table.
+    /// The generated SQL against a real OpenCode 2 database that still holds the legacy table. Row
+    /// shapes follow OpenCode v2.0.20: `packages/schema/src/session-message.ts` (`CompactionCompleted`
+    /// carries `model`, `cost`, `tokens`; `CompactionRunning` has none) and
+    /// `packages/core/src/session/message-updater.ts` (`session.compaction.ended` writes them). The
+    /// running row is given usage anyway to prove the status filter, not the missing fields, drops it.
     func testRealOpenCode2DatabaseCountsEachMessageOnce() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -191,9 +195,9 @@ final class OpenCodeUsageScannerTests: XCTestCase {
             INSERT INTO session_message VALUES ('m2','s','assistant',2,\(t),\(t),
               '{"model":{"id":"gpt-5.5","providerID":"opencode"},"cost":1,"tokens":{"input":100,"output":50,"reasoning":25,"cache":{"read":20,"write":5}}}');
             INSERT INTO session_message VALUES ('m3','s','compaction',3,\(t),\(t),
-              '{"status":"completed","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":0.5,"tokens":{"input":100}}');
+              '{"status":"completed","reason":"auto","summary":"s","recent":"r","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":0.5,"tokens":{"input":100}}');
             INSERT INTO session_message VALUES ('m4','s','compaction',4,\(t),\(t),
-              '{"status":"running","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"tokens":{"input":1}}');
+              '{"status":"running","reason":"auto","summary":"s","recent":"r","model":{"id":"glm-5.2","providerID":"opencode-go"},"cost":9,"tokens":{"input":1}}');
             INSERT INTO session_message VALUES ('m5','s','assistant',5,\(t),\(t),
               '{"model":{"id":"gpt-5.5","providerID":"openai"},"cost":7,"tokens":{"input":1}}');
             INSERT INTO credential VALUES ('c1','opencode-go','default','{"type":"key","key":"oc_sk_test"}',NULL,NULL,1,\(t),\(t));
