@@ -2,7 +2,8 @@ import Foundation
 
 /// Reads the OpenCode Go credential already on the machine. Local-only — never the network. The
 /// `opencode-go` key is both the first-run detection signal and the Bearer token for
-/// `GET /zen/go/v1/usage`, so it lives behind one loader.
+/// `GET /zen/go/v1/usage`, so it lives behind one loader. OpenCode 2 stores it in the channel
+/// databases' `credential` table; OpenCode 1 in `auth.json`.
 ///
 /// Codex attribution also needs to know whether OpenCode's `openai` provider is ChatGPT OAuth.
 /// OpenCode 2 moved that credential from `auth.json` into each channel database's `credential`
@@ -13,6 +14,8 @@ struct OpenCodeAuthStore: Sendable {
     var environment: EnvironmentReading
     var homeDirectory: @Sendable () -> URL
     var sqlite: SQLiteAccessing
+    /// Every channel database to read `credential` rows from; `nil` globs the data directory.
+    var databasePaths: (@Sendable () throws -> [String])?
 
     /// The current `openai` row of one database. Ordering mirrors OpenCode (`active DESC,
     /// time_updated DESC, id DESC`); the filter admits NULL-flagged imports. `json(value)` embeds
@@ -25,16 +28,27 @@ struct OpenCodeAuthStore: Sendable {
         LIMIT 1;
         """
 
+    /// The current `opencode-go` API key of one database, in the same order as the `openai` row.
+    static let credentialSQLGoKey = """
+        SELECT json_extract(value,'$.key')
+        FROM credential
+        WHERE integration_id = 'opencode-go' AND (active IS NULL OR active = 1)
+        ORDER BY active DESC, time_updated DESC, id DESC
+        LIMIT 1;
+        """
+
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
-        sqlite: SQLiteAccessing = SQLiteCLIAccessor()
+        sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
+        databasePaths: (@Sendable () throws -> [String])? = nil
     ) {
         self.files = files
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.sqlite = sqlite
+        self.databasePaths = databasePaths
     }
 
     var dataDirectory: String {
@@ -45,14 +59,40 @@ struct OpenCodeAuthStore: Sendable {
         OpenCodePaths.authFilePath(dataDirectory: dataDirectory)
     }
 
-    /// The non-empty `opencode-go` API key from `auth.json`, or `nil` when the user has not logged into
-    /// OpenCode Go. Reads only that one entry — tolerant of unrelated sibling entries (other providers, or
-    /// a future non-object field like a schema marker) so one odd value can't hide a valid key. A present
-    /// file that can't be read or parsed throws `credentialsUnreadable` so broken storage is never
-    /// mistaken for logout; an absent file is the normal "not logged in" `nil`.
+    /// The non-empty `opencode-go` API key, or `nil` when the user has not logged into OpenCode Go.
+    /// OpenCode 2 keeps it in each channel database's `credential` table; the first database holding
+    /// a key wins. `auth.json` stands in only when no database has that table — once one does, the
+    /// imported file is stale and a logout (which deletes the row) must not be revived by it. Reads
+    /// only the `opencode-go` entry, tolerant of unrelated sibling entries. A present file or database
+    /// that can't be read throws `credentialsUnreadable` so broken storage is never mistaken for logout.
     func goAPIKey() throws -> String? {
-        guard let object = try authObject() else { return nil }
-        guard let entry = object["opencode-go"] as? [String: Any],
+        let paths: [String]
+        do {
+            paths = try databasePaths?() ?? OpenCodePaths.databaseFiles(in: dataDirectory)
+        } catch {
+            throw OpenCodeUsageError.credentialsUnreadable(detail: error.localizedDescription)
+        }
+        var hasCredentialTable = false
+        var failure: Error?
+        for path in paths {
+            do {
+                let value = try sqlite.queryValue(path: path, sql: Self.credentialSQLGoKey)
+                hasCredentialTable = true
+                if let key = value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    return key
+                }
+            } catch where Self.isMissingTable(error) {
+                continue
+            } catch {
+                failure = error
+            }
+        }
+        if let failure {
+            throw OpenCodeUsageError.credentialsUnreadable(detail: failure.localizedDescription)
+        }
+        if hasCredentialTable { return nil }
+        guard let object = try authObject(),
+              let entry = object["opencode-go"] as? [String: Any],
               let key = entry["key"] as? String
         else { return nil }
         return key.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -86,8 +126,7 @@ struct OpenCodeAuthStore: Sendable {
             return OpenAICredential(isOAuth: false, since: nil)
         } catch {
             // Pre-OpenCode-2 databases have no `credential` table — `auth.json` is still live there.
-            // `SQLiteError.errorDescription` is sqlite3's stderr, so this is the raw message.
-            guard error.localizedDescription.localizedCaseInsensitiveContains("no such table") else { throw error }
+            guard Self.isMissingTable(error) else { throw error }
         }
         if let entry = try authObject()?["openai"] as? [String: Any] {
             return OpenAICredential(isOAuth: Self.isCodexOAuth(entry), since: nil)
@@ -105,6 +144,11 @@ struct OpenCodeAuthStore: Sendable {
         return ["access", "refresh"].contains { field in
             ((entry[field] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty) != nil
         }
+    }
+
+    /// `SQLiteError.errorDescription` is sqlite3's stderr, so this matches its raw message.
+    private static func isMissingTable(_ error: Error) -> Bool {
+        error.localizedDescription.localizedCaseInsensitiveContains("no such table")
     }
 
     private func authObject() throws -> [String: Any]? {

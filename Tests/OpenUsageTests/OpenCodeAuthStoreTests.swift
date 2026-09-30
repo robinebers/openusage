@@ -32,6 +32,44 @@ final class OpenCodeAuthStoreTests: XCTestCase {
         try store.openAICredential(databasePath: stable)
     }
 
+    private func goStore(
+        auth: String? = nil,
+        goKeys: [String: String] = [:],
+        credentials: [String: String] = [:],
+        failing: Set<String> = [],
+        paths: [String] = ["/oc/opencode.db", "/oc/opencode-next.db"]
+    ) -> OpenCodeAuthStore {
+        openCodeAuthStore(
+            files: FakeFiles(auth.map { ["/oc/auth.json": $0] } ?? [:]),
+            sqlite: OpenCodeFakeSQLite(failing: failing, credentials: credentials, goKeys: goKeys),
+            databasePaths: paths
+        )
+    }
+
+    private let staleAuth = #"{"opencode-go":{"type":"api","key":"sk-stale"}}"#
+
+    func testGoKeyPrefersCredentialTableOverStaleAuthFile() throws {
+        let store = goStore(auth: staleAuth, goKeys: ["/oc/opencode-next.db": " oc_sk_live "])
+        XCTAssertEqual(try store.goAPIKey(), "oc_sk_live")
+    }
+
+    func testGoLogoutInOpenCode2IsNotRevivedByAuthFile() throws {
+        XCTAssertNil(try goStore(auth: staleAuth, goKeys: ["/oc/opencode.db": ""]).goAPIKey())
+    }
+
+    func testGoKeyFallsBackToAuthFileWithoutCredentialTable() throws {
+        XCTAssertEqual(try goStore(auth: staleAuth).goAPIKey(), "sk-stale")
+    }
+
+    func testUnreadableCredentialDatabaseThrowsInsteadOfFallingBack() {
+        let store = goStore(auth: staleAuth, goKeys: ["/oc/opencode.db": ""], failing: ["/oc/opencode-next.db"])
+        XCTAssertThrowsError(try store.goAPIKey()) { error in
+            guard case OpenCodeUsageError.credentialsUnreadable = error else {
+                return XCTFail("expected credentialsUnreadable, got \(error)")
+            }
+        }
+    }
+
     func testReadsGoKey() throws {
         XCTAssertEqual(try store(#"{"opencode-go":{"type":"api","key":"sk-abc"}}"#).goAPIKey(), "sk-abc")
     }

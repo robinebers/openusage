@@ -134,6 +134,7 @@ final class OpenCodeProvider: ProviderRuntime {
 
         var meterLines: [MetricLine] = []
         var plan: String?
+        var goError: OpenCodeUsageError?
         if let goKey {
             switch await fetchGoMeters(apiKey: goKey) {
             case .meters(let lines):
@@ -142,7 +143,10 @@ final class OpenCodeProvider: ProviderRuntime {
             case .noSubscription:
                 AppLog.info(LogTag.plugin("opencode"), "Go usage endpoint: no active subscription")
             case .failed(let error):
-                return ProviderSnapshot.error(provider: provider, error: error)
+                // A failed meters request must not hide local spend tiles; it surfaces only when
+                // there is nothing else to show.
+                goError = error
+                AppLog.warn(LogTag.plugin("opencode"), "Go meters unavailable: \(error.localizedDescription)")
             }
         }
 
@@ -173,6 +177,9 @@ final class OpenCodeProvider: ProviderRuntime {
         }
 
         if lines.isEmpty {
+            if let goError {
+                return ProviderSnapshot.error(provider: provider, error: goError)
+            }
             if goKey != nil {
                 return ProviderSnapshot.error(provider: provider, error: OpenCodeUsageError.noGoSubscription)
             }

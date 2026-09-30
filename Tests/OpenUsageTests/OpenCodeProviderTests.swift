@@ -246,6 +246,32 @@ final class OpenCodeProviderTests: XCTestCase {
         ).refresh()
         XCTAssertEqual(snapshot.errorCategory, .network)
     }
+
+    func testGoMeterFailureKeepsLocalTiles() async {
+        let db = "[" + openCodeRow("2026-07-12T10:00:00.000Z", "1.0", 500, "gpt-5.5", "opencode") + "]"
+        let unauthorized = HTTPResponse(
+            statusCode: 401,
+            headers: [:],
+            body: Data(#"{"type":"error","error":{"type":"AuthError","message":"Unauthorized"}}"#.utf8)
+        )
+        for client in [
+            OpenCodeUsageClient(http: ThrowingHTTPClient()),
+            OpenCodeUsageClient(http: FakeHTTPClient(response: unauthorized)),
+        ] {
+            let snapshot = await provider(
+                files: FakeFiles(["/oc/auth.json": authJSON]),
+                scanner: OpenCodeUsageScanner(
+                    sqlite: OpenCodeFakeSQLite(data: ["/oc/opencode.db": db]),
+                    databasePaths: { ["/oc/opencode.db"] }
+                ),
+                client: client
+            ).refresh()
+            XCTAssertNil(snapshot.errorCategory)
+            XCTAssertNil(snapshot.plan)
+            XCTAssertNil(snapshot.line(label: "Session"))
+            XCTAssertNotNil(snapshot.line(label: "Today"))
+        }
+    }
 }
 
 private final class ThrowingHTTPClient: HTTPClient, @unchecked Sendable {

@@ -73,14 +73,16 @@ struct OpenCodeUsageScanner: Sendable {
         var failures: [String: String] = [:]
 
         for path in paths {
-            checked.insert(path)
             do {
-                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs)) {
+                // A database with no message tables has no usage to read and does not vote on failure.
+                guard let tables = try OpenCodeCodexUsageScanner.messageTables(in: path, sqlite: sqlite) else { continue }
+                checked.insert(path)
+                if let json = try sqlite.queryValue(path: path, sql: Self.dataSQL(cutoffMs: cutoffMs, tables: tables)) {
                     rows.append(contentsOf: Self.parseRows(json))
                 }
             } catch {
+                checked.insert(path)
                 failures[path] = error.localizedDescription
-                continue
             }
         }
         // Per-path detail is logged only for newly failing paths (the reporter edge-triggers), so a
@@ -89,12 +91,16 @@ struct OpenCodeUsageScanner: Sendable {
         for path in newlyFailing.sorted() {
             AppLog.warn(LogTag.plugin("opencode"), "usage query failed for \(path): \(failures[path] ?? "unknown error")")
         }
-        if failures.count == checked.count {
+        if !checked.isEmpty && failures.count == checked.count {
             throw OpenCodeUsageError.databaseUnreadable
         }
 
         var accumulator = DailyUsageAccumulator()
+        // OpenCode 2 copies legacy `message` rows into `session_message` under their original IDs and
+        // keeps both tables, so the union can hold two copies of one message.
+        var seenIDs: Set<String> = []
         for row in rows {
+            if let id = row.id, !seenIDs.insert(id).inserted { continue }
             let date = Date(timeIntervalSince1970: row.ms / 1000)
             guard date >= tileSince else { continue }
             accumulator.add(
@@ -119,7 +125,8 @@ struct OpenCodeUsageScanner: Sendable {
         }
         for path in paths {
             do {
-                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL), !value.isEmpty {
+                guard let tables = try OpenCodeCodexUsageScanner.messageTables(in: path, sqlite: sqlite) else { continue }
+                if let value = try sqlite.queryValue(path: path, sql: Self.probeSQL(tables: tables)), !value.isEmpty {
                     return true
                 }
             } catch {
@@ -136,10 +143,11 @@ struct OpenCodeUsageScanner: Sendable {
         var cost: Double
         var tokens: Int
         var model: String
+        var id: String?
     }
 
     /// Parse the `json_group_array(json_array(...))` payload: an array of
-    /// `[time_created, cost, tokensTotal, modelID, providerID]`. Rows with a missing timestamp/cost or a
+    /// `[time_created, cost, tokensTotal, modelID, providerID, id]`. Rows with a missing timestamp/cost or a
     /// non-string providerID are skipped at this boundary.
     private static func parseRows(_ json: String) -> [Row] {
         guard let data = json.data(using: .utf8),
@@ -158,7 +166,8 @@ struct OpenCodeUsageScanner: Sendable {
             // (Int(Double) crashes above Int.max). 1e15 is far above any real token total.
             let tokens = Int(min(max(ProviderParse.number(entry[2]) ?? 0, 0), 1e15))
             let model = (entry[3] as? String) ?? ""
-            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model))
+            let id = entry.count >= 6 ? (entry[5] as? String)?.nilIfEmpty : nil
+            rows.append(Row(ms: ms, cost: cost, tokens: tokens, model: model, id: id))
         }
         return rows
     }
@@ -168,29 +177,55 @@ struct OpenCodeUsageScanner: Sendable {
     /// SQL literal built from `hostedProviderIDs`, so the tracked list has one source of truth.
     private static let providerFilter = "(" + hostedProviderIDs.map { "'\($0)'" }.joined(separator: ",") + ")"
 
-    static func dataSQL(cutoffMs: Int) -> String {
+    /// OpenCode 1 writes `message` rows with flat `role`/`modelID`/`providerID`; OpenCode 2 writes
+    /// `session_message` rows with a `type` column and a nested `$.model`, and its migrated rows carry
+    /// token buckets without `$.tokens.total`. Completed compactions carry usage too.
+    private static let modelID = "COALESCE(json_extract(data,'$.model.id'), json_extract(data,'$.modelID'))"
+    private static let providerID =
+        "COALESCE(json_extract(data,'$.model.providerID'), json_extract(data,'$.providerID'))"
+    private static let totalTokens = """
+        COALESCE(json_extract(data,'$.tokens.total'),
+                 COALESCE(json_extract(data,'$.tokens.input'),0)
+                 + COALESCE(json_extract(data,'$.tokens.output'),0)
+                 + COALESCE(json_extract(data,'$.tokens.reasoning'),0)
+                 + COALESCE(json_extract(data,'$.tokens.cache.read'),0)
+                 + COALESCE(json_extract(data,'$.tokens.cache.write'),0))
+        """
+    private static let v1Role = "json_extract(data,'$.role') = 'assistant'"
+    private static let v2Role =
+        "(type = 'assistant' OR (type = 'compaction' AND json_extract(data,'$.status') = 'completed'))"
+
+    private static func rowsSQL(table: String, role: String, cutoffMs: Int?) -> String {
+        """
+        SELECT id, time_created, data FROM \(table)
+          WHERE \(cutoffMs.map { "time_created >= \($0)\n            AND " } ?? "")json_valid(data)
+            AND \(role)
+            AND \(providerID) IN \(providerFilter)
+            AND json_type(data,'$.cost') IN ('integer','real')
+        """
+    }
+
+    private static func source(_ tables: OpenCodeCodexUsageScanner.MessageTables, cutoffMs: Int?) -> String {
+        var bodies: [String] = []
+        if tables.contains(.v1) { bodies.append(rowsSQL(table: "message", role: v1Role, cutoffMs: cutoffMs)) }
+        if tables.contains(.v2) { bodies.append(rowsSQL(table: "session_message", role: v2Role, cutoffMs: cutoffMs)) }
+        return "(\n" + bodies.joined(separator: "\n        UNION ALL\n") + "\n)"
+    }
+
+    static func dataSQL(cutoffMs: Int, tables: OpenCodeCodexUsageScanner.MessageTables = .all) -> String {
         """
         SELECT json_group_array(json_array(
                  time_created,
                  json_extract(data,'$.cost'),
-                 COALESCE(json_extract(data,'$.tokens.total'),0),
-                 json_extract(data,'$.modelID'),
-                 json_extract(data,'$.providerID')))
-        FROM message
-        WHERE time_created >= \(cutoffMs)
-          AND json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real');
+                 \(totalTokens),
+                 \(modelID),
+                 \(providerID),
+                 id))
+        FROM \(source(tables, cutoffMs: cutoffMs));
         """
     }
 
-    static let probeSQL = """
-        SELECT 1 FROM message
-        WHERE json_valid(data)
-          AND json_extract(data,'$.role') = 'assistant'
-          AND json_extract(data,'$.providerID') IN \(providerFilter)
-          AND json_type(data,'$.cost') IN ('integer','real')
-        LIMIT 1;
-        """
+    static func probeSQL(tables: OpenCodeCodexUsageScanner.MessageTables = .all) -> String {
+        "SELECT 1 FROM \(source(tables, cutoffMs: nil))\nLIMIT 1;"
+    }
 }
