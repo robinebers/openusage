@@ -117,13 +117,7 @@ struct DefaultAccountObserver: Sendable {
     /// the CLI itself copies into `account_id`). No path-derived fallback: an auth file that can't
     /// name its account (and keyring-mode logins, whose secret we never read here) stays unresolved.
     func observeCodex() -> Outcome {
-        let homes: [String]
-        if let raw = environment.value(for: "CODEX_HOME")?
-            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-            homes = [raw]
-        } else {
-            homes = ["~/.config/codex", "~/.codex"]
-        }
+        let homes = CodexHomeScanner.configuredHomeValues(environment: environment)
 
         // `CodexProvider.refresh` falls back to the keychain credential when file auth fails, so
         // while a keychain item exists the file's identity is not provably the account that will
@@ -154,14 +148,9 @@ struct DefaultAccountObserver: Sendable {
             guard let auth = CodexAuthStore.parseAuth(text),
                   auth.tokens?.accessToken?.nilIfEmpty != nil
             else { continue }
-            let payload = auth.tokens?.idToken.flatMap { ProviderParse.jwtPayload($0) }
-            let email = (payload?["email"] as? String)?.nilIfEmpty
-            if let accountID = auth.tokens?.accountID?
-                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                return .resolved(identityKey: accountID.lowercased(), label: email, anchor: anchor)
-            }
-            if let claimID = Self.chatGPTAccountID(inIDTokenPayload: payload) {
-                return .resolved(identityKey: claimID.lowercased(), label: email, anchor: anchor)
+            if let identity = CodexAccountIdentity(auth: auth),
+               let accountID = identity.accountID.nilIfEmpty {
+                return .resolved(identityKey: accountID, label: identity.email, anchor: anchor)
             }
         }
         return sawFootprint
@@ -177,5 +166,14 @@ struct DefaultAccountObserver: Sendable {
         let authClaim = payload["https://api.openai.com/auth"] as? [String: Any]
         let raw = (authClaim?["chatgpt_account_id"] ?? payload["chatgpt_account_id"]) as? String
         return raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
+    /// The signed-in user's email: `email` under the `https://api.openai.com/profile` claim (access
+    /// tokens), with the bare top-level spelling id_tokens use. Lowercased.
+    static func email(inTokenPayload payload: [String: Any]?) -> String? {
+        guard let payload else { return nil }
+        let profile = payload["https://api.openai.com/profile"] as? [String: Any]
+        return ((profile?["email"] ?? payload["email"]) as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty?.lowercased()
     }
 }

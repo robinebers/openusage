@@ -261,6 +261,8 @@ final class CodexProvider: ProviderRuntime {
             return authStore.loadAuth(at: path)
         case .keychain(let account):
             return authStore.loadKeychainAuth(account: account)
+        case .pi(let source):
+            return authStore.loadPiAuth(source)
         }
     }
 

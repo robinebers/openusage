@@ -44,7 +44,7 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
 
     private func card(_ identity: CodexAccountIdentity, id: String = "codex") -> CodexAccountCard {
         CodexAccountCard(id: id, identity: identity, displayName: id, authHomes: [],
-                         logHomes: [], allowsUnattributedHistory: false)
+                         piCredentialSources: [], logHomes: [], allowsUnattributedHistory: false)
     }
 
     nonisolated private static func response(status: Int = 200) -> HTTPResponse {

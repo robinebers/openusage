@@ -48,7 +48,11 @@ enum ProviderCatalog {
             providers += codexCards.map { card in
                 CodexProvider(
                     provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
-                    authStore: CodexAuthStore(expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
+                    authStore: CodexAuthStore(
+                        expectedIdentity: card.identity,
+                        additionalAuthHomes: card.authHomes,
+                        piCredentialSources: card.piCredentialSources
+                    ),
                     logUsageScanner: CodexLogUsageScanner(
                         allowsUnattributedHistory: card.allowsUnattributedHistory,
                         additionalHomes: card.logHomes
