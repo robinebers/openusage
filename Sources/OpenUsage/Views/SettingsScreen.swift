@@ -222,7 +222,7 @@ struct SettingsScreen: View {
                 .settingsSwitchStyle()
             }
             // Daily activity and crash reports are always on; the toggle only gates extra analytics.
-            Text("Shares anonymous usage stats. Crash reports and a daily ping are always sent.")
+            Text("Share additional anonymous usage stats that tell the team where to improve.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
