@@ -472,7 +472,8 @@ final class ClaudeProvider: ProviderRuntime {
     /// Seeds `lastGoodUsage` from the launch snapshot for a relaunch's first 429, but only for a login
     /// this process verified against the card's account and organization. Local spend tiles and any
     /// earlier rate-limit notice are left out (`snapshotWithLocalUsage` recomputes the tiles), and a
-    /// window whose reset has already passed is dropped rather than shown with its pre-reset value.
+    /// window whose reset has already passed is dropped rather than shown with its pre-reset value, as is
+    /// any reset grant whose deadline has passed.
     private func adoptPendingLaunchUsageIfVerified(credentials: ClaudeOAuth) {
         guard lastGoodUsage == nil,
               let snapshot = pendingLaunchSnapshot,
@@ -481,10 +482,28 @@ final class ClaudeProvider: ProviderRuntime {
         else { return }
         pendingLaunchSnapshot = nil
         let now = now()
-        let lines = snapshot.lines.filter { line in
-            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return false }
-            if case .progress(_, _, _, _, let resetsAt?, _, _) = line, resetsAt <= now { return false }
-            return true
+        let lines = snapshot.lines.compactMap { line -> MetricLine? in
+            guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return nil }
+            switch line {
+            case .progress(_, _, _, _, let resetsAt?, _, _) where resetsAt <= now:
+                return nil
+            case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown)
+                where expiriesAt.contains { $0 <= now }:
+                // Reset grants past their deadline are gone; grants without a known deadline still count.
+                let elapsed = expiriesAt.filter { $0 <= now }.count
+                let values = values.map { value in
+                    var value = value
+                    if value.kind == .count { value.number = max(0, value.number - Double(elapsed)) }
+                    return value
+                }
+                return .values(
+                    label: label, values: values, colorHex: colorHex,
+                    expiriesAt: expiriesAt.filter { $0 > now },
+                    unknownModels: unknownModels, modelBreakdown: breakdown
+                )
+            default:
+                return line
+            }
         }
         guard !lines.isEmpty else { return }
         AppLog.info(LogTag.plugin("claude"), "rate-limited after launch; keeping cached limits")

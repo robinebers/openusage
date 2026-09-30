@@ -137,6 +137,36 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.warning?.hasPrefix("Updates blocked by Anthropic"), true)
     }
 
+    func testLaunchResetGrantsPastTheirDeadlineAreDropped() async {
+        let fixture = makeFixture { request in
+            request.url.path == "/api/oauth/profile" ? Self.profileResponse() : Self.rateLimited()
+        }
+        let elapsed = Self.now.addingTimeInterval(-60)
+        // Three grants: one elapsed, one still open, one with no known deadline.
+        fixture.provider.adoptLaunchSnapshot(launchSnapshot(resetGrants: 3, resetExpiries: [elapsed, Self.future]))
+
+        let snapshot = await fixture.provider.refresh()
+
+        let row = resetsRow(snapshot.lines)
+        XCTAssertEqual(row?.count, 2)
+        XCTAssertEqual(row?.expiriesAt, [Self.future])
+    }
+
+    func testLaunchResetGrantsAllExpiredReadZeroAvailable() async {
+        let fixture = makeFixture { request in
+            request.url.path == "/api/oauth/profile" ? Self.profileResponse() : Self.rateLimited()
+        }
+        let elapsed = Self.now.addingTimeInterval(-60)
+        fixture.provider.adoptLaunchSnapshot(launchSnapshot(resetGrants: 2, resetExpiries: [elapsed, elapsed]))
+
+        let snapshot = await fixture.provider.refresh()
+
+        let row = resetsRow(snapshot.lines)
+        XCTAssertEqual(row?.count, 0)
+        XCTAssertEqual(row?.expiriesAt, [])
+        XCTAssertEqual(progressUsed(snapshot.lines, "Session"), 40)
+    }
+
     // MARK: - Helpers
 
     private struct Fixture {
@@ -166,7 +196,12 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
         return Fixture(provider: provider, files: files)
     }
 
-    private func launchSnapshot(providerID: String = "claude", sessionResetsAt: Date = future) -> ProviderSnapshot {
+    private func launchSnapshot(
+        providerID: String = "claude",
+        sessionResetsAt: Date = future,
+        resetGrants: Int = 1,
+        resetExpiries: [Date] = []
+    ) -> ProviderSnapshot {
         ProviderSnapshot(
             providerID: providerID,
             displayName: "Claude",
@@ -175,7 +210,11 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
                 .progress(label: "Session", used: 40, limit: 100, format: .percent, resetsAt: sessionResetsAt, periodDurationMs: MetricPeriod.sessionMs),
                 .progress(label: "Weekly", used: 60, limit: 100, format: .percent, resetsAt: Self.future, periodDurationMs: MetricPeriod.weekMs),
                 .progress(label: "Fable", used: 10, limit: 100, format: .percent, resetsAt: Self.future),
-                .values(label: "Rate Limit Resets", values: [MetricValue(number: 1, kind: .count, label: "available")]),
+                .values(
+                    label: "Rate Limit Resets",
+                    values: [MetricValue(number: Double(resetGrants), kind: .count, label: "available")],
+                    expiriesAt: resetExpiries
+                ),
                 .values(label: "Today", values: [MetricValue(number: 3, kind: .dollars)]),
                 ClaudeUsageMapper.rateLimitedNote(retryAfterSeconds: 600)
             ],
@@ -221,6 +260,12 @@ final class ClaudeLaunchSnapshotTests: XCTestCase {
             return nil
         }
         return used
+    }
+
+    private func resetsRow(_ lines: [MetricLine]) -> (count: Double?, expiriesAt: [Date])? {
+        guard case .values(_, let values, _, let expiriesAt, _, _) = lines.first(where: { $0.label == "Rate Limit Resets" })
+        else { return nil }
+        return (values.first?.number, expiriesAt)
     }
 
     private func badge(_ lines: [MetricLine], _ label: String) -> String? {
