@@ -243,9 +243,10 @@ struct SettingsScreen: View {
         // dev build and a bare `swift run`, with no feed, hide this).
         if updater.isActive {
             section("Updates") {
-                row("Update Automatically") {
+                row("Check Automatically") {
                     Toggle("", isOn: $updater.automaticallyChecksForUpdates)
                         .settingsSwitchStyle()
+                        .hoverTooltip("Checks hourly and shows a banner when an update is available.")
                 }
                 row("Beta Updates") {
                     Toggle("", isOn: $updater.betaChannelEnabled)

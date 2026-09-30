@@ -82,7 +82,7 @@ developer builds do not show it.
 
 | Setting | Options | What it does |
 |---|---|---|
-| Update Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
+| Check Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
 | Beta Updates | On / Off | Adds pre-release builds to the updates you can receive. Stable releases remain available either way. |
 | Check for Updates… | button | Starts a manual update check and opens Sparkle's update window. |
 

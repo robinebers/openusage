@@ -15,7 +15,7 @@ they install, so you always get a genuine, unmodified build.
   For both manual checks and banner installs, OpenUsage brings itself to the foreground before opening
   Sparkle so the update window doesn't get buried behind another app. Because OpenUsage normally lives
   only in the menu bar, it briefly shows a Dock icon for the update session, then hides again.
-- **Turn it off.** The **Update Automatically** switch in **Settings → Updates** stops the
+- **Turn it off.** The **Check Automatically** switch in **Settings → Updates** stops the
   background checks. You can still check manually.
 
 ## Beta updates

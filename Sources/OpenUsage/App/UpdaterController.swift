@@ -48,7 +48,7 @@ final class UpdaterController {
         }
     }
 
-    /// Backs the "Update Automatically" toggle. Sparkle persists this in `UserDefaults` itself,
+    /// Backs the "Check Automatically" toggle. Sparkle persists this in `UserDefaults` itself,
     /// so this is a thin pass-through rather than a shadow preference.
     var automaticallyChecksForUpdates: Bool {
         get { controller?.updater.automaticallyChecksForUpdates ?? false }
