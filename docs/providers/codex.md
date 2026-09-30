@@ -48,7 +48,8 @@ OpenUsage also finds signed-in accounts in `CODEX_HOME`, `~/.codex`, `~/.config/
 workspace remain separate cards, and the same account signed in through several homes and pi shares
 one card, named by its xswap alias, then its pi label, then its workspace and email. A login held only
 in the Keychain counts as an account too. A single account keeps the plain Codex card, which still
-uses a login found only in a sibling home or in pi. Restart OpenUsage after adding or removing a login.
+uses a login found only in a sibling home or in pi, and counts that home's session logs in its
+spend tiles. Restart OpenUsage after adding or removing a login.
 
 These cards read their logins as they are. OpenUsage never rotates a token that belongs to another
 Codex home, xswap, or pi; it re-reads each source on every refresh and tries every matching login. If

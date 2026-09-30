@@ -48,7 +48,10 @@ enum ProviderCatalog {
                     additionalAuthHomes: codex.plainAuthHomes,
                     piCredentialSources: codex.plainPiCredentialSources
                 ),
-                logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: codex.allowsUnattributedHistory),
+                logUsageScanner: CodexLogUsageScanner(
+                    allowsUnattributedHistory: codex.allowsUnattributedHistory,
+                    additionalHomes: codex.plainAuthHomes
+                ),
                 allowsUnattributedHistory: codex.allowsUnattributedHistory
             ))
         } else {

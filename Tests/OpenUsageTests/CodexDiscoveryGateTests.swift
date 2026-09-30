@@ -81,6 +81,20 @@ final class CodexDiscoveryGateTests: XCTestCase {
         XCTAssertEqual(http.requests.first?.headers["Authorization"], "Bearer \(valid)")
     }
 
+    func testLoneSiblingHomeIsScannedForThePlainCodexCardsSpend() async throws {
+        let valid = Fixtures.token(accountID: "ACCT-A", email: "alice@test", exp: Self.now.addingTimeInterval(3600))
+        let files = FakeFiles(["/Users/dev/.codex-work/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test", accessToken: valid)])
+        let assembly = await assemble(files: files, directories: ["/Users/dev": [".codex-work"]])
+
+        let providers = ProviderCatalog.make(defaults: makeScratchDefaults(), codex: assembly.codex)
+            .compactMap { $0 as? CodexProvider }
+        let scanner = try XCTUnwrap(providers.first?.logUsageScanner)
+
+        XCTAssertEqual(providers.map(\.provider.id), ["codex"])
+        let homes = await scanner.codexHomes().map(\.path)
+        XCTAssertTrue(homes.contains("/Users/dev/.codex-work"), "\(homes)")
+    }
+
     func testLoneSiblingHomeStaysReadOnlyOnThePlainCodexCard() async throws {
         let expired = Fixtures.token(accountID: "ACCT-A", email: "alice@test", exp: Self.now.addingTimeInterval(-60))
         let credential = Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test", accessToken: expired)
