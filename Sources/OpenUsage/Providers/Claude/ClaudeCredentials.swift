@@ -9,8 +9,34 @@ struct ClaudeOAuth: Codable, Hashable, Sendable {
     var scopes: [String]?
 }
 
-struct ClaudeCredentialsFile: Codable, Hashable, Sendable {
-    var claudeAiOauth: ClaudeOAuth?
+/// Claude Code owns this document, including MCP logins and fields OpenUsage does not know about.
+/// Keep its original JSON alongside the typed view rather than re-encoding that partial model.
+struct ClaudeCredentialsFile: Hashable, Sendable {
+    let claudeAiOauth: ClaudeOAuth?
+    private let document: Data
+
+    init?(data: Data) {
+        struct OAuthFields: Decodable {
+            var claudeAiOauth: ClaudeOAuth?
+        }
+        guard let fields = try? JSONDecoder().decode(OAuthFields.self, from: data) else { return nil }
+        claudeAiOauth = fields.claudeAiOauth
+        document = data
+    }
+
+    func mergingRotatedOAuth(_ oauth: ClaudeOAuth) throws -> String {
+        guard var object = try JSONSerialization.jsonObject(with: document) as? [String: Any],
+              var storedOAuth = object["claudeAiOauth"] as? [String: Any]
+        else { throw ClaudeAuthError.credentialsChanged }
+        // These are the only fields returned by the refresh endpoint. Leave metadata, unknown
+        // nested fields, and every other credential in the document untouched.
+        if let accessToken = oauth.accessToken { storedOAuth["accessToken"] = accessToken }
+        if let refreshToken = oauth.refreshToken { storedOAuth["refreshToken"] = refreshToken }
+        if let expiresAt = oauth.expiresAt { storedOAuth["expiresAt"] = expiresAt }
+        object["claudeAiOauth"] = storedOAuth
+        let data = try JSONSerialization.data(withJSONObject: object)
+        return String(decoding: data, as: UTF8.self)
+    }
 }
 
 struct ClaudeCredentialState: Hashable, Sendable {

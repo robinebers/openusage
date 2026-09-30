@@ -9,11 +9,7 @@ final class OpenCodeProviderTests: XCTestCase {
     private let now = OpenUsageISO8601.date(from: "2026-07-12T12:00:00.000Z")!
 
     private func authStore(files: TextFileAccessing) -> OpenCodeAuthStore {
-        OpenCodeAuthStore(
-            files: files,
-            environment: FakeEnvironment(["OPENCODE_DATA_DIR": "/oc"]),
-            homeDirectory: { URL(fileURLWithPath: "/nonexistent") }
-        )
+        openCodeAuthStore(files: files)
     }
 
     private func usageJSON(rolling: Int = 12, weekly: Int = 8, monthly: Int = 35) -> Data {

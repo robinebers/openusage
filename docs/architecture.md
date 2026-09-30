@@ -54,6 +54,12 @@ pricing still run on every refresh from the cached events. Files are read in sma
 unusually large individual records are skipped and logged so media-heavy or malformed histories cannot
 exhaust memory.
 
+## Local subprocesses
+
+Credential and discovery helpers capture stdout and stderr on separate private queues. Both streams
+are read while the command runs, so large output and a busy shared worker pool cannot strand pipe
+reads. A command that reaches its deadline still terminates its process tree and reports a timeout.
+
 ## Stores
 
 The UI reads from a few observable stores:

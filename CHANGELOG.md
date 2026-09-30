@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.7.13-beta.2
+
+### New Features
+- feat(claude): show usage-limit reset grants in a Rate Limit Resets row ([#1290](https://github.com/robinebers/openusage/pull/1290)) by @robinebers
+- feat(pricing): price Cursor Grok 4.7 in the supplement ([#1286](https://github.com/robinebers/openusage/pull/1286)) by @robinebers
+- Add `pullfrog.yml` workflow by @robinebers
+
+### Bug Fixes
+- fix(codex): attribute OpenCode 2 ChatGPT OAuth usage ([#1284](https://github.com/robinebers/openusage/pull/1284)) by @validatedev
+- fix(ollama): display monthly cloud usage limit ([#1270](https://github.com/robinebers/openusage/pull/1270)) by @robinebers
+
+### Chores
+- chore(deps): bump github.com/sindresorhus/keyboardshortcuts ([#1281](https://github.com/robinebers/openusage/pull/1281)) by @dependabot
+- chore(deps): bump github.com/posthog/posthog-ios from 3.72.0 to 3.76.0 ([#1282](https://github.com/robinebers/openusage/pull/1282)) by @dependabot
+- chore(deps): bump github.com/sparkle-project/sparkle ([#1283](https://github.com/robinebers/openusage/pull/1283)) by @dependabot
+
+---
+
+### Changelog
+**Full Changelog**: [v0.7.13-beta.1...v0.7.13-beta.2](https://github.com/robinebers/openusage/compare/v0.7.13-beta.1...v0.7.13-beta.2)
+
+- [333401f](https://github.com/robinebers/openusage/commit/333401fa75748b649cc3f657e9e6d8b6044197b3) fix(codex): attribute OpenCode 2 ChatGPT OAuth usage (#1284) by @validatedev
+- [939f41c](https://github.com/robinebers/openusage/commit/939f41cda6612d016851e3befa7a11b3c983e095) fix(ollama): display monthly cloud usage limit (#1270) by @robinebers
+- [0018945](https://github.com/robinebers/openusage/commit/00189454816cc3d815a166fa1369d6fe67dd2405) feat(claude): show usage-limit reset grants in a Rate Limit Resets row (#1290) by @robinebers
+- [16fed0f](https://github.com/robinebers/openusage/commit/16fed0fa0226d30354e7f0818fddbcd83cabaa33) feat(pricing): price Cursor Grok 4.7 in the supplement (#1286) by @robinebers
+- [7caf4ca](https://github.com/robinebers/openusage/commit/7caf4caab4970701ccaeae3798a71e9995847001) chore(deps): bump github.com/sindresorhus/keyboardshortcuts (#1281) by @dependabot
+- [3db68ec](https://github.com/robinebers/openusage/commit/3db68ecde535f0792e974060852472986208d03c) chore(deps): bump github.com/posthog/posthog-ios from 3.72.0 to 3.76.0 (#1282) by @dependabot
+- [3a2ef2a](https://github.com/robinebers/openusage/commit/3a2ef2a41e547a2ab676561b82ea0258891d310c) chore(deps): bump github.com/sparkle-project/sparkle (#1283) by @dependabot
+- [3a5d167](https://github.com/robinebers/openusage/commit/3a5d1672830c536be39e0430aee28539acf65d06) Add `pullfrog.yml` workflow by @robinebers
+
 ## v0.7.13-beta.1
 
 ### New Features

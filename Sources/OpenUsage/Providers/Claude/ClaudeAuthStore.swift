@@ -217,11 +217,13 @@ struct ClaudeAuthStore: Sendable {
     /// whole generation catches a newly added higher-priority source as well as replacement in place.
     /// The underlying stores provide no atomic compare-and-swap, so this remains best-effort.
     func save(_ state: ClaudeCredentialState, ifUnchanged expected: ClaudeCredentialGeneration) throws -> Bool {
-        guard credentialGeneration() == expected else { return false }
-        var fullData = state.fullData ?? ClaudeCredentialsFile()
-        fullData.claudeAiOauth = state.oauth
-        let data = try JSONEncoder().encode(fullData)
-        guard let text = String(data: data, encoding: .utf8) else { return false }
+        let current = loadCredentialSet().candidates
+        guard ClaudeCredentialGeneration(current) == expected,
+              let latest = current.first(where: { $0.source == state.source })?.fullData
+        else { return false }
+        // Merge into the document read for this generation check, not the pre-refresh snapshot:
+        // Claude Code may have updated an MCP login while leaving its own OAuth login unchanged.
+        let text = try latest.mergingRotatedOAuth(state.oauth)
 
         switch state.source {
         case .file:
@@ -347,7 +349,7 @@ struct ClaudeAuthStore: Sendable {
     }
 
     static func parseCredentials(_ text: String) -> ClaudeCredentialsFile? {
-        ProviderParse.decodeJSONWithHexFallback(text, as: ClaudeCredentialsFile.self)
+        ProviderParse.decodeJSONWithHexFallback(text, decode: ClaudeCredentialsFile.init(data:))
     }
 
     /// Keychain and file credentials in fixed keychain-before-file order. The keychain is Claude Code's

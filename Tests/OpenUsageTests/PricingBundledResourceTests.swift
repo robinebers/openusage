@@ -49,7 +49,12 @@ final class PricingBundledResourceTests: XCTestCase {
             ("grok-4.5-fast-high", 4), ("grok-4.5-high-fast", 4),
             ("cursor-grok-4.5-high-fast", 4), ("cursor-grok-4.6-high", 2),
             ("cursor-grok-4.6-high-fast", 4), ("grok-4-6-xhigh", 2),
-            ("grok-4-6-xhigh-fast", 4), ("kimi-k2p5", 0.6),
+            ("grok-4-6-xhigh-fast", 4), ("cursor-grok-4.7-high", 2),
+            ("grok-4-7-slow", 2), ("grok-4-7-slow-xhigh", 2),
+            ("grok-4.7-xhigh-fast", 4),
+            ("cursor-grok-4.7-high-fast", 4), ("grok-4-7-xhigh", 2),
+            ("grok-4.7-500k", 4), ("grok-4.7-500k-fast", 6),
+            ("grok-4.7[500k]-high-fast", 6), ("kimi-k2p5", 0.6),
             ("kimi-k2.7-code", 0.95), ("kimi-k2p7", 0.95), ("kimi-k3-max", 3),
             ("claude-4.7-opus-high-thinking", 5), ("claude-4.7-opus-max-thinking-fast", 30),
             ("glm-5.2-max", 1.4), ("glm-5.3-max", 1.4),
@@ -189,6 +194,47 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(opus5.costDollars(for: fastTokens), opus5.costDollars(for: tokens) * 2, accuracy: 0.000_001)
     }
 
+    func testClaudeSonnet55PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let sonnet55 = try XCTUnwrap(pricing.resolve(model: "claude-sonnet-5-5"))
+        XCTAssertEqual(sonnet55.inputPerMillion, 2.0)
+        XCTAssertEqual(sonnet55.cacheWritePerMillion, 2.5)
+        XCTAssertEqual(sonnet55.cacheReadPerMillion, 0.2)
+        XCTAssertEqual(sonnet55.outputPerMillion, 10.0)
+
+        for slug in ["claude-sonnet-5.5", "claude-sonnet-5-5-low", "claude-sonnet-5-5-medium", "claude-sonnet-5-5-high", "claude-sonnet-5-5-thinking-max", "claude-sonnet-5-5[1m]"] {
+            XCTAssertEqual(pricing.resolve(model: slug), sonnet55, slug)
+        }
+        XCTAssertNotEqual(pricing.resolve(model: "claude-sonnet-5"), sonnet55)
+    }
+
+    func testClaudeOpus55PricingAndAliases() throws {
+        let pricing = Self.pricing
+        let standard = try XCTUnwrap(pricing.resolve(model: "claude-opus-5-5"))
+        XCTAssertEqual(standard.inputPerMillion, 4.0)
+        XCTAssertEqual(standard.cacheWritePerMillion, 5.0)
+        XCTAssertEqual(standard.cacheReadPerMillion, 0.2)
+        XCTAssertEqual(standard.outputPerMillion, 20.0)
+        XCTAssertEqual(standard.fastMultiplier, 2.0)
+
+        for slug in ["claude-opus-5.5", "claude-opus-5-5[1m]", "claude-opus-5-5-thinking-xhigh", "claude-5.5-opus-high-thinking"] {
+            XCTAssertEqual(pricing.resolve(model: slug), standard, slug)
+        }
+
+        let fast = try XCTUnwrap(pricing.resolve(model: "claude-opus-5-5-fast"))
+        XCTAssertEqual(fast.inputPerMillion, 8.0)
+        XCTAssertEqual(fast.cacheWritePerMillion, 10.0)
+        XCTAssertEqual(fast.cacheReadPerMillion, 0.4)
+        XCTAssertEqual(fast.outputPerMillion, 40.0)
+        XCTAssertEqual(pricing.resolve(model: "claude-opus-5.5-thinking-high-fast"), fast)
+        XCTAssertEqual(pricing.resolve(model: "claude-5.5-opus-high-thinking-fast"), fast)
+
+        let tokens = TokenBreakdown(input: 1_000_000, cacheWrite5m: 1_000_000, cacheRead: 1_000_000, output: 1_000_000)
+        var fastTokens = tokens
+        fastTokens.isFast = true
+        XCTAssertEqual(standard.costDollars(for: fastTokens), standard.costDollars(for: tokens) * 2, accuracy: 0.000_001)
+    }
+
     /// Kimi K3: Cursor's published rates. Cursor lists no separate cache-write fee, so cache writes
     /// bill at the input rate, and the effort suffixes Cursor's CSV uses fold into the one entry.
     func testKimiK3PricingAndAliases() throws {
@@ -223,7 +269,10 @@ final class PricingBundledResourceTests: XCTestCase {
         let expected: [String: String] = [
             "Opus 5 (Auto Balanced)": "claude-opus-5",
             "Claude Opus 5 (Auto)": "claude-opus-5",
+            "Opus 5.5 (Auto Balanced)": "claude-opus-5-5",
+            "Claude Opus 5.5 Fast (Auto)": "claude-opus-5-5-fast",
             "Opus 4.8 (Auto)": "claude-opus-4-8",
+            "Sonnet 5.5 (Auto Balanced)": "claude-sonnet-5-5",
             "Sonnet 5 (Auto Intelligence)": "claude-sonnet-5",
             "Fable 5 (Auto Balanced)": "claude-fable-5",
             "Fable 5.1 (Auto Balanced)": "claude-fable-5.1",
@@ -232,6 +281,10 @@ final class PricingBundledResourceTests: XCTestCase {
             "Composer 2.5 (Auto)": "composer-2.5",
             "Composer 2.5 Fast (Auto)": "composer-2.5-fast",
             "Composer 2 (Auto Balanced)": "composer-2",
+            "Grok 4.7 (Auto Intelligence)": "grok-4.7",
+            "Cursor Grok 4.7 Fast (Auto)": "grok-4.7-fast",
+            "Grok 4.7 500k (Auto Intelligence)": "grok-4.7-500k",
+            "Cursor Grok 4.7 500k Fast (Auto)": "grok-4.7-500k-fast",
             "Grok 4.6 (Auto Intelligence)": "grok-4.6",
             "Cursor Grok 4.6 Fast (Auto)": "grok-4.6-fast",
             "Grok 4.5 (Auto Intelligence)": "grok-4.5",
@@ -347,10 +400,11 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertEqual(pricing.resolve(model: "grok-composer-2.5-fast")?.inputPerMillion, 3)
     }
 
-    /// Both first-party Grok versions share rates and accept effort, separator, and Cursor-prefix variants.
+    /// Cursor's first-party Grok 4.5, 4.6, and 4.7 standard/fast rates match, and accept effort,
+    /// separator, and Cursor-prefix variants. 4.7 also has a 500k long-context tier.
     func testGrokPricingAndAliases() throws {
         let pricing = Self.pricing
-        for version in ["4.5", "4.6"] {
+        for version in ["4.5", "4.6", "4.7"] {
             let dashedVersion = version.replacingOccurrences(of: ".", with: "-")
             let standard = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-high"))
             let fast = try XCTUnwrap(pricing.resolve(model: "grok-\(version)-fast"))
@@ -381,6 +435,29 @@ final class PricingBundledResourceTests: XCTestCase {
             XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high"), "grok-\(version)")
             XCTAssertEqual(pricing.supplement.canonicalName(for: "cursor-grok-\(version)-high-fast"), "grok-\(version)-fast")
         }
+
+        let longContext = try XCTUnwrap(pricing.resolve(model: "grok-4.7-500k"))
+        let longContextFast = try XCTUnwrap(pricing.resolve(model: "grok-4.7-500k-fast"))
+        XCTAssertEqual(
+            [longContext.inputPerMillion, longContext.cacheWritePerMillion, longContext.cacheReadPerMillion, longContext.outputPerMillion],
+            [4, 4, 1, 12]
+        )
+        XCTAssertEqual(
+            [longContextFast.inputPerMillion, longContextFast.cacheWritePerMillion, longContextFast.cacheReadPerMillion, longContextFast.outputPerMillion],
+            [6, 6, 1.5, 18]
+        )
+        for alias in [
+            "grok-4.7-500k-high", "grok-4-7-500k", "grok-4.7[500k]", "cursor-grok-4.7-500k-xhigh"
+        ] {
+            XCTAssertEqual(pricing.resolve(model: alias), longContext, alias)
+        }
+        for alias in [
+            "grok-4.7-500k-fast-high", "grok-4.7-500k-high-fast", "grok-4.7[500k]-fast",
+            "cursor-grok-4.7-500k-fast-xhigh"
+        ] {
+            XCTAssertEqual(pricing.resolve(model: alias), longContextFast, alias)
+        }
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "grok-4.7[500k]-high-fast"), "grok-4.7-500k-fast")
     }
 
     func testGrokBotModesUseDistinctPricing() throws {
