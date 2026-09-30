@@ -22,6 +22,14 @@ final class LoginShellEnvironmentTests: XCTestCase {
         XCTAssertNil(parsed["MOTD"])
     }
 
+    func testBannerWithoutTrailingNewlineSharesTheBeginMarkerToken() {
+        // A banner such as fastfetch prints straight into the begin marker's token: the shell emits
+        // the marker right after the banner with no NUL in between.
+        let output = ["  memory  34.76 GiB / 48.00 GiB (72%)\n\n" + begin, "CODEX_HOME=/Users/dev/.codex-work", end]
+            .joined(separator: "\0")
+        XCTAssertEqual(LoginShellEnvironment.parse(output)["CODEX_HOME"], "/Users/dev/.codex-work")
+    }
+
     func testKeepsValuesContainingEquals() {
         let output = [begin, "TOKEN=a=b=c", end].joined(separator: "\0")
         XCTAssertEqual(LoginShellEnvironment.parse(output)["TOKEN"], "a=b=c")
