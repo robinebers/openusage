@@ -35,6 +35,16 @@ final class MenuBarPrivacyStore {
         }
     }
 
+    /// Settings → Privacy → Hide Emails. Held here, next to the screen-share preference, so the menu
+    /// bar's observation loop re-renders its VoiceOver summary the moment the toggle flips. Views read
+    /// the same defaults key through `@AppStorage`, which this write keeps current.
+    var hideEmails: Bool {
+        didSet {
+            guard hideEmails != oldValue else { return }
+            defaults.set(hideEmails, forKey: HideEmailsSetting.key)
+        }
+    }
+
     /// Whether a screen capture is active right now. Only maintained while the setting is on;
     /// always `false` otherwise.
     private(set) var screenIsCaptured = false
@@ -58,6 +68,7 @@ final class MenuBarPrivacyStore {
         self.probe = probe
         self.installChangeNotifications = installChangeNotifications
         self.hideUsageWhileScreenSharing = defaults.bool(forKey: Self.key)
+        self.hideEmails = defaults.bool(forKey: HideEmailsSetting.key, default: HideEmailsSetting.fallback)
         // `didSet` doesn't fire during init; arm monitoring for a persisted-on launch directly.
         if hideUsageWhileScreenSharing {
             startMonitoring()
@@ -65,6 +76,12 @@ final class MenuBarPrivacyStore {
     }
 
     deinit { pollTask?.cancel() }
+
+    /// Reset All Settings: both privacy preferences back to off.
+    func resetToDefaults() {
+        hideUsageWhileScreenSharing = false
+        hideEmails = HideEmailsSetting.fallback
+    }
 
     /// Re-reads the watcher flag and publishes a change. Called by the poll, the window-server
     /// notification hop, and monitoring start. Reads through the setting so a stale notification

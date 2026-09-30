@@ -45,8 +45,7 @@ extension ProviderAccountAssembly {
         for path in defaultPaths + mainPaths where seenPaths.insert(path).inserted {
             guard let state = auth.loadAuth(at: path), state.hasUsableAccessToken,
                   let identity = CodexAccountIdentity(auth: state.auth) else { continue }
-            let workspace = identity.accountID.isEmpty ? "Unknown" : String(identity.accountID.prefix(8))
-            observe(identity, label: "Codex: Workspace \(workspace) (\(identity.email ?? identity.accountID))",
+            observe(identity, label: identity.displayName(),
                     source: .init(kind: .defaultHome, anchor: URL(fileURLWithPath: path).deletingLastPathComponent().path,
                                   holdsDefaultSource: observations.isEmpty))
         }
@@ -54,8 +53,7 @@ extension ProviderAccountAssembly {
         // Discover it before saved slots so it retains the default card on a first launch.
         if let state = await loadOffMainActor({ auth.loadKeychainAuth() }), state.hasUsableAccessToken,
            let identity = CodexAccountIdentity(auth: state.auth) {
-            let workspace = identity.accountID.isEmpty ? "Unknown" : String(identity.accountID.prefix(8))
-            observe(identity, label: "Codex: Workspace \(workspace) (\(identity.email ?? identity.accountID))",
+            observe(identity, label: identity.displayName(),
                     source: .init(kind: .defaultHome, anchor: nil, holdsDefaultSource: observations.isEmpty))
         }
         for swap in swaps {
@@ -67,14 +65,27 @@ extension ProviderAccountAssembly {
         let logHomes = Array(Set(swaps.flatMap { [$0.mainHome, $0.home] })).sorted()
         // Registry order is persistent; observation order follows the current default login.
         // Even an uncustomized layout must keep its cards in place after a switch and relaunch.
-        return records.compactMap { record in
+        let shown = records.compactMap { record -> (id: String, identity: CodexAccountIdentity)? in
             guard record.family == "codex", !record.removedTombstone,
                   let identity = identities.first(where: { $0.key == record.identityKey })
             else { return nil }
+            return (record.id, identity)
+        }
+        // Cards are named by address alone. When one address is signed into several workspaces those
+        // names would collide, so only those cards get their workspace back; an alias wins either way.
+        var addressCount: [String: Int] = [:]
+        for (_, identity) in shown {
+            if let email = identity.email { addressCount[email, default: 0] += 1 }
+        }
+        return shown.map { id, identity in
             let matching = swaps.filter { $0.identity == identity }
             let observedHomes = observations.first { $0.identityKey == identity.key }?.sources.compactMap(\.anchor) ?? []
-            return CodexAccountCard(id: record.id, identity: identity,
-                displayName: labels[identity.key] ?? "Codex",
+            var label = labels[identity.key] ?? "Codex"
+            if label == identity.displayName(), let email = identity.email, addressCount[email, default: 0] > 1 {
+                label = identity.displayName(disambiguatingWorkspace: true)
+            }
+            return CodexAccountCard(id: id, identity: identity,
+                displayName: label,
                 authHomes: Array(Set(observedHomes + matching.flatMap { [$0.mainHome, $0.home] })).sorted(),
                 logHomes: logHomes, allowsUnattributedHistory: allowsUnattributed)
         }

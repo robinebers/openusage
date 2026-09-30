@@ -9,9 +9,11 @@ struct ClaudeSwapAccount: Equatable, Sendable {
     let organizationID: String
     var organizationName: String? = nil
 
-    func displayName(fallbackOrganization: String? = nil) -> String {
-        let organization = organizationName ?? fallbackOrganization ?? "Organization \(organizationID.prefix(8))"
-        return "Claude: \(organization) (\(email))"
+    /// Name the card after whoever is signed in. The organization name is not what tells two of
+    /// your own accounts apart, and in a 320pt header it pushed the address out of view, so the
+    /// address stands alone. `organizationName` is still carried for the rest of the app.
+    func displayName() -> String {
+        "Claude: \(email)"
     }
 
     var sessionDirectory: String {

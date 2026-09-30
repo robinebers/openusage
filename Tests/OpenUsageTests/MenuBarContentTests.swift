@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class MenuBarContentTests: XCTestCase {
     func testEmptyWhenNoGroups() {
-        let content = MenuBarContentBuilder.build(groups: [], data: { $0.sample })
+        let content = MenuBarContentBuilder.build(groups: [], hidingEmails: false, data: { $0.sample })
         XCTAssertTrue(content.isEmpty)
         XCTAssertTrue(content.bars.isEmpty)
     }
@@ -16,7 +16,7 @@ final class MenuBarContentTests: XCTestCase {
         let m1 = percent("a.m1", "Session", 97)
         let m2 = percent("a.m2", "Weekly", 12)
         let b1 = percent("b.m1", "Total", 50)
-        let content = MenuBarContentBuilder.build(groups: [group("a", m1, m2), group("b", b1)], data: { $0.sample })
+        let content = MenuBarContentBuilder.build(groups: [group("a", m1, m2), group("b", b1)], hidingEmails: false, data: { $0.sample })
 
         XCTAssertEqual(content.groups.map(\.providerID), ["a", "b"])
         XCTAssertEqual(content.groups[0].metrics.map(\.id), ["a.m1", "a.m2"])
@@ -33,7 +33,7 @@ final class MenuBarContentTests: XCTestCase {
                 percent("a.pct", "Pct", 40),
                 boundedDollars("a.credits", "Credits", used: 12000, limit: 18000),
                 unbounded("a.spend", "Spend"))],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
 
         XCTAssertEqual(content.groups[0].metrics.map(\.id), ["a.pct", "a.credits", "a.spend"])  // Text: all
@@ -47,7 +47,7 @@ final class MenuBarContentTests: XCTestCase {
                 group("b", percent("b.m1", "M1", 30), percent("b.m2", "M2", 40)),
                 group("c", percent("c.m1", "M1", 50), percent("c.m2", "M2", 60))
             ],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
 
         XCTAssertEqual(content.bars.count, 4)
@@ -63,7 +63,7 @@ final class MenuBarContentTests: XCTestCase {
                 group("a", percent("a.live", "Session", 41), noDataPercent("a.dark", "Weekly")),
                 group("b", noDataPercent("b.nd", "ND"))
             ],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
 
         XCTAssertEqual(content.groups.map(\.providerID), ["a"])
@@ -74,7 +74,7 @@ final class MenuBarContentTests: XCTestCase {
     func testAllPinsWithoutDataFallBackToAppIcon() {
         let content = MenuBarContentBuilder.build(
             groups: [group("a", noDataPercent("a.nd", "ND"))],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
         XCTAssertTrue(content.isEmpty)
     }
@@ -82,7 +82,7 @@ final class MenuBarContentTests: XCTestCase {
     func testAccessibilityTextSummarizesGroups() {
         let content = MenuBarContentBuilder.build(
             groups: [group("a", percent("a.m1", "Session", 41), percent("a.m2", "Weekly", 12))],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
         XCTAssertEqual(content.accessibilityText, "A Session 41%, Weekly 12%")
     }
@@ -90,7 +90,7 @@ final class MenuBarContentTests: XCTestCase {
     func testTrayLabelsShortenLongTimeWindows() {
         let content = MenuBarContentBuilder.build(
             groups: [group("a", percent("a.today", "Today", 5), percent("a.month", "Last 30 Days", 80))],
-            data: { $0.sample }
+            hidingEmails: false, data: { $0.sample }
         )
         XCTAssertEqual(content.groups[0].metrics.map(\.label), ["T", "M"])
     }
@@ -102,7 +102,7 @@ final class MenuBarContentTests: XCTestCase {
         let credits = boundedDollars("a.credits", "Credits", used: 12000, limit: 18000)
         let requests = boundedCount("a.requests", "Requests", used: 412, limit: 500)
         let spend = unbounded("a.spend", "Spend")   // unbounded $42
-        let content = MenuBarContentBuilder.build(groups: [group("a", usage, credits, requests, spend)], data: { $0.sample })
+        let content = MenuBarContentBuilder.build(groups: [group("a", usage, credits, requests, spend)], hidingEmails: false, data: { $0.sample })
 
         XCTAssertEqual(content.groups[0].metrics.map(\.value), ["67%", "$12K", "412", "$42"])
     }

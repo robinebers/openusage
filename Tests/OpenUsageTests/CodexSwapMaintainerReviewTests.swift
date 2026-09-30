@@ -93,6 +93,7 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
         XCTAssertEqual(first.codexCards.count, 2)
         let personal = try XCTUnwrap(first.codexCards.first { $0.identity == a })
         XCTAssertEqual(personal.id, "codex")
+        XCTAssertTrue(personal.displayName.hasPrefix("Codex: personal@example.com"))
         let http = RoutingHTTPClient { request in
             XCTAssertEqual(request.method, "GET")
             XCTAssertEqual(request.headers["Authorization"], "Bearer keychain-personal")
@@ -156,6 +157,7 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
             accountsStore: ProviderAccountsStore(defaults: try defaults()), families: ["codex"])
         let personal = try XCTUnwrap(assembly.codexCards.first { $0.identity == a })
         XCTAssertTrue(personal.authHomes.contains("/test/custom-main"))
+        XCTAssertTrue(personal.displayName.hasPrefix("Codex: personal@example.com"))
         let http = RoutingHTTPClient { request in
             XCTAssertEqual(request.headers["Authorization"], "Bearer custom-personal")
             XCTAssertEqual(request.headers["ChatGPT-Account-Id"], "workspace-a")

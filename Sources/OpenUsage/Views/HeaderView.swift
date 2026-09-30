@@ -28,6 +28,7 @@ struct HeaderView: View {
     @Environment(UpdaterController.self) private var updater
     @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(HideEmailsSetting.key) private var hideEmails = HideEmailsSetting.fallback
     /// The current screen. The footer is fixed chrome keyed off `layout.screen` (it no longer slides
     /// per-page), so this control shows only when that's `.dashboard` and swaps in place on a switch.
     let screen: PopoverScreen
@@ -132,7 +133,7 @@ struct HeaderView: View {
                     .disabled(true)
             } else {
                 ForEach(groups) { group in
-                    Button(group.provider.displayName) { shareCard(group) }
+                    Button(group.provider.visibleName(hidingEmails: hideEmails)) { shareCard(group) }
                 }
             }
         } label: {

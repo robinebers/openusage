@@ -4,7 +4,9 @@ struct ClaudeAccountCard: Equatable, Sendable {
     let id: String
     let identityKey: String
     let organizationID: String?
-    let displayName: String
+    /// Settled once every card is known, so a card can be named after its address alone unless that
+    /// address is signed into more than one organization. See `namedByAccount`.
+    var displayName: String
     let usesDesktopCredentials: Bool
     let allowsUnattributedPiUsage: Bool
     var swapAccount: ClaudeSwapAccount? = nil
@@ -213,7 +215,7 @@ struct ProviderAccountAssembly {
             guard !cards.contains(where: { $0.id == cardID }) else { continue }
             cards.append(ClaudeAccountCard(
                 id: cardID, identityKey: organization.identityKey, organizationID: organization.id,
-                displayName: "Claude — \(organizationLabel(record.label) ?? organization.label)",
+                displayName: "Claude — \(organizationLabel(record.label) ?? ClaudeOrganizationLabel.collapsingDefaultName(organization.label))",
                 usesDesktopCredentials: true, allowsUnattributedPiUsage: allowsUnattributedPiUsage,
                 organizationName: organizationLabel(record.label) ?? organization.label
             ))
@@ -225,7 +227,7 @@ struct ProviderAccountAssembly {
                 let existing = cards[index]
                 cards[index] = ClaudeAccountCard(
                     id: existing.id, identityKey: existing.identityKey, organizationID: existing.organizationID,
-                    displayName: account.displayName(fallbackOrganization: existing.organizationName),
+                    displayName: account.displayName(),
                     usesDesktopCredentials: existing.usesDesktopCredentials,
                     allowsUnattributedPiUsage: allowsUnattributedPiUsage,
                     swapAccount: account, organizationName: account.organizationName ?? existing.organizationName
@@ -246,7 +248,36 @@ struct ProviderAccountAssembly {
         for index in cards.indices {
             cards[index].additionalLogDirectories = swapAccounts.map(\.sessionDirectory)
         }
-        return ProviderAccountAssembly(identityKeysByCard: identityKeys, claudeCards: cards, codexCards: codexCards)
+        return ProviderAccountAssembly(identityKeysByCard: identityKeys,
+                                       claudeCards: namedByAccount(cards), codexCards: codexCards)
+    }
+
+    /// Names every saved Claude account after the address signed into it. The organization is added
+    /// back only where it is the one thing telling two cards apart, which is a single address signed
+    /// into more than one organization: naming both "Claude: jane@example.com" would leave the user
+    /// with two identical cards. Desktop-only cards carry no address of their own and keep the name
+    /// they were built with.
+    private static func namedByAccount(_ cards: [ClaudeAccountCard]) -> [ClaudeAccountCard] {
+        var tally: [String: Int] = [:]
+        for card in cards {
+            guard let email = card.swapAccount?.email.lowercased() else { continue }
+            tally[email, default: 0] += 1
+        }
+        return cards.map { card in
+            guard let account = card.swapAccount else { return card }
+            var card = card
+            guard tally[account.email.lowercased(), default: 0] > 1 else {
+                card.displayName = account.displayName()
+                return card
+            }
+            let raw = card.organizationName ?? account.organizationName
+                ?? "Organization \(account.organizationID.prefix(8))"
+            let organization = ClaudeOrganizationLabel.collapsingDefaultName(raw)
+            card.displayName = organization.caseInsensitiveCompare(account.email) == .orderedSame
+                ? account.displayName()
+                : "Claude: \(organization) (\(account.email))"
+            return card
+        }
     }
 
     private struct DesktopOrganization {
@@ -256,8 +287,12 @@ struct ProviderAccountAssembly {
     }
 
     private static func organizationLabel(_ value: String?) -> String? {
-        guard let value, let opening = value.lastIndex(of: "("), value.last == ")" else { return value }
-        return String(value[value.index(after: opening)..<value.index(before: value.endIndex)])
+        guard let value else { return nil }
+        guard let opening = value.lastIndex(of: "("), value.last == ")" else {
+            return ClaudeOrganizationLabel.collapsingDefaultName(value)
+        }
+        let inner = String(value[value.index(after: opening)..<value.index(before: value.endIndex)])
+        return ClaudeOrganizationLabel.collapsingDefaultName(inner)
     }
 
     private static func discoverDesktopOrganizations(
