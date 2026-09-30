@@ -8,6 +8,13 @@ struct CodexHomeLogin: Equatable, Sendable {
     var authPath: String { home + "/auth.json" }
 }
 
+struct CodexHomeScan: Equatable, Sendable {
+    let logins: [CodexHomeLogin]
+    /// A home holds a token that names no account at all. Such a login may belong to a second account,
+    /// so history with no provable owner must not be counted while it exists.
+    let hasIncompleteLogin: Bool
+}
+
 /// Finds the Codex homes on this Mac — the configured default (`CODEX_HOME`, else `~/.config/codex`
 /// and `~/.codex`) plus sibling `~/.codex-*` and `~/.config/codex-*` folders — and reads which
 /// account is signed in at each. Read-only.
@@ -75,22 +82,32 @@ struct CodexHomeScanner: Sendable {
 
     /// Every candidate home (plus `additionalHomes`) holding a token login that names its account.
     func logins(additionalHomes: [String] = []) -> [CodexHomeLogin] {
+        scan(additionalHomes: additionalHomes).logins
+    }
+
+    func scan(additionalHomes: [String] = []) -> CodexHomeScan {
         let homes = Self.uniqueHomes(candidateHomes() + additionalHomes, homeDirectory: homeDirectory())
-        return homes.compactMap { home in
+        var logins: [CodexHomeLogin] = []
+        var hasIncompleteLogin = false
+        for home in homes {
             let text: String?
             do {
                 text = try files.readTextIfPresent(home + "/auth.json")
             } catch {
                 AppLog.warn(.config, "accounts: Codex home \(home) has an unreadable auth.json; skipping it")
-                return nil
+                continue
             }
             guard let text,
                   let auth = CodexAuthStore.parseAuth(text),
-                  auth.tokens?.accessToken?.nilIfEmpty != nil,
-                  let identity = CodexAccountIdentity(auth: auth)
-            else { return nil }
-            return CodexHomeLogin(home: home, identity: identity)
+                  auth.tokens?.accessToken?.nilIfEmpty != nil
+            else { continue }
+            if let identity = CodexAccountIdentity(auth: auth) {
+                logins.append(CodexHomeLogin(home: home, identity: identity))
+            } else {
+                hasIncompleteLogin = true
+            }
         }
+        return CodexHomeScan(logins: logins, hasIncompleteLogin: hasIncompleteLogin)
     }
 
     static func standardizedHome(_ raw: String, homeDirectory: URL) -> String {

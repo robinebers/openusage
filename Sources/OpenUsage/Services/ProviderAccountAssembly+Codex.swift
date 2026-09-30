@@ -10,6 +10,16 @@ struct CodexAccountCard: Equatable, Sendable {
     let allowsUnattributedHistory: Bool
 }
 
+/// What the Codex account pass found: account cards once more than one account is known, otherwise the
+/// read-only logins the plain `codex` card may fall back to when its only account lives in a sibling
+/// home or in pi, plus the local-history policy either way.
+struct CodexAccountDiscovery: Equatable, Sendable {
+    var cards: [CodexAccountCard] = []
+    var plainAuthHomes: [String] = []
+    var plainPiCredentialSources: [CodexPiCredentialSource] = []
+    var allowsUnattributedHistory = true
+}
+
 extension ProviderAccountAssembly {
     /// One card per ChatGPT account found across Codex homes, pi logins, Swap slots, and the Keychain.
     /// A lone account stays on the plain `codex` provider; cards appear once a second account is
@@ -18,37 +28,53 @@ extension ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         listDirectories: @escaping @Sendable (String) -> [String] = CodexHomeScanner.listSubdirectories
-    ) async -> (cards: [CodexAccountCard], allowsUnattributedHistory: Bool) {
+    ) async -> CodexAccountDiscovery {
         let homeDirectory = observer.homeDirectory()
         let swaps = CodexSwapAccount.discover(
             environment: observer.environment, files: observer.files, home: homeDirectory
         )
-        let homeLogins = CodexHomeScanner(
+        let homeScan = CodexHomeScanner(
             environment: observer.environment,
             files: observer.files,
             homeDirectory: observer.homeDirectory,
             listDirectories: listDirectories
-        ).logins(additionalHomes: swaps.map(\.mainHome))
+        ).scan(additionalHomes: swaps.map(\.mainHome))
+        let homeLogins = homeScan.logins
         let piScan = PiCodexLoginScanner(
             environment: observer.environment, files: observer.files, homeDirectory: observer.homeDirectory
         ).scan()
+        // Keychain can hold a different default login with no auth.json or saved Swap slot.
+        let auth = CodexAuthStore(environment: observer.environment, files: observer.files,
+                                  keychain: observer.keychain)
+        let keychainIdentity: CodexAccountIdentity? = await loadOffMainActor {
+            guard let state = auth.loadKeychainAuth(), state.hasUsableAccessToken else { return nil }
+            return CodexAccountIdentity(auth: state.auth)
+        }
+        let configuredHomes = Set(CodexHomeScanner.configuredHomes(
+            environment: observer.environment, homeDirectory: homeDirectory
+        ))
         let hasEstablishedAccounts = accountsStore.records.contains {
             $0.family == "codex" && $0.identityKey.contains("|")
         }
         let knownIdentities = Set(
             homeLogins.map(\.identity) + piScan.logins.map(\.identity) + swaps.map(\.identity)
+                + [keychainIdentity].compactMap { $0 }
         )
         // History with no provable owner counts only while exactly one account exists and no login
         // is too incomplete to rule out a second one.
-        let hasIncompleteLogin = piScan.hasIncompleteLogin
+        let hasUnidentifiedLogin = piScan.hasIncompleteLogin || homeScan.hasIncompleteLogin
+        let hasIncompleteLogin = hasUnidentifiedLogin
             || homeLogins.contains { !CodexAccountIdentity.isComplete(key: $0.identity.key) }
         guard !swaps.isEmpty || hasEstablishedAccounts || knownIdentities.count > 1 else {
-            return ([], knownIdentities.isEmpty || !piScan.hasIncompleteLogin)
+            return CodexAccountDiscovery(
+                plainAuthHomes: homeLogins.map(\.home).filter { !configuredHomes.contains($0) },
+                plainPiCredentialSources: piScan.logins.map {
+                    CodexPiCredentialSource(path: $0.authPath, providerID: $0.providerID)
+                },
+                allowsUnattributedHistory: knownIdentities.isEmpty || !hasUnidentifiedLogin
+            )
         }
 
-        let configuredHomes = Set(CodexHomeScanner.configuredHomes(
-            environment: observer.environment, homeDirectory: homeDirectory
-        ))
         var observations: [ProviderAccountsStore.Observation] = []
         var identities: [CodexAccountIdentity] = []
         var labels: [String: String] = [:]
@@ -85,18 +111,14 @@ extension ProviderAccountAssembly {
                     source: .init(kind: isConfigured ? .defaultHome : .codexHome, anchor: login.home,
                                   holdsDefaultSource: holdsDefault))
         }
-        // Keychain can hold a different default login with no auth.json or saved Swap slot.
-        // Discover it before saved slots so it retains the default card on a first launch.
-        let auth = CodexAuthStore(environment: observer.environment, files: observer.files,
-                                  keychain: observer.keychain)
-        if let state = await loadOffMainActor({ auth.loadKeychainAuth() }), state.hasUsableAccessToken,
-           let identity = CodexAccountIdentity(auth: state.auth) {
-            observe(identity, label: label(for: identity),
+        // The Keychain login comes before saved slots so it retains the default card on a first launch.
+        if let keychainIdentity {
+            observe(keychainIdentity, label: label(for: keychainIdentity),
                     source: .init(kind: .defaultHome, anchor: nil, holdsDefaultSource: !assignedDefault))
             assignedDefault = true
         }
         for swap in swaps {
-            observe(swap.identity, label: swap.displayName, named: true,
+            observe(swap.identity, label: swap.displayName, named: swap.alias != nil,
                     source: .init(kind: .codexSwap, anchor: swap.home, holdsDefaultSource: false))
         }
         for login in piScan.logins {
@@ -127,6 +149,6 @@ extension ProviderAccountAssembly {
                 piCredentialSources: matchingPi,
                 logHomes: logHomes, allowsUnattributedHistory: allowsUnattributed)
         }
-        return (cards, allowsUnattributed)
+        return CodexAccountDiscovery(cards: cards, allowsUnattributedHistory: allowsUnattributed)
     }
 }

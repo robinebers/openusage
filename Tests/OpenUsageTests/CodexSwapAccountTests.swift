@@ -57,7 +57,7 @@ final class CodexSwapAccountTests: XCTestCase {
         XCTAssertEqual(initial.codexCards.count, 2)
         XCTAssertEqual(initial.codexCards.first { $0.identity == a }?.id, "codex")
         let ids = Dictionary(uniqueKeysWithValues: initial.codexCards.map { ($0.identity.key, $0.id) })
-        let registry = WidgetRegistry.from(ProviderCatalog.make(defaults: defaults, codexCards: initial.codexCards))
+        let registry = WidgetRegistry.from(ProviderCatalog.make(defaults: defaults, codex: initial.codex))
         let layout = LayoutStore(registry: registry, defaults: defaults)
         layout.setPinned(true, for: ids[b.key]! + ".weekly")
         _ = layout.reorderProvider(dragged: ids[b.key]!, target: ids[a.key]!)
@@ -72,7 +72,7 @@ final class CodexSwapAccountTests: XCTestCase {
             let repeated = await assembly(files, store: store)
             XCTAssertEqual(repeated.codexCards, next.codexCards)
             XCTAssertTrue(next.codexCards.allSatisfy { !$0.allowsUnattributedHistory })
-            let restored = LayoutStore(registry: .from(ProviderCatalog.make(codexCards: next.codexCards)), defaults: defaults)
+            let restored = LayoutStore(registry: .from(ProviderCatalog.make(codex: next.codex)), defaults: defaults)
             XCTAssertEqual(restored.pinnedMetricIDs, pins)
             XCTAssertEqual(restored.providerOrder, order)
             XCTAssertEqual(store.defaultBadgeHolder(family: "codex")?.identityKey, selected.key)
@@ -91,8 +91,9 @@ final class CodexSwapAccountTests: XCTestCase {
 
     func testAdditionalCardInheritsDefaultsOnFreshAndExistingLayouts() async throws {
         let defaults = try defaults()
-        let cards = await assembly(fixture(), store: ProviderAccountsStore(defaults: defaults)).codexCards
-        let registry = WidgetRegistry.from(ProviderCatalog.make(codexCards: cards))
+        let discovery = await assembly(fixture(), store: ProviderAccountsStore(defaults: defaults)).codex
+        let cards = discovery.cards
+        let registry = WidgetRegistry.from(ProviderCatalog.make(codex: discovery))
         let ids = cards.map(\.id)
         func layout() -> LayoutStore {
             LayoutStore(registry: registry, defaults: defaults,

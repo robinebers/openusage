@@ -60,13 +60,11 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         ])
 
         let assembly = await assemble(files: files)
-        let codex = ProviderCatalog.make(
-            defaults: makeScratchDefaults(), codexCards: assembly.codexCards,
-            codexAllowsUnattributedHistory: assembly.codexAllowsUnattributedHistory
-        ).compactMap { $0 as? CodexProvider }
+        let codex = ProviderCatalog.make(defaults: makeScratchDefaults(), codex: assembly.codex)
+            .compactMap { $0 as? CodexProvider }
 
         XCTAssertTrue(assembly.codexCards.isEmpty)
-        XCTAssertFalse(assembly.codexAllowsUnattributedHistory)
+        XCTAssertFalse(assembly.codex.allowsUnattributedHistory)
         XCTAssertEqual(codex.map(\.provider.id), ["codex"])
         XCTAssertEqual(codex.map(\.allowsUnattributedHistory), [false])
     }
@@ -251,7 +249,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
             "/Users/dev/.pi/agent/auth.json": Fixtures.piAuth([("openai-codex", "A", "a@test"), ("openai-codex-2", "B", "b@test")]),
         ])
         let assembly = await assemble(files: files, directories: ["/Users/dev": [".codex-b"]])
-        let providers = ProviderCatalog.make(defaults: makeScratchDefaults(), codexCards: assembly.codexCards)
+        let providers = ProviderCatalog.make(defaults: makeScratchDefaults(), codex: assembly.codex)
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertEqual(providers.count, 2)
