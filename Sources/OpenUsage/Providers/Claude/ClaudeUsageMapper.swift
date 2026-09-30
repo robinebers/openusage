@@ -37,6 +37,12 @@ enum ClaudeUsageMapper {
         )
     }
 
+    /// Labels of the lines `mapUsageResponse` produces from the live usage endpoint (everything else on a
+    /// Claude snapshot is recomputed locally or is a rate-limit notice).
+    static let liveLimitLabels: Set<String> = [
+        "Session", "Weekly", "Sonnet", "Fable", "Extra usage spent", "Rate Limit Resets"
+    ]
+
     /// Snapshot shown when the usage endpoint rate-limits us and there is no last-good usage to fall back
     /// on (e.g. the first fetch after launch): a status badge plus the staleness note, no live bars.
     static func rateLimitedUsage(credentials: ClaudeOAuth, retryAfterSeconds: Int?) -> ClaudeMappedUsage {
