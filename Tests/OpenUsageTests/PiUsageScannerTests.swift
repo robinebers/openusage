@@ -99,7 +99,7 @@ final class PiUsageScannerTests: XCTestCase {
             estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
         )
 
-        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 2.55, accuracy: 0.000_001)
+        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 1.98, accuracy: 0.000_001)
     }
 
     func testPositiveCarriedCodexCostWinsOverSharedEstimator() throws {

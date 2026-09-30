@@ -65,9 +65,19 @@ enum CodexUsagePricing {
     }
 
     /// Lower-level entry point for the native scanner, which resolves its own rates so it can swap in
-    /// the user's selected fallback model and carry the per-event priority flag.
-    static func cost(rates: ModelRates, tokens: TokenBreakdown, model: String, fastTier: Bool) -> Double {
-        cost(prepared: Prepared(rates: adjusted(rates, model: model), fastTier: fastTier), tokens: tokens)
+    /// the user's selected fallback model and carry the per-event service-tier flags.
+    static func cost(
+        rates: ModelRates, tokens: TokenBreakdown, model: String, fastTier: Bool, ultrafastTier: Bool = false
+    ) -> Double {
+        var prepared = Prepared(rates: adjusted(rates, model: model), fastTier: fastTier || ultrafastTier)
+        if ultrafastTier, let multiplier = ultrafastMultiplier(base: datedBaseModel(model)) {
+            prepared.rates.fastMultiplier = multiplier
+        }
+        return cost(prepared: prepared, tokens: tokens)
+    }
+
+    static func ultrafastMultiplier(base: String) -> Double? {
+        base == "gpt-6-astra" ? 6 : nil
     }
 
     /// Applies every model-derived Codex adjustment in one pass so the slug is normalized once.
@@ -98,7 +108,8 @@ enum CodexUsagePricing {
         switch base {
         case "gpt-5.5", "gpt-5.5-pro": return 2.5
         case "gpt-5.4", "gpt-5.4-pro",
-             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra": return 2
+             "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+             "gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna": return 2
         default: return rates.fastMultiplier == 1 ? 2 : rates.fastMultiplier
         }
     }
@@ -116,11 +127,14 @@ enum CodexUsagePricing {
         case "gpt-5.4-pro": return (60, 270, 60)
         case "gpt-5.5": return (10, 45, 1)
         case "gpt-5.5-pro": return (60, 270, 60)
-        case "gpt-5.6-sol": return (10, 45, 1)
+        case "gpt-5.6-sol": return (8, 30, 0.8)
         case "gpt-5.6-terra": return (4, 18, 0.4)
         case "gpt-5.6-luna": return (0.4, 1.8, 0.04)
         // Above 272k: 2x input and cache, 1.5x output (developers.openai.com/api/docs/models/gpt-6-astra).
         case "gpt-6-astra": return (20, 75, 2)
+        case "gpt-6.1-sol": return (4, 15, 0.2)
+        case "gpt-6-sol": return (4, 15, 0.4)
+        case "gpt-6-luna": return (0.2, 0.75, 0.02)
         default: return nil
         }
     }

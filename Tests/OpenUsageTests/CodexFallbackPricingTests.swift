@@ -24,11 +24,11 @@ final class CodexFallbackPricingTests: XCTestCase {
 
     private func event(
         model: String = "unlisted-model-a", input: Int = 1_000,
-        cached: Int = 400, output: Int = 100, fast: Bool = false
+        cached: Int = 400, output: Int = 100, fast: Bool = false, ultrafast: Bool = false
     ) -> CodexLogUsageScanner.Event {
         .init(timestamp: Date(timeIntervalSince1970: 1_780_000_000), model: model,
               input: input, cached: cached, output: output, reasoning: 0,
-              total: input + output, isFast: fast)
+              total: input + output, isFast: fast, isUltrafast: ultrafast)
     }
 
     func testNoneExcludesUnpricedUsageAndKeepsWarnings() {
@@ -92,8 +92,8 @@ final class CodexFallbackPricingTests: XCTestCase {
     func testFallbackUsesReferenceContextAndPriorityRulesExactlyOnce() throws {
         let cases: [(input: Int, cached: Int, output: Int, fast: Bool, expected: Double)] = [
             (272_000, 72_000, 1_000, false, 1.066),
-            (300_000, 100_000, 10_000, false, 2.55),
-            (300_000, 100_000, 10_000, true, 5.1),
+            (300_000, 100_000, 10_000, false, 1.98),
+            (300_000, 100_000, 10_000, true, 3.96),
             (1_000, 400, 100, true, 0.0124)
         ]
         for entry in cases {
@@ -108,6 +108,30 @@ final class CodexFallbackPricingTests: XCTestCase {
             since: .distantPast, pricing: pricing(), fallbackModel: reference
         )
         XCTAssertEqual(try XCTUnwrap(fastSuffix.series.daily.first?.costUSD), 0.0124, accuracy: 0.000_001)
+    }
+
+    func testUltrafastFallbackUsesFallbackModelMultiplier() throws {
+        let pricing = TestPricing.bundled
+        let usage = event(input: 1_000_000, cached: 0, output: 100_000, ultrafast: true)
+        let standard = event(input: 1_000_000, cached: 0, output: 100_000)
+
+        let astraStandard = CodexLogUsageScanner.aggregate(
+            events: [standard], since: .distantPast, pricing: pricing, fallbackModel: "gpt-6-astra"
+        ).series.daily.first?.costUSD ?? 0
+        let astraUltrafast = CodexLogUsageScanner.aggregate(
+            events: [usage], since: .distantPast, pricing: pricing, fallbackModel: "gpt-6-astra"
+        ).series.daily.first?.costUSD ?? 0
+        let solStandard = CodexLogUsageScanner.aggregate(
+            events: [standard], since: .distantPast, pricing: pricing, fallbackModel: "gpt-6-sol"
+        ).series.daily.first?.costUSD ?? 0
+        let solUltrafast = CodexLogUsageScanner.aggregate(
+            events: [usage], since: .distantPast, pricing: pricing, fallbackModel: "gpt-6-sol"
+        ).series.daily.first?.costUSD ?? 0
+
+        XCTAssertEqual(astraStandard, 27.5, accuracy: 0.000_001)
+        XCTAssertEqual(astraUltrafast, astraStandard * 6, accuracy: 0.000_001)
+        XCTAssertEqual(solStandard, 5.5, accuracy: 0.000_001)
+        XCTAssertEqual(solUltrafast, solStandard * 2, accuracy: 0.000_001)
     }
 
     func testFallbackPreservesDeduplicationAndSkipsBlankModels() {

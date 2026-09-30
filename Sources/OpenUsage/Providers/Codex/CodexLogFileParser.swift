@@ -11,6 +11,7 @@ struct CodexLogFileParser: Sendable {
     private var previousTotals: CodexLogUsageScanner.RawUsage?
     private var currentModel: String?
     private var currentTierIsFast = false
+    private var currentTierIsUltrafast = false
     private var sawSessionMeta = false
     private var replayGate: ChildReplayGate?
 
@@ -51,9 +52,9 @@ struct CodexLogFileParser: Sendable {
             }
             if isThreadSettings, type == "event_msg",
                payload?["type"] as? String == "thread_settings_applied" {
-                if let tier = Self.serviceTier(in: payload) {
-                    currentTierIsFast = tier == "fast" || tier == "priority"
-                }
+                let tier = Self.serviceTier(in: payload)
+                currentTierIsUltrafast = tier == "ultrafast"
+                currentTierIsFast = tier == "fast" || tier == "priority"
                 continue
             }
             guard type == "event_msg", let payload else { continue }
@@ -111,7 +112,8 @@ struct CodexLogFileParser: Sendable {
                 output: usage.output,
                 reasoning: usage.reasoning,
                 total: usage.total,
-                isFast: currentTierIsFast
+                isFast: currentTierIsFast,
+                isUltrafast: currentTierIsUltrafast
             ))
         }
         return events

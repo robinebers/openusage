@@ -40,7 +40,7 @@ final class PricingBundledResourceTests: XCTestCase {
             ("auto", 1.25), ("claude-4.5-sonnet-thinking", 3),
             ("claude-4.6-opus-max-thinking", 5), ("claude-4.6-opus-max-thinking-fast", 30),
             ("gpt-5.5-xhigh-fast", 12.5),
-            ("gpt-5.6-sol-ultra", 5), ("gpt-5.6-sol-ultra-fast", 10),
+            ("gpt-5.6-sol-ultra", 4), ("gpt-5.6-sol-ultra-fast", 8),
             ("gpt-6-astra", 10), ("gpt-6-astra-high", 10), ("gpt-6-astra-high-fast", 20),
             ("gpt-5.6-terra-high", 2), ("gpt-5.6-terra-high-fast", 4),
             ("gpt-5.6-luna", 0.2), ("gpt-5.6-luna-fast", 0.4),
@@ -292,6 +292,9 @@ final class PricingBundledResourceTests: XCTestCase {
             "GPT-5.5 (Auto)": "gpt-5.5",
             "GPT-5.6 Sol (Auto Cost)": "gpt-5.6-sol",
             "GPT-6 Astra (Auto Balanced)": "gpt-6-astra",
+            "GPT-6 Sol (Auto)": "gpt-6-sol",
+            "GPT-6.1 Sol (Auto)": "gpt-6.1-sol",
+            "GPT-6 Luna (Auto)": "gpt-6-luna",
             "GPT-5.6 Luna (Auto)": "gpt-5.6-luna",
             "Gemini 3.1 Pro (Auto Balanced)": "gemini-3.1-pro-preview",
             "Gemini 3.6 Flash (Auto)": "gemini-3.6-flash",
@@ -317,8 +320,8 @@ final class PricingBundledResourceTests: XCTestCase {
     func testGPT56PricingAndAliases() throws {
         let pricing = Self.pricing
         let expectedRates: [(String, [Double])] = [
-            ("gpt-5.6-sol-ultra", [5, 6.25, 0.5, 30]),
-            ("gpt-5.6-sol-ultra-fast", [10, 12.5, 1, 60]),
+            ("gpt-5.6-sol-ultra", [4, 5, 0.4, 20]),
+            ("gpt-5.6-sol-ultra-fast", [8, 10, 0.8, 40]),
             ("gpt-6-astra", [10, 12.5, 1, 50]),
             ("gpt-6-astra-high", [10, 12.5, 1, 50]),
             ("gpt-6-astra-high-fast", [20, 25, 2, 100]),
@@ -335,6 +338,37 @@ final class PricingBundledResourceTests: XCTestCase {
                 model
             )
         }
+    }
+
+    func testGPT6SolModelsPricingAndAliases() throws {
+        let pricing = Self.pricing
+        let expectedRates: [(model: String, rates: [Double])] = [
+            ("gpt-6.1-sol", [2, 2.5, 0.1, 10]),
+            ("gpt-6-sol", [2, 2.5, 0.2, 10]),
+            ("gpt-6-luna", [0.1, 0.125, 0.01, 0.5])
+        ]
+
+        for entry in expectedRates {
+            let base = try XCTUnwrap(pricing.resolve(model: entry.model))
+            let expected = [
+                base.inputPerMillion, base.cacheWritePerMillion,
+                base.cacheReadPerMillion, base.outputPerMillion
+            ]
+            XCTAssertEqual(expected, entry.rates, entry.model)
+            XCTAssertEqual(pricing.resolve(model: "\(entry.model)-high"), base, entry.model)
+            let fast = try XCTUnwrap(pricing.resolve(model: "\(entry.model)-high-fast"))
+            XCTAssertEqual(fast.inputPerMillion, base.inputPerMillion * 2, entry.model)
+            XCTAssertEqual(fast.outputPerMillion, base.outputPerMillion * 2, entry.model)
+        }
+
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "gpt-6-sol-high"), "gpt-6-sol")
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "gpt-6.1-sol-high"), "gpt-6.1-sol")
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "gpt-6.1-sol-high-fast"), "gpt-6.1-sol-fast")
+        XCTAssertEqual(pricing.supplement.canonicalName(for: "gpt-6-sol-high-fast"), "gpt-6-sol-fast")
+        XCTAssertEqual(pricing.resolve(model: "gpt-6-sol-high")?.cacheReadPerMillion, 0.2)
+        XCTAssertEqual(pricing.resolve(model: "gpt-6.1-sol-high")?.cacheReadPerMillion, 0.1)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol")?.inputPerMillion, 4)
+        XCTAssertEqual(pricing.resolve(model: "gpt-5.6-sol")?.outputPerMillion, 20)
     }
 
     /// Opus 4.7/4.8 fast modes: Cursor's published rates (supplement overrides) win over the

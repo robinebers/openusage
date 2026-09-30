@@ -32,10 +32,11 @@ import Foundation
 ///   session logs) count once.
 /// - Cost per event: `(input - cached) x input rate + cached x cache-read rate + output x output
 ///   rate`, all x the model's Codex priority multiplier when the session ran on the fast/priority
-///   service tier. The tier is tracked per session from `thread_settings_applied` lines — never from
-///   the current `config.toml`, which would retroactively reprice the whole history when toggled.
-///   Events with no recorded tier price at standard rates. Supported GPT-5.4/5.5/5.6 requests above
-///   272k input tokens use OpenAI's higher rates for the whole request.
+///   service tier, or its Ultrafast multiplier (6x for GPT-6 Astra only). The tier is tracked per
+///   session from `thread_settings_applied` lines — never from the current `config.toml`, which would
+///   retroactively reprice the whole history when toggled. Events with no recorded tier price at
+///   standard rates. Supported GPT-5.4/5.5/5.6/6 requests above 272k input tokens use OpenAI's higher
+///   rates for the whole request.
 ///
 /// An actor for the same reasons as `ClaudeLogUsageScanner`: scans run off the main actor, and a
 /// versioned Application Support cache keyed by path + size + mtime makes both refreshes and relaunches
@@ -48,8 +49,8 @@ actor CodexLogUsageScanner {
     private let additionalHomes: [String]
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
-    /// `isFast` records whether the session was on the fast/priority service tier when the turn
-    /// ran, tracked from the session's own log; absent tier metadata means standard.
+    /// `isFast` and `isUltrafast` record the service tier when the turn ran, tracked from the
+    /// session's own log; absent tier metadata means standard.
     struct Event: Codable, Sendable, Equatable {
         var timestamp: Date
         var model: String
@@ -60,13 +61,14 @@ actor CodexLogUsageScanner {
         var reasoning: Int
         var total: Int
         var isFast: Bool = false
+        var isUltrafast: Bool = false
     }
 
     /// Multi-account cards that resolve the same Codex homes share this actor and parse each rollout
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 4)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 5)
     )
 
     static func flushPersistentCacheWrites() async {

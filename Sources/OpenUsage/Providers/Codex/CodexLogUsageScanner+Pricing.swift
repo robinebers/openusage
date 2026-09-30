@@ -47,6 +47,7 @@ extension CodexLogUsageScanner {
             var rateModel = resolution.rateModel
             var resolvedRates = resolution.rates
             var appliesCodexFastTier = resolution.isFastAlias ? resolution.hasBaseRates : event.isFast
+            let appliesUltrafastTier = event.isUltrafast && !resolution.isFastAlias
             var usedFallback: String?
             // A reference can estimate the cost without making the model's own price known.
             // Keep the existing warning independently of whether an estimate can be included.
@@ -60,7 +61,10 @@ extension CodexLogUsageScanner {
                 usedFallback = fallbackModel
             }
             guard let rates = resolvedRates else { continue }
-            let eventCost = cost(rates: rates, event: event, model: rateModel, fastTier: appliesCodexFastTier)
+            let eventCost = cost(
+                rates: rates, event: event, model: rateModel, fastTier: appliesCodexFastTier,
+                ultrafastTier: appliesUltrafastTier
+            )
             accumulator.add(
                 day: day, tokens: event.total, cost: eventCost, model: model,
                 fallbackPricingModel: usedFallback
@@ -72,14 +76,17 @@ extension CodexLogUsageScanner {
 
     /// Native rollout events count cached tokens inside `input`; the shared estimator takes disjoint
     /// buckets, so the cached portion is subtracted here rather than in `CodexUsagePricing`.
-    static func cost(rates: ModelRates, event: Event, model: String, fastTier: Bool) -> Double {
+    static func cost(
+        rates: ModelRates, event: Event, model: String, fastTier: Bool, ultrafastTier: Bool = false
+    ) -> Double {
         CodexUsagePricing.cost(
             rates: rates,
             tokens: TokenBreakdown(
                 input: max(0, event.input - event.cached), cacheRead: event.cached, output: event.output
             ),
             model: model,
-            fastTier: fastTier
+            fastTier: fastTier,
+            ultrafastTier: ultrafastTier
         )
     }
 }

@@ -108,9 +108,9 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
             rows: rows
         ).scan(now: now, pricing: codexPricing)
 
-        // Prompt = 300K, above Codex's 272K threshold. The request uses $10/M input,
-        // $1/M cache read, and $45/M output: $2 + $0.10 + $0.45 = $2.55.
-        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 2.55, accuracy: 0.000_001)
+        // Prompt = 300K, above Codex's 272K threshold. The request uses $8/M input,
+        // $0.80/M cache read, and $30/M output: $1.60 + $0.08 + $0.30 = $1.98.
+        XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 1.98, accuracy: 0.000_001)
     }
 
     func testOAuthUsageAtCodexLongContextBoundaryKeepsBaseRates() async throws {
