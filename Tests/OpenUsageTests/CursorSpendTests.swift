@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import OpenUsage
 
 // MARK: - CSV parser
@@ -313,6 +314,66 @@ final class CursorSpendRangeTests: XCTestCase {
 
 @MainActor
 final class CursorSpendProviderTests: XCTestCase {
+    func testSlowUsageCSVTimesOutWithoutDiscardingPlanUsage() async {
+        // A slow additive CSV fetch is cancelled at its deadline without discarding live plan usage.
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let csv = "Date,Model,Cost\n"
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let csvCancelled = OSAllocatedUnfairLock(initialState: false)
+        let http = RoutingHTTPClient { request in
+            let url = request.url.absoluteString
+            if url.contains("export-usage-events-csv") {
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    csvCancelled.withLock { $0 = true }
+                    throw error
+                }
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
+            }
+            if url.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {
+                  "enabled": true,
+                  "billingCycleEnd": 1772592000000,
+                  "planUsage": { "limit": 40000, "remaining": 32000, "totalPercentUsed": 20 }
+                }
+                """.utf8))
+            }
+            if url.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
+            }
+            if url.contains("GetCreditGrantsBalance") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { now },
+            pricing: { TestPricing.bundled },
+            usageCSVTimeout: 0.05
+        )
+
+        let clock = ContinuousClock()
+        let started = clock.now
+        let snapshot = await provider.refresh()
+        let elapsed = started.duration(to: clock.now)
+
+        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") })
+        XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
+            XCTAssertFalse(snapshot.lines.contains { $0.label == label }, "\(label) line must be absent")
+        }
+        XCTAssertNil(snapshot.usageHistory)
+        XCTAssertLessThan(elapsed, .seconds(5))
+        XCTAssertTrue(csvCancelled.withLock { $0 }, "the in-flight CSV request must be cancelled")
+    }
+
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
         // Today / Yesterday / Last 30 Days / Usage Trend lines
