@@ -14,6 +14,11 @@ Tracks your Cursor plan usage using the login from the Cursor app.
 | Requests | Optional copy of the included request count vs. cap for custom layouts |
 | Credits | Credit balance left from grants and prepaid account balance |
 
+Teams seats with two usable model-pool percentages use those percentages instead of the legacy
+included-dollar cap. Total Usage uses Cursor's structured total percentage when supplied; it is
+unavailable when Cursor supplies only the two pools. Older team accounts without usable pool data
+keep their dollar meter, including accounts that return zero placeholders beside positive spend.
+
 When Cursor reports your plan name, OpenUsage shows it beside the provider name.
 
 Grok Bot has its own usage allowance, separate from Cursor's normal billing-cycle meter. Its widget
