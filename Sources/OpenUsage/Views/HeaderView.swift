@@ -4,8 +4,8 @@ import SwiftUI
 /// The dashboard footer's trailing control: a single **Options ⌄** menu button in Liquid Glass. The
 /// earlier split button ("Customize" + separate chevron) confused people — two tap targets in one
 /// capsule read as one — so everything now lives in one obvious menu: Customize / Settings / Share
-/// Screenshot / Check for Updates / About / Quit. Customize leads the menu because it's the screen
-/// users reach for most; Settings stays one click away (and always via ⌘,).
+/// Screenshot / Check for Updates / Report an Issue / About / Quit. Customize leads because it's the
+/// screen users reach for most; Settings stays one click away (and always via ⌘,).
 ///
 /// The capsule is a `.buttonStyle(.plain)` `Menu` with one `interactiveGlass(in: Capsule())` treatment
 /// behind it — the system `.buttonStyle(.glass)` renders flat on a `Menu` (its own button chrome wins),
@@ -105,6 +105,10 @@ struct HeaderView: View {
         .disabled(!updater.canCheckForUpdates)
 
         Divider()
+
+        Link(destination: URL(string: "https://github.com/robinebers/openusage/issues/new/choose")!) {
+            Label("Report an Issue…", systemImage: "ladybug")
+        }
 
         Button { AboutPanel.present() } label: {
             Label("About OpenUsage", systemImage: "info.circle")
