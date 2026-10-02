@@ -103,6 +103,9 @@ struct CodexAuthStore: Sendable {
     var now: @Sendable () -> Date
     var expectedIdentity: CodexAccountIdentity?
     var additionalAuthHomes: [String]
+    /// Canonical homes (see `CodexHomeScanner.canonicalHome`) whose tokens this store may rotate and
+    /// write back. Empty for the plain card, which writes wherever it reads.
+    var writableAuthHomes: Set<String>
     var piCredentialSources: [CodexPiCredentialSource]
 
     init(
@@ -112,6 +115,7 @@ struct CodexAuthStore: Sendable {
         now: @escaping @Sendable () -> Date = Date.init,
         expectedIdentity: CodexAccountIdentity? = nil,
         additionalAuthHomes: [String] = [],
+        writableAuthHomes: Set<String> = [],
         piCredentialSources: [CodexPiCredentialSource] = []
     ) {
         self.environment = environment
@@ -120,6 +124,7 @@ struct CodexAuthStore: Sendable {
         self.now = now
         self.expectedIdentity = expectedIdentity
         self.additionalAuthHomes = additionalAuthHomes
+        self.writableAuthHomes = writableAuthHomes
         self.piCredentialSources = piCredentialSources
     }
 
@@ -165,7 +170,9 @@ struct CodexAuthStore: Sendable {
         return scoped(CodexAuthState(auth: auth, source: .keychain(account: account)))
     }
 
-    func save(_ state: CodexAuthState) throws {
+    /// Writes `state` back to its source. With `replacing`, a file is written only while it still holds
+    /// exactly that credential, so a login Codex rotated moments earlier is never overwritten.
+    func save(_ state: CodexAuthState, replacing onDisk: CodexAuthState? = nil) throws {
         guard !state.readOnly else { throw CodexAuthError.tokenConflict }
         let encoder = JSONEncoder()
         encoder.outputFormatting = state.source.isFile ? [.prettyPrinted, .sortedKeys] : []
@@ -176,6 +183,7 @@ struct CodexAuthStore: Sendable {
 
         switch state.source {
         case .file(let path):
+            if let onDisk, loadAuth(at: path) != onDisk { throw CodexAuthError.tokenConflict }
             try files.writeText(path, text)
         case .keychain(let account):
             try keychain.writeGenericPassword(service: Self.keychainService, account: account, value: text)

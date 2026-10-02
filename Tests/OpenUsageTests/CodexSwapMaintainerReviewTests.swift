@@ -43,7 +43,7 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
     }
 
     private func card(_ identity: CodexAccountIdentity, id: String = "codex") -> CodexAccountCard {
-        CodexAccountCard(id: id, identity: identity, displayName: id, authHomes: [],
+        CodexAccountCard(id: id, identity: identity, displayName: id, authHomes: [], writableAuthHomes: [],
                          piCredentialSources: [], logHomes: [], allowsUnattributedHistory: false)
     }
 

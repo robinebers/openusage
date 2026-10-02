@@ -46,6 +46,7 @@ enum ProviderCatalog {
             providers.append(CodexProvider(
                 authStore: CodexAuthStore(
                     additionalAuthHomes: codex.plainAuthHomes,
+                    writableAuthHomes: Set(codex.plainWritableAuthHomes),
                     piCredentialSources: codex.plainPiCredentialSources
                 ),
                 logUsageScanner: CodexLogUsageScanner(
@@ -61,6 +62,7 @@ enum ProviderCatalog {
                     authStore: CodexAuthStore(
                         expectedIdentity: card.identity,
                         additionalAuthHomes: card.authHomes,
+                        writableAuthHomes: Set(card.writableAuthHomes),
                         piCredentialSources: card.piCredentialSources
                     ),
                     logUsageScanner: CodexLogUsageScanner(

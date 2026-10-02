@@ -61,10 +61,14 @@ in the Keychain counts as an account too. A single account keeps the plain Codex
 uses a login found only in a sibling home or in pi, and counts that home's session logs in its
 spend tiles. Restart OpenUsage after adding or removing a login.
 
-These cards read their logins as they are. OpenUsage never rotates a token that belongs to another
-Codex home, xswap, or pi; it re-reads each source on every refresh and tries every matching login. If
-a card reports an expired login, use that account once in Codex or pi so the tool renews its own
-token, then refresh OpenUsage.
+A card renews the token in its own Codex homes the way the plain Codex card does, so an account you
+only use through a second home keeps working between sessions; the plain card does the same for a
+lone sibling home. Logins that belong to xswap, pi, or the Keychain are read as they are: OpenUsage
+never rotates those tokens, even when `CODEX_HOME` is a link to a home xswap manages or points at an
+xswap slot that names no account. Every source is re-read on each refresh, a login another tool
+changed mid-refresh is left untouched (a renewed token that could not be saved still serves that
+refresh), and each card tries every matching login. If a read-only login has expired, use that
+account once in xswap or pi so the tool renews its own token, then refresh OpenUsage.
 
 When more than one Codex account is known, OpenUsage excludes Codex, pi, and OpenCode spending that
 cannot prove which account paid for it. Live limits and reset-credit actions remain available on each

@@ -60,6 +60,37 @@ struct CodexSwapAccount: Equatable, Sendable {
     static func discover(
         environment: EnvironmentReading, files: TextFileAccessing, home: URL
     ) -> [Self] {
+        guard let registry = registry(environment: environment, files: files, home: home) else { return [] }
+        var numbers = Set<Int>()
+        return registry.accounts.sorted { $0.number < $1.number }.compactMap { account in
+            guard account.number > 0, numbers.insert(account.number).inserted,
+                  validPath(account.home),
+                  let identity = CodexAccountIdentity(accountID: account.identity?.accountId,
+                                                     email: account.identity?.email),
+                  !identity.accountID.isEmpty
+            else {
+                AppLog.warn(.config, "Codex Swap account has no usable identity or home; skipping it")
+                return nil
+            }
+            // Disabled slots still have valid logins, and xswap permits explicit launches of them.
+            return Self(number: account.number, alias: account.alias?.nilIfEmpty,
+                        identity: identity, home: account.home, mainHome: registry.mainHome,
+                        plan: account.identity?.plan, shareHistory: account.shareHistory ?? false)
+        }
+    }
+
+    /// Every home xswap manages: its main home and each saved slot, including slots whose identity
+    /// is missing or unusable. xswap rotates the tokens in all of them, so none may be written.
+    static func managedHomes(
+        environment: EnvironmentReading, files: TextFileAccessing, home: URL
+    ) -> [String] {
+        guard let registry = registry(environment: environment, files: files, home: home) else { return [] }
+        return [registry.mainHome] + registry.accounts.map(\.home).filter(validPath)
+    }
+
+    private static func registry(
+        environment: EnvironmentReading, files: TextFileAccessing, home: URL
+    ) -> Registry? {
         let root: String
         if let override = environment.value(for: "XSWAP_HOME")?.nilIfEmpty {
             root = override.hasPrefix("~/") ? home.path + String(override.dropFirst()) : override
@@ -69,32 +100,17 @@ struct CodexSwapAccount: Equatable, Sendable {
             root = home.appendingPathComponent(".local/share/codex-swap").path
         }
         do {
-            guard let text = try files.readTextIfPresent(root + "/accounts.json") else { return [] }
+            guard let text = try files.readTextIfPresent(root + "/accounts.json") else { return nil }
             let registry = try JSONDecoder().decode(Registry.self, from: Data(text.utf8))
             guard registry.schemaVersion == 1, validPath(registry.mainHome) else {
                 AppLog.error(.config, "Codex Swap registry has an unsupported version or invalid main home")
-                return []
+                return nil
             }
-            var numbers = Set<Int>()
-            return registry.accounts.sorted { $0.number < $1.number }.compactMap { account in
-                guard account.number > 0, numbers.insert(account.number).inserted,
-                      validPath(account.home),
-                      let identity = CodexAccountIdentity(accountID: account.identity?.accountId,
-                                                         email: account.identity?.email),
-                      !identity.accountID.isEmpty
-                else {
-                    AppLog.warn(.config, "Codex Swap account has no usable identity or home; skipping it")
-                    return nil
-                }
-                // Disabled slots still have valid logins, and xswap permits explicit launches of them.
-                return Self(number: account.number, alias: account.alias?.nilIfEmpty,
-                            identity: identity, home: account.home, mainHome: registry.mainHome,
-                            plan: account.identity?.plan, shareHistory: account.shareHistory ?? false)
-            }
+            return registry
         } catch {
             // Decoder errors can contain credential material from a malformed registry.
             AppLog.error(.config, "Codex Swap account registry could not be read or decoded")
-            return []
+            return nil
         }
     }
 

@@ -115,6 +115,14 @@ struct CodexHomeScanner: Sendable {
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
     }
 
+    /// A home with `~`, `..`, and symlinks resolved, so an alias of a home xswap manages compares equal
+    /// to the home itself.
+    static func canonicalHome(
+        _ raw: String, homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> String {
+        URL(fileURLWithPath: standardizedHome(raw, homeDirectory: homeDirectory)).resolvingSymlinksInPath().path
+    }
+
     static func expandTilde(_ path: String, homeDirectory: URL) -> String {
         guard path == "~" || path.hasPrefix("~/") else { return path }
         return homeDirectory.path + String(path.dropFirst(1))

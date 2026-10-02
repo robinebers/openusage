@@ -93,8 +93,9 @@ final class CodexProvider: ProviderRuntime {
         var lastFallbackError: Error?
 
         for candidate in fileCandidates {
+            var state = candidate
             do {
-                return try await probe(authState: candidate)
+                return try await probe(authState: &state)
             } catch let error as CodexAuthError where error.allowsAuthFallback {
                 lastFallbackError = error
                 continue
@@ -103,9 +104,9 @@ final class CodexProvider: ProviderRuntime {
             }
         }
 
-        if let keychainCandidate = await loadOffMainActor({ [authStore] in authStore.loadKeychainAuth() }) {
+        if var keychainCandidate = await loadOffMainActor({ [authStore] in authStore.loadKeychainAuth() }) {
             do {
-                return try await probe(authState: keychainCandidate)
+                return try await probe(authState: &keychainCandidate)
             } catch {
                 return ProviderSnapshot.error(provider: provider, error: error)
             }
@@ -117,8 +118,17 @@ final class CodexProvider: ProviderRuntime {
         return ProviderSnapshot.error(provider: provider, error: CodexAuthError.notLoggedIn)
     }
 
-    private func probe(authState initialState: CodexAuthState) async throws -> ProviderSnapshot {
-        var authState = initialState
+    /// Fetches usage for one credential, refreshing and persisting its token when it may. On return
+    /// `authState` holds the credential as last written, so callers can check it is still current.
+    func probe(authState: inout CodexAuthState) async throws -> ProviderSnapshot {
+        var onDisk = authState
+        return try await probe(authState: &authState, onDisk: &onDisk)
+    }
+
+    /// `authState` is the working credential; `onDisk` is what its source held when we last read or
+    /// wrote it. They differ once a rotated token could not be written back: the fresh token keeps
+    /// serving this refresh while conflict checks still compare against the source.
+    func probe(authState: inout CodexAuthState, onDisk: inout CodexAuthState) async throws -> ProviderSnapshot {
         guard var accessToken = authState.auth.tokens?.accessToken, !accessToken.isEmpty else {
             if authState.auth.apiKey?.isEmpty == false {
                 throw CodexAuthError.usageAPIKey
@@ -130,9 +140,10 @@ final class CodexProvider: ProviderRuntime {
             // The `codex` CLI may have rotated the token on disk since we loaded it. Re-read the live
             // credential first and adopt its (newer) access token — refreshing our stale copy would send
             // an already-rotated refresh_token and trip `refresh_token_reused` (issue #516).
-            if let live = reloadLiveAuth(source: authState.source),
+            if let live = await reloadLiveAuth(source: authState.source),
                let liveToken = live.auth.tokens?.accessToken, !liveToken.isEmpty {
                 authState = live
+                onDisk = live
                 accessToken = liveToken
             }
         }
@@ -140,11 +151,11 @@ final class CodexProvider: ProviderRuntime {
         if authStore.needsRefresh(authState.auth),
            let refreshToken = authState.auth.tokens?.refreshToken,
            !refreshToken.isEmpty {
-            let refreshed = try await refreshAccessToken(authState: &authState, refreshToken: refreshToken)
+            let refreshed = try await refreshAccessToken(authState: &authState, onDisk: &onDisk, refreshToken: refreshToken)
             accessToken = refreshed
         }
 
-        let response = try await fetchUsageWithRetry(accessToken: accessToken, authState: &authState)
+        let response = try await fetchUsageWithRetry(accessToken: accessToken, authState: &authState, onDisk: &onDisk)
         // The access token may have rotated during the usage fetch's refresh-and-retry; read the live one.
         let currentToken = authState.auth.tokens?.accessToken ?? accessToken
         let resetCredits = await fetchResetCreditsBestEffort(
@@ -258,9 +269,15 @@ final class CodexProvider: ProviderRuntime {
         }
     }
 
-    private func fetchUsageWithRetry(accessToken: String, authState: inout CodexAuthState) async throws -> HTTPResponse {
+    private func fetchUsageWithRetry(
+        accessToken: String, authState: inout CodexAuthState, onDisk: inout CodexAuthState
+    ) async throws -> HTTPResponse {
         var working = authState
-        defer { authState = working }
+        var baseline = onDisk
+        defer {
+            authState = working
+            onDisk = baseline
+        }
         return try await ProviderAuthRetry.fetch(
             token: accessToken,
             attempt: { try await self.usageClient.fetchUsage(accessToken: $0, accountID: working.auth.tokens?.accountID) },
@@ -269,7 +286,7 @@ final class CodexProvider: ProviderRuntime {
                     throw CodexAuthError.tokenExpired
                 }
                 do {
-                    return try await self.refreshAccessToken(authState: &working, refreshToken: refreshToken)
+                    return try await self.refreshAccessToken(authState: &working, onDisk: &baseline, refreshToken: refreshToken)
                 } catch let error as CodexAuthError {
                     throw error
                 } catch {
@@ -285,35 +302,54 @@ final class CodexProvider: ProviderRuntime {
     /// token the `codex` CLI rotated out-of-band is picked up before we attempt our own refresh. Reads
     /// only that one source — matching how `codex` reads the single `auth.json` from `CODEX_HOME` —
     /// rather than re-scanning every candidate path.
-    private func reloadLiveAuth(source: CodexAuthState.Source) -> CodexAuthState? {
+    private func reloadLiveAuth(source: CodexAuthState.Source) async -> CodexAuthState? {
         switch source {
         case .file(let path):
             return authStore.loadAuth(at: path)
         case .keychain(let account):
-            return authStore.loadKeychainAuth(account: account)
+            return await loadOffMainActor { [authStore] in authStore.loadKeychainAuth(account: account) }
         case .pi(let source):
             return authStore.loadPiAuth(source)
         }
     }
 
-    private func refreshAccessToken(authState: inout CodexAuthState, refreshToken: String) async throws -> String {
+    private func refreshAccessToken(
+        authState: inout CodexAuthState, onDisk: inout CodexAuthState, refreshToken: String
+    ) async throws -> String {
         let response = try await usageClient.refreshToken(refreshToken)
-        authState.auth.tokens?.accessToken = response.accessToken
+        // A login that changed while our request was in flight is newer than ours; never write over it.
+        guard await reloadLiveAuth(source: authState.source) == onDisk else {
+            AppLog.warn(LogTag.auth("codex"), "login changed while refreshing the token; keeping the login on disk")
+            throw CodexAuthError.tokenConflict
+        }
+        var rotated = authState
+        rotated.auth.tokens?.accessToken = response.accessToken
         if let refreshToken = response.refreshToken {
-            authState.auth.tokens?.refreshToken = refreshToken
+            rotated.auth.tokens?.refreshToken = refreshToken
         }
         if let idToken = response.idToken {
-            authState.auth.tokens?.idToken = idToken
+            rotated.auth.tokens?.idToken = idToken
         }
-        authState.auth.lastRefresh = OpenUsageISO8601.string(from: now())
+        rotated.auth.lastRefresh = OpenUsageISO8601.string(from: now())
         // Fail loudly: a swallowed save strands the rotated token on disk (next launch re-refreshes /
         // can surface a false "token expired"). The refreshed token works for this session, so log and
         // continue. This is also the only call site of authStore.save, so a genuinely undecodable
         // payload (CodexAuthError.invalidAuthPayload) now surfaces in the log instead of vanishing.
         do {
-            try authStore.save(authState)
+            try authStore.save(rotated, replacing: onDisk)
+            onDisk = rotated
+        } catch CodexAuthError.tokenConflict {
+            AppLog.warn(LogTag.auth("codex"), "login changed while refreshing the token; keeping the login on disk")
+            throw CodexAuthError.tokenConflict
         } catch {
             AppLog.error(LogTag.auth("codex"), "failed to persist rotated credentials; using the refreshed token for this session only: \(error.localizedDescription)")
+        }
+        authState = rotated
+        if authStore.expectedIdentity != nil {
+            if authStore.scoped(authState) == nil {
+                AppLog.warn(LogTag.auth("codex"), "rotated credential no longer names this account; trying a matching login")
+                throw CodexAuthError.tokenConflict
+            }
         }
         return response.accessToken
     }

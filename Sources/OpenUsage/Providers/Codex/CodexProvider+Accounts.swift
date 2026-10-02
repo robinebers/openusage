@@ -1,7 +1,12 @@
 import Foundation
 
 extension CodexProvider {
-    /// All xswap sources are access-token-only. A changed login invalidates the entire pending result.
+    /// Cards bound to one account try every matching login in order, through the same `probe` the
+    /// plain card uses. Read-only sources (xswap, pi, the Keychain) count only while their token is
+    /// valid; an independent Codex home refreshes and writes back like the plain card. A login that
+    /// changes on disk mid-refresh invalidates the pending result, so the pass starts over once.
+    /// Rotated credentials that could not be written back stay in memory; the conflict check compares
+    /// the source against what the probe last read or wrote there, not against the working copy.
     func refreshAccount() async -> ProviderSnapshot {
         for _ in 0..<2 {
             var candidates = authStore.loadAuthCandidates()
@@ -10,47 +15,31 @@ extension CodexProvider {
             }
             var changed = false
             for candidate in candidates {
-                guard let token = candidate.auth.tokens?.accessToken else { continue }
                 guard await authStore.isCurrent(candidate) else { changed = true; break }
-                if let expiry = authStore.accessTokenExpiresAt(token), expiry <= now() { continue }
+                if candidate.readOnly, let token = candidate.auth.tokens?.accessToken,
+                   let expiry = authStore.accessTokenExpiresAt(token), expiry <= now() { continue }
+                var state = candidate
+                var onDisk = candidate
                 do {
-                    let response = try await usageClient.fetchUsage(
-                        accessToken: token, accountID: candidate.auth.tokens?.accountID
-                    )
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
-                    if response.statusCode == 401 || response.statusCode == 403 {
-                        AppLog.warn(LogTag.auth("codex"), "account credential rejected; trying a matching login")
-                        continue
-                    }
-                    let resets = await accountResetCredits(candidate)
-                    let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resets, now: now())
-                    let result = await snapshot(mapped: mapped)
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
+                    let result = try await probe(authState: &state, onDisk: &onDisk)
+                    guard await authStore.isCurrent(onDisk) else { changed = true; break }
                     return result
+                } catch let error as CodexAuthError where error.allowsAuthFallback {
+                    guard await authStore.isCurrent(onDisk) else { changed = true; break }
+                    AppLog.warn(LogTag.auth("codex"), "account credential failed (\(error)); trying a matching login")
                 } catch {
-                    guard await authStore.isCurrent(candidate) else { changed = true; break }
+                    guard await authStore.isCurrent(onDisk) else { changed = true; break }
                     return ProviderSnapshot.error(provider: provider, error: error)
                 }
             }
             if !changed { break }
             AppLog.info(LogTag.auth("codex"), "login changed during usage refresh; discarding the stale result")
         }
-        return ProviderSnapshot.error(provider: provider, error: CodexSwapLoginError())
-    }
-
-    private func accountResetCredits(_ candidate: CodexAuthState) async -> HTTPResponse? {
-        do {
-            return try await usageClient.fetchResetCredits(
-                accessToken: candidate.auth.tokens?.accessToken ?? "", accountID: candidate.auth.tokens?.accountID
-            )
-        } catch {
-            AppLog.warn(LogTag.plugin("codex"), "reset-credit fetch failed; using usage-body count: \(error.localizedDescription)")
-            return nil
-        }
+        return ProviderSnapshot.error(provider: provider, error: CodexAccountLoginError())
     }
 }
 
-private struct CodexSwapLoginError: LocalizedError, CategorizedError {
+private struct CodexAccountLoginError: LocalizedError, CategorizedError {
     var errorCategory: ErrorCategory { .authExpired }
     var errorDescription: String? {
         "No valid login for this Codex account. Sign in with Codex, xswap, or pi, then refresh."
