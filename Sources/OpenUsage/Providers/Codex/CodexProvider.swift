@@ -13,6 +13,9 @@ final class CodexProvider: ProviderRuntime {
     let allowsUnattributedHistory: Bool
     var allowsCachedLocalHistory: Bool { allowsUnattributedHistory }
 
+    private let localHistory = CodexHistoryRefresh<CodexLocalHistory>()
+    let localHistoryWait: Duration
+
     let authStore: CodexAuthStore
     let usageClient: CodexUsageClient
     let logUsageScanner: CodexLogUsageScanner
@@ -22,6 +25,7 @@ final class CodexProvider: ProviderRuntime {
     let fallbackModel: @MainActor () -> String?
 
     init(
+        localHistoryWait: Duration = .seconds(5),
         provider: Provider = CodexProvider.makeProvider(),
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
@@ -32,6 +36,7 @@ final class CodexProvider: ProviderRuntime {
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
     ) {
+        self.localHistoryWait = localHistoryWait
         self.provider = provider
         self.allowsUnattributedHistory = allowsUnattributedHistory
         self.authStore = authStore
@@ -153,12 +158,55 @@ final class CodexProvider: ProviderRuntime {
 
     func snapshot(mapped initial: CodexMappedUsage) async -> ProviderSnapshot {
         var mapped = initial
-        // Local spend tiles, scanned natively from the Codex CLI's session rollouts and priced through
-        // the shared pricing store, merged with Codex usage that happened inside pi or OpenCode. Those
-        // agents attribute their underlying Codex OAuth traffic back to this card.
+        let history = await localHistory.value(wait: localHistoryWait) {
+            [pricing, fallbackModel, logUsageScanner, openCodeUsageScanner, allowsUnattributedHistory, provider, now] in
+            await Self.scanLocalHistory(
+                pricing: pricing, fallbackModel: fallbackModel, logUsageScanner: logUsageScanner,
+                openCodeUsageScanner: openCodeUsageScanner, allowsUnattributedHistory: allowsUnattributedHistory,
+                provider: provider, now: now
+            )
+        }
+        if let history, let usage = history.usageHistory {
+            // A retained scan may be collected on a later day; project Today/Yesterday at collection.
+            SpendTileMapper.appendTokenUsage(
+                usage.series, to: &mapped.lines, now: now(),
+                unknownModelsByDay: usage.unknownModelsByDay, modelUsage: usage.modelUsage,
+                modelSourceNote: history.sourceNote,
+                fallbackPricingModelsByDay: usage.fallbackPricingModelsByDay
+            )
+            SpendTileMapper.appendUsageTrend(
+                usage.series, to: &mapped.lines, now: now(), note: history.sourceNote,
+                fallbackPricingModelsByDay: usage.fallbackPricingModelsByDay
+            )
+        }
+        let warning = history == nil ? "Local token history is still updating." : nil
+        if warning != nil {
+            AppLog.warn(LogTag.plugin("codex"), "local history scan deferred; publishing live quota")
+        }
+        MetricLine.appendNoDataIfNeeded(&mapped.lines)
+        return ProviderSnapshot.make(
+            provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(),
+            usageHistory: history?.usageHistory, warning: warning
+        )
+    }
+
+    private struct CodexLocalHistory: Sendable {
+        var sourceNote: String
+        var usageHistory: ProviderUsageHistory?
+    }
+
+    private static func scanLocalHistory(
+        pricing: @Sendable () async -> ModelPricing,
+        fallbackModel: @MainActor () -> String?,
+        logUsageScanner: CodexLogUsageScanner,
+        openCodeUsageScanner: OpenCodeCodexUsageScanner,
+        allowsUnattributedHistory: Bool,
+        provider: Provider,
+        now: @Sendable () -> Date
+    ) async -> CodexLocalHistory {
         let pricing = await pricing()
         // Three independent local sources: reading rollout files, pi's JSONL, and OpenCode's SQLite
-        // concurrently keeps the slowest one — not their sum — on the refresh's critical path.
+        // concurrently keeps the slowest one — not their sum — on the background scan's path.
         let selectedFallbackModel = fallbackModel()
         async let native = logUsageScanner.scan(
             now: now(), pricing: pricing, fallbackModel: selectedFallbackModel
@@ -171,38 +219,19 @@ final class CodexProvider: ProviderRuntime {
         async let openCode = allowsUnattributedHistory
             ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
         let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
+        let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
         var usageHistory: ProviderUsageHistory?
-        // Cancellation can land between the local scans. Treat them as one unit so a
-        // partial result cannot replace the last-good combined history in WidgetDataStore.
+        // Cancellation must not publish a partial combined history.
         if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
-            let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
             usageHistory = ProviderUsageHistory(
-                series: scan.series,
-                modelUsage: scan.modelUsage,
+                series: scan.series, modelUsage: scan.modelUsage,
                 unknownModelsByDay: scan.unknownModelsByDay,
-                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
-            )
-            SpendTileMapper.appendTokenUsage(
-                scan.series, to: &mapped.lines, now: now(),
-                unknownModelsByDay: scan.unknownModelsByDay,
-                modelUsage: scan.modelUsage,
-                modelSourceNote: baseNote,
-                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
-            )
-            SpendTileMapper.appendUsageTrend(
-                scan.series, to: &mapped.lines, now: now(), note: baseNote,
                 fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
             )
         }
 
-        MetricLine.appendNoDataIfNeeded(&mapped.lines)
-        return ProviderSnapshot.make(
-            provider: provider,
-            plan: mapped.plan,
-            lines: mapped.lines,
-            refreshedAt: now(),
-            usageHistory: usageHistory
-        )
+        AppLog.info(LogTag.plugin("codex"), "local history scan completed")
+        return CodexLocalHistory(sourceNote: baseNote, usageHistory: usageHistory)
     }
 
     private static func localUsageSourceNote(hasPi: Bool, hasOpenCode: Bool) -> String {
