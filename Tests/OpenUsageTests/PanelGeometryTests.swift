@@ -57,4 +57,16 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(short.minX, tall.minX)
         XCTAssertEqual(short.width, tall.width)
     }
+
+    func testFractionalAnchorAndHeightsKeepTopEdgeOnOneWholePoint() {
+        // A status item on a half point puts the anchor at x.5; the morph passes fractional heights.
+        let topLeft = NSPoint(x: 995, y: 949.5)
+
+        let frames = (0...1610).map { step in
+            PanelGeometry.frame(topLeft: topLeft, width: 320, height: 567 + CGFloat(step) / 10)
+        }
+
+        XCTAssertEqual(Set(frames.map(\.maxY)), [949])
+        XCTAssertTrue(frames.allSatisfy { $0.minY == $0.minY.rounded() && $0.height == $0.height.rounded() })
+    }
 }
