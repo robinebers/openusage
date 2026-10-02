@@ -93,7 +93,9 @@ the bulk of the UI can stay plain SwiftUI.
 SwiftUI measures each screen's content and drives panel resizing on the same animation clock as screen
 navigation. Row positions used for drag reordering stay outside observable view state, so scrolling and
 screen transitions don't rebuild their entire lists, and the panel's shadow updates once its size settles.
-Settings stays mounted after its first visit so returning to it reuses its native controls.
+The panel's top edge and every resize step land on whole points, so the panel stays still under the
+menu bar while its height animates. Settings stays mounted after its first visit so returning to it
+reuses its native controls.
 
 ## Platform support
 
