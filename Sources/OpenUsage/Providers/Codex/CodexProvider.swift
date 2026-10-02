@@ -183,7 +183,8 @@ final class CodexProvider: ProviderRuntime {
         if warning != nil {
             AppLog.warn(LogTag.plugin("codex"), "local history scan deferred; publishing live quota")
         }
-        MetricLine.appendNoDataIfNeeded(&mapped.lines)
+        // Pending history is not evidence of no usage. The store may restore last-good spend rows.
+        if history != nil { MetricLine.appendNoDataIfNeeded(&mapped.lines) }
         return ProviderSnapshot.make(
             provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now(),
             usageHistory: history?.usageHistory, warning: warning

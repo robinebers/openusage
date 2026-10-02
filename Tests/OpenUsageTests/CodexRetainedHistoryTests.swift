@@ -3,6 +3,37 @@ import XCTest
 
 @MainActor
 final class CodexRetainedHistoryTests: XCTestCase {
+    func testPendingHistoryDoesNotAddNoDataBadgeBeforeStoreRestoresHistory() async {
+        let gate = PricingGate()
+        let provider = CodexProvider(
+            localHistoryWait: .zero,
+            logUsageScanner: CodexLogFixture.scanner(home: nil),
+            allowsUnattributedHistory: false,
+            pricing: { await gate.value() }
+        )
+        let snapshot = await provider.snapshot(mapped: CodexMappedUsage(plan: nil, lines: []))
+        XCTAssertNotNil(snapshot.warning)
+        XCTAssertNil(snapshot.usageHistory)
+        XCTAssertTrue(snapshot.lines.isEmpty, "Pending history must not claim there is no usage")
+        await gate.release()
+    }
+
+    func testCompletedEmptyHistoryStillShowsNoDataBadge() async {
+        let provider = CodexProvider(
+            localHistoryWait: .seconds(1),
+            logUsageScanner: CodexLogFixture.scanner(home: nil),
+            allowsUnattributedHistory: false,
+            pricing: { ModelPricing(supplement: PricingSupplement(),
+                                    primary: PricingCatalog(entries: [:]), secondary: PricingCatalog(entries: [:])) }
+        )
+        let snapshot = await provider.snapshot(mapped: CodexMappedUsage(plan: nil, lines: []))
+        XCTAssertNil(snapshot.warning)
+        XCTAssertTrue(snapshot.lines.contains { line in
+            if case .badge(_, let value, _, _) = line { return value == "No usage data" }
+            return false
+        })
+    }
+
     func testLaterSnapshotCollectsHistoryAndKeepsFreshQuota() async throws {
         let gate = PricingGate()
         let now = OpenUsageISO8601.date(from: "2026-02-20T14:30:00Z")!

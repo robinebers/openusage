@@ -130,5 +130,6 @@ Safeguards, because a claim is irreversible:
 Live quota refreshes wait at most five seconds for local token-history processing. If a large archive
 takes longer, quota still updates and the card shows a history-updating notice. One scan per provider
 continues in the background; a later refresh collects its result. Previously loaded history is retained
-while waiting. A fresh launch may show quota before history appears. Network and authentication
+while waiting. Pending history does not show a premature "No usage data" badge.
+A fresh launch may show quota before history appears. Network and authentication
 failures still use the normal stale-data handling.
