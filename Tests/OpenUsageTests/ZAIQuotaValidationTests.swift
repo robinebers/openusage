@@ -55,6 +55,7 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
 final class ZAIQuotaValidationProviderTests: XCTestCase {
     func testMissingUsageReportsInvalidResponseInsteadOfZeroMeter() async {
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: ZAIAuthStore(
                 files: FakeFiles(),
                 environment: FakeEnvironment(["ZAI_API_KEY": "zai-test"])

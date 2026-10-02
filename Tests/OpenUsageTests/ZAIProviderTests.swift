@@ -238,6 +238,7 @@ final class ZAIUsageMapperTests: XCTestCase {
 final class ZAIProviderTests: XCTestCase {
     func testRefreshMapsBothEndpoints() async throws {
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: makeAuthStore(key: "zai-test"),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
                 XCTAssertEqual(request.headers["Authorization"], "Bearer zai-test")
@@ -261,6 +262,7 @@ final class ZAIProviderTests: XCTestCase {
         // The subscription endpoint is best-effort (plan name only) — a failure there must not blank
         // out the quota meters.
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: makeAuthStore(key: "zai-test"),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
                 if request.url == ZAIUsageClient.quotaURL {
@@ -280,6 +282,7 @@ final class ZAIProviderTests: XCTestCase {
 
     func testRefreshWithoutKeyReportsNotLoggedIn() async {
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: ZAIAuthStore(files: FakeFiles(), environment: FakeEnvironment()),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in
                 XCTFail("should not hit the network without a key")
@@ -298,6 +301,7 @@ final class ZAIProviderTests: XCTestCase {
 
         for entry in cases {
             let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
                 authStore: makeAuthStore(key: "zai-test"),
                 usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
                     request.url == ZAIUsageClient.quotaURL
@@ -314,6 +318,7 @@ final class ZAIProviderTests: XCTestCase {
 
     func testRefreshOnTransportErrorReportsNetwork() async {
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: makeAuthStore(key: "zai-test"),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in
                 throw ZAIUsageError.connectionFailed
@@ -329,6 +334,7 @@ final class ZAIProviderTests: XCTestCase {
         // A valid key whose account has no GLM Coding Plan: the quota endpoint answers a 2xx with
         // `success:false`. Surface a clear (non-malfunction) error so the header explains the empty card.
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: makeAuthStore(key: "zai-test"),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
                 if request.url == ZAIUsageClient.quotaURL {
@@ -351,6 +357,7 @@ final class ZAIProviderTests: XCTestCase {
     func testProviderAPIKeyManagingDelegatesToAuthStore() throws {
         let files = FakeFiles()
         let provider = ZAIProvider(
+            usageScanner: ZcodeUsageScanner(databasePaths: { [] }),
             authStore: ZAIAuthStore(files: files, environment: FakeEnvironment(["ZAI_API_KEY": "zai-env"])),
             usageClient: ZAIUsageClient(http: RoutingHTTPClient { _ in jsonResponse("{}") })
         )

@@ -1,6 +1,6 @@
 # Z.ai
 
-Tracks [Z.ai](https://z.ai) (Zhipu AI) GLM Coding Plan usage quotas for coding subscriptions.
+Tracks [Z.ai](https://z.ai) (Zhipu AI) GLM Coding Plan usage quotas for coding subscriptions, local Zcode token usage and estimated spend.
 
 ## What it tracks
 
@@ -9,8 +9,15 @@ Tracks [Z.ai](https://z.ai) (Zhipu AI) GLM Coding Plan usage quotas for coding s
 | Session | 5-hour rolling window token usage (percentage) |
 | Weekly | 7-day rolling window token usage (percentage) |
 | Web Searches | Monthly web-search / web-reader / Zread calls (used / limit) |
+| Usage Trend | Daily tokens from local Zcode usage |
+| Today / Yesterday / Last 30 Days | Local Zcode tokens and estimated spend |
 
 When Z.ai reports your plan name, OpenUsage shows it beside the provider name.
+
+[Zcode’s SQLite database](zcode.md) supplies the local usage trend, token totals, and estimated
+spend in this same card. Z.ai contributes those local totals to Cost, Cost/MTok, and Tokens summaries.
+Quota credentials and local usage are independent: a failure reading one source preserves the other
+and shows a warning. Local usage is detected even without an API key.
 
 ## Where credentials come from
 

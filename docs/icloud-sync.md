@@ -7,7 +7,7 @@ existing file after app preferences are reset or the app is reinstalled. There i
 pairing code, or separate account.
 
 The file contains normalized daily tokens and spend, model totals, and unknown-model names for sources
-that are local to one Mac: Claude, Codex, Grok, and OpenCode. It also includes Claude and Codex account
+that are local to one Mac: Claude, Codex, Grok, OpenCode, and Z.ai. It also includes Claude and Codex account
 and organization or workspace identities when available, but never credentials, account limits,
 raw logs, or provider responses. Cursor's history is already account-wide, so it stays local and is never added across Macs.
 Disabling a provider immediately removes its peer contributions from the combined view and omits it from
@@ -85,3 +85,5 @@ fi
 No file is expected when sync is off, the app is signed without the matching profile, or the first
 write has not completed. The Settings error and app log distinguish those cases; the spinner only
 appears while an iCloud read or write is actually in progress.
+
+For Z.ai, local Zcode usage is combined across Macs; subscription quota meters remain machine-local.

@@ -6,7 +6,7 @@ Settings lives inside the popover — there is no separate window. Open it from 
 
 | Setting | Options | What it does |
 |---|---|---|
-| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default; the card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, OpenCode). |
+| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default; the card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, OpenCode, Z.ai). |
 | Launch at Login | on/off | Registers the app as a login item (the system's login-item registry is the source of truth). |
 | Global Shortcut | record a shortcut | Global shortcut that toggles the popover from anywhere. Click the field and press a combo; the ⓧ clears it and disables the shortcut. |
 

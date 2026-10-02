@@ -34,6 +34,7 @@ What each provider tracks, where its credentials come from, and what to do when 
 - [OpenCode](providers/opencode.md)
 - [OpenRouter](providers/openrouter.md)
 - [Z.ai](providers/zai.md)
+- [Zcode local usage in Z.ai](providers/zcode.md)
 
 ## For developers
 

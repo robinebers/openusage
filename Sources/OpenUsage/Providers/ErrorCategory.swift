@@ -236,6 +236,14 @@ extension ZAIAuthError: CategorizedError {
     }
 }
 
+extension ZcodeUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .databaseUnreadable: .credentialAccess
+        }
+    }
+}
+
 extension ZAIUsageError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

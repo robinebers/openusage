@@ -14,39 +14,94 @@ final class ZAIProvider: ProviderRuntime {
 
     let authStore: ZAIAuthStore
     let usageClient: ZAIUsageClient
+    let usageScanner: ZcodeUsageScanner
+    let pricing: @Sendable () async -> ModelPricing
     let now: @Sendable () -> Date
+    private let sourceNote = "From your Zcode usage history (estimated)"
 
     init(
+        usageScanner: ZcodeUsageScanner = ZcodeUsageScanner(),
         authStore: ZAIAuthStore = ZAIAuthStore(),
         usageClient: ZAIUsageClient = ZAIUsageClient(),
+        pricing: @escaping @Sendable () async -> ModelPricing = { ModelPricingStore.shared.current() },
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
+        self.usageScanner = usageScanner
+        self.pricing = pricing
         self.now = now
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
-        [
-            .percent(id: "zai.session", provider: provider, title: "Session",
-                     metricLabel: "Session")
+        return [
+            .percent(id: "zai.session", provider: provider, title: "Session")
                 .exportingLimit("session", unit: "percent"),
-            .percent(id: "zai.weekly", provider: provider, title: "Weekly",
-                     metricLabel: "Weekly")
+            .percent(id: "zai.weekly", provider: provider, title: "Weekly")
                 .exportingLimit("weekly", unit: "percent"),
+            .usageTrend(provider: provider)
+                .exportingHistory(scope: .machineLocal, estimatedCost: true, sourceNote: sourceNote),
             .boundedCount(id: "zai.webSearches", provider: provider, title: "Web Searches",
-                          metricLabel: "Web Searches", limit: 1000, suffix: "searches",
-                          periodDurationMs: ZAIUsageMapper.monthlyPeriodMs)
-                .exportingLimit("webSearches", unit: "searches")
-        ]
+                          limit: 1000, suffix: "searches", periodDurationMs: ZAIUsageMapper.monthlyPeriodMs)
+                .exportingLimit("webSearches", unit: "searches"),
+        ] + WidgetDescriptor.spendTiles(provider: provider, valueTooltipNote: sourceNote)
     }
 
     func hasLocalCredentials() async -> Bool {
-        // Same source as `refresh()`: a stored or environment-exported API key.
-        await loadOffMainActor { [authStore] in authStore.loadAPIKey() } != nil
+        // Both sources used by refresh: quota credentials or local Zcode usage.
+        await loadOffMainActor { [authStore, usageScanner] in
+            authStore.loadAPIKey() != nil || usageScanner.hasModelUsage()
+        }
     }
 
     func refresh() async -> ProviderSnapshot {
+        let refreshedAt = now()
+        let quota = await refreshQuota(at: refreshedAt)
+        var scan: LogUsageScan?
+        var scanError: Error?
+        do {
+            scan = try await usageScanner.scan(now: refreshedAt, pricing: await pricing())
+        } catch {
+            scanError = error
+        }
+        if scan == nil, quota.errorCategory != nil {
+            if let error = scanError {
+                return ProviderSnapshot.error(provider: provider, error: error)
+            }
+            return quota
+        }
+
+        var lines = quota.errorCategory == nil
+            ? quota.lines.filter { $0.label != MetricLine.noUsageData.label } : []
+        var warnings: [String] = []
+        if quota.errorCategory != nil, case .badge(_, let text, _, _)? = quota.lines.first {
+            warnings.append(text)
+        }
+        if let error = scanError { warnings.append(error.localizedDescription) }
+        if let scan {
+            SpendTileMapper.appendTokenUsage(
+                scan.series, to: &lines, now: refreshedAt, estimated: true,
+                unknownModelsByDay: scan.unknownModelsByDay, modelUsage: scan.modelUsage,
+                modelSourceNote: sourceNote, fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
+            )
+        }
+        if let scan {
+            SpendTileMapper.appendUsageTrend(scan.series, to: &lines, now: refreshedAt, note: sourceNote)
+        }
+        MetricLine.appendNoDataIfNeeded(&lines)
+        let warning = warnings.isEmpty ? nil : warnings.joined(separator: " ")
+        if let warning { AppLog.warn(LogTag.plugin("zai"), "partial usage: \(warning)") }
+        return ProviderSnapshot.make(
+            provider: provider, plan: quota.plan, lines: lines, refreshedAt: refreshedAt,
+            usageHistory: scan.map {
+                ProviderUsageHistory(series: $0.series, modelUsage: $0.modelUsage,
+                                     unknownModelsByDay: $0.unknownModelsByDay)
+            },
+            warning: warning
+        )
+    }
+
+    private func refreshQuota(at refreshedAt: Date) async -> ProviderSnapshot {
         guard let auth = await loadOffMainActor({ [authStore] in authStore.loadAPIKey() }) else {
             return ProviderSnapshot.error(provider: provider, error: ZAIAuthError.missingKey)
         }
@@ -67,7 +122,7 @@ final class ZAIProvider: ProviderRuntime {
             }
             do {
                 let mapped = try ZAIUsageMapper.map(quotaBody: body, subscriptionBody: subscription)
-                return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: now())
+                return ProviderSnapshot.make(provider: provider, plan: mapped.plan, lines: mapped.lines, refreshedAt: refreshedAt)
             } catch {
                 return ProviderSnapshot.error(provider: provider, error: error)
             }

@@ -16,7 +16,7 @@ A provider card can also show **quick-link buttons** pinned at the bottom of its
 
 ## Total Spend
 
-When any enabled provider tracks daily spend (Claude, Codex, Cursor, Grok, or OpenCode), a card sits above the provider sections. The title is a pull-down menu for **Cost**, **Cost/MTok**, or **Tokens** (Cost is the default; the choice sticks across restarts). A capsule switcher flips the period between **Today**, **Yesterday**, and **30 Days**. The ring, center total, and ranked legend follow the selected metric:
+When any enabled provider tracks daily spend (Claude, Codex, Cursor, Grok, OpenCode, or Z.ai), a card sits above the provider sections. The title is a pull-down menu for **Cost**, **Cost/MTok**, or **Tokens** (Cost is the default; the choice sticks across restarts). A capsule switcher flips the period between **Today**, **Yesterday**, and **30 Days**. The ring, center total, and ranked legend follow the selected metric:
 
 - **Cost** — each segment is that provider's share of combined dollars (biggest spender first).
 - **Cost/MTok** — each segment is sized by that provider's dollars-per-million-tokens rate; the center is the blended rate across providers that have both spend and tokens; the legend lists each provider's own rate.
@@ -39,16 +39,15 @@ The ring center is always two short lines — a compact number on top and a quie
 
 **Metrics without a limit** (daily spend, balances) show as a single line like `$4.08 spent` or `1.2M tokens`. The Today / Yesterday / Last 30 Days rows combine cost and tokens (`$4.08 · 1.2M tokens`) and can be turned on or off in Customize. A day with no usage reads "No data" rather than a misleading `$0.00 · 0 tokens` — the same as when the source can't be loaded at all. Big numbers are abbreviated to keep rows tidy (`$2.06K`, `1.5B`) — hover the value to see the exact figures and source note, such as a local estimate.
 
-For Claude, Codex, Cursor, Grok, and OpenCode spend rows, the value gently highlights when you point at it, signaling it's interactive; hovering it for a moment opens a small model breakdown for that period: a ranked list of models, each showing its name and spend on one line, its share percentage and tokens on the next, and a thin share bar. Cursor groups its per-thinking-effort export slugs (like `claude-opus-4-8-thinking-max`) under the base model. Long tails fold into **Other** — anything past the top named models or under 5% of the period. Models no pricing source can price don't appear here (or in the row's totals) at all; the row's warning triangle names them instead (see [Pricing](pricing.md)).
+For Claude, Codex, Cursor, Grok, and OpenCode spend rows, the value gently highlights when you point at it, signaling it's interactive; hovering it for a moment opens a small model breakdown for that period: a ranked list of models, each showing its name and spend on one line, its share percentage and tokens on the next, and a thin share bar. Cursor groups its per-thinking-effort export slugs (like `claude-opus-4-8-thinking-max`) under the base model. Long tails fold into **Other** — anything past the top named models or under 5% of the period. Models no pricing source can price don't appear here (or in the row's totals) at all; the row's warning triangle names them instead (see [Pricing](pricing.md)). Z.ai’s local Zcode spend rows use the same model breakdown.
 
-**Usage Trend** (Claude, Codex, Cursor, Grok, and OpenCode) is a small bar chart of the last 30 days of token usage — one bar per day, drawn from the same source as that provider's spend rows (local logs for Claude, Codex, Grok, and OpenCode; Cursor's usage export for Cursor). **Hover it** for the peak day, the date range, and the source. It's on by default; turn it off or reorder it from Customize like any other metric. It can't be starred for the menu bar — the strip shows single values, not a chart.
+**Usage Trend** (Claude, Codex, Cursor, Grok, OpenCode, and Z.ai) is a small bar chart of the last 30 days of token usage — one bar per day, drawn from the provider's usage history (local logs for Claude, Codex, Grok, and OpenCode; Cursor's usage export for Cursor; local Zcode usage for Z.ai). **Hover it** for the peak day, the date range, and the source. It's on by default; turn it off or reorder it from Customize like any other metric. It can't be starred for the menu bar — the strip shows single values, not a chart.
 
 With [iCloud Sync](icloud-sync.md) on, the machine-local providers' spend rows, trends, warnings, and
 model breakdowns are rebuilt from all synced Macs. Cursor stays unchanged because its export is already
 account-wide. Quotas, plans, balances, and provider errors always describe this Mac's refresh.
 
 Rows with a reset date tick every 30 seconds, so countdowns and pace stay live between refreshes.
-
 ## Right-click menus
 
 Every row: **Hide · Star for menu bar / Unstar · Refresh \<provider\> · Customize…** (Customize opens straight to that provider's metrics.)
