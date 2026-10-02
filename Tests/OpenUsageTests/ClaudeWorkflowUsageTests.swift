@@ -18,6 +18,7 @@ final class ClaudeWorkflowUsageTests: XCTestCase {
             "workspace/a.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-a"}"#,
             "workspace/a/subagents/workflows/wf-1/agent-a.jsonl": usage("a", 100),
             "workspace/a/subagents/workflows/wf-2/agent-a.jsonl": usage("a", 100), // replay
+            "workspace/a/subagents/workflows/wf-1/agent-a/subagents/agent-nested.jsonl": usage("nested", 25),
             "workspace/b.jsonl": #"{"ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"#,
             "workspace/b/subagents/workflows/wf-1/agent-b.jsonl": usage("b", 200),
             "workspace/foreign.jsonl": #"{"ownerOrganizationUuid":"org-a","ownerAccountUuid":"user-b"}"#,
@@ -36,8 +37,8 @@ final class ClaudeWorkflowUsageTests: XCTestCase {
             accountUUID: "user-a", organizationUUID: "org-a"
         )
         let first = await scanner.scan(now: now, pricing: pricing)
-        XCTAssertEqual(first?.series.daily.first?.totalTokens, 100)
-        XCTAssertEqual(first?.series.daily.first?.costUSD, 1)
+        XCTAssertEqual(first?.series.daily.first?.totalTokens, 125)
+        XCTAssertEqual(first?.series.daily.first?.costUSD, 2)
         let other = ClaudeLogUsageScanner(
             environment: FakeEnvironment([:]), homeDirectory: { home }, incrementalScanner: cache,
             accountUUID: "user-a", organizationUUID: "org-b"
@@ -49,7 +50,7 @@ final class ClaudeWorkflowUsageTests: XCTestCase {
         let agent = home.appendingPathComponent(".claude/projects/workspace/a/subagents/workflows/wf-1/agent-a.jsonl")
         try (usage("a", 100) + "\n" + usage("new", 50)).write(to: agent, atomically: true, encoding: .utf8)
         let refreshed = await scanner.scan(now: now, pricing: pricing)
-        XCTAssertEqual(refreshed?.series.daily.first?.totalTokens, 150)
+        XCTAssertEqual(refreshed?.series.daily.first?.totalTokens, 175)
 
         // Reassigning the parent must also invalidate ownership for its unchanged descendants.
         try #"{"ownerOrganizationUuid":"org-b","ownerAccountUuid":"user-a"}"#
@@ -74,14 +75,33 @@ final class ClaudeWorkflowUsageTests: XCTestCase {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try #"{"cliSessionId":"\#(session)"}"#
             .write(to: directory.appendingPathComponent("local_session.json"), atomically: true, encoding: .utf8)
+        let archive = home.appendingPathComponent("archive")
+        let archivedProject = archive.appendingPathComponent("projects/workspace")
+        try FileManager.default.createDirectory(at: archivedProject, withIntermediateDirectories: true)
+        try ClaudeLogFixture.usageLine(
+            timestamp: OpenUsageISO8601.string(from: now), input: 456, output: 0,
+            costUSD: 2, messageID: "archived", requestID: "archived"
+        ).write(to: archivedProject.appendingPathComponent("\(session).jsonl"), atomically: true, encoding: .utf8)
         for (account, org, expected) in [("user-a", "org-a", 123), ("user-b", "org-a", 0), ("user-a", "org-b", 0)] {
             let scanner = ClaudeLogUsageScanner(
                 environment: FakeEnvironment([:]), homeDirectory: { home },
                 incrementalScanner: IncrementalJSONLScanner<ClaudeLogUsageScanner.Entry>(),
-                accountUUID: account, organizationUUID: org
+                accountUUID: account, organizationUUID: org, additionalConfigDirectories: [archive.path]
             )
             let result = await scanner.scan(now: now, pricing: pricing)
             XCTAssertEqual(result?.series.daily.first?.totalTokens ?? 0, expected)
         }
+
+        let conflicting = home.appendingPathComponent("Library/Application Support/Claude/claude-code-sessions/user-b/org-b")
+        try FileManager.default.createDirectory(at: conflicting, withIntermediateDirectories: true)
+        try #"{"cliSessionId":"\#(session)"}"#
+            .write(to: conflicting.appendingPathComponent("local_duplicate.json"), atomically: true, encoding: .utf8)
+        let scanner = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<ClaudeLogUsageScanner.Entry>(),
+            accountUUID: "user-a", organizationUUID: "org-a"
+        )
+        let ambiguous = await scanner.scan(now: now, pricing: pricing)
+        XCTAssertTrue(ambiguous?.series.daily.isEmpty == true)
     }
 }

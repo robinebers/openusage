@@ -31,8 +31,8 @@ providers.
 Returns the legacy UI-oriented snapshots for all **enabled** providers, in your dashboard order. Existing
 consumers remain supported while this route is deprecated; new consumers should use `/v1/limits`.
 
-Both routes read the same rendered provider snapshots. When iCloud Sync is on, that means they both see
-the same iCloud-combined usage as the dashboard; `/v1/usage` returns the old UI-oriented shape, while
+Both routes read account-owned provider snapshots, including matching iCloud history when Sync is on.
+Shared local history displayed across Claude or Codex cards is excluded from both routes; `/v1/usage` returns the old UI-oriented shape, while
 `/v1/limits` projects the data into stable resource IDs and raw scalar values.
 
 - **200 OK** — JSON array (may be empty `[]` if nothing has been fetched yet).

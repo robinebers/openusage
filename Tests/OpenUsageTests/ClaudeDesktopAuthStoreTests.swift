@@ -207,6 +207,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         )
         XCTAssertTrue(legacy.claudeCards.isEmpty)
         XCTAssertEqual(legacy.identityKeysByCard["claude"], accountUUID)
+        XCTAssertFalse(legacy.allowsUnattributedClaudeUsage)
     }
 
     func testV1FallbackDoesNotOverrideTombstonedV2Key() throws {

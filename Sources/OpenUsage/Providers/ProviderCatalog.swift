@@ -8,14 +8,23 @@ enum ProviderCatalog {
         defaults: UserDefaults = .standard,
         claudeCards: [ClaudeAccountCard] = [],
         codex: CodexAccountDiscovery = CodexAccountDiscovery(),
-        claudeIdentityKeys: [String: String] = [:]
+        claudeIdentityKeys: [String: String] = [:],
+        allowsUnattributedClaudeUsage: Bool = true
     ) -> [ProviderRuntime] {
         // Default provider order (see AGENTS.md "## Providers"): the three established providers first,
         // then every other provider alphabetically by display name.
         var providers: [ProviderRuntime]
         if claudeCards.isEmpty {
-            providers = [ClaudeProvider()]
+            providers = [ClaudeProvider(
+                logUsageScanner: ClaudeLogUsageScanner(
+                    accountUUID: allowsUnattributedClaudeUsage ? nil : claudeIdentityKeys["claude"]
+                ),
+                allowsUnattributedPiUsage: allowsUnattributedClaudeUsage,
+                sharedHistorySource: allowsUnattributedClaudeUsage ? nil : .claude(directories: [])
+            )]
         } else {
+            let sharedHistory: SharedLocalHistorySource? = claudeCards.contains { !$0.allowsUnattributedPiUsage }
+                ? .claude(directories: Array(Set(claudeCards.flatMap(\.additionalLogDirectories)))) : nil
             providers = claudeCards.map { card in
                 let identity = claudeIdentityKeys[card.id] ?? card.identityKey
                 let user = identity.split(separator: "|").first.map(String.init)
@@ -38,7 +47,8 @@ enum ProviderCatalog {
                             && card.organizationID != nil && !card.usesDesktopCredentials
                     ),
                     logUsageScanner: scanner,
-                    allowsUnattributedPiUsage: card.allowsUnattributedPiUsage
+                    allowsUnattributedPiUsage: card.allowsUnattributedPiUsage,
+                    sharedHistorySource: sharedHistory
                 )
             }
         }
@@ -52,9 +62,12 @@ enum ProviderCatalog {
                     allowsUnattributedHistory: codex.allowsUnattributedHistory,
                     additionalHomes: codex.plainAuthHomes
                 ),
-                allowsUnattributedHistory: codex.allowsUnattributedHistory
+                allowsUnattributedHistory: codex.allowsUnattributedHistory,
+                sharedHistorySource: codex.allowsUnattributedHistory ? nil : .codex(homes: codex.plainAuthHomes)
             ))
         } else {
+            let sharedHistory: SharedLocalHistorySource? = codex.cards.contains { !$0.allowsUnattributedHistory }
+                ? .codex(homes: Array(Set(codex.cards.flatMap(\.logHomes)))) : nil
             providers += codex.cards.map { card in
                 CodexProvider(
                     provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
@@ -67,7 +80,8 @@ enum ProviderCatalog {
                         allowsUnattributedHistory: card.allowsUnattributedHistory,
                         additionalHomes: card.logHomes
                     ),
-                    allowsUnattributedHistory: card.allowsUnattributedHistory
+                    allowsUnattributedHistory: card.allowsUnattributedHistory,
+                    sharedHistorySource: sharedHistory
                 )
             }
         }

@@ -50,6 +50,7 @@ final class ClaudeSwapAccountTests: XCTestCase {
         let providers = ProviderCatalog.make(defaults: defaults, claudeCards: assembly.claudeCards)
             .compactMap { $0 as? ClaudeProvider }
         XCTAssertEqual(providers.filter { $0.authStore.swapAccount != nil }.count, 3)
+        XCTAssertTrue(providers.allSatisfy { $0.sharedHistorySource?.family == "claude" })
     }
 
     func testMalformedSlotsDoNotHideValidSlotsOrEscapeTheVault() {

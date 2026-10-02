@@ -66,19 +66,18 @@ Codex home, xswap, or pi; it re-reads each source on every refresh and tries eve
 a card reports an expired login, use that account once in Codex or pi so the tool renews its own
 token, then refresh OpenUsage.
 
-When more than one Codex account is known, OpenUsage excludes Codex, pi, and OpenCode spending that
-cannot prove which account paid for it. Live limits and reset-credit actions remain available on each
-card. A pi login or Codex home whose token names no account also disables unattributed spending, even
-when it cannot form its own card and the plain Codex card is all that shows.
+When more than one Codex account is known, each card shows the same combined local spending and
+usage trend, labeled **Shared**. Live limits, plans, errors, and reset-credit actions remain per account.
+An incomplete login that cannot identify its account also uses shared local spending.
 
 ## The spend tiles
 
-With multiple Codex accounts, spending without a reliable account owner is excluded, including
-previously cached spending. Excluded history is removed before cached data appears or syncs,
-even if the login has expired or the usage request fails. Cached live limits keep their original
-freshness. A shared session folder does not establish who paid for a turn.
+Shared local history includes Codex, pi, and OpenCode usage. It counts once in Total Spend, even when
+several account cards are visible, and stays out of account exports and iCloud sync. History loads
+independently of live limits, including when a login expires. A shared session folder does not prove
+which account paid for a turn, so OpenUsage does not assign those totals to an account.
 With one known account, shared and copied sessions count once. Synced history must match the
-card's account and workspace. Live usage limits continue to work for every account.
+card's account and workspace.
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
 

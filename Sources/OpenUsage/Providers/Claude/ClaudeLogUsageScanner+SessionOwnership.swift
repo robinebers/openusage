@@ -9,13 +9,14 @@ extension ClaudeLogUsageScanner {
         filesByPath: [String: JSONLScanning.DiscoveredFile]
     ) -> JSONLScanning.DiscoveredFile? {
         var directory = URL(fileURLWithPath: file.path).deletingLastPathComponent()
+        var parentPath: String?
         while directory.path != "/", directory.lastPathComponent != "projects" {
             if directory.lastPathComponent == "subagents" {
-                let parentPath = directory.deletingLastPathComponent().appendingPathExtension("jsonl").path
-                return filesByPath[parentPath]
+                parentPath = directory.deletingLastPathComponent().appendingPathExtension("jsonl").path
             }
             directory.deleteLastPathComponent()
         }
-        return file
+        guard let parentPath else { return file }
+        return filesByPath[parentPath]
     }
 }

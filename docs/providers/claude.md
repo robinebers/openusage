@@ -79,8 +79,8 @@ adding or removing a saved account.
 
 If the default login identifies an account but has no organization ID, it remains available as a
 separate default card alongside saved Swap accounts. OpenUsage does not guess which saved
-organization it belongs to. While multiple accounts are known, its spending covers only terminal
-sessions that record no account (see below), until the login identifies its organization.
+organization it belongs to. While multiple accounts are known, it shows shared local spending; no
+history is exported under that account until its organization is known.
 
 Saved accounts use the active default login when it names that exact account, followed by their own
 Claude Swap session profile's Keychain entry and credential file. They
@@ -94,25 +94,19 @@ Logins that can read live usage are tried before logins with limited permissions
 without `user:profile` does not hide working Session and Weekly limits from a matching saved session.
 Session profile credentials can renew normally, with updates saved back to that same profile.
 
-Local spending includes Claude Swap session histories as well as the default Claude history. Shared
-history is deduplicated and filtered by its recorded account and organization; entries without account
-ownership in Swap session histories stay excluded when multiple accounts are known. Broader SDK and
-Conductor history attribution is outside this change's scope.
+Local spending includes Claude Swap session histories as well as the default Claude history. With
+multiple known accounts, each card shows the same combined local history, labeled **Shared**. Shared
+and copied sessions count once. Total Spend includes this history once, regardless of how many cards
+are visible. Live limits, plans, and errors still belong to each account.
 
 ## The spend tiles
 
 Today / Yesterday / Last 30 Days are computed **locally**: OpenUsage reads the Claude Code session logs under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR`) itself — no external tools needed. Symlinks are followed, so a projects folder linked into a synced location (say, a Dropbox folder) is read all the same. With one known account, Claude usage from the [pi](https://github.com/earendil-works/pi) coding agent counts too: OpenUsage reads pi's session logs under `~/.pi/agent/sessions/` (or `$PI_CODING_AGENT_SESSION_DIR`) and folds any Claude usage there into the same tiles and trend, so a Claude sub driven through pi still shows up here. pi records its own per-message cost, so those dollars come straight from pi rather than being re-estimated. Cowork (the Claude desktop app's agent mode) counts too: it writes the same logs into per-session folders under `~/Library/Application Support/Claude/local-agent-mode-sessions/`, and OpenUsage scans those as well, so desktop agent sessions show up in the tiles alongside terminal ones. Persisted `claude -p` runs count as well. Runs made with `--no-session-persistence` cannot appear because Claude deliberately writes no session log for OpenUsage to read. Advisor work recorded inside a message is counted once under the advisor's own model; the parent's main-model totals are kept separate, and ordinary iteration details are not counted again. A log's recorded fast or standard speed controls its price; OpenUsage does not infer speed from the event date. Days are grouped in your Mac's local time zone, so they line up with your own calendar. Each period is one tile showing cost and tokens together (`$4.08 · 1.2M tokens`); a day with no usage reads **No data** rather than a misleading `$0.00 · 0 tokens` — the same as every other spend-tracking provider. The live Session and Weekly meters are unaffected. The dollars are estimated from token counts at API rates (that's the ⓘ) using the shared [model pricing](../pricing.md); the token counts themselves are measured. No log data leaves your Mac.
 
-Sessions that do not identify their account, including usage from pi and third-party tools such as
-Conductor, count as long as OpenUsage has never seen more than one Claude account. Once multiple
-accounts are discovered, most unattributed usage is left out instead of being assigned to the wrong card.
-
-The exception is plain terminal sessions. Claude Code only records the account for sessions run
-through Claude Desktop or Remote Control, so ordinary `claude` sessions in the default Claude folder
-(`~/.claude` or `$CLAUDE_CONFIG_DIR`) record none. These count on the card for the account Claude Code
-is currently signed in to, checked again on every refresh. Sessions Claude Desktop lists as its own are left to the Desktop cards. If
-you switched Claude Code to another account in the last 30 days, sessions from before the switch
-also count on the current account's card.
+With one known account, sessions without ownership markers and usage from pi count toward that
+account. Once multiple accounts are known, these sessions appear only in shared local spending.
+Signing into a different account does not transfer past sessions to it. Account exports and iCloud
+sync include only history with ownership evidence; shared local spending stays on this Mac.
 
 Subagent logs inherit their parent session's ownership, even when that parent is older than the
 spend window. Sessions with conflicting account or organization records are excluded. OpenUsage
@@ -120,7 +114,7 @@ checks each parent once per refresh and reuses unchanged ownership results, incl
 across refreshes. Failed reads are retried on the next refresh, and large ownership scans stop
 when the refresh is cancelled.
 
-Claude subagents, including agents nested inside workflows, inherit their parent session's account.
+Claude subagents, including agents nested inside other workflow agents, inherit the outer session's account.
 Their usage appears while they run and is included in the same spend tiles. Existing workflow logs
 are picked up on the next refresh; there is no need to rerun the workflow or clear the usage cache.
 

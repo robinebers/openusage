@@ -73,7 +73,8 @@ final class AppContainer {
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
             codex: accountAssembly.codex,
-            claudeIdentityKeys: accountAssembly.identityKeysByCard
+            claudeIdentityKeys: accountAssembly.identityKeysByCard,
+            allowsUnattributedClaudeUsage: accountAssembly.allowsUnattributedClaudeUsage
         )
         let registry = WidgetRegistry.from(providers)
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
@@ -209,7 +210,7 @@ final class AppContainer {
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
                 knownIDs: Set(registry.providers.map(\.id)),
-                snapshots: dataStore.snapshots,
+                snapshots: dataStore.exportSnapshots,
                 limitDescriptors: registry.limitDescriptorsByProvider,
                 errors: dataStore.providerErrors
             )

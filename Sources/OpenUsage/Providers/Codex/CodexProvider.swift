@@ -11,6 +11,7 @@ final class CodexProvider: ProviderRuntime {
 
     let provider: Provider
     let allowsUnattributedHistory: Bool
+    let sharedHistorySource: SharedLocalHistorySource?
     var allowsCachedLocalHistory: Bool { allowsUnattributedHistory }
 
     private let localHistory = CodexHistoryRefresh<CodexLocalHistory>()
@@ -32,6 +33,7 @@ final class CodexProvider: ProviderRuntime {
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
         allowsUnattributedHistory: Bool = true,
+        sharedHistorySource: SharedLocalHistorySource? = nil,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
@@ -39,6 +41,7 @@ final class CodexProvider: ProviderRuntime {
         self.localHistoryWait = localHistoryWait
         self.provider = provider
         self.allowsUnattributedHistory = allowsUnattributedHistory
+        self.sharedHistorySource = sharedHistorySource
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner

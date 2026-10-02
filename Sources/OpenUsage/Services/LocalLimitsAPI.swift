@@ -9,7 +9,10 @@ enum LocalLimitsAPI {
     static func encode(providerIDs: [String], state: LocalUsageAPI.State) -> Data {
         var providers: [String: WireProvider] = [:]
         for providerID in providerIDs {
-            guard let snapshot = state.snapshots[providerID] else { continue }
+            guard var snapshot = state.snapshots[providerID] else { continue }
+            if snapshot.sharedHistoryFamily != nil {
+                snapshot = UsageHistorySnapshotRenderer.removingHistory(from: snapshot)
+            }
             let descriptors = state.limitDescriptors[providerID] ?? []
             providers[providerID] = WireProvider(
                 snapshot: snapshot,

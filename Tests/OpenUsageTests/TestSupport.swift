@@ -352,6 +352,7 @@ final class TestProviderRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
     let snapshot: ProviderSnapshot
+    var sharedHistorySource: SharedLocalHistorySource?
 
     init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
         self.provider = provider

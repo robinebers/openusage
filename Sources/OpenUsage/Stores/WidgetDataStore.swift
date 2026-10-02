@@ -68,9 +68,10 @@ final class WidgetDataStore {
     /// deadline is already reported separately by `slowProviderRefreshThreshold`.
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
-    /// Rendered snapshots consumed by every UI/API surface. Equal to `localSnapshots` when iCloud sync
-    /// is off; machine-local history rows are rebuilt from the union while sync is on.
+    /// Dashboard snapshots may include shared local history, without assigning it to an account.
     var snapshots: [String: ProviderSnapshot] = [:]
+    private(set) var exportSnapshots: [String: ProviderSnapshot] = [:]
+    @ObservationIgnored private let sharedHistory = SharedLocalHistory()
     /// Last-good snapshots produced on this Mac. These alone are cached and exported to iCloud, so a
     /// peer contribution can never echo back out and multiply on the next device.
     private(set) var localSnapshots: [String: ProviderSnapshot] = [:]
@@ -187,6 +188,8 @@ final class WidgetDataStore {
             }
         self.localSnapshots = loaded
         self.snapshots = loaded
+        self.exportSnapshots = loaded
+        sharedHistory.onChange = { [weak self] in self?.rebuildRenderedSnapshots() }
         // Only a snapshot the card's current account provably produced may seed a provider's fallback.
         for (cardID, snapshot) in loaded {
             guard let identity = providerIdentityKeys[cardID],
@@ -282,6 +285,9 @@ final class WidgetDataStore {
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
+        if let source = providersByID[providerID]?.sharedHistorySource {
+            sharedHistory.refresh(source, now: now(), force: force)
+        }
         // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
         // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
         // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
@@ -478,7 +484,7 @@ final class WidgetDataStore {
 
     private func rebuildRenderedSnapshots() {
         guard !peerHistoryDocuments.isEmpty else {
-            snapshots = localSnapshots
+            publishRenderedSnapshots(localSnapshots)
             return
         }
         let renderDate = now()
@@ -492,6 +498,7 @@ final class WidgetDataStore {
             peerDocuments: peerHistoryDocuments,
             descriptors: enabledDescriptors,
             providerIdentityKeys: providerIdentityKeys,
+            allowsUnattributedClaudeHistory: !providersByID.values.contains { $0.sharedHistorySource?.family == "claude" },
             now: renderDate
         )
         var rendered = localSnapshots
@@ -512,7 +519,18 @@ final class WidgetDataStore {
                 now: renderDate
             )
         }
-        snapshots = rendered
+        publishRenderedSnapshots(rendered)
+    }
+
+    private func publishRenderedSnapshots(_ owned: [String: ProviderSnapshot]) {
+        exportSnapshots = owned
+        snapshots = sharedHistory.render(
+            owned, providers: providersByID.values.filter { isProviderEnabled($0.provider.id) }, now: now()
+        )
+    }
+
+    func waitForSharedHistory() async {
+        await sharedHistory.waitForRefreshes()
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.
@@ -564,6 +582,10 @@ final class WidgetDataStore {
         result.displayMode = meterStyle
         result.resetDisplayMode = resetDisplayMode
         result.alwaysShowPacing = alwaysShowPacing
+        if snapshots[descriptor.providerID]?.sharedHistoryFamily != nil,
+           UsageHistorySnapshotRenderer.historyLabels.contains(descriptor.metricLabel) {
+            result.title += " · Shared"
+        }
         return result
     }
 

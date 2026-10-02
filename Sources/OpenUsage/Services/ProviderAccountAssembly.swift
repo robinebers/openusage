@@ -22,6 +22,7 @@ struct ProviderAccountAssembly {
     /// homes, so the keys are the bare family ids; a family whose identity didn't resolve is absent.
     let identityKeysByCard: [String: String]
     var claudeCards: [ClaudeAccountCard] = []
+    var allowsUnattributedClaudeUsage = true
     var codex = CodexAccountDiscovery()
     var codexCards: [CodexAccountCard] { codex.cards }
 
@@ -145,8 +146,11 @@ struct ProviderAccountAssembly {
         }
 
         if let claudeIdentity = identityKeys["claude"], !claudeIdentity.contains("|"), swapAccounts.isEmpty {
-            accountsStore.reconcile(with: observations)
-            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
+            let records = accountsStore.reconcile(with: observations)
+            return ProviderAccountAssembly(
+                identityKeysByCard: identityKeys,
+                allowsUnattributedClaudeUsage: records.count { $0.family == "claude" } <= 1, codex: codex
+            )
         }
 
         let desktop = desktop ?? ClaudeDesktopAuthStore(

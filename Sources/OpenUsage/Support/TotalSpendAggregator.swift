@@ -168,6 +168,7 @@ enum TotalSpendAggregator {
         providers: [Provider],
         snapshots: [String: ProviderSnapshot]
     ) -> TotalSpend {
+        var includedSharedFamilies: Set<String> = []
         let slices = providers.compactMap { provider -> TotalSpendSlice? in
             guard let snapshot = snapshots[provider.id],
                   let line = snapshot.line(label: period.lineLabel),
@@ -179,9 +180,17 @@ enum TotalSpendAggregator {
                 .filter { $0.kind == .count && $0.label == "tokens" }
                 .reduce(0) { $0 + $1.number }
             guard amount > 0 || tokens > 0 else { return nil }
+            var displayProvider = provider
+            if let family = snapshot.sharedHistoryFamily {
+                guard includedSharedFamilies.insert(family).inserted else { return nil }
+                displayProvider = Provider(
+                    id: family, displayName: "\(family == "claude" ? "Claude" : "Codex") (Shared)",
+                    icon: provider.icon, links: provider.links
+                )
+            }
 
             return TotalSpendSlice(
-                provider: provider,
+                provider: displayProvider,
                 amountUSD: max(amount, 0),
                 tokenCount: max(tokens, 0),
                 estimated: dollars.contains(where: \.estimated)

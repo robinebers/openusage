@@ -21,13 +21,14 @@ file. Other providers continue syncing.
 
 Codex Swap cards combine history only when its account and workspace match. Older Codex history
 without that information is excluded from Swap cards. Codex installations without account cards
-keep their existing sync behavior. Spending with no reliable owner is excluded when multiple Codex
-accounts are known, so shared history cannot appear on both cards.
+keep their existing sync behavior. Shared spending shown across Claude or Codex account cards stays
+on the current Mac. It is never written to iCloud or added to account-owned history from another Mac.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
-unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total
-Spend, menu-bar pins, share cards, and the local HTTP API. Both `/v1/usage` and `/v1/limits` read the
-same rendered snapshots; the former is the deprecated UI-oriented format and the latter is the
+unknown-model warnings, and model breakdowns. Account-owned combined spend rows feed the local HTTP
+API. Dashboard rows, Total Spend, menu-bar pins, and share cards can instead show shared local history,
+clearly labeled **Shared**. Both `/v1/usage` and `/v1/limits` read the same account-owned snapshots;
+the former is the deprecated UI-oriented format and the latter is the
 normalized format. Quotas, plans, balances, and provider errors remain this Mac's own values inside
 those snapshots. Rows retained in an older peer file are ignored once they fall outside the same
 calendar window used by the local history scanners.

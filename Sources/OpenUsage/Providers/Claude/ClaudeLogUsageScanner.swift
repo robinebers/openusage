@@ -30,15 +30,7 @@ actor ClaudeLogUsageScanner {
     private let accountID: String?
     private let additionalConfigDirectories: [String]
     private let allowsUnattributedSessions: Bool
-    /// The identity Claude Code is signed in to right now, re-read every scan. The card matching it
-    /// also owns the default home's sessions that record no account, which is how plain terminal
-    /// sessions look; Desktop-indexed sessions stay excluded.
-    private let currentDefaultLoginIdentity: @Sendable () -> String?
-    private var sessionOwnership: [String: (
-        size: Int, mtime: Date, identity: ClaudeSessionIdentity
-    )] = [:]
-
-    private let readOwnershipData: @Sendable (URL) throws -> Data
+    private var ownership: ClaudeSessionOwnershipResolver
 
     /// One parsed usage line. Token buckets are pre-normalized into `TokenBreakdown`; dedup fields
     /// ride along so the global dedup pass can run over cached entries.
@@ -76,7 +68,6 @@ actor ClaudeLogUsageScanner {
         accountUUID: String? = nil,
         organizationUUID: String? = nil,
         allowsUnattributedSessions: Bool = false,
-        currentDefaultLoginIdentity: (@Sendable () -> String?)? = nil,
         additionalConfigDirectories: [String] = [],
         readOwnershipData: @escaping @Sendable (URL) throws -> Data = {
             try Data(contentsOf: $0, options: .mappedIfSafe)
@@ -91,23 +82,15 @@ actor ClaudeLogUsageScanner {
         self.accountID = accountUUID?.lowercased()
         self.additionalConfigDirectories = additionalConfigDirectories
         self.allowsUnattributedSessions = allowsUnattributedSessions
-        self.currentDefaultLoginIdentity = currentDefaultLoginIdentity ?? {
-            let observer = DefaultAccountObserver(environment: environment, homeDirectory: homeDirectory)
-            guard case let .resolved(identityKey, _, _) = observer.observeClaude() else { return nil }
-            return identityKey
-        }
-        self.readOwnershipData = readOwnershipData
+        self.ownership = ClaudeSessionOwnershipResolver(readData: readOwnershipData)
     }
 
     /// Scan the last `daysBack` days of Claude logs. Returns `nil` when no Claude data directory or
     /// no log files exist (the spend tiles then render "No data"); returns an empty series when logs
     /// exist but have no usage in the window.
     func scan(daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing) async -> LogUsageScan? {
-        // A UUID-only login cannot claim any organization's history once multiple identities are
-        // known; while it is the default login it still claims the default home's unattributed sessions.
-        let claimsDefaultHome = !allowsUnattributedSessions && isCurrentDefaultLogin()
-        if accountID != nil, organizationID == nil, !allowsUnattributedSessions, !claimsDefaultHome {
-            AppLog.info(LogTag.plugin("claude"), "local spending excluded: login has no organization and multiple accounts are known")
+        if accountID != nil, organizationID == nil, !allowsUnattributedSessions {
+            AppLog.info(LogTag.plugin("claude"), "account history excluded: organization is unknown")
             return nil
         }
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
@@ -121,15 +104,22 @@ actor ClaudeLogUsageScanner {
         }
 
         var files = Self.usageFiles(under: roots)
-        if organizationID != nil || claimsDefaultHome {
-            files = ownedUsageFiles(files, claimsDefaultHome: claimsDefaultHome)
+        let hadFiles = !files.isEmpty
+        if organizationID != nil {
+            guard let owned = ownership.files(
+                files, accountID: accountID, organizationID: organizationID,
+                allowsUnattributedSessions: allowsUnattributedSessions,
+                localProjectRoots: defaultConfigRoots().map { $0.appendingPathComponent("projects") },
+                home: homeDirectory()
+            ) else { return nil }
+            files = owned
         }
         guard !Task.isCancelled else { return nil }
         guard !files.isEmpty else {
             _ = await scanner.items(
                 from: [], since: since, cacheIdentity: cacheIdentity, parse: Self.parseFile
             )
-            return nil
+            return hadFiles ? DailyUsageAccumulator().build() : nil
         }
 
         // Entries come back concatenated in path-sorted file order, so dedup's keep-first is deterministic.
@@ -276,148 +266,6 @@ actor ClaudeLogUsageScanner {
         roots
             .flatMap { JSONLScanning.jsonlFiles(under: $0.appendingPathComponent("projects")) }
             .sorted { $0.path < $1.path }
-    }
-
-    /// Cowork roots carry their organization in the directory layout. Other sessions identify theirs
-    /// in a bridge event or Desktop's account-and-organization-scoped session index; subagent files
-    /// inherit their parent session's ownership. Keep this outside the shared parsed-entry cache.
-    private func ownedUsageFiles(
-        _ files: [JSONLScanning.DiscoveredFile],
-        claimsDefaultHome: Bool
-    ) -> [JSONLScanning.DiscoveredFile] {
-        let coworkPrefix = homeDirectory()
-            .appendingPathComponent("Library/Application Support/Claude/local-agent-mode-sessions")
-            .resolvingSymlinksInPath().path + "/"
-        let filesByPath = Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
-        var seenPaths: Set<String> = []
-        var ownedFiles: [JSONLScanning.DiscoveredFile] = []
-        var desktopSessionIDs: Set<String>?
-        var allDesktopSessionIDs: Set<String>?
-        let defaultProjectPrefixes = claimsDefaultHome
-            ? defaultConfigRoots().map { $0.appendingPathComponent("projects").resolvingSymlinksInPath().path + "/" }
-            : []
-        // Optional values retain read failures for this pass without persisting them.
-        var identities: [String: ClaudeSessionIdentity?] = [:]
-
-        for file in files {
-            guard !Task.isCancelled else { return [] }
-            guard seenPaths.insert(file.path).inserted else { continue }
-            let canonicalPath = URL(fileURLWithPath: file.path).resolvingSymlinksInPath().path
-            if canonicalPath.hasPrefix(coworkPrefix) {
-                let components = canonicalPath.dropFirst(coworkPrefix.count).split(separator: "/")
-                if components.count > 1,
-                   components[1].lowercased() == organizationID,
-                   accountID == nil || components[0].lowercased() == accountID
-                {
-                    ownedFiles.append(file)
-                }
-                continue
-            }
-
-            let sessionFile = Self.owningSessionFile(for: file, filesByPath: filesByPath)
-            guard let sessionFile else { continue }
-            if identities[sessionFile.path] == nil {
-                identities[sessionFile.path] = .some(sessionIdentity(sessionFile))
-            }
-            guard let result = identities[sessionFile.path], let ownership = result else { continue }
-            if case .conflicted = ownership { continue }
-            if case let .owned(owner, ownerAccount) = ownership {
-                if owner == organizationID, accountID == nil || ownerAccount == accountID {
-                    ownedFiles.append(file)
-                }
-            } else if allowsUnattributedSessions {
-                ownedFiles.append(file)
-            } else {
-                let sessionID = URL(fileURLWithPath: sessionFile.path)
-                    .deletingPathExtension().lastPathComponent.lowercased()
-                if let accountID, let organizationID {
-                    if desktopSessionIDs == nil {
-                        desktopSessionIDs = indexedDesktopSessionIDs(accountID: accountID, organizationID: organizationID)
-                    }
-                    if desktopSessionIDs?.contains(sessionID) == true {
-                        ownedFiles.append(file)
-                        continue
-                    }
-                }
-                // Desktop indexes every session it runs; an indexed session belongs to that Desktop login.
-                guard defaultProjectPrefixes.contains(where: { canonicalPath.hasPrefix($0) }) else { continue }
-                if allDesktopSessionIDs == nil { allDesktopSessionIDs = allIndexedDesktopSessionIDs() }
-                if allDesktopSessionIDs?.contains(sessionID) != true {
-                    ownedFiles.append(file)
-                }
-            }
-        }
-        return ownedFiles
-    }
-
-    /// Only a scoped card whose identity is the one Claude Code is signed in to right now.
-    private func isCurrentDefaultLogin() -> Bool {
-        guard let accountID, let current = currentDefaultLoginIdentity()?.lowercased() else { return false }
-        return current == (organizationID.map { "\(accountID)|\($0)" } ?? accountID)
-    }
-
-    private var desktopSessionIndexRoot: URL {
-        homeDirectory().appendingPathComponent("Library/Application Support/Claude/claude-code-sessions")
-    }
-
-    private func indexedDesktopSessionIDs(accountID: String, organizationID: String) -> Set<String> {
-        indexedDesktopSessionIDs(
-            in: desktopSessionIndexRoot.appendingPathComponent(accountID).appendingPathComponent(organizationID)
-        )
-    }
-
-    private func allIndexedDesktopSessionIDs() -> Set<String> {
-        func subdirectories(of url: URL) -> [URL] {
-            ((try? FileManager.default.contentsOfDirectory(
-                at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-            )) ?? []).filter { $0.hasDirectoryPath }
-        }
-        return subdirectories(of: desktopSessionIndexRoot)
-            .flatMap(subdirectories(of:))
-            .reduce(into: Set<String>()) { $0.formUnion(indexedDesktopSessionIDs(in: $1)) }
-    }
-
-    private func indexedDesktopSessionIDs(in directory: URL) -> Set<String> {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        return Set(files.compactMap { file in
-            guard file.lastPathComponent.hasPrefix("local_"), file.pathExtension == "json",
-                  let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]),
-                  values.isRegularFile == true, values.isSymbolicLink != true,
-                  let handle = try? FileHandle(forReadingFrom: file)
-            else { return nil }
-            defer { try? handle.close() }
-            guard let prefix = try? handle.read(upToCount: 512),
-                  let header = String(data: prefix, encoding: .utf8),
-                  let field = header.range(of: #""cliSessionId"\s*:\s*""#, options: .regularExpression),
-                  let end = header[field.upperBound...].firstIndex(of: "\""),
-                  let sessionID = UUID(uuidString: String(header[field.upperBound..<end]))
-            else { return nil }
-            return sessionID.uuidString.lowercased()
-        })
-    }
-
-    private func sessionIdentity(
-        _ file: JSONLScanning.DiscoveredFile
-    ) -> ClaudeSessionIdentity? {
-        if let cached = sessionOwnership[file.path],
-           cached.size == file.size, cached.mtime == file.mtime
-        {
-            return cached.identity
-        }
-
-        do {
-            let data = try readOwnershipData(URL(fileURLWithPath: file.path))
-            guard let identity = ClaudeSessionIdentity.parse(data), !Task.isCancelled else { return nil }
-            sessionOwnership[file.path] = (file.size, file.mtime, identity)
-            return identity
-        } catch {
-            AppLog.warn(LogTag.plugin("claude"), "Failed to read Claude session ownership from \(file.path): \(error)")
-            return nil
-        }
     }
 
     // MARK: - Line parsing

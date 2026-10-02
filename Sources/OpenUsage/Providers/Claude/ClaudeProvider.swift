@@ -20,6 +20,8 @@ final class ClaudeProvider: ProviderRuntime {
     let usageClient: ClaudeUsageClient
     let logUsageScanner: ClaudeLogUsageScanner
     let allowsUnattributedPiUsage: Bool
+    let sharedHistorySource: SharedLocalHistorySource?
+    var allowsCachedLocalHistory: Bool { allowsUnattributedPiUsage }
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
 
@@ -58,6 +60,7 @@ final class ClaudeProvider: ProviderRuntime {
         usageClient: ClaudeUsageClient = ClaudeUsageClient(),
         logUsageScanner: ClaudeLogUsageScanner = ClaudeLogUsageScanner(),
         allowsUnattributedPiUsage: Bool = true,
+        sharedHistorySource: SharedLocalHistorySource? = nil,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() }
     ) {
@@ -66,6 +69,7 @@ final class ClaudeProvider: ProviderRuntime {
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
         self.allowsUnattributedPiUsage = allowsUnattributedPiUsage
+        self.sharedHistorySource = sharedHistorySource
         self.now = now
         self.pricing = pricing
     }

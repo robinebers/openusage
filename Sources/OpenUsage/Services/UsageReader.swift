@@ -59,7 +59,8 @@ public struct UsageReader {
             defaults: defaults,
             claudeCards: accountAssembly.claudeCards,
             codex: accountAssembly.codex,
-            claudeIdentityKeys: accountAssembly.identityKeysByCard
+            claudeIdentityKeys: accountAssembly.identityKeysByCard,
+            allowsUnattributedClaudeUsage: accountAssembly.allowsUnattributedClaudeUsage
         )
         let registry = WidgetRegistry.from(providers)
         let knownIDs = Set(registry.providers.map(\.id))
@@ -125,7 +126,7 @@ public struct UsageReader {
             if providersOverride == nil {
                 await PersistentJSONLScanCaches.flushPendingWrites()
             }
-            snapshots = dataStore.snapshots
+            snapshots = dataStore.exportSnapshots
             errors = dataStore.providerErrors
             warnings = orderedIDs
                 .compactMap { id in errors[id].map { "\(id): \($0)" } }

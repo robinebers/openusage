@@ -60,7 +60,7 @@ final class ClaudeSessionIdentityTests: XCTestCase {
         )
         for _ in 0..<2 {
             let result = await scanner.scan(pricing: pricing)
-            XCTAssertNil(result, "Conflicts must be excluded even when unattributed sessions are allowed")
+            XCTAssertTrue(result?.series.daily.isEmpty == true, "Conflicts must be excluded even when unattributed sessions are allowed")
         }
         XCTAssertEqual(reads.withLock { $0 }, 1)
         try first.write(to: home.appendingPathComponent(".claude/projects/workspace/session.jsonl"),

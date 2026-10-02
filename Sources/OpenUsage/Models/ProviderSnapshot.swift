@@ -10,6 +10,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     /// Raw normalized daily history used to build spend rows. This always belongs to this Mac; peer
     /// history is combined only in the in-memory rendered view and is never written into the cache.
     var usageHistory: ProviderUsageHistory?
+    /// Set only on the shared local display projection, never on account-owned snapshots.
+    var sharedHistoryFamily: String? = nil
     /// A soft, non-blocking notice carried on a *successful* snapshot — e.g. Claude's "Re-login for live
     /// usage" when the saved login lacks the `user:profile` scope. Distinct from `errorCategory` (which is
     /// only on error snapshots): the refresh succeeded and partial data (spend tiles) still loads, so this

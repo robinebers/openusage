@@ -520,7 +520,7 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
             .write(to: session, atomically: true, encoding: .utf8)
 
         let second = await scanner.scan(now: now, pricing: pricing)
-        XCTAssertNil(second)
+        XCTAssertTrue(second?.series.daily.isEmpty == true)
     }
 
     func testOrganizationScanRecoversOnlyMatchingIndexedDesktopSessionsAndSubagents() async throws {
@@ -612,7 +612,7 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         )
         let result = await scanner.scan(now: now, pricing: pricing)
 
-        XCTAssertNil(result)
+        XCTAssertTrue(result?.series.daily.isEmpty == true)
     }
 
     func testOrganizationScanCombinesOwnedDesktopAndTerminalLogsWithoutForeignSpending() async throws {
@@ -663,9 +663,7 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.30, accuracy: 1e-9)
     }
 
-    /// Regression: plain terminal sessions record no account, so once a second Claude account was
-    /// known they were dropped from every card. The default login's card now owns them.
-    func testDefaultLoginClaimsUnattributedDefaultHomeSessionsWhenMultipleAccountsAreKnown() async throws {
+    func testDefaultLoginDoesNotOwnUnattributedHistoryAcrossAccounts() async throws {
         let now = Date()
         let timestamp = OpenUsageISO8601.string(from: now)
         let terminal = "11111111-1111-4111-8111-111111111111"
@@ -718,24 +716,31 @@ final class ClaudeLogUsageScannerTests: XCTestCase {
         let unclaimedTokens = await tokens(personal)
         XCTAssertNil(unclaimedTokens)
 
-        // Terminal session and its subagent, but not the Desktop-indexed, Team-owned, or Swap sessions.
+        // A current login cannot establish the owner of earlier terminal sessions.
         try signIn(organization: "org-personal")
         let personalTokens = await tokens(personal)
-        XCTAssertEqual(personalTokens, 110)
+        XCTAssertNil(personalTokens)
         // The Team card keeps its owned and indexed sessions without the terminal session.
         let teamTokens = await tokens(team)
         XCTAssertEqual(teamTokens, 3000)
 
-        // Switching Claude Code's login while OpenUsage runs moves the claim on the next scan.
+        // Switching accounts must not transfer historical usage.
         try signIn(organization: "org-team")
         let switchedPersonalTokens = await tokens(personal)
         XCTAssertNil(switchedPersonalTokens)
         let switchedTeamTokens = await tokens(team)
-        XCTAssertEqual(switchedTeamTokens, 3110)
+        XCTAssertEqual(switchedTeamTokens, 3000)
 
         try signIn(organization: nil)
         let organizationlessTokens = await tokens(scanner(organization: nil))
-        XCTAssertEqual(organizationlessTokens, 110)
+        XCTAssertNil(organizationlessTokens)
+
+        let shared = ClaudeLogUsageScanner(
+            environment: FakeEnvironment([:]), homeDirectory: { home },
+            incrementalScanner: IncrementalJSONLScanner<Entry>(), additionalConfigDirectories: [swapHome.path]
+        )
+        let sharedTokens = await tokens(shared)
+        XCTAssertEqual(sharedTokens, 8110)
     }
 
     /// Manual parity harness against the real logs on this machine: prints per-day totals to compare

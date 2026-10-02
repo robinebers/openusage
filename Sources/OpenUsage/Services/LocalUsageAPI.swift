@@ -101,7 +101,10 @@ enum LocalUsageAPI {
     private struct WireSnapshot: Encodable {
         let snapshot: ProviderSnapshot
 
-        init(_ snapshot: ProviderSnapshot) { self.snapshot = snapshot }
+        init(_ snapshot: ProviderSnapshot) {
+            self.snapshot = snapshot.sharedHistoryFamily == nil
+                ? snapshot : UsageHistorySnapshotRenderer.removingHistory(from: snapshot)
+        }
 
         enum CodingKeys: String, CodingKey {
             case providerId, displayName, plan, lines, fetchedAt

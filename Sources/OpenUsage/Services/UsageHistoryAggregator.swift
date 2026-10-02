@@ -8,6 +8,7 @@ enum UsageHistoryAggregator {
         peerDocuments: [UsageHistoryDocument],
         descriptors: [String: UsageHistoryDescriptor],
         providerIdentityKeys: [String: String] = [:],
+        allowsUnattributedClaudeHistory: Bool = true,
         now: Date = Date()
     ) -> [String: ProviderUsageHistory] {
         var inputs: [String: [ProviderUsageHistory]] = [:]
@@ -28,7 +29,7 @@ enum UsageHistoryAggregator {
                         in: document,
                         family: "claude",
                         identity: providerIdentityKeys[providerID],
-                        allowsUnattributedHistory: localClaudeCards.count <= 1
+                        allowsUnattributedHistory: allowsUnattributedClaudeHistory && localClaudeCards.count <= 1
                     )
                 } else if ProviderAccountID.family(of: providerID) == "codex",
                           providerIdentityKeys[providerID]?.contains("|") == true || providerID.contains("@") {
@@ -182,7 +183,7 @@ enum UsageHistoryAggregator {
 }
 
 enum UsageHistorySnapshotRenderer {
-    private static let historyLabels: Set<String> = ["Today", "Yesterday", "Last 30 Days", "Usage Trend"]
+    static let historyLabels: Set<String> = ["Today", "Yesterday", "Last 30 Days", "Usage Trend"]
 
     static func removingHistory(from snapshot: ProviderSnapshot) -> ProviderSnapshot {
         var result = snapshot
