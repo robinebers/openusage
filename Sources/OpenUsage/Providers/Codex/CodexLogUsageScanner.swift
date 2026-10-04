@@ -45,8 +45,9 @@ actor CodexLogUsageScanner {
     private let environment: EnvironmentReading
     private let homeDirectory: @Sendable () -> URL
     private let scanner: IncrementalJSONLScanner<Event>
-    private let allowsUnattributedHistory: Bool
     private let additionalHomes: [String]
+    /// Account cards scan only the homes their account owns; the single-account card scans them all.
+    private let ownership: CodexHistoryOwnership?
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` and `isUltrafast` record the service tier when the turn ran, tracked from the
@@ -79,33 +80,42 @@ actor CodexLogUsageScanner {
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         incrementalScanner: IncrementalJSONLScanner<Event>? = nil,
-        allowsUnattributedHistory: Bool = true,
-        additionalHomes: [String] = []
+        additionalHomes: [String] = [],
+        ownership: CodexHistoryOwnership? = nil
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.scanner = incrementalScanner ?? Self.sharedScanner
-        self.allowsUnattributedHistory = allowsUnattributedHistory
         self.additionalHomes = additionalHomes
+        self.ownership = ownership
     }
+
+    var ownsDefaultLogin: Bool { ownership?.ownsDefaultLogin ?? true }
 
     /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
     /// session files exist (the spend tiles then render "No data").
     func scan(
         daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing, fallbackModel: String? = nil
     ) async -> LogUsageScan? {
-        // Codex rollouts identify conversations, not the account paying for each turn. xswap can
-        // resume the same conversation under another login, so even its home cannot prove ownership.
-        guard allowsUnattributedHistory else {
-            AppLog.info(LogTag.plugin("codex"), "local history excluded: multiple accounts are known and rollout ownership is unavailable")
-            return DailyUsageAccumulator().build()
+        let homes: [URL]
+        let foreignHomes: [URL]
+        // Every card shares one cache partition, so ownership moving between cards never re-parses.
+        let partitionHomes: [URL]
+        if let ownership {
+            let split = ownership.partition()
+            homes = split.owned.map { URL(fileURLWithPath: $0) }
+            foreignHomes = split.foreign.map { URL(fileURLWithPath: $0) }
+            partitionHomes = ownership.homes.map { URL(fileURLWithPath: $0) }
+        } else {
+            homes = codexHomes()
+            foreignHomes = []
+            partitionHomes = homes
         }
-        let homes = codexHomes()
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let identityPaths = Set(homes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+        let identityPaths = Set(partitionHomes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
             .sorted()
         let identity = identityPaths.isEmpty ? "no-codex-home" : identityPaths.joined(separator: "\n")
-        let files = Self.sessionFiles(homes: homes)
+        let files = Self.sessionFiles(homes: homes, foreignHomes: foreignHomes)
         guard !files.isEmpty else {
             _ = await scanner.items(
                 from: [], since: since, cacheIdentity: identity, parse: Self.parseFile
@@ -142,9 +152,16 @@ actor CodexLogUsageScanner {
     /// Every rollout `*.jsonl` under each home's `sessions/` and `archived_sessions/` (a home with
     /// neither is scanned directly, ccusage's fallback). When both dirs of one home contain the same
     /// relative path, the `sessions/` copy wins — an archived duplicate must not double-count.
-    private static func sessionFiles(homes: [URL]) -> [JSONLScanning.DiscoveredFile] {
+    /// A dir linked into another account's home (xswap's shared history) counts only with that home.
+    private static func sessionFiles(homes: [URL], foreignHomes: [URL] = []) -> [JSONLScanning.DiscoveredFile] {
         var files: [JSONLScanning.DiscoveredFile] = []
-        var seenDirs: Set<String> = []
+        var seenDirs = Set(foreignHomes.flatMap { home -> [String] in
+            let root = home.resolvingSymlinksInPath()
+            return ["sessions", "archived_sessions"].compactMap { name in
+                let dir = home.appendingPathComponent(name).resolvingSymlinksInPath()
+                return dir.path == root.appendingPathComponent(name).path ? dir.path : nil
+            }
+        })
         for home in homes {
             var seenRelative: Set<String> = []
             var sourceDirs: [URL] = []

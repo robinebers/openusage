@@ -6,18 +6,27 @@ struct CodexAccountCard: Equatable, Sendable {
     let displayName: String
     let authHomes: [String]
     let piCredentialSources: [CodexPiCredentialSource]
+    /// Homes whose history this card may own; each scan keeps the ones its account is signed in to.
     let logHomes: [String]
-    let allowsUnattributedHistory: Bool
+    let defaultLogHomes: Set<String>
+    let registeredLogOwners: [String: CodexAccountIdentity]
+    let claimsPiUsage: Bool
+
+    func historyOwnership(files: TextFileAccessing, keychainOwner: @escaping @Sendable () -> CodexAccountIdentity?)
+        -> CodexHistoryOwnership
+    {
+        CodexHistoryOwnership(identity: identity, homes: logHomes, defaultHomes: defaultLogHomes,
+                              registeredOwners: registeredLogOwners, files: files, keychainOwner: keychainOwner)
+    }
 }
 
 /// What the Codex account pass found: account cards once more than one account is known, otherwise the
 /// read-only logins the plain `codex` card may fall back to when its only account lives in a sibling
-/// home or in pi, plus the local-history policy either way.
+/// home or in pi.
 struct CodexAccountDiscovery: Equatable, Sendable {
     var cards: [CodexAccountCard] = []
     var plainAuthHomes: [String] = []
     var plainPiCredentialSources: [CodexPiCredentialSource] = []
-    var allowsUnattributedHistory = true
 }
 
 extension ProviderAccountAssembly {
@@ -60,18 +69,12 @@ extension ProviderAccountAssembly {
             homeLogins.map(\.identity) + piScan.logins.map(\.identity) + swaps.map(\.identity)
                 + [keychainIdentity].compactMap { $0 }
         )
-        // History with no provable owner counts only while exactly one account exists and no login
-        // is too incomplete to rule out a second one.
-        let hasUnidentifiedLogin = piScan.hasIncompleteLogin || homeScan.hasIncompleteLogin
-        let hasIncompleteLogin = hasUnidentifiedLogin
-            || homeLogins.contains { !CodexAccountIdentity.isComplete(key: $0.identity.key) }
         guard !swaps.isEmpty || hasEstablishedAccounts || knownIdentities.count > 1 else {
             return CodexAccountDiscovery(
                 plainAuthHomes: homeLogins.map(\.home).filter { !configuredHomes.contains($0) },
                 plainPiCredentialSources: piScan.logins.map {
                     CodexPiCredentialSource(path: $0.authPath, providerID: $0.providerID)
-                },
-                allowsUnattributedHistory: knownIdentities.isEmpty || !hasUnidentifiedLogin
+                }
             )
         }
 
@@ -128,10 +131,18 @@ extension ProviderAccountAssembly {
         }
 
         let records = accountsStore.reconcile(with: observations)
-        let allowsUnattributed = !hasIncompleteLogin && records.count { $0.family == "codex" } == 1
-        let swapHomes = swaps.flatMap { [$0.mainHome, $0.home] }
-            .map { CodexHomeScanner.standardizedHome($0, homeDirectory: homeDirectory) }
-        let logHomes = Set(homeLogins.map(\.home)).union(swapHomes).sorted()
+        func standardized(_ home: String) -> String {
+            CodexHomeScanner.standardizedHome(home, homeDirectory: homeDirectory)
+        }
+        let swapHomes = swaps.flatMap { [$0.mainHome, $0.home] }.map(standardized)
+        let logHomes = configuredHomes.union(homeLogins.map(\.home)).union(swapHomes).sorted()
+        // xswap's main home follows whoever is signed in there; only its separate account homes keep
+        // the registered owner when their own auth.json is missing.
+        var registeredLogOwners: [String: CodexAccountIdentity] = [:]
+        for swap in swaps where standardized(swap.home) != standardized(swap.mainHome) {
+            registeredLogOwners[standardized(swap.home)] = swap.identity
+        }
+        let piUsageOwner = piScan.logins.first { $0.providerID == PiCodexLoginScanner.providerPrefix }?.identity
         // Registry order is persistent; observation order follows the current default login.
         // Even an uncustomized layout must keep its cards in place after a switch and relaunch.
         let cards = records.compactMap { record -> CodexAccountCard? in
@@ -147,8 +158,9 @@ extension ProviderAccountAssembly {
                 displayName: labels[identity.key] ?? "Codex",
                 authHomes: Set(matchingHomes + matchingSwapHomes).sorted(),
                 piCredentialSources: matchingPi,
-                logHomes: logHomes, allowsUnattributedHistory: allowsUnattributed)
+                logHomes: logHomes, defaultLogHomes: configuredHomes,
+                registeredLogOwners: registeredLogOwners, claimsPiUsage: piUsageOwner == identity)
         }
-        return CodexAccountDiscovery(cards: cards, allowsUnattributedHistory: allowsUnattributed)
+        return CodexAccountDiscovery(cards: cards)
     }
 }

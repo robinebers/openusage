@@ -8,7 +8,8 @@ final class CodexRetainedHistoryTests: XCTestCase {
         let provider = CodexProvider(
             localHistoryWait: .zero,
             logUsageScanner: CodexLogFixture.scanner(home: nil),
-            allowsUnattributedHistory: false,
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false,
             pricing: { await gate.value() }
         )
         let snapshot = await provider.snapshot(mapped: CodexMappedUsage(plan: nil, lines: []))
@@ -22,7 +23,8 @@ final class CodexRetainedHistoryTests: XCTestCase {
         let provider = CodexProvider(
             localHistoryWait: .seconds(1),
             logUsageScanner: CodexLogFixture.scanner(home: nil),
-            allowsUnattributedHistory: false,
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false,
             pricing: { ModelPricing(supplement: PricingSupplement(),
                                     primary: PricingCatalog(entries: [:]), secondary: PricingCatalog(entries: [:])) }
         )
@@ -48,7 +50,8 @@ final class CodexRetainedHistoryTests: XCTestCase {
         let provider = CodexProvider(
             localHistoryWait: .zero,
             logUsageScanner: CodexLogFixture.scanner(home: home),
-            allowsUnattributedHistory: false,
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false,
             now: { now },
             pricing: { await gate.value() }
         )

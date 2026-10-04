@@ -53,7 +53,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(assembly.identityKeysByCard["codex"], "acct-a")
     }
 
-    func testIncompletePiLoginBesideOnePlainAccountHidesUnattributedSpend() async {
+    func testIncompletePiLoginBesideOnePlainAccountKeepsLocalHistory() async {
         let files = FakeFiles([
             "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test"),
             "/Users/dev/.pi/agent/auth.json": Fixtures.piAuth([("openai-codex", "ACCT-B", "")]),
@@ -64,9 +64,8 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertTrue(assembly.codexCards.isEmpty)
-        XCTAssertFalse(assembly.codex.allowsUnattributedHistory)
         XCTAssertEqual(codex.map(\.provider.id), ["codex"])
-        XCTAssertEqual(codex.map(\.allowsUnattributedHistory), [false])
+        XCTAssertEqual(codex.map(\.claimsPiUsage), [true])
     }
 
     func testPiLoginNeverRenamesASwapAlias() async throws {
@@ -96,8 +95,6 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(accountA.id, "codex")
         XCTAssertTrue(accountA.authHomes.contains("/Users/dev/.codex"))
         XCTAssertNotEqual(accountB.id, "codex")
-        XCTAssertFalse(accountA.allowsUnattributedHistory)
-        XCTAssertFalse(accountB.allowsUnattributedHistory)
     }
 
     func testIncompleteDefaultLoginGetsOwnCardBesideSameWorkspaceSibling() async throws {
@@ -114,8 +111,11 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         let sibling = try XCTUnwrap(assembly.codexCards.first { $0.identity.key == "a|b@test" })
         XCTAssertEqual(defaultCard.id, "codex")
         XCTAssertNotEqual(sibling.id, "codex")
-        XCTAssertFalse(defaultCard.allowsUnattributedHistory)
-        XCTAssertFalse(sibling.allowsUnattributedHistory)
+        let owned = { (card: CodexAccountCard) in
+            card.historyOwnership(files: files, keychainOwner: { nil }).partition().owned
+        }
+        XCTAssertEqual(owned(defaultCard), ["/Users/dev/.codex"])
+        XCTAssertEqual(owned(sibling), ["/Users/dev/.codex-b"])
     }
 
     func testEmailOnlySiblingHomeAppearsOnFirstAssemblyWithStableCardIDs() async throws {
@@ -129,32 +129,12 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         let first = await assemble(files: files, directories: directories, defaults: defaults)
 
         XCTAssertEqual(first.codexCards.count, 2)
-        let emailOnly = try XCTUnwrap(first.codexCards.first { $0.identity.accountID.isEmpty && $0.identity.email == "b@test" })
-        XCTAssertFalse(emailOnly.allowsUnattributedHistory)
+        XCTAssertNotNil(first.codexCards.first { $0.identity.accountID.isEmpty && $0.identity.email == "b@test" })
 
         let second = await assemble(files: files, directories: directories, defaults: defaults)
 
         XCTAssertEqual(second.codexCards.count, 2)
         XCTAssertEqual(Set(second.codexCards.map(\.id)), Set(first.codexCards.map(\.id)))
-    }
-
-    func testIncompletePiLoginDisablesUnattributedHistoryForASingleCard() async throws {
-        let swap = #"{"schemaVersion":1,"mainHome":"/Users/dev/.codex","accounts":[{"number":1,"alias":"A","home":"/Users/dev/.xswap/a","identity":{"accountId":"ACCT-A","email":"alice@test"}}]}"#
-        let files = FakeFiles([
-            "/Users/dev/.xswap/accounts.json": swap,
-            "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "ACCT-A", email: "alice@test"),
-        ])
-        let environment = ["XSWAP_HOME": "/Users/dev/.xswap"]
-
-        let alone = await assemble(files: files, environment: environment)
-        XCTAssertEqual(alone.codexCards.map(\.identity.key), ["acct-a|alice@test"])
-        XCTAssertTrue(alone.codexCards[0].allowsUnattributedHistory)
-
-        files.files["/Users/dev/.pi/agent/auth.json"] = Fixtures.piAuth([("openai-codex", "ACCT-B", "")])
-        let withStranger = await assemble(files: files, environment: environment)
-
-        XCTAssertEqual(withStranger.codexCards.map(\.identity.key), ["acct-a|alice@test"])
-        XCTAssertFalse(withStranger.codexCards[0].allowsUnattributedHistory)
     }
 
     func testHomesAndPiMergeByWorkspaceAndUserIdentity() async throws {
@@ -181,9 +161,10 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(personal.authHomes, ["/Users/dev/.codex-personal"])
         XCTAssertEqual(work.piCredentialSources.map(\.providerID), ["openai-codex-2"])
         XCTAssertEqual(personal.piCredentialSources.map(\.providerID), ["openai-codex"])
-        XCTAssertEqual(work.logHomes, ["/Users/dev/.codex", "/Users/dev/.codex-personal", "/Users/dev/.codex-work"])
-        XCTAssertFalse(work.allowsUnattributedHistory)
-        XCTAssertFalse(personal.allowsUnattributedHistory)
+        XCTAssertEqual(work.logHomes, ["/Users/dev/.codex", "/Users/dev/.codex-personal", "/Users/dev/.codex-work",
+                                       "/Users/dev/.config/codex"])
+        XCTAssertFalse(work.claimsPiUsage)
+        XCTAssertTrue(personal.claimsPiUsage)
         XCTAssertEqual(assembly.identityKeysByCard["codex"], "acct-work|me@work.test")
         XCTAssertEqual(assembly.identityKeysByCard[personal.id], "acct-home|me@home.test")
     }
@@ -242,7 +223,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(candidate.auth.tokens?.accountID, "acct-home")
     }
 
-    func testCatalogKeepsMultiAccountLocalHistoryUnattributedAndPiReadOnly() async {
+    func testCatalogGivesPiUsageToThePiDefaultLoginAndKeepsPiReadOnly() async {
         let files = FakeFiles([
             "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "A", email: "a@test"),
             "/Users/dev/.codex-b/auth.json": Fixtures.codexAuth(accountID: "B", email: "b@test"),
@@ -253,7 +234,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertEqual(providers.count, 2)
-        XCTAssertTrue(providers.allSatisfy { !$0.allowsUnattributedHistory })
+        XCTAssertEqual(providers.map(\.claimsPiUsage), [true, false])
         XCTAssertEqual(providers.map { $0.authStore.piCredentialSources.count }, [1, 1])
     }
 

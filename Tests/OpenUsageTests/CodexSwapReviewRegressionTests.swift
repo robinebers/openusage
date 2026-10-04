@@ -38,7 +38,7 @@ final class CodexSwapReviewRegressionTests: XCTestCase {
                 missingWorkspace ? $0.identity.accountID.isEmpty : $0.identity.email == nil
             }) else { return XCTFail("The partial default login disappeared") }
             XCTAssertEqual(card.id, "codex")
-            XCTAssertFalse(card.allowsUnattributedHistory)
+            XCTAssertEqual(card.historyOwnership(files: files, keychainOwner: { nil }).partition().owned, ["/test/main"])
             XCTAssertEqual(Set(assembly.codexCards.map(\.displayName)).count, 3)
             let repeated = await ProviderAccountAssembly.make(observer: observer, accountsStore: store, families: ["codex"])
             XCTAssertEqual(assembly.codexCards, repeated.codexCards)
@@ -60,8 +60,9 @@ final class CodexSwapReviewRegressionTests: XCTestCase {
                     expectedIdentity: card.identity, additionalAuthHomes: ["/test/personal", "/test/work"])
                 let provider = CodexProvider(provider: CodexProvider.makeProvider(id: card.id),
                     authStore: auth, usageClient: CodexUsageClient(http: http),
-                    logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-                    allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+                    logUsageScanner: CodexLogFixture.scanner(home: nil),
+                    openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+                    claimsPiUsage: false, pricing: { TestPricing.bundled })
                 let snapshot = await provider.refresh()
                 if status == 200 {
                     XCTAssertNil(snapshot.errorCategory)

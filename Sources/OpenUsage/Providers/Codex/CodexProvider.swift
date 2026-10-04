@@ -10,8 +10,8 @@ final class CodexProvider: ProviderRuntime {
     }
 
     let provider: Provider
-    let allowsUnattributedHistory: Bool
-    var allowsCachedLocalHistory: Bool { allowsUnattributedHistory }
+    /// pi logs name only the pi provider entry, so its usage belongs to the account signed in there.
+    let claimsPiUsage: Bool
 
     private let localHistory = CodexHistoryRefresh<CodexLocalHistory>()
     let localHistoryWait: Duration
@@ -31,14 +31,14 @@ final class CodexProvider: ProviderRuntime {
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogUsageScanner(),
         openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
-        allowsUnattributedHistory: Bool = true,
+        claimsPiUsage: Bool = true,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
     ) {
         self.localHistoryWait = localHistoryWait
         self.provider = provider
-        self.allowsUnattributedHistory = allowsUnattributedHistory
+        self.claimsPiUsage = claimsPiUsage
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner
@@ -159,11 +159,10 @@ final class CodexProvider: ProviderRuntime {
     func snapshot(mapped initial: CodexMappedUsage) async -> ProviderSnapshot {
         var mapped = initial
         let history = await localHistory.value(wait: localHistoryWait) {
-            [pricing, fallbackModel, logUsageScanner, openCodeUsageScanner, allowsUnattributedHistory, provider, now] in
+            [pricing, fallbackModel, logUsageScanner, openCodeUsageScanner, claimsPiUsage, now] in
             await Self.scanLocalHistory(
                 pricing: pricing, fallbackModel: fallbackModel, logUsageScanner: logUsageScanner,
-                openCodeUsageScanner: openCodeUsageScanner, allowsUnattributedHistory: allowsUnattributedHistory,
-                provider: provider, now: now
+                openCodeUsageScanner: openCodeUsageScanner, claimsPiUsage: claimsPiUsage, now: now
             )
         }
         if let history, let usage = history.usageHistory {
@@ -201,8 +200,7 @@ final class CodexProvider: ProviderRuntime {
         fallbackModel: @MainActor () -> String?,
         logUsageScanner: CodexLogUsageScanner,
         openCodeUsageScanner: OpenCodeCodexUsageScanner,
-        allowsUnattributedHistory: Bool,
-        provider: Provider,
+        claimsPiUsage: Bool,
         now: @Sendable () -> Date
     ) async -> CodexLocalHistory {
         let pricing = await pricing()
@@ -212,12 +210,12 @@ final class CodexProvider: ProviderRuntime {
         async let native = logUsageScanner.scan(
             now: now(), pricing: pricing, fallbackModel: selectedFallbackModel
         )
-        async let pi = allowsUnattributedHistory ? PiUsageScanner.shared.scan(
-            cardID: provider.id, now: now(), pricing: pricing,
+        async let pi = claimsPiUsage ? PiUsageScanner.shared.scan(
+            cardID: "codex", now: now(), pricing: pricing,
             estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
         )
             : nil
-        async let openCode = allowsUnattributedHistory
+        async let openCode = await logUsageScanner.ownsDefaultLogin
             ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
         let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
         let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)

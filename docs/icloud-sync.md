@@ -21,8 +21,8 @@ file. Other providers continue syncing.
 
 Codex Swap cards combine history only when its account and workspace match. Older Codex history
 without that information is excluded from Swap cards. Codex installations without account cards
-keep their existing sync behavior. Spending with no reliable owner is excluded when multiple Codex
-accounts are known, so shared history cannot appear on both cards.
+keep their existing sync behavior. Each Mac counts a Codex folder's spending for the account signed
+in to that folder, so the same history never appears on two cards.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
 unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total

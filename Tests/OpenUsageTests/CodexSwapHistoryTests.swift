@@ -2,7 +2,7 @@ import XCTest
 @testable import OpenUsage
 
 final class CodexSwapHistoryTests: XCTestCase {
-    func testSharedAndCopiedRolloutsCountOnceForOneAccountAndAreExcludedForMultipleAccounts() async throws {
+    func testSharedAndCopiedRolloutsCountOnceForOneAccount() async throws {
         let now = Date()
         let line = CodexLogFixture.tokenCount(timestamp: OpenUsageISO8601.string(from: now),
             last: CodexLogFixture.usage(input: 100, output: 50), model: "gpt-5.2")
@@ -22,13 +22,6 @@ final class CodexSwapHistoryTests: XCTestCase {
             additionalHomes: [shared.path, copied.path])
         let counted = await single.scan(now: now, pricing: TestPricing.bundled)
         XCTAssertEqual(counted?.series.daily.reduce(0) { $0 + $1.totalTokens }, 150)
-        for _ in 0..<2 {
-            let account = CodexLogUsageScanner(environment: environment,
-                allowsUnattributedHistory: false, additionalHomes: [shared.path, copied.path])
-            let excluded = await account.scan(now: now, pricing: TestPricing.bundled)
-            XCTAssertNotNil(excluded, "An authoritative empty history clears previously cached unowned spending")
-            XCTAssertTrue(excluded?.series.daily.isEmpty == true)
-        }
     }
 
     func testSyncedCodexHistoryFollowsIdentityInsteadOfPeerCardIDsAndRejectsUnattributedHistory() throws {

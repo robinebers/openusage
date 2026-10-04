@@ -38,13 +38,15 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
             authStore: CodexAuthStore(environment: environment, files: files, keychain: keychain,
                                      expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
             usageClient: CodexUsageClient(http: http),
-            logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-            allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+            logUsageScanner: CodexLogFixture.scanner(home: nil),
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false, pricing: { TestPricing.bundled })
     }
 
     private func card(_ identity: CodexAccountIdentity, id: String = "codex") -> CodexAccountCard {
         CodexAccountCard(id: id, identity: identity, displayName: id, authHomes: [],
-                         piCredentialSources: [], logHomes: [], allowsUnattributedHistory: false)
+                         piCredentialSources: [], logHomes: [], defaultLogHomes: [],
+                         registeredLogOwners: [:], claimsPiUsage: false)
     }
 
     nonisolated private static func response(status: Int = 200) -> HTTPResponse {
@@ -166,50 +168,6 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
         XCTAssertTrue(hasCredentials)
         let snapshot = await runtime.refresh()
         XCTAssertNil(snapshot.errorCategory)
-    }
-
-    func testUnownedCachedSpendIsRemovedBeforeAnExpiredLoginOrCacheHitCanKeepIt() async throws {
-        for persistedFreshness in [false, true] {
-            let defaults = try defaults()
-            let model = CodexProvider.makeProvider()
-            let files = files()
-            let expired = "header." + Data(#"{"exp":1}"#.utf8).base64EncodedString() + ".signature"
-            files.files["/test/default/auth.json"] = CodexSwapAccountTests.credential(a, token: expired)
-            let http = RoutingHTTPClient { _ in XCTFail("Expired token must not reach the API"); return Self.response(status: 401) }
-            let runtime = provider(card(a), files: files, keychain: FakeKeychain(), http: http)
-            let registry = WidgetRegistry.from([runtime])
-            let descriptor = try XCTUnwrap(registry.historyDescriptorsByProvider["codex"])
-            let history = ProviderUsageHistory(series: DailyUsageSeries(daily: [
-                DailyUsageEntry(date: DailyUsageAccumulator.dayKey(from: Date()), totalTokens: 999, costUSD: 5)
-            ]))
-            let original = UsageHistorySnapshotRenderer.render(
-                local: .init(providerID: "codex", displayName: model.displayName,
-                             lines: [.badge(label: "Plan", text: "Pro", colorHex: "#ffffff")],
-                             refreshedAt: Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970)),
-                             usageHistory: history),
-                history: history, descriptor: descriptor, combined: false)
-            ProviderSnapshotCache(userDefaults: defaults, storageKey: "cache")
-                .store(original, producedByIdentityKey: a.key)
-            let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "cache",
-                                              allowsPersistedFreshness: persistedFreshness)
-            let store = WidgetDataStore(registry: registry, providers: [runtime], cache: cache, defaults: defaults,
-                                        providerIdentityKeys: ["codex": a.key])
-            XCTAssertEqual(cache.snapshot(providerID: "codex") != nil, persistedFreshness,
-                           "Removing history must not count as a fresh usage write")
-            XCTAssertNil(store.snapshots["codex"]?.usageHistory, "Clear history before the first refresh")
-            XCTAssertNil(store.snapshots["codex"]?.line(label: "Today"))
-            XCTAssertEqual(store.snapshots["codex"]?.line(label: "Plan"), original.line(label: "Plan"))
-            _ = await store.refresh(providerID: "codex", force: false)
-            _ = await store.refresh(providerID: "codex", force: true)
-            XCTAssertNotNil(store.providerErrors["codex"])
-            XCTAssertNil(store.localSnapshots["codex"]?.usageHistory)
-            XCTAssertNil(store.localHistoryDocument(deviceID: "test", deviceName: "Test").providers["codex"])
-            let reloaded = ProviderSnapshotCache(userDefaults: defaults, storageKey: "cache")
-            XCTAssertNil(reloaded.loadSnapshots(providerIDs: ["codex"])["codex"]?.usageHistory)
-            XCTAssertEqual(reloaded.producedByIdentityKey(providerID: "codex"), a.key)
-            XCTAssertEqual(reloaded.loadSnapshots(providerIDs: ["codex"])["codex"]?.refreshedAt,
-                           original.refreshedAt, "Clearing excluded history must not make old limits fresh")
-        }
     }
 }
 

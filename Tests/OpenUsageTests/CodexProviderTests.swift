@@ -489,7 +489,8 @@ final class CodexProviderTests: XCTestCase {
                 body: Data(#"{"rate_limit":{"secondary_window":{"used_percent":58,"limit_window_seconds":604800,"reset_after_seconds":3600}}}"#.utf8)
             ))),
             logUsageScanner: CodexLogFixture.scanner(home: home),
-            allowsUnattributedHistory: false,
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false,
             now: { Date(timeIntervalSince1970: 4_075_747_200) },
             pricing: {
                 try? await Task.sleep(for: .milliseconds(100))
@@ -529,10 +530,11 @@ final class CodexProviderTests: XCTestCase {
             ),
             usageClient: CodexUsageClient(http: httpClient),
             logUsageScanner: CodexLogFixture.scanner(home: home),
-            // Assert the rollout scanner's own output: keep the unattributed sources out of the
-            // snapshot. Otherwise a developer machine with local OpenCode/pi Codex history folds that
-            // real spend in, and this assertion compares it against these fixture numbers.
-            allowsUnattributedHistory: false,
+            // Assert the rollout scanner's own output: keep pi and OpenCode out of the snapshot.
+            // Otherwise a developer machine with local OpenCode/pi Codex history folds that real
+            // spend in, and this assertion compares it against these fixture numbers.
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
+            claimsPiUsage: false,
             now: { now },
             pricing: {
                 // 150 tokens -> $0.25 at these fixture rates: (100 x 1000 + 50 x 3000) / 1M.
