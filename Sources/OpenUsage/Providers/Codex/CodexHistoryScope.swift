@@ -63,11 +63,11 @@ struct CodexHistoryHomes: Equatable, Sendable {
         )
     }
 
-    /// A token login that can't name its account still means someone signed in here, so the home stays
-    /// unassigned instead of falling back to the registry or the Keychain.
+    /// A login that can't name its account falls back to the registry or the Keychain: crediting the
+    /// likely owner beats hiding the spend.
     private func owner(of home: String, authStore: CodexAuthStore) throws -> CodexAccountIdentity? {
-        if let login = try CodexHomeScanner.tokenLogin(home: home, files: authStore.files) {
-            return CodexAccountIdentity(auth: login)
+        if let signedIn = try CodexHomeScanner.signedInIdentity(home: home, files: authStore.files) {
+            return signedIn
         }
         if let registered = registeredOwners[home] { return registered }
         guard home == defaultHome else { return nil }

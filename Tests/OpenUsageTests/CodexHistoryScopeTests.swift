@@ -150,15 +150,15 @@ final class CodexHistoryScopeTests: XCTestCase {
         XCTAssertFalse(claims(b).ownsDefaultLogin, "OpenCode history must land on exactly one card")
     }
 
-    func testANamelessLoginLeavesARegisteredHomeUnassigned() {
+    func testANamelessLoginInARegisteredHomeCountsForTheRegisteredAccount() {
         let homes = CodexHistoryHomes(homes: ["/xswap/b"], defaultHome: "/Users/dev/.codex",
                                       registeredOwners: ["/xswap/b": b])
         let files = FakeFiles(["/xswap/b/auth.json": Self.namelessAuth])
 
-        XCTAssertEqual(homes.ownedHomes(by: b, files: files), [])
+        XCTAssertEqual(homes.ownedHomes(by: b, files: files), ["/xswap/b"])
     }
 
-    func testANamelessLoginInTheDefaultHomeIgnoresTheKeychain() {
+    func testANamelessLoginInTheDefaultHomeCountsForTheKeychainLogin() {
         let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex"], defaultHome: "/Users/dev/.codex",
                                       registeredOwners: [:])
         let authStore = CodexAuthStore(environment: FakeEnvironment([:]),
@@ -168,8 +168,8 @@ final class CodexHistoryScopeTests: XCTestCase {
 
         let claims = homes.claims(for: a, authStore: authStore)
 
-        XCTAssertEqual(claims.logHomes.read, [])
-        XCTAssertFalse(claims.ownsDefaultLogin)
+        XCTAssertEqual(claims.logHomes.read.map(\.path), ["/Users/dev/.codex"])
+        XCTAssertTrue(claims.ownsDefaultLogin)
     }
 
     func testAnAliasOfAnOwnedHomeNeverHidesItsHistory() async throws {

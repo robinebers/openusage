@@ -98,16 +98,11 @@ struct CodexHomeScanner: Sendable {
 
     /// The account whose token login is in `home/auth.json`, or nil when it holds none that names one.
     static func signedInIdentity(home: String, files: TextFileAccessing) throws -> CodexAccountIdentity? {
-        try tokenLogin(home: home, files: files).flatMap(CodexAccountIdentity.init(auth:))
-    }
-
-    /// The token login in `home/auth.json`, named or not; nil when the file holds none.
-    static func tokenLogin(home: String, files: TextFileAccessing) throws -> CodexAuth? {
         guard let text = try files.readTextIfPresent(home + "/auth.json"),
               let auth = CodexAuthStore.parseAuth(text),
               auth.tokens?.accessToken?.nilIfEmpty != nil
         else { return nil }
-        return auth
+        return CodexAccountIdentity(auth: auth)
     }
 
     static func standardizedHome(_ raw: String, homeDirectory: URL) -> String {

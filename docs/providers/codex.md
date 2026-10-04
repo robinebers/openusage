@@ -77,7 +77,8 @@ spending goes to the account signed in to that home right now.
   stops showing it on the next refresh.
 - Swap's **share history** option makes an account home reuse the main home's session folder instead
   of keeping its own. Those sessions live in one place, so they count once, for the main home's account.
-- A home whose login names no account counts for no card.
+- A home whose login names no account counts for the account xswap registered there, or for the
+  Keychain login in the main home. Without either, it counts for no card.
 - pi spending goes to the account in pi's `openai-codex` login; after changing that login, restart
   OpenUsage. OpenCode spending goes to the account signed in to the main home.
 
