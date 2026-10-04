@@ -73,7 +73,8 @@ spending goes to the account signed in to that home right now.
 
 - An `xswap run` account home counts for its own account.
 - The main home (`~/.codex` or `$CODEX_HOME`) counts for whoever is signed in there now. After
-  `xswap switch`, that folder's whole history moves to the new account.
+  `xswap switch`, that folder's whole history moves to the new account, and the old account's card
+  stops showing it on the next refresh.
 - Swap's **share history** option makes an account home reuse the main home's session folder instead
   of keeping its own. Those sessions live in one place, so they count once, for the main home's account.
 - A home whose login names no account counts for no card.

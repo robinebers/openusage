@@ -240,12 +240,16 @@ final class CodexProvider: ProviderRuntime {
         let baseNote = Self.localUsageSourceNote(hasPi: piScan != nil, hasOpenCode: openCodeScan != nil)
         var usageHistory: ProviderUsageHistory?
         // Cancellation must not publish a partial combined history.
-        if !Task.isCancelled, let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
-            usageHistory = ProviderUsageHistory(
-                series: scan.series, modelUsage: scan.modelUsage,
-                unknownModelsByDay: scan.unknownModelsByDay,
-                fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
-            )
+        if !Task.isCancelled {
+            if let scan = DailyUsageAccumulator.merged([nativeScan, piScan, openCodeScan]) {
+                usageHistory = ProviderUsageHistory(
+                    series: scan.series, modelUsage: scan.modelUsage,
+                    unknownModelsByDay: scan.unknownModelsByDay,
+                    fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
+                )
+            } else if claims.emptyIsAuthoritative {
+                usageHistory = ProviderUsageHistory(series: DailyUsageSeries(daily: []))
+            }
         }
 
         AppLog.info(LogTag.plugin("codex"), "local history scan completed")

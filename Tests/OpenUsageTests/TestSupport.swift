@@ -372,13 +372,15 @@ extension CodexProvider {
         authStore: CodexAuthStore = CodexAuthStore(),
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogFixture.scanner(home: nil),
+        historyScope: CodexHistoryScope = .allHomes,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { TestPricing.bundled }
     ) -> CodexProvider {
         CodexProvider(
             localHistoryWait: localHistoryWait, provider: provider, authStore: authStore, usageClient: usageClient,
             logUsageScanner: logUsageScanner, piUsageScanner: CodexLogFixture.noPi(),
-            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }), now: now, pricing: pricing
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }), historyScope: historyScope,
+            now: now, pricing: pricing
         )
     }
 }

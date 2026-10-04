@@ -19,6 +19,9 @@ struct CodexHistoryClaims: Equatable, Sendable {
     let logHomes: CodexLogHomes
     /// OpenCode history follows the default login.
     let ownsDefaultLogin: Bool
+    /// Finding no history means zero spend, not a pending scan. An account card whose home moved to
+    /// another login must clear its rows, or the store would keep showing that spend on both cards.
+    var emptyIsAuthoritative = false
 }
 
 /// The Codex homes account cards divide between them. Rollouts never record the paying account, so a
@@ -39,25 +42,32 @@ struct CodexHistoryHomes: Equatable, Sendable {
         var owned: [URL] = []
         var foreign: [URL] = []
         var ownsDefaultLogin = false
+        var resolvedEveryHome = true
         for home in homes {
-            let isOwned = owner(of: home, authStore: authStore) == identity
+            let owner: CodexAccountIdentity?
+            do {
+                owner = try self.owner(of: home, authStore: authStore)
+            } catch {
+                AppLog.warn(LogTag.plugin("codex"), "history owner unreadable for \(home); leaving its history unassigned")
+                resolvedEveryHome = false
+                owner = nil
+            }
+            let isOwned = owner == identity
             if home == defaultHome { ownsDefaultLogin = isOwned }
             if isOwned { owned.append(URL(fileURLWithPath: home)) } else { foreign.append(URL(fileURLWithPath: home)) }
         }
         return CodexHistoryClaims(
             logHomes: CodexLogHomes(read: owned, foreign: foreign, cache: homes.map { URL(fileURLWithPath: $0) }),
-            ownsDefaultLogin: ownsDefaultLogin
+            ownsDefaultLogin: ownsDefaultLogin,
+            emptyIsAuthoritative: resolvedEveryHome
         )
     }
 
-    private func owner(of home: String, authStore: CodexAuthStore) -> CodexAccountIdentity? {
-        do {
-            if let signedIn = try CodexHomeScanner.signedInIdentity(home: home, files: authStore.files) {
-                return signedIn
-            }
-        } catch {
-            AppLog.warn(LogTag.plugin("codex"), "history owner unreadable for \(home); leaving its history unassigned")
-            return nil
+    /// A token login that can't name its account still means someone signed in here, so the home stays
+    /// unassigned instead of falling back to the registry or the Keychain.
+    private func owner(of home: String, authStore: CodexAuthStore) throws -> CodexAccountIdentity? {
+        if let login = try CodexHomeScanner.tokenLogin(home: home, files: authStore.files) {
+            return CodexAccountIdentity(auth: login)
         }
         if let registered = registeredOwners[home] { return registered }
         guard home == defaultHome else { return nil }

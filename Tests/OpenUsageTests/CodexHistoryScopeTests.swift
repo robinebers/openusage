@@ -149,4 +149,73 @@ final class CodexHistoryScopeTests: XCTestCase {
         XCTAssertEqual(claims(b).logHomes.read, [])
         XCTAssertFalse(claims(b).ownsDefaultLogin, "OpenCode history must land on exactly one card")
     }
+
+    func testANamelessLoginLeavesARegisteredHomeUnassigned() {
+        let homes = CodexHistoryHomes(homes: ["/xswap/b"], defaultHome: "/Users/dev/.codex",
+                                      registeredOwners: ["/xswap/b": b])
+        let files = FakeFiles(["/xswap/b/auth.json": Self.namelessAuth])
+
+        XCTAssertEqual(homes.ownedHomes(by: b, files: files), [])
+    }
+
+    func testANamelessLoginInTheDefaultHomeIgnoresTheKeychain() {
+        let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex"], defaultHome: "/Users/dev/.codex",
+                                      registeredOwners: [:])
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]),
+                                       files: FakeFiles(["/Users/dev/.codex/auth.json": Self.namelessAuth]),
+                                       keychain: FakeKeychain(Fixtures.codexAuth(accountID: "A", email: "a@test")),
+                                       expectedIdentity: a)
+
+        let claims = homes.claims(for: a, authStore: authStore)
+
+        XCTAssertEqual(claims.logHomes.read, [])
+        XCTAssertFalse(claims.ownsDefaultLogin)
+    }
+
+    func testAnAliasOfAnOwnedHomeNeverHidesItsHistory() async throws {
+        let main = userHome.appendingPathComponent(".codex").path
+        let alias = userHome.appendingPathComponent(".config/codex").path
+        try write(".codex/sessions/a.jsonl", rollout(input: 100, output: 50))
+        try FileManager.default.createDirectory(atPath: userHome.appendingPathComponent(".config").path,
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: alias, withDestinationPath: main)
+        let homes = CodexHistoryHomes(homes: [alias, main], defaultHome: main, registeredOwners: [:])
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: LocalTextFileAccessor(),
+                                       keychain: FakeKeychain(Fixtures.codexAuth(accountID: "A", email: "a@test")),
+                                       expectedIdentity: a)
+
+        let scan = await CodexLogUsageScanner(incrementalScanner: IncrementalJSONLScanner())
+            .scan(homes: homes.claims(for: a, authStore: authStore).logHomes, now: now, pricing: TestPricing.bundled)
+
+        XCTAssertEqual(scan?.series.daily.reduce(0) { $0 + $1.totalTokens }, 150)
+    }
+
+    func testACardThatLostItsHomeReportsNoUsageInsteadOfPending() async throws {
+        let main = userHome.appendingPathComponent(".codex").path
+        try write(".codex/auth.json", Fixtures.codexAuth(accountID: "B", email: "b@test"))
+        try write(".codex/sessions/a.jsonl", rollout(input: 100, output: 50))
+        let homes = CodexHistoryHomes(homes: [main], defaultHome: main, registeredOwners: [:])
+        let provider = CodexProvider.isolated(
+            authStore: CodexAuthStore(environment: FakeEnvironment([:]), files: LocalTextFileAccessor(),
+                                      keychain: FakeKeychain(), expectedIdentity: a),
+            logUsageScanner: CodexLogUsageScanner(incrementalScanner: IncrementalJSONLScanner()),
+            historyScope: .account(a, homes, claimsPiUsage: false)
+        )
+
+        let snapshot = await provider.snapshot(mapped: CodexMappedUsage(plan: nil, lines: []))
+
+        XCTAssertEqual(snapshot.usageHistory, ProviderUsageHistory(series: DailyUsageSeries(daily: [])),
+                       "nil would make the store restore spend that now belongs to B")
+    }
+
+    func testAnUnreadableLoginKeepsTheLastGoodHistory() {
+        let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex"], defaultHome: "/Users/dev/.codex",
+                                      registeredOwners: [:])
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: UnreadableFiles(present: ["/Users/dev/.codex/auth.json"]),
+                                       keychain: FakeKeychain(), expectedIdentity: a)
+
+        XCTAssertFalse(homes.claims(for: a, authStore: authStore).emptyIsAuthoritative)
+    }
+
+    private static let namelessAuth = #"{"tokens":{"access_token":"opaque"}}"#
 }

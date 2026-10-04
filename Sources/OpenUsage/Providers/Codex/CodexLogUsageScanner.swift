@@ -157,9 +157,11 @@ actor CodexLogUsageScanner {
     /// neither is scanned directly, ccusage's fallback). When both dirs of one home contain the same
     /// relative path, the `sessions/` copy wins — an archived duplicate must not double-count.
     /// A dir linked into another account's home (xswap's shared history) counts only with that home.
+    /// A foreign path that is merely an alias of an owned home never shadows it.
     private static func sessionFiles(homes: [URL], foreignHomes: [URL]) -> [JSONLScanning.DiscoveredFile] {
         var files: [JSONLScanning.DiscoveredFile] = []
         var seenDirs = Set(foreignHomes.flatMap(ownSessionDirs(of:)))
+            .subtracting(homes.flatMap(ownSessionDirs(of:)))
         for home in homes {
             var seenRelative: Set<String> = []
             var sourceDirs: [URL] = []
