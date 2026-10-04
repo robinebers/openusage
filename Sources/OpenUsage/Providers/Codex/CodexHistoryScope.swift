@@ -19,9 +19,8 @@ struct CodexHistoryClaims: Equatable, Sendable {
     let logHomes: CodexLogHomes
     /// OpenCode history follows the default login.
     let ownsDefaultLogin: Bool
-    /// Finding no history means zero spend, not a pending scan. An account card whose home moved to
-    /// another login must clear its rows, or the store would keep showing that spend on both cards.
-    var emptyIsAuthoritative = false
+    /// Every home's owner was read and none is this account.
+    var ownsNoHome = false
 }
 
 /// The Codex homes account cards divide between them. Rollouts never record the paying account, so a
@@ -59,7 +58,7 @@ struct CodexHistoryHomes: Equatable, Sendable {
         return CodexHistoryClaims(
             logHomes: CodexLogHomes(read: owned, foreign: foreign, cache: homes.map { URL(fileURLWithPath: $0) }),
             ownsDefaultLogin: ownsDefaultLogin,
-            emptyIsAuthoritative: resolvedEveryHome
+            ownsNoHome: resolvedEveryHome && owned.isEmpty
         )
     }
 

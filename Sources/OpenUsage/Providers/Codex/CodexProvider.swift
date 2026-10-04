@@ -247,7 +247,10 @@ final class CodexProvider: ProviderRuntime {
                     unknownModelsByDay: scan.unknownModelsByDay,
                     fallbackPricingModelsByDay: scan.fallbackPricingModelsByDay
                 )
-            } else if claims.emptyIsAuthoritative {
+            } else if claims.ownsNoHome && !claimsPiUsage {
+                // A card left with no source must clear, or the store keeps showing spend that moved
+                // to another card. An owned source that came back empty may have failed to read, so it
+                // keeps the last-good history instead.
                 usageHistory = ProviderUsageHistory(series: DailyUsageSeries(daily: []))
             }
         }

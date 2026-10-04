@@ -87,7 +87,7 @@ every card regardless.
 
 ## The spend tiles
 
-Copied sessions count once. Synced history must match the card's account and workspace.
+Copied sessions count once per card; a session copied into two accounts' folders counts on both. Synced history must match the card's account and workspace.
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
 

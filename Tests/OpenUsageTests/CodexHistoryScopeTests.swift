@@ -208,13 +208,29 @@ final class CodexHistoryScopeTests: XCTestCase {
                        "nil would make the store restore spend that now belongs to B")
     }
 
+    func testACardWhoseOwnSourcesComeBackEmptyKeepsTheLastGoodHistory() async throws {
+        let main = userHome.appendingPathComponent(".codex").path
+        try write(".codex/auth.json", Fixtures.codexAuth(accountID: "A", email: "a@test"))
+        let homes = CodexHistoryHomes(homes: [main], defaultHome: main, registeredOwners: [:])
+        let provider = CodexProvider.isolated(
+            authStore: CodexAuthStore(environment: FakeEnvironment([:]), files: LocalTextFileAccessor(),
+                                      keychain: FakeKeychain(), expectedIdentity: a),
+            logUsageScanner: CodexLogUsageScanner(incrementalScanner: IncrementalJSONLScanner()),
+            historyScope: .account(a, homes, claimsPiUsage: false)
+        )
+
+        let snapshot = await provider.snapshot(mapped: CodexMappedUsage(plan: nil, lines: []))
+
+        XCTAssertNil(snapshot.usageHistory, "a source that failed to read must not wipe spend to zero")
+    }
+
     func testAnUnreadableLoginKeepsTheLastGoodHistory() {
         let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex"], defaultHome: "/Users/dev/.codex",
                                       registeredOwners: [:])
         let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: UnreadableFiles(present: ["/Users/dev/.codex/auth.json"]),
                                        keychain: FakeKeychain(), expectedIdentity: a)
 
-        XCTAssertFalse(homes.claims(for: a, authStore: authStore).emptyIsAuthoritative)
+        XCTAssertFalse(homes.claims(for: a, authStore: authStore).ownsNoHome)
     }
 
     private static let namelessAuth = #"{"tokens":{"access_token":"opaque"}}"#
