@@ -143,7 +143,7 @@ final class CodexDiscoveryGateTests: XCTestCase {
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertTrue(plain.codexCards.isEmpty)
-        XCTAssertEqual(providers.map(\.claimsPiUsage), [true])
+        XCTAssertEqual(providers.map(\.historyScope.claimsPiUsage), [true])
 
         files.files["/Users/dev/.xswap/accounts.json"] = #"{"schemaVersion":1,"mainHome":"/Users/dev/.codex","accounts":[{"number":1,"alias":"Personal","home":"/Users/dev/.xswap/a","identity":{"accountId":"A","email":"a@test"}}]}"#
         let cards = await assemble(files: files, directories: directories, environment: ["XSWAP_HOME": "/Users/dev/.xswap"])

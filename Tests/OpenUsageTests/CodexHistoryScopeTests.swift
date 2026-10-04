@@ -48,7 +48,7 @@ final class CodexHistoryScopeTests: XCTestCase {
                         scanner: IncrementalJSONLScanner<CodexLogUsageScanner.Event>) async -> Int {
         let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: LocalTextFileAccessor(),
                                        keychain: FakeKeychain(), expectedIdentity: card.identity)
-        let claims = assembly.codex.historyHomes.claims(for: card.identity, claimsPiUsage: false, authStore: authStore)
+        let claims = assembly.codex.historyHomes.claims(for: card.identity, authStore: authStore)
         let scan = await CodexLogUsageScanner(incrementalScanner: scanner)
             .scan(homes: claims.logHomes, now: now, pricing: TestPricing.bundled)
         return scan?.series.daily.reduce(0) { $0 + $1.totalTokens } ?? 0
@@ -127,10 +127,10 @@ final class CodexHistoryScopeTests: XCTestCase {
                                        keychain: FakeKeychain(Fixtures.codexAuth(accountID: "A", email: "a@test")),
                                        expectedIdentity: a)
 
-        let claims = homes.claims(for: a, claimsPiUsage: false, authStore: authStore)
+        let claims = homes.claims(for: a, authStore: authStore)
 
         XCTAssertEqual(claims.logHomes.read.map(\.path), ["/Users/dev/.codex"])
-        XCTAssertTrue(claims.openCode)
+        XCTAssertTrue(claims.ownsDefaultLogin)
     }
 
     func testAKeychainLoginNeverClaimsAnotherDefaultFolderOrOpenCode() {
@@ -139,14 +139,14 @@ final class CodexHistoryScopeTests: XCTestCase {
         let files = FakeFiles(["/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "A", email: "a@test")])
         let keychain = FakeKeychain(Fixtures.codexAuth(accountID: "B", email: "b@test"))
         func claims(_ identity: CodexAccountIdentity) -> CodexHistoryClaims {
-            homes.claims(for: identity, claimsPiUsage: false, authStore: CodexAuthStore(
+            homes.claims(for: identity, authStore: CodexAuthStore(
                 environment: FakeEnvironment([:]), files: files, keychain: keychain, expectedIdentity: identity
             ))
         }
 
         XCTAssertEqual(claims(a).logHomes.read.map(\.path), ["/Users/dev/.codex"])
-        XCTAssertTrue(claims(a).openCode)
+        XCTAssertTrue(claims(a).ownsDefaultLogin)
         XCTAssertEqual(claims(b).logHomes.read, [])
-        XCTAssertFalse(claims(b).openCode, "OpenCode history must land on exactly one card")
+        XCTAssertFalse(claims(b).ownsDefaultLogin, "OpenCode history must land on exactly one card")
     }
 }

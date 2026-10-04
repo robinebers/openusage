@@ -7,13 +7,18 @@ enum CodexHistoryScope: Equatable, Sendable {
     /// One of several account cards counts the homes its account is signed in to, pi when pi's
     /// `openai-codex` login is this account, and OpenCode when the default login is.
     case account(CodexAccountIdentity, CodexHistoryHomes, claimsPiUsage: Bool)
+
+    var claimsPiUsage: Bool {
+        guard case let .account(_, _, claimsPiUsage) = self else { return true }
+        return claimsPiUsage
+    }
 }
 
-/// What one Codex card counts in one scan.
+/// The homes one account card owns in one scan.
 struct CodexHistoryClaims: Equatable, Sendable {
     let logHomes: CodexLogHomes
-    let pi: Bool
-    let openCode: Bool
+    /// OpenCode history follows the default login.
+    let ownsDefaultLogin: Bool
 }
 
 /// The Codex homes account cards divide between them. Rollouts never record the paying account, so a
@@ -30,9 +35,7 @@ struct CodexHistoryHomes: Equatable, Sendable {
     /// Re-read on every scan so a switch takes effect without a relaunch. Each home's login is read
     /// once, so one scan never splits a home between two accounts. `authStore` is the card's own, which
     /// sees the Keychain login only when it is this account; that is all ownership needs.
-    func claims(for identity: CodexAccountIdentity, claimsPiUsage: Bool,
-                authStore: CodexAuthStore) -> CodexHistoryClaims
-    {
+    func claims(for identity: CodexAccountIdentity, authStore: CodexAuthStore) -> CodexHistoryClaims {
         var owned: [URL] = []
         var foreign: [URL] = []
         var ownsDefaultLogin = false
@@ -43,7 +46,7 @@ struct CodexHistoryHomes: Equatable, Sendable {
         }
         return CodexHistoryClaims(
             logHomes: CodexLogHomes(read: owned, foreign: foreign, cache: homes.map { URL(fileURLWithPath: $0) }),
-            pi: claimsPiUsage, openCode: ownsDefaultLogin
+            ownsDefaultLogin: ownsDefaultLogin
         )
     }
 

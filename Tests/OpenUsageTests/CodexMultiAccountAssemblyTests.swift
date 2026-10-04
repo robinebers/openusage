@@ -65,7 +65,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
 
         XCTAssertTrue(assembly.codexCards.isEmpty)
         XCTAssertEqual(codex.map(\.provider.id), ["codex"])
-        XCTAssertEqual(codex.map(\.claimsPiUsage), [true])
+        XCTAssertEqual(codex.map(\.historyScope.claimsPiUsage), [true])
     }
 
     func testPiLoginNeverRenamesASwapAlias() async throws {
@@ -236,7 +236,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertEqual(providers.count, 2)
-        XCTAssertEqual(providers.map(\.claimsPiUsage), [true, false])
+        XCTAssertEqual(providers.map(\.historyScope.claimsPiUsage), [true, false])
         XCTAssertEqual(providers.map { $0.authStore.piCredentialSources.count }, [1, 1])
     }
 

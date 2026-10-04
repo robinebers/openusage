@@ -359,16 +359,11 @@ extension CodexHistoryHomes {
     /// The homes whose history `identity` owns right now, judged from `files` alone.
     func ownedHomes(by identity: CodexAccountIdentity, files: TextFileAccessing) -> [String] {
         let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: files, keychain: FakeKeychain())
-        return claims(for: identity, claimsPiUsage: false, authStore: authStore).logHomes.read.map(\.path)
+        return claims(for: identity, authStore: authStore).logHomes.read.map(\.path)
     }
 }
 
 extension CodexProvider {
-    var claimsPiUsage: Bool {
-        guard case let .account(_, _, claimsPiUsage) = historyScope else { return true }
-        return claimsPiUsage
-    }
-
     /// Counts only `logUsageScanner`'s rollouts, so a developer's real pi and OpenCode history never
     /// folds into fixture totals.
     static func isolated(
