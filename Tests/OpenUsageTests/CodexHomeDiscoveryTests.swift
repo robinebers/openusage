@@ -86,14 +86,13 @@ final class CodexHomeDiscoveryTests: XCTestCase {
 
         let scan = piScanner(files: files).scan()
 
-        XCTAssertFalse(scan.hasIncompleteLogin)
         XCTAssertEqual(scan.logins.map(\.providerID), ["openai-codex", "openai-codex-2"])
         XCTAssertEqual(scan.logins.map(\.identity.key), ["acct-home|me@home.test", "acct-work|me@work.test"])
         XCTAssertEqual(scan.logins.map(\.label), [nil, "work"])
         XCTAssertEqual(Set(scan.logins.map(\.authPath)), ["/Users/dev/.pi/agent/auth.json"])
     }
 
-    func testPiDiscoveryFlagsLoginsThatCannotNameTheirAccount() {
+    func testPiDiscoverySkipsLoginsThatCannotNameTheirAccount() {
         let files = FakeFiles([
             "/Users/dev/.pi/agent/auth.json": Fixtures.piAuth([
                 ("openai-codex", "ACCT-HOME", "me@home.test"),
@@ -103,7 +102,6 @@ final class CodexHomeDiscoveryTests: XCTestCase {
 
         let scan = piScanner(files: files).scan()
 
-        XCTAssertTrue(scan.hasIncompleteLogin)
         XCTAssertEqual(scan.logins.map(\.providerID), ["openai-codex"])
     }
 

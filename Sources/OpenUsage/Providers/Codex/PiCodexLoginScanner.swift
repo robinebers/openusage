@@ -10,11 +10,8 @@ struct PiCodexLogin: Equatable, Sendable {
 
 struct PiCodexLoginScan: Equatable, Sendable {
     let logins: [PiCodexLogin]
-    /// A Codex OAuth entry whose token names neither its workspace nor its user. It can't become a
-    /// card, but it proves another account may own some of the local pi history.
-    let hasIncompleteLogin: Bool
 
-    static let empty = PiCodexLoginScan(logins: [], hasIncompleteLogin: false)
+    static let empty = PiCodexLoginScan(logins: [])
 }
 
 /// Reads pi's Codex logins. Never writes: pi rotates its own tokens under a lockfile.
@@ -79,20 +76,16 @@ struct PiCodexLoginScanner: Sendable {
             .filter(Self.isCodexProvider)
             .sorted { Self.providerIndex($0) < Self.providerIndex($1) }
         var logins: [PiCodexLogin] = []
-        var hasIncompleteLogin = false
         for providerID in providerIDs {
-            guard let auth = Self.auth(in: object, providerID: providerID) else { continue }
-            guard let identity = CodexAccountIdentity(auth: auth),
+            guard let auth = Self.auth(in: object, providerID: providerID),
+                  let identity = CodexAccountIdentity(auth: auth),
                   CodexAccountIdentity.isComplete(key: identity.key)
-            else {
-                hasIncompleteLogin = true
-                continue
-            }
+            else { continue }
             logins.append(PiCodexLogin(
                 providerID: providerID, identity: identity, label: labels[providerID], authPath: authPath
             ))
         }
-        return PiCodexLoginScan(logins: logins, hasIncompleteLogin: hasIncompleteLogin)
+        return PiCodexLoginScan(logins: logins)
     }
 
     /// The live credential for one pi provider entry — re-read on every use, never cached.

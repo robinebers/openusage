@@ -47,7 +47,7 @@ extension CodexLogUsageScanner {
             var rateModel = resolution.rateModel
             var resolvedRates = resolution.rates
             var appliesCodexFastTier = resolution.isFastAlias ? resolution.hasBaseRates : event.isFast
-            let appliesUltrafastTier = event.isUltrafast && !resolution.isFastAlias
+            var appliesUltrafastTier = event.isUltrafast && (!resolution.isFastAlias || resolution.hasBaseRates)
             var usedFallback: String?
             // A reference can estimate the cost without making the model's own price known.
             // Keep the existing warning independently of whether an estimate can be included.
@@ -58,6 +58,7 @@ extension CodexLogUsageScanner {
                 resolvedRates = fallbackRates
                 rateModel = fallbackModel
                 appliesCodexFastTier = resolution.isFastAlias || event.isFast
+                appliesUltrafastTier = event.isUltrafast
                 usedFallback = fallbackModel
             }
             guard let rates = resolvedRates else { continue }

@@ -37,7 +37,7 @@ struct ShareCardView: View {
     /// Provider mark + name (+ optional plan), leading — logo, then name, then plan — at the popover's
     /// type scale so it sits in proportion to the rows. Static: no drag grip, spinner, staleness tag, or
     /// warning triangle.
-    private var headerRow: some View {
+    var headerRow: some View {
         HStack(spacing: 10) {
             ProviderIcon(source: provider.icon, inset: 0.04)
                 .frame(width: 22, height: 22)
@@ -51,6 +51,7 @@ struct ShareCardView: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .layoutPriority(1)
                 }
             }
             Spacer(minLength: 0)

@@ -322,9 +322,11 @@ enum CodexUsageMapper {
         }
         switch raw.lowercased() {
         case "prolite":
-            return "Pro 5x"
+            return "Pro 100"
         case "pro":
-            return "Pro 20x"
+            return "Pro 200"
+        case "promax":
+            return "Pro 500"
         case "self_serve_business_prolite":
             return "Business Premium"
         default:

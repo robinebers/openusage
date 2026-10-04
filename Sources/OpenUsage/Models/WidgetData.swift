@@ -77,23 +77,25 @@ struct WidgetData: Hashable {
     /// Rate Limit Resets → "2 resets"). Set by the descriptor, so renaming the tile can't silently drop
     /// the suffix — replaces matching on the tile's title. `nil` for tiles that show the bare value.
     var traySuffix: String?
-    /// Session-window meters (Claude/Antigravity/OpenCode rolling 5-hour pools) that read "Not started"
-    /// while the window hasn't begun — the value names the signal that detects that state, because the
-    /// providers report fresh windows differently (see `SessionStartSignal`). Set by those descriptors
-    /// and carried through `WidgetDataStore.resolve`, so the treatment is a descriptor opt-in rather
-    /// than a hardcoded widget-ID list in the model. `nil` for every other row.
+    /// Session-window meters (Claude/OpenCode rolling 5-hour pools, Antigravity's pools) that read
+    /// "Not started" while the window hasn't begun — the value names the signal that detects that state,
+    /// because the providers report fresh windows differently (see `SessionStartSignal`). Set by those
+    /// descriptors and carried through `WidgetDataStore.resolve`, so the treatment is a descriptor
+    /// opt-in rather than a hardcoded widget-ID list in the model. `nil` for every other row.
     var sessionStartSignal: SessionStartSignal?
 
     /// How a session-window meter tells a not-yet-started window from an in-flight one.
     enum SessionStartSignal: Hashable {
-        /// Zero usage is the fresh signal. These providers report a reset instant even for an
-        /// untouched window (Antigravity's mapper rounds a fresh pool's fraction-derived percent
-        /// to 0; OpenCode reports 0 directly), so `used == 0` is what marks the window as fresh.
+        /// Zero usage is the fresh signal. Antigravity reports a reset instant even for an untouched
+        /// window and its mapper rounds the fresh pool's fraction-derived percent to 0, so `used == 0`
+        /// is what marks the window as fresh.
         case zeroUsage
-        /// A missing reset date is the fresh signal. Claude's five-hour block only exists once the
-        /// first message is sent, so a reported `resets_at` proves the window started. Zero usage is
-        /// NOT trusted here: Claude reports utilization in whole percents, so an in-flight window
-        /// under 1% also reads 0 (#1160) — the reset date is what tells the two apart.
+        /// A missing reset date is the fresh signal: by the time a row carries one, a reset instant
+        /// means the window started. Claude's five-hour block is created by the first message, so it
+        /// simply reports no `resets_at` until then; OpenCode does report a placeholder for an untouched
+        /// window, which `OpenCodeUsageMapper` drops at capture time. Zero usage is NOT trusted here:
+        /// both APIs report utilization in whole percents, so an in-flight window under 1% also reads
+        /// 0 (#1160) — the reset date is what tells the two apart.
         case missingResetDate
     }
     /// Per-day points for a Usage Trend row (empty for every other tile). Set true `isChart` flags the

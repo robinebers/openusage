@@ -164,9 +164,15 @@ enum PanelGeometry {
         min(max(rawHeight, minimumHeight), maximum)
     }
 
+    /// Snaps the top edge and height to whole points. AppKit rounds a window's origin and size
+    /// separately, so a half-point status-item anchor plus the morph's fractional heights would land
+    /// the top edge on either of two points from frame to frame and visibly shake the panel. The top
+    /// rounds down so the gap below the status item never shrinks.
     static func frame(topLeft: NSPoint, width: CGFloat, height: CGFloat) -> NSRect {
-        NSRect(
-            origin: NSPoint(x: topLeft.x, y: topLeft.y - height),
+        let top = topLeft.y.rounded(.down)
+        let height = height.rounded()
+        return NSRect(
+            origin: NSPoint(x: topLeft.x, y: top - height),
             size: NSSize(width: width, height: height)
         )
     }

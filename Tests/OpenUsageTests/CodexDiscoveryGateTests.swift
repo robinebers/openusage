@@ -52,7 +52,6 @@ final class CodexDiscoveryGateTests: XCTestCase {
 
         XCTAssertTrue(assembly.codexCards.isEmpty)
         XCTAssertEqual(assembly.codex.plainPiCredentialSources, [.init(path: piAuthPath, providerID: "openai-codex")])
-        XCTAssertTrue(assembly.codex.allowsUnattributedHistory)
 
         let http = RoutingHTTPClient { _ in Fixtures.usageResponse() }
         let provider = plainProvider(assembly.codex, files: files, http: http)
@@ -117,7 +116,6 @@ final class CodexDiscoveryGateTests: XCTestCase {
         let assembly = await assemble(files: files, keychain: Fixtures.codexAuth(accountID: "B", email: "b@test"))
 
         XCTAssertEqual(Set(assembly.codexCards.map(\.identity.key)), ["a|a@test", "b|b@test"])
-        XCTAssertTrue(assembly.codexCards.allSatisfy { !$0.allowsUnattributedHistory })
     }
 
     func testKeychainLoginBesideAPiLoginMakesTwoCardsOnAFreshInstall() async throws {
@@ -132,7 +130,7 @@ final class CodexDiscoveryGateTests: XCTestCase {
 
     // MARK: - Logins that name no account at all
 
-    func testTokenHomeWithoutAnyIdentityDisablesUnattributedHistory() async throws {
+    func testTokenHomeWithoutAnyIdentityLeavesTheOtherHomesWithTheirLogins() async throws {
         let anonymous = Fixtures.codexAuth(accountID: nil, email: "", accessToken: Fixtures.token())
         let files = FakeFiles([
             "/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "A", email: "a@test"),
@@ -145,12 +143,14 @@ final class CodexDiscoveryGateTests: XCTestCase {
             .compactMap { $0 as? CodexProvider }
 
         XCTAssertTrue(plain.codexCards.isEmpty)
-        XCTAssertEqual(providers.map(\.allowsUnattributedHistory), [false])
+        XCTAssertEqual(providers.map(\.historyScope.claimsPiUsage), [true])
 
         files.files["/Users/dev/.xswap/accounts.json"] = #"{"schemaVersion":1,"mainHome":"/Users/dev/.codex","accounts":[{"number":1,"alias":"Personal","home":"/Users/dev/.xswap/a","identity":{"accountId":"A","email":"a@test"}}]}"#
         let cards = await assemble(files: files, directories: directories, environment: ["XSWAP_HOME": "/Users/dev/.xswap"])
+        let card = try XCTUnwrap(cards.codexCards.first)
 
-        XCTAssertEqual(cards.codexCards.map(\.allowsUnattributedHistory), [false])
+        XCTAssertEqual(cards.codex.historyHomes.ownedHomes(by: card.identity, files: files),
+                       ["/Users/dev/.codex", "/Users/dev/.xswap/a"])
     }
 
     // MARK: - Labels

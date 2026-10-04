@@ -73,8 +73,9 @@ final class ResetDisplayTests: XCTestCase {
         // The tests around this hand-set `sessionStartSignal`, so they pin the mechanism but not the
         // wiring. This one pins the wiring: the descriptor opt-in replaced a model-level widget-ID set,
         // so a provider dropping (or spuriously gaining) the signal — or flipping which signal it uses —
-        // must fail here, not ship silently. Claude must stay on `.missingResetDate`: its whole-percent
-        // utilization reads 0 for an in-flight window under 1%, so `.zeroUsage` would regress #1160.
+        // must fail here, not ship silently. Claude and OpenCode must stay on `.missingResetDate`: both
+        // report whole-percent utilization, which reads 0 for an in-flight window under 1%, so
+        // `.zeroUsage` would regress #1160 on either.
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
@@ -86,7 +87,7 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(signals, ["claude.session": .missingResetDate,
                                  "antigravity.geminiPro": .zeroUsage,
                                  "antigravity.claude": .zeroUsage,
-                                 "opencode.session": .zeroUsage])
+                                 "opencode.session": .missingResetDate])
 
         // Same wiring pin for the menu-bar tray suffix (it replaced a title-string match).
         let suffixed = descriptors.filter { $0.sample.traySuffix != nil }

@@ -5,9 +5,10 @@ import SwiftUI
 /// chrome on Dashboard and Settings. Customize uses its top bar and scrolling content without footer
 /// controls.
 ///
-/// The chrome is fixed: it's keyed off `layout.screen` and applied uniformly in `screenView`, so on a
-/// screen switch only the content slides while the footer and top bar stay put. Each screen's scroll
-/// content underlaps the footer with the native soft scroll-edge fade (`softBottomScrollEdge` →
+/// The chrome belongs to its screen: `screenView` builds each page's top bar and footer from that
+/// page's own screen, so on a switch a screen slides in with its chrome instead of the destination's
+/// bar appearing over the screen being left. Each screen's scroll content underlaps the footer with
+/// the native soft scroll-edge fade (`softBottomScrollEdge` →
 /// `.scrollEdgeEffectStyle(.soft)`, macOS 26+) — Apple's blurred boundary, not a custom gradient or a
 /// material bar. On macOS 15 the footer/top bar still pin via `safeAreaInset`, just without the blur
 /// (content scrolls flush). The panel **auto-fits its content**: each screen publishes its intrinsic
@@ -281,9 +282,8 @@ struct DashboardView: View {
     /// The popover's screens as a horizontal pager. At rest only the current screen is mounted (one
     /// page at offset 0), so drag-reorder's coordinate math and the footer's scroll-edge underlap are
     /// exactly what they'd be with the screen rendered alone. During a switch the outgoing and incoming
-    /// screens are both mounted, ordered left-to-right by `slideRank`, and slid by a pure offset — while
-    /// the chrome (top bar + footer), keyed off `layout.screen` in `screenView`, is identical on both
-    /// pages, so it stays visually fixed while only the content slides beneath it.
+    /// screens are both mounted, ordered left-to-right by `slideRank`, and slid by a pure offset —
+    /// each with its own chrome (top bar + footer), so a page's bar travels with the page.
     ///
     /// Why an offset and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`
     /// glass. Any transition carrying `.opacity` composites a screen into a transparency layer where
@@ -407,13 +407,12 @@ struct DashboardView: View {
         return fromOffset + progress * (toOffset - fromOffset)
     }
 
-    /// Builds one screen: its scroll body wrapped in the fixed chrome. The chrome (top bar + footer)
-    /// is keyed off `layout.screen` — the *destination* — not the per-page `screen`, so during a switch
-    /// both mounted pages render identical chrome pinned to the
-    /// same edges. The chrome therefore stays put while only the content offsets beneath it (the
-    /// "one fixed footer / top bar doesn't slide" behaviour). The soft scroll-edge styles and the
-    /// pinned bars attach to each page's scroll view (`PopoverScrollView`), the documented place for
-    /// them. Identity stays stable across the slide via the `ForEach` key in `modeBody`.
+    /// Builds one screen: its scroll body wrapped in its own chrome. The chrome (top bar + footer) is
+    /// keyed off the per-page `screen`, not `layout.screen`, so a page always draws the bar its content
+    /// belongs to: the dashboard never grows a nav bar on its way out, and an incoming screen's title
+    /// arrives with it rather than a slide ahead of it. The soft scroll-edge styles and the pinned bars
+    /// attach to each page's scroll view (`PopoverScrollView`), the documented place for them. Identity
+    /// stays stable across the slide via the `ForEach` key in `modeBody`.
     @ViewBuilder
     private func screenView(_ screen: PopoverScreen, includeChrome: Bool = true) -> some View {
         scrollBody(for: screen)
@@ -429,6 +428,7 @@ struct DashboardView: View {
                 if includeChrome {
                     PopoverTopBar(
                         layout: layout,
+                        screen: screen,
                         height: Self.topBarHeight,
                         horizontalPadding: Self.footerHorizontalPadding,
                         onResetAll: {
@@ -442,7 +442,7 @@ struct DashboardView: View {
             .pinnedFooter(spacing: 0) {
                 if includeChrome {
                     PopoverFooter(
-                        screen: layout.screen,
+                        screen: screen,
                         layout: layout,
                         dataStore: dataStore,
                         horizontalPadding: Self.footerHorizontalPadding

@@ -176,7 +176,6 @@ final class WidgetDataStore {
         // paint under the new account until the first successful refresh. A card whose current
         // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
         // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
-        cache.removeExcludedHistory(for: providers)
         let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
             .filter { cardID, _ in
                 guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {

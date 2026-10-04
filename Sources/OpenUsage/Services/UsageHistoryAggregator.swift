@@ -184,13 +184,6 @@ enum UsageHistoryAggregator {
 enum UsageHistorySnapshotRenderer {
     private static let historyLabels: Set<String> = ["Today", "Yesterday", "Last 30 Days", "Usage Trend"]
 
-    static func removingHistory(from snapshot: ProviderSnapshot) -> ProviderSnapshot {
-        var result = snapshot
-        result.usageHistory = nil
-        result.lines.removeAll { historyLabels.contains($0.label) }
-        return result
-    }
-
     static func render(
         local snapshot: ProviderSnapshot,
         history: ProviderUsageHistory,

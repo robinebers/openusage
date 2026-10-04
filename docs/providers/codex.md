@@ -14,8 +14,18 @@ Tracks your ChatGPT/Codex subscription limits using the login from the Codex CLI
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
 When Codex reports your plan name, OpenUsage shows it beside the provider name.
-The usage entitlement `self_serve_business_prolite` displays as **Business Premium**.
-This is a compatibility mapping for an observed entitlement; other Business/team plans keep their existing names.
+Pro plans use the current names **Pro 100**, **Pro 200**, and **Pro 500** instead of the older usage multipliers.
+
+| Usage API plan | Display name |
+|---|---|
+| `prolite` | Pro 100 |
+| `pro` | Pro 200 |
+| `promax` | Pro 500 |
+| `self_serve_business_prolite` | Business Premium |
+
+The Pro names match [OpenAI's published plan names](https://learn.chatgpt.com/docs/dots#access).
+The Pro identifier mappings were verified against OpenAI's ChatGPT desktop app version 26.928.21956 (build 12404).
+Other Business/team plans keep their existing names; unfamiliar plan identifiers keep a readable name.
 If Codex reports only a 7-day window, it maps to Weekly without inventing a 5-hour Session meter.
 
 ## Where credentials come from
@@ -60,19 +70,30 @@ changed mid-refresh is left untouched (a renewed token that could not be saved s
 refresh), and each card tries every matching login. If a read-only login has expired, use that
 account once in xswap or pi so the tool renews its own token, then refresh OpenUsage.
 
-When more than one Codex account is known, OpenUsage excludes Codex, pi, and OpenCode spending that
-cannot prove which account paid for it. Live limits and reset-credit actions remain available on each
-card. A pi login or Codex home whose token names no account also disables unattributed spending, even
-when it cannot form its own card and the plain Codex card is all that shows.
+### Whose spending goes on which card
+
+Codex session logs don't say which account ran them, so OpenUsage goes by folder: each Codex home's
+spending goes to the account signed in to that home right now.
+
+- An `xswap run` account home counts for its own account.
+- The main home (`~/.codex` or `$CODEX_HOME`) counts for whoever is signed in there now. After
+  `xswap switch`, that folder's whole history moves to the new account, and the old account's card
+  stops showing it on the next refresh.
+- Swap's **share history** option makes an account home reuse the main home's session folder instead
+  of keeping its own. Those sessions live in one place, so they count once, for the main home's account.
+  Share history is not fully supported: after `xswap switch`, the old account's card can keep showing
+  the spending it had before the switch, so the same spend appears on two cards.
+- A home whose login names no account counts for the account xswap registered there, or for the
+  Keychain login in the main home. Without either, it counts for no card.
+- pi spending goes to the account in pi's `openai-codex` login; after changing that login, restart
+  OpenUsage. OpenCode spending goes to the account signed in to the main home.
+
+With one account, all of this lands on its single card. Live limits and reset-credit actions work on
+every card regardless.
 
 ## The spend tiles
 
-With multiple Codex accounts, spending without a reliable account owner is excluded, including
-previously cached spending. Excluded history is removed before cached data appears or syncs,
-even if the login has expired or the usage request fails. Cached live limits keep their original
-freshness. A shared session folder does not establish who paid for a turn.
-With one known account, shared and copied sessions count once. Synced history must match the
-card's account and workspace. Live usage limits continue to work for every account.
+Copied sessions count once per card; a session copied into two accounts' folders counts on both. Synced history must match the card's account and workspace.
 
 **Customize → Codex → Cost Estimates → Fallback Model** optionally estimates usage that has no known price. The default is **None**. Choose a public model to use its rates for those estimates; known model prices and recorded costs remain unchanged. The existing unknown-model warning and tooltip remain visible when a fallback is used. Switching the choice recalculates local history without changing the model Codex runs. See [model pricing](../pricing.md) for details.
 
@@ -118,3 +139,12 @@ Safeguards, because a claim is irreversible:
 - Claiming is always a deliberate two-click flow behind the hover popover — nothing is ever claimed automatically.
 - Each claim targets one explicit credit (re-matched against a fresh credit list at claim time) and carries an idempotency key, so a retry after a network error can never spend a second credit.
 - If the credit was meanwhile used elsewhere (CLI or web) the popover says it's no longer available and refreshes; if your usage doesn't need a reset, Codex refuses without spending the credit and the popover says so. After a claim resets usage, the remaining Use buttons disable ("nothing to reset") until the popover is reopened.
+
+### Slow Local History
+
+Live quota refreshes wait at most five seconds for local token-history processing. If a large archive
+takes longer, quota still updates and the card shows a history-updating notice. One scan per provider
+continues in the background; a later refresh collects its result. Previously loaded history is retained
+while waiting. Pending history does not show a premature "No usage data" badge.
+A fresh launch may show quota before history appears. Network and authentication
+failures still use the normal stale-data handling.

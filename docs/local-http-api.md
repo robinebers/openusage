@@ -62,7 +62,7 @@ Methods other than `GET`/`OPTIONS` return **405**; unknown routes return **404**
   "providers": {
     "codex": {
       "displayName": "Codex",
-      "plan": "Pro 20x",
+      "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
       "expiresAt": "2026-07-13T01:44:30.000Z",
       "stale": false,
@@ -99,7 +99,9 @@ For bounded progress resources, `unit` follows the provider's live metric format
 `totalUsage` is `percent` on percentage-based plans, `requests` on request-based Enterprise plans, and
 `usd` when Cursor reports a dollar pool. Copilot `premiumCredits` is `percent` on paid plans and a
 `credits` count on org-managed seats that only report personal `credits_used`. OpenCode `session`,
-`weekly`, and `monthly` are `percent`.
+`weekly`, and `monthly` are `percent`. An untouched OpenCode `session` omits `resetsAt`; the field appears
+with the anchored reset instant after the first model call starts the rolling window, even while `used`
+is still 0 because OpenCode reports whole percentages.
 
 ### Public resources
 

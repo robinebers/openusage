@@ -5,7 +5,7 @@ count active users and fix app crashes. These are not optional.
 
 You can also share extra anonymous usage analytics to help us understand how the app is used and catch
 problems. Extra analytics is on by default for new installs. Turn it off any time in
-**Settings → Privacy → Help make OpenUsage better by sharing anonymous usage analytics**. Existing
+**Settings → Privacy → Help Make OpenUsage Better**. Existing
 installs keep the choice they already stored.
 
 ## What is always shared
@@ -76,5 +76,5 @@ analytics toggle controls extra PostHog events, not daily activity or crash repo
 
 ## Turning extra analytics off
 
-Open **Settings → Privacy** and switch **Help make OpenUsage better by sharing anonymous usage analytics**
+Open **Settings → Privacy** and switch **Help Make OpenUsage Better**
 off. Extra usage analytics stop. Daily activity and crash reports continue.

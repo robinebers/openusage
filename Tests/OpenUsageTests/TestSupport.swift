@@ -147,6 +147,15 @@ enum CodexLogFixture {
         )
     }
 
+    /// A pi scanner pinned to an empty sessions dir, so a developer's real pi logs stay out.
+    static func noPi() -> PiUsageScanner {
+        PiUsageScanner(
+            environment: FakeEnvironment([:]),
+            homeDirectory: { FileManager.default.temporaryDirectory.appendingPathComponent("openusage-no-pi-home") },
+            incrementalScanner: IncrementalJSONLScanner<PiUsageScanner.Entry>()
+        )
+    }
+
     /// A `turn_context` line carrying the session's active model.
     static func turnContext(timestamp: String, model: String) -> String {
         jsonLine([
@@ -188,13 +197,17 @@ enum CodexLogFixture {
 
     /// An `event_msg`/`thread_settings_applied` line carrying the session's service tier, the way
     /// Codex CLI ≥ July 2026 records tier changes.
-    static func threadSettingsApplied(timestamp: String, serviceTier: String, model: String = "gpt-5.2") -> String {
-        jsonLine([
+    static func threadSettingsApplied(timestamp: String, serviceTier: String?, model: String = "gpt-5.2") -> String {
+        var threadSettings: [String: Any] = ["model": model]
+        if let serviceTier {
+            threadSettings["service_tier"] = serviceTier
+        }
+        return jsonLine([
             "timestamp": timestamp,
             "type": "event_msg",
             "payload": [
                 "type": "thread_settings_applied",
-                "thread_settings": ["model": model, "service_tier": serviceTier]
+                "thread_settings": threadSettings
             ]
         ])
     }
@@ -340,6 +353,36 @@ final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
 /// default on purpose: a real provider must decide its own credential probe (see `FirstRunSeeder`).
 extension ProviderRuntime {
     func hasLocalCredentials() async -> Bool { false }
+}
+
+extension CodexHistoryHomes {
+    /// The homes whose history `identity` owns right now, judged from `files` alone.
+    func ownedHomes(by identity: CodexAccountIdentity, files: TextFileAccessing) -> [String] {
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: files, keychain: FakeKeychain())
+        return claims(for: identity, authStore: authStore).logHomes.read.map(\.path)
+    }
+}
+
+extension CodexProvider {
+    /// Counts only `logUsageScanner`'s rollouts, so a developer's real pi and OpenCode history never
+    /// folds into fixture totals.
+    static func isolated(
+        localHistoryWait: Duration = .seconds(5),
+        provider: Provider = CodexProvider.makeProvider(),
+        authStore: CodexAuthStore = CodexAuthStore(),
+        usageClient: CodexUsageClient = CodexUsageClient(),
+        logUsageScanner: CodexLogUsageScanner = CodexLogFixture.scanner(home: nil),
+        historyScope: CodexHistoryScope = .allHomes,
+        now: @escaping @Sendable () -> Date = Date.init,
+        pricing: @escaping @Sendable () async -> ModelPricing = { TestPricing.bundled }
+    ) -> CodexProvider {
+        CodexProvider(
+            localHistoryWait: localHistoryWait, provider: provider, authStore: authStore, usageClient: usageClient,
+            logUsageScanner: logUsageScanner, piUsageScanner: CodexLogFixture.noPi(),
+            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }), historyScope: historyScope,
+            now: now, pricing: pricing
+        )
+    }
 }
 
 

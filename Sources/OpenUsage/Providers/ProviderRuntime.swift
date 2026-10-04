@@ -29,10 +29,6 @@ protocol ProviderRuntime: AnyObject {
     var provider: Provider { get }
     var widgetDescriptors: [WidgetDescriptor] { get }
 
-    /// Whether stored local spending still has usable account ownership for this card.
-    /// Applied before cached data can paint or be exported, including when refresh fails.
-    var allowsCachedLocalHistory: Bool { get }
-
     func refresh() async -> ProviderSnapshot
 
     /// Whether credentials for this provider already exist on this machine — a cheap, local-only probe
@@ -48,7 +44,6 @@ protocol ProviderRuntime: AnyObject {
 }
 
 extension ProviderRuntime {
-    var allowsCachedLocalHistory: Bool { true }
     func adoptLaunchSnapshot(_ snapshot: ProviderSnapshot) {}
 }
 

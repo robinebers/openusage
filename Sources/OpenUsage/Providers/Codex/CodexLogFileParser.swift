@@ -52,9 +52,10 @@ struct CodexLogFileParser: Sendable {
             }
             if isThreadSettings, type == "event_msg",
                payload?["type"] as? String == "thread_settings_applied" {
-                let tier = Self.serviceTier(in: payload)
-                currentTierIsUltrafast = tier == "ultrafast"
-                currentTierIsFast = tier == "fast" || tier == "priority"
+                if let tier = Self.serviceTier(in: payload) {
+                    currentTierIsUltrafast = tier == "ultrafast"
+                    currentTierIsFast = tier == "fast" || tier == "priority"
+                }
                 continue
             }
             guard type == "event_msg", let payload else { continue }

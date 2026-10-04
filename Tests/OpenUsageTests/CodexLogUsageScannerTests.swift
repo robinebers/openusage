@@ -193,6 +193,43 @@ final class CodexLogUsageScannerTests: XCTestCase {
         )
     }
 
+    func testTierlessThreadSettingsPreserveFastAndUltrafastTiers() {
+        let usage = CodexLogFixture.usage(input: 1_000, output: 100)
+        let lines = [
+            CodexLogFixture.turnContext(timestamp: "2026-07-12T08:00:00.000Z", model: "gpt-6-astra"),
+            CodexLogFixture.threadSettingsApplied(
+                timestamp: "2026-07-12T08:01:00.000Z", serviceTier: "ultrafast", model: "gpt-6-astra"
+            ),
+            CodexLogFixture.threadSettingsApplied(
+                timestamp: "2026-07-12T08:02:00.000Z", serviceTier: nil, model: "gpt-6-astra"
+            ),
+            CodexLogFixture.tokenCount(timestamp: "2026-07-12T08:03:00.000Z", last: usage),
+            CodexLogFixture.threadSettingsApplied(
+                timestamp: "2026-07-12T08:04:00.000Z", serviceTier: "fast", model: "gpt-6-astra"
+            ),
+            CodexLogFixture.threadSettingsApplied(
+                timestamp: "2026-07-12T08:05:00.000Z", serviceTier: nil, model: "gpt-6-astra"
+            ),
+            CodexLogFixture.tokenCount(timestamp: "2026-07-12T08:06:00.000Z", last: usage),
+            CodexLogFixture.threadSettingsApplied(
+                timestamp: "2026-07-12T08:07:00.000Z", serviceTier: "default", model: "gpt-6-astra"
+            ),
+            CodexLogFixture.tokenCount(timestamp: "2026-07-12T08:08:00.000Z", last: usage)
+        ].joined(separator: "\n")
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+        let costs = events.map {
+            CodexLogUsageScanner.aggregate(
+                events: [$0], since: .distantPast, pricing: TestPricing.bundled
+            ).series.daily.first?.costUSD ?? 0
+        }
+        let standardCost = costs.last ?? 0
+
+        XCTAssertEqual(events.map(\.isUltrafast), [true, false, false])
+        XCTAssertEqual(events.map(\.isFast), [false, true, false])
+        XCTAssertEqual(costs.first ?? 0, standardCost * 6, accuracy: 0.000_001)
+        XCTAssertEqual(costs.dropFirst().first ?? 0, standardCost * 2, accuracy: 0.000_001)
+    }
+
     func testCachedTokensCapAtInputTokens() {
         let line = CodexLogFixture.tokenCount(
             timestamp: "2026-05-12T08:01:00.000Z",
@@ -670,6 +707,25 @@ final class CodexLogUsageScannerTests: XCTestCase {
             XCTAssertEqual(ultrafast, entry.ultrafast, accuracy: 0.000_001)
             XCTAssertEqual(ultrafast / standard, 6, accuracy: 0.000_001)
         }
+    }
+
+    func testUltrafastFastAliasUsesSixTimesBaseRates() {
+        let timestamp = "2026-05-12T08:00:00.000Z"
+        let standard = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                timestamp, model: "gpt-6-astra", input: 100_000, cached: 20_000, output: 10_000
+            )],
+            since: .distantPast, pricing: TestPricing.bundled
+        ).series.daily.first?.costUSD ?? 0
+        let ultrafastFastAlias = CodexLogUsageScanner.aggregate(
+            events: [makeEvent(
+                timestamp, model: "gpt-6-astra-fast", input: 100_000, cached: 20_000,
+                output: 10_000, isUltrafast: true
+            )],
+            since: .distantPast, pricing: TestPricing.bundled
+        ).series.daily.first?.costUSD ?? 0
+
+        XCTAssertEqual(ultrafastFastAlias, standard * 6, accuracy: 0.000_001)
     }
 
     func testUltrafastGPT6SolUsesFastPrice() {

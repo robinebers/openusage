@@ -21,7 +21,7 @@ final class LocalLimitsAPITests: XCTestCase {
         let snapshot = ProviderSnapshot(
             providerID: "codex",
             displayName: "Codex",
-            plan: "Pro 20x",
+            plan: "Pro 200",
             lines: [
                 .progress(
                     label: "Session", used: 42, limit: 100, format: .percent,
@@ -49,7 +49,7 @@ final class LocalLimitsAPITests: XCTestCase {
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(root["schema"] as? String, "openusage.limits.v1")
         XCTAssertEqual(root["generatedAt"] as? String, "2026-07-13T01:40:00.000Z")
-        XCTAssertEqual(providerJSON["plan"] as? String, "Pro 20x")
+        XCTAssertEqual(providerJSON["plan"] as? String, "Pro 200")
         XCTAssertEqual(providerJSON["fetchedAt"] as? String, "2026-07-13T01:39:30.000Z")
         XCTAssertEqual(providerJSON["expiresAt"] as? String, "2026-07-13T01:44:30.000Z")
         XCTAssertEqual(providerJSON["stale"] as? Bool, false)

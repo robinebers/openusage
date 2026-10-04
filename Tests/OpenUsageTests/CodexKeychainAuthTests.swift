@@ -162,9 +162,7 @@ final class CodexKeychainAuthTests: XCTestCase {
     }
 
     private func provider(_ authStore: CodexAuthStore, http: RoutingHTTPClient, now: Date) -> CodexProvider {
-        CodexProvider(authStore: authStore, usageClient: CodexUsageClient(http: http),
-                      logUsageScanner: CodexLogFixture.scanner(home: nil),
-                      allowsUnattributedHistory: false, now: { now }, pricing: { TestPricing.bundled })
+        CodexProvider.isolated(authStore: authStore, usageClient: CodexUsageClient(http: http), now: { now })
     }
 }
 

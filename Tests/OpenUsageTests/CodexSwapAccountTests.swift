@@ -71,7 +71,10 @@ final class CodexSwapAccountTests: XCTestCase {
             XCTAssertEqual(Dictionary(uniqueKeysWithValues: next.codexCards.map { ($0.identity.key, $0.id) }), ids)
             let repeated = await assembly(files, store: store)
             XCTAssertEqual(repeated.codexCards, next.codexCards)
-            XCTAssertTrue(next.codexCards.allSatisfy { !$0.allowsUnattributedHistory })
+            let mainHomeOwners = next.codexCards.filter {
+                next.codex.historyHomes.ownedHomes(by: $0.identity, files: files).contains("/test/main")
+            }
+            XCTAssertEqual(mainHomeOwners.map(\.identity), [selected])
             let restored = LayoutStore(registry: .from(ProviderCatalog.make(codex: next.codex)), defaults: defaults)
             XCTAssertEqual(restored.pinnedMetricIDs, pins)
             XCTAssertEqual(restored.providerOrder, order)
@@ -150,9 +153,7 @@ final class CodexSwapAccountTests: XCTestCase {
     }
 
     private func provider(_ auth: CodexAuthStore, http: RoutingHTTPClient) -> CodexProvider {
-        CodexProvider(authStore: auth, usageClient: CodexUsageClient(http: http),
-                      logUsageScanner: CodexLogUsageScanner(allowsUnattributedHistory: false),
-                      allowsUnattributedHistory: false, pricing: { TestPricing.bundled })
+        CodexProvider.isolated(authStore: auth, usageClient: CodexUsageClient(http: http))
     }
 
     nonisolated private static func response(_ used: Int, status: Int = 200) -> HTTPResponse {
@@ -191,7 +192,7 @@ final class CodexSwapAccountTests: XCTestCase {
                     XCTAssertEqual(keychain.value, originalKeychain)
                     XCTAssertTrue(store.loadAuthCandidates().allSatisfy { $0.auth.tokens?.refreshToken == nil && $0.readOnly })
                     XCTAssertThrowsError(try store.save(XCTUnwrap(store.loadAuthCandidates().first)))
-                    XCTAssertTrue(snapshot.usageHistory?.series.daily.isEmpty == true)
+                    XCTAssertNil(snapshot.usageHistory)
                 }
             }
         }
@@ -273,7 +274,6 @@ final class CodexSwapAccountTests: XCTestCase {
         let next = await assembly(files, store: store)
         XCTAssertEqual(next.codexCards.count, 1)
         XCTAssertEqual(next.codexCards.first?.id, initial.codexCards.first { $0.identity == a }?.id)
-        XCTAssertEqual(next.codexCards.first?.allowsUnattributedHistory, false)
     }
 
     func testResetCreditServiceNeverConsumesAnotherAccountsCredit() async {

@@ -10,9 +10,6 @@ struct CodexHomeLogin: Equatable, Sendable {
 
 struct CodexHomeScan: Equatable, Sendable {
     let logins: [CodexHomeLogin]
-    /// A home holds a token that names no account at all. Such a login may belong to a second account,
-    /// so history with no provable owner must not be counted while it exists.
-    let hasIncompleteLogin: Bool
 }
 
 /// Finds the Codex homes on this Mac — the configured default (`CODEX_HOME`, else `~/.config/codex`
@@ -88,26 +85,24 @@ struct CodexHomeScanner: Sendable {
     func scan(additionalHomes: [String] = []) -> CodexHomeScan {
         let homes = Self.uniqueHomes(candidateHomes() + additionalHomes, homeDirectory: homeDirectory())
         var logins: [CodexHomeLogin] = []
-        var hasIncompleteLogin = false
         for home in homes {
-            let text: String?
             do {
-                text = try files.readTextIfPresent(home + "/auth.json")
+                guard let identity = try Self.signedInIdentity(home: home, files: files) else { continue }
+                logins.append(CodexHomeLogin(home: home, identity: identity))
             } catch {
                 AppLog.warn(.config, "accounts: Codex home \(home) has an unreadable auth.json; skipping it")
-                continue
-            }
-            guard let text,
-                  let auth = CodexAuthStore.parseAuth(text),
-                  auth.tokens?.accessToken?.nilIfEmpty != nil
-            else { continue }
-            if let identity = CodexAccountIdentity(auth: auth) {
-                logins.append(CodexHomeLogin(home: home, identity: identity))
-            } else {
-                hasIncompleteLogin = true
             }
         }
-        return CodexHomeScan(logins: logins, hasIncompleteLogin: hasIncompleteLogin)
+        return CodexHomeScan(logins: logins)
+    }
+
+    /// The account whose token login is in `home/auth.json`, or nil when it holds none that names one.
+    static func signedInIdentity(home: String, files: TextFileAccessing) throws -> CodexAccountIdentity? {
+        guard let text = try files.readTextIfPresent(home + "/auth.json"),
+              let auth = CodexAuthStore.parseAuth(text),
+              auth.tokens?.accessToken?.nilIfEmpty != nil
+        else { return nil }
+        return CodexAccountIdentity(auth: auth)
     }
 
     static func standardizedHome(_ raw: String, homeDirectory: URL) -> String {
