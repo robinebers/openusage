@@ -149,7 +149,7 @@ final class CodexDiscoveryGateTests: XCTestCase {
         let cards = await assemble(files: files, directories: directories, environment: ["XSWAP_HOME": "/Users/dev/.xswap"])
         let card = try XCTUnwrap(cards.codexCards.first)
 
-        XCTAssertEqual(card.historyOwnership(files: files, keychainOwner: { nil }).partition().owned,
+        XCTAssertEqual(cards.codex.historyHomes.ownedHomes(by: card.identity, files: files),
                        ["/Users/dev/.codex", "/Users/dev/.xswap/a"])
     }
 

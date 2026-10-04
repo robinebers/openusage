@@ -3,10 +3,12 @@ import XCTest
 
 /// Codex account cards count the local history of the homes their account is signed in to.
 @MainActor
-final class CodexHistoryOwnershipTests: XCTestCase {
+final class CodexHistoryScopeTests: XCTestCase {
     private typealias Fixtures = CodexMultiAccountFixtures
     private let now = Date()
     private var userHome: URL!
+    private let a = CodexAccountIdentity(accountID: "A", email: "a@test")!
+    private let b = CodexAccountIdentity(accountID: "B", email: "b@test")!
 
     override func setUpWithError() throws {
         userHome = FileManager.default.temporaryDirectory
@@ -42,10 +44,13 @@ final class CodexHistoryOwnershipTests: XCTestCase {
         )
     }
 
-    private func tokens(for card: CodexAccountCard, scanner: IncrementalJSONLScanner<CodexLogUsageScanner.Event>) async -> Int {
-        let ownership = card.historyOwnership(files: LocalTextFileAccessor(), keychainOwner: { nil })
-        let scan = await CodexLogUsageScanner(incrementalScanner: scanner, ownership: ownership)
-            .scan(now: now, pricing: TestPricing.bundled)
+    private func tokens(for card: CodexAccountCard, in assembly: ProviderAccountAssembly,
+                        scanner: IncrementalJSONLScanner<CodexLogUsageScanner.Event>) async -> Int {
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: LocalTextFileAccessor(),
+                                       keychain: FakeKeychain(), expectedIdentity: card.identity)
+        let claims = assembly.codex.historyHomes.claims(for: card.identity, claimsPiUsage: false, authStore: authStore)
+        let scan = await CodexLogUsageScanner(incrementalScanner: scanner)
+            .scan(homes: claims.logHomes, now: now, pricing: TestPricing.bundled)
         return scan?.series.daily.reduce(0) { $0 + $1.totalTokens } ?? 0
     }
 
@@ -62,7 +67,7 @@ final class CodexHistoryOwnershipTests: XCTestCase {
 
         let card = try XCTUnwrap(assembly.codexCards.first)
         XCTAssertEqual(assembly.codexCards.count, 1)
-        let total = await tokens(for: card, scanner: IncrementalJSONLScanner())
+        let total = await tokens(for: card, in: assembly, scanner: IncrementalJSONLScanner())
         XCTAssertEqual(total, 150)
     }
 
@@ -72,15 +77,17 @@ final class CodexHistoryOwnershipTests: XCTestCase {
         try write(".codex-work/auth.json", Fixtures.codexAuth(accountID: "B", email: "b@test"))
         try write(".codex-work/sessions/b.jsonl", rollout(input: 20, output: 10))
         let assembly = await assemble(defaults: makeScratchDefaults())
-        let a = try XCTUnwrap(assembly.codexCards.first { $0.identity.key == "a|a@test" })
-        let b = try XCTUnwrap(assembly.codexCards.first { $0.identity.key == "b|b@test" })
+        let cardA = try XCTUnwrap(assembly.codexCards.first { $0.identity == a })
+        let cardB = try XCTUnwrap(assembly.codexCards.first { $0.identity == b })
         let scanner = IncrementalJSONLScanner<CodexLogUsageScanner.Event>()
 
-        var totals = [await tokens(for: a, scanner: scanner), await tokens(for: b, scanner: scanner)]
+        var totals = [await tokens(for: cardA, in: assembly, scanner: scanner),
+                      await tokens(for: cardB, in: assembly, scanner: scanner)]
         XCTAssertEqual(totals, [150, 30])
 
         try write(".codex/auth.json", Fixtures.codexAuth(accountID: "B", email: "b@test"))
-        totals = [await tokens(for: a, scanner: scanner), await tokens(for: b, scanner: scanner)]
+        totals = [await tokens(for: cardA, in: assembly, scanner: scanner),
+                  await tokens(for: cardB, in: assembly, scanner: scanner)]
         XCTAssertEqual(totals, [0, 180])
     }
 
@@ -96,35 +103,50 @@ final class CodexHistoryOwnershipTests: XCTestCase {
             defaults: makeScratchDefaults(),
             environment: ["XSWAP_HOME": userHome.appendingPathComponent("xswap-data").path]
         )
-        let a = try XCTUnwrap(assembly.codexCards.first { $0.identity.key == "a|a@test" })
-        let b = try XCTUnwrap(assembly.codexCards.first { $0.identity.key == "b|b@test" })
+        let cardA = try XCTUnwrap(assembly.codexCards.first { $0.identity == a })
+        let cardB = try XCTUnwrap(assembly.codexCards.first { $0.identity == b })
         let scanner = IncrementalJSONLScanner<CodexLogUsageScanner.Event>()
 
-        let totals = [await tokens(for: a, scanner: scanner), await tokens(for: b, scanner: scanner)]
+        let totals = [await tokens(for: cardA, in: assembly, scanner: scanner),
+                      await tokens(for: cardB, in: assembly, scanner: scanner)]
         XCTAssertEqual(totals, [150, 0])
     }
 
-    func testRegisteredXswapHomeWithoutAuthStillBelongsToItsAccount() async throws {
+    func testRegisteredXswapHomeWithoutAuthStillBelongsToItsAccount() throws {
         let saved = userHome.appendingPathComponent("xswap/b").path
         try write("xswap/b/sessions/b.jsonl", rollout(input: 20, output: 10))
-        let ownership = CodexHistoryOwnership(
-            identity: CodexAccountIdentity(accountID: "B", email: "b@test")!,
-            homes: [saved], defaultHomes: [], registeredOwners: [saved: CodexAccountIdentity(accountID: "B", email: "b@test")!],
-            files: LocalTextFileAccessor(), keychainOwner: { nil }
-        )
+        let homes = CodexHistoryHomes(homes: [saved], defaultHome: "/nonexistent", registeredOwners: [saved: b])
 
-        XCTAssertEqual(ownership.partition().owned, [saved])
+        XCTAssertEqual(homes.ownedHomes(by: b, files: LocalTextFileAccessor()), [saved])
     }
 
-    func testKeychainLoginOwnsADefaultHomeWithoutAuthJSON() {
-        let identity = CodexAccountIdentity(accountID: "A", email: "a@test")!
-        let ownership = CodexHistoryOwnership(
-            identity: identity, homes: ["/Users/dev/.codex", "/Users/dev/.codex-old"],
-            defaultHomes: ["/Users/dev/.codex"], registeredOwners: [:], files: FakeFiles([:]),
-            keychainOwner: { identity }
-        )
+    func testKeychainLoginOwnsTheDefaultHomeAndItsOpenCodeHistory() {
+        let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex", "/Users/dev/.codex-old"],
+                                      defaultHome: "/Users/dev/.codex", registeredOwners: [:])
+        let authStore = CodexAuthStore(environment: FakeEnvironment([:]), files: FakeFiles([:]),
+                                       keychain: FakeKeychain(Fixtures.codexAuth(accountID: "A", email: "a@test")),
+                                       expectedIdentity: a)
 
-        XCTAssertEqual(ownership.partition().owned, ["/Users/dev/.codex"])
-        XCTAssertTrue(ownership.ownsDefaultLogin)
+        let claims = homes.claims(for: a, claimsPiUsage: false, authStore: authStore)
+
+        XCTAssertEqual(claims.logHomes.read.map(\.path), ["/Users/dev/.codex"])
+        XCTAssertTrue(claims.openCode)
+    }
+
+    func testAKeychainLoginNeverClaimsAnotherDefaultFolderOrOpenCode() {
+        let homes = CodexHistoryHomes(homes: ["/Users/dev/.codex", "/Users/dev/.config/codex"],
+                                      defaultHome: "/Users/dev/.codex", registeredOwners: [:])
+        let files = FakeFiles(["/Users/dev/.codex/auth.json": Fixtures.codexAuth(accountID: "A", email: "a@test")])
+        let keychain = FakeKeychain(Fixtures.codexAuth(accountID: "B", email: "b@test"))
+        func claims(_ identity: CodexAccountIdentity) -> CodexHistoryClaims {
+            homes.claims(for: identity, claimsPiUsage: false, authStore: CodexAuthStore(
+                environment: FakeEnvironment([:]), files: files, keychain: keychain, expectedIdentity: identity
+            ))
+        }
+
+        XCTAssertEqual(claims(a).logHomes.read.map(\.path), ["/Users/dev/.codex"])
+        XCTAssertTrue(claims(a).openCode)
+        XCTAssertEqual(claims(b).logHomes.read, [])
+        XCTAssertFalse(claims(b).openCode, "OpenCode history must land on exactly one card")
     }
 }

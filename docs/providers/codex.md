@@ -77,8 +77,8 @@ spending goes to the account signed in to that home right now.
 - Swap's **share history** option makes an account home reuse the main home's session folder instead
   of keeping its own. Those sessions live in one place, so they count once, for the main home's account.
 - A home whose login names no account counts for no card.
-- pi spending goes to the account in pi's `openai-codex` login. OpenCode spending goes to the account
-  signed in to the main home.
+- pi spending goes to the account in pi's `openai-codex` login; after changing that login, restart
+  OpenUsage. OpenCode spending goes to the account signed in to the main home.
 
 With one account, all of this lands on its single card. Live limits and reset-credit actions work on
 every card regardless.

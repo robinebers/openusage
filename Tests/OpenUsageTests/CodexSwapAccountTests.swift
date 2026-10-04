@@ -72,7 +72,7 @@ final class CodexSwapAccountTests: XCTestCase {
             let repeated = await assembly(files, store: store)
             XCTAssertEqual(repeated.codexCards, next.codexCards)
             let mainHomeOwners = next.codexCards.filter {
-                $0.historyOwnership(files: files, keychainOwner: { nil }).partition().owned.contains("/test/main")
+                next.codex.historyHomes.ownedHomes(by: $0.identity, files: files).contains("/test/main")
             }
             XCTAssertEqual(mainHomeOwners.map(\.identity), [selected])
             let restored = LayoutStore(registry: .from(ProviderCatalog.make(codex: next.codex)), defaults: defaults)
@@ -153,10 +153,7 @@ final class CodexSwapAccountTests: XCTestCase {
     }
 
     private func provider(_ auth: CodexAuthStore, http: RoutingHTTPClient) -> CodexProvider {
-        CodexProvider(authStore: auth, usageClient: CodexUsageClient(http: http),
-                      logUsageScanner: CodexLogFixture.scanner(home: nil),
-                      openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
-                      claimsPiUsage: false, pricing: { TestPricing.bundled })
+        CodexProvider.isolated(authStore: auth, usageClient: CodexUsageClient(http: http))
     }
 
     nonisolated private static func response(_ used: Int, status: Int = 200) -> HTTPResponse {

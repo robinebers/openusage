@@ -112,7 +112,7 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(defaultCard.id, "codex")
         XCTAssertNotEqual(sibling.id, "codex")
         let owned = { (card: CodexAccountCard) in
-            card.historyOwnership(files: files, keychainOwner: { nil }).partition().owned
+            assembly.codex.historyHomes.ownedHomes(by: card.identity, files: files)
         }
         XCTAssertEqual(owned(defaultCard), ["/Users/dev/.codex"])
         XCTAssertEqual(owned(sibling), ["/Users/dev/.codex-b"])
@@ -161,8 +161,10 @@ final class CodexMultiAccountAssemblyTests: XCTestCase {
         XCTAssertEqual(personal.authHomes, ["/Users/dev/.codex-personal"])
         XCTAssertEqual(work.piCredentialSources.map(\.providerID), ["openai-codex-2"])
         XCTAssertEqual(personal.piCredentialSources.map(\.providerID), ["openai-codex"])
-        XCTAssertEqual(work.logHomes, ["/Users/dev/.codex", "/Users/dev/.codex-personal", "/Users/dev/.codex-work",
-                                       "/Users/dev/.config/codex"])
+        XCTAssertEqual(assembly.codex.historyHomes.homes,
+                       ["/Users/dev/.codex", "/Users/dev/.codex-personal", "/Users/dev/.codex-work",
+                        "/Users/dev/.config/codex"])
+        XCTAssertEqual(assembly.codex.historyHomes.defaultHome, "/Users/dev/.codex")
         XCTAssertFalse(work.claimsPiUsage)
         XCTAssertTrue(personal.claimsPiUsage)
         XCTAssertEqual(assembly.identityKeysByCard["codex"], "acct-work|me@work.test")

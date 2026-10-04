@@ -38,6 +38,17 @@ import Foundation
 ///   standard rates. Supported GPT-5.4/5.5/5.6/6 requests above 272k input tokens use OpenAI's higher
 ///   rates for the whole request.
 ///
+/// The Codex homes one scan reads.
+struct CodexLogHomes: Equatable, Sendable {
+    var read: [URL]
+    /// Homes another account owns. A session dir linked into one of them (xswap's shared history)
+    /// counts with that home, never twice.
+    var foreign: [URL] = []
+    /// The cache partition. Account cards all name every home, so ownership moving between cards
+    /// never re-parses.
+    var cache: [URL]
+}
+
 /// An actor for the same reasons as `ClaudeLogUsageScanner`: scans run off the main actor, and a
 /// versioned Application Support cache keyed by path + size + mtime makes both refreshes and relaunches
 /// re-parse only files that changed.
@@ -46,8 +57,6 @@ actor CodexLogUsageScanner {
     private let homeDirectory: @Sendable () -> URL
     private let scanner: IncrementalJSONLScanner<Event>
     private let additionalHomes: [String]
-    /// Account cards scan only the homes their account owns; the single-account card scans them all.
-    private let ownership: CodexHistoryOwnership?
 
     /// One turn's token usage, normalized from a `token_count` line (deltas already applied).
     /// `isFast` and `isUltrafast` record the service tier when the turn ran, tracked from the
@@ -80,42 +89,32 @@ actor CodexLogUsageScanner {
         environment: EnvironmentReading = ProcessEnvironmentReader(),
         homeDirectory: @escaping @Sendable () -> URL = { FileManager.default.homeDirectoryForCurrentUser },
         incrementalScanner: IncrementalJSONLScanner<Event>? = nil,
-        additionalHomes: [String] = [],
-        ownership: CodexHistoryOwnership? = nil
+        additionalHomes: [String] = []
     ) {
         self.environment = environment
         self.homeDirectory = homeDirectory
         self.scanner = incrementalScanner ?? Self.sharedScanner
         self.additionalHomes = additionalHomes
-        self.ownership = ownership
     }
 
-    var ownsDefaultLogin: Bool { ownership?.ownsDefaultLogin ?? true }
-
-    /// Scan the last `daysBack` days of Codex rollouts. Returns `nil` when no Codex home or no
-    /// session files exist (the spend tiles then render "No data").
+    /// Scan the last `daysBack` days of rollouts in every Codex home.
     func scan(
         daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing, fallbackModel: String? = nil
     ) async -> LogUsageScan? {
-        let homes: [URL]
-        let foreignHomes: [URL]
-        // Every card shares one cache partition, so ownership moving between cards never re-parses.
-        let partitionHomes: [URL]
-        if let ownership {
-            let split = ownership.partition()
-            homes = split.owned.map { URL(fileURLWithPath: $0) }
-            foreignHomes = split.foreign.map { URL(fileURLWithPath: $0) }
-            partitionHomes = ownership.homes.map { URL(fileURLWithPath: $0) }
-        } else {
-            homes = codexHomes()
-            foreignHomes = []
-            partitionHomes = homes
-        }
+        await scan(homes: allHomes(), daysBack: daysBack, now: now, pricing: pricing, fallbackModel: fallbackModel)
+    }
+
+    /// Scan the last `daysBack` days of rollouts in `homes`. Returns `nil` when no session files exist
+    /// (the spend tiles then render "No data").
+    func scan(
+        homes: CodexLogHomes, daysBack: Int = 30, now: Date = Date(), pricing: ModelPricing,
+        fallbackModel: String? = nil
+    ) async -> LogUsageScan? {
         let since = JSONLScanning.sinceDate(daysBack: daysBack, now: now)
-        let identityPaths = Set(partitionHomes.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
+        let identityPaths = Set(homes.cache.map { $0.resolvingSymlinksInPath().standardizedFileURL.path })
             .sorted()
         let identity = identityPaths.isEmpty ? "no-codex-home" : identityPaths.joined(separator: "\n")
-        let files = Self.sessionFiles(homes: homes, foreignHomes: foreignHomes)
+        let files = Self.sessionFiles(homes: homes.read, foreignHomes: homes.foreign)
         guard !files.isEmpty else {
             _ = await scanner.items(
                 from: [], since: since, cacheIdentity: identity, parse: Self.parseFile
@@ -135,6 +134,11 @@ actor CodexLogUsageScanner {
 
     // MARK: - Discovery
 
+    func allHomes() -> CodexLogHomes {
+        let homes = codexHomes()
+        return CodexLogHomes(read: homes, cache: homes)
+    }
+
     /// `CODEX_HOME` entries (comma-separated) when set, else `~/.codex` — same as ccusage — plus the
     /// discovered homes handed in.
     func codexHomes() -> [URL] {
@@ -153,15 +157,9 @@ actor CodexLogUsageScanner {
     /// neither is scanned directly, ccusage's fallback). When both dirs of one home contain the same
     /// relative path, the `sessions/` copy wins — an archived duplicate must not double-count.
     /// A dir linked into another account's home (xswap's shared history) counts only with that home.
-    private static func sessionFiles(homes: [URL], foreignHomes: [URL] = []) -> [JSONLScanning.DiscoveredFile] {
+    private static func sessionFiles(homes: [URL], foreignHomes: [URL]) -> [JSONLScanning.DiscoveredFile] {
         var files: [JSONLScanning.DiscoveredFile] = []
-        var seenDirs = Set(foreignHomes.flatMap { home -> [String] in
-            let root = home.resolvingSymlinksInPath()
-            return ["sessions", "archived_sessions"].compactMap { name in
-                let dir = home.appendingPathComponent(name).resolvingSymlinksInPath()
-                return dir.path == root.appendingPathComponent(name).path ? dir.path : nil
-            }
-        })
+        var seenDirs = Set(foreignHomes.flatMap(ownSessionDirs(of:)))
         for home in homes {
             var seenRelative: Set<String> = []
             var sourceDirs: [URL] = []
@@ -187,6 +185,16 @@ actor CodexLogUsageScanner {
             }
         }
         return files
+    }
+
+    /// The session dirs physically inside `home`. A dir that is itself a link points at another home's
+    /// history, which must not shadow this home's own logs.
+    private static func ownSessionDirs(of home: URL) -> [String] {
+        let root = home.resolvingSymlinksInPath()
+        return ["sessions", "archived_sessions"].compactMap { name in
+            let dir = home.appendingPathComponent(name).resolvingSymlinksInPath()
+            return dir.path == root.appendingPathComponent(name).path ? dir.path : nil
+        }
     }
 
     // MARK: - File parsing

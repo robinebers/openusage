@@ -6,18 +6,8 @@ struct CodexAccountCard: Equatable, Sendable {
     let displayName: String
     let authHomes: [String]
     let piCredentialSources: [CodexPiCredentialSource]
-    /// Homes whose history this card may own; each scan keeps the ones its account is signed in to.
-    let logHomes: [String]
-    let defaultLogHomes: Set<String>
-    let registeredLogOwners: [String: CodexAccountIdentity]
+    /// pi's usage logs name no account, so they count for the account in pi's `openai-codex` login.
     let claimsPiUsage: Bool
-
-    func historyOwnership(files: TextFileAccessing, keychainOwner: @escaping @Sendable () -> CodexAccountIdentity?)
-        -> CodexHistoryOwnership
-    {
-        CodexHistoryOwnership(identity: identity, homes: logHomes, defaultHomes: defaultLogHomes,
-                              registeredOwners: registeredLogOwners, files: files, keychainOwner: keychainOwner)
-    }
 }
 
 /// What the Codex account pass found: account cards once more than one account is known, otherwise the
@@ -25,6 +15,8 @@ struct CodexAccountCard: Equatable, Sendable {
 /// home or in pi.
 struct CodexAccountDiscovery: Equatable, Sendable {
     var cards: [CodexAccountCard] = []
+    /// The homes the account cards divide between them; unused by the plain card.
+    var historyHomes = CodexHistoryHomes(homes: [], defaultHome: "", registeredOwners: [:])
     var plainAuthHomes: [String] = []
     var plainPiCredentialSources: [CodexPiCredentialSource] = []
 }
@@ -135,13 +127,17 @@ extension ProviderAccountAssembly {
             CodexHomeScanner.standardizedHome(home, homeDirectory: homeDirectory)
         }
         let swapHomes = swaps.flatMap { [$0.mainHome, $0.home] }.map(standardized)
-        let logHomes = configuredHomes.union(homeLogins.map(\.home)).union(swapHomes).sorted()
+        let defaultHome = standardized(auth.codexHome() ?? "~/.codex")
         // xswap's main home follows whoever is signed in there; only its separate account homes keep
         // the registered owner when their own auth.json is missing.
-        var registeredLogOwners: [String: CodexAccountIdentity] = [:]
+        var registeredOwners: [String: CodexAccountIdentity] = [:]
         for swap in swaps where standardized(swap.home) != standardized(swap.mainHome) {
-            registeredLogOwners[standardized(swap.home)] = swap.identity
+            registeredOwners[standardized(swap.home)] = swap.identity
         }
+        let historyHomes = CodexHistoryHomes(
+            homes: configuredHomes.union(homeLogins.map(\.home)).union(swapHomes).union([defaultHome]).sorted(),
+            defaultHome: defaultHome, registeredOwners: registeredOwners
+        )
         let piUsageOwner = piScan.logins.first { $0.providerID == PiCodexLoginScanner.providerPrefix }?.identity
         // Registry order is persistent; observation order follows the current default login.
         // Even an uncustomized layout must keep its cards in place after a switch and relaunch.
@@ -157,10 +153,8 @@ extension ProviderAccountAssembly {
             return CodexAccountCard(id: record.id, identity: identity,
                 displayName: labels[identity.key] ?? "Codex",
                 authHomes: Set(matchingHomes + matchingSwapHomes).sorted(),
-                piCredentialSources: matchingPi,
-                logHomes: logHomes, defaultLogHomes: configuredHomes,
-                registeredLogOwners: registeredLogOwners, claimsPiUsage: piUsageOwner == identity)
+                piCredentialSources: matchingPi, claimsPiUsage: piUsageOwner == identity)
         }
-        return CodexAccountDiscovery(cards: cards)
+        return CodexAccountDiscovery(cards: cards, historyHomes: historyHomes)
     }
 }

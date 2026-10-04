@@ -34,19 +34,15 @@ final class CodexSwapMaintainerReviewTests: XCTestCase {
 
     private func provider(_ card: CodexAccountCard, files: FakeFiles, keychain: any KeychainAccessing,
                           http: RoutingHTTPClient) -> CodexProvider {
-        CodexProvider(provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
+        CodexProvider.isolated(provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
             authStore: CodexAuthStore(environment: environment, files: files, keychain: keychain,
                                      expectedIdentity: card.identity, additionalAuthHomes: card.authHomes),
-            usageClient: CodexUsageClient(http: http),
-            logUsageScanner: CodexLogFixture.scanner(home: nil),
-            openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }),
-            claimsPiUsage: false, pricing: { TestPricing.bundled })
+            usageClient: CodexUsageClient(http: http))
     }
 
     private func card(_ identity: CodexAccountIdentity, id: String = "codex") -> CodexAccountCard {
         CodexAccountCard(id: id, identity: identity, displayName: id, authHomes: [],
-                         piCredentialSources: [], logHomes: [], defaultLogHomes: [],
-                         registeredLogOwners: [:], claimsPiUsage: false)
+                         piCredentialSources: [], claimsPiUsage: false)
     }
 
     nonisolated private static func response(status: Int = 200) -> HTTPResponse {

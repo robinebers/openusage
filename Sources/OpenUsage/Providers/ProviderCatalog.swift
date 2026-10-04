@@ -51,10 +51,6 @@ enum ProviderCatalog {
                 logUsageScanner: CodexLogUsageScanner(additionalHomes: codex.plainAuthHomes)
             ))
         } else {
-            let defaultLoginStore = CodexAuthStore()
-            let keychainOwner: @Sendable () -> CodexAccountIdentity? = {
-                defaultLoginStore.loadKeychainAuth().flatMap { CodexAccountIdentity(auth: $0.auth) }
-            }
             providers += codex.cards.map { card in
                 CodexProvider(
                     provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
@@ -63,10 +59,7 @@ enum ProviderCatalog {
                         additionalAuthHomes: card.authHomes,
                         piCredentialSources: card.piCredentialSources
                     ),
-                    logUsageScanner: CodexLogUsageScanner(ownership: card.historyOwnership(
-                        files: LocalTextFileAccessor(), keychainOwner: keychainOwner
-                    )),
-                    claimsPiUsage: card.claimsPiUsage
+                    historyScope: .account(card.identity, codex.historyHomes, claimsPiUsage: card.claimsPiUsage)
                 )
             }
         }
