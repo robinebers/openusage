@@ -356,9 +356,9 @@ enum SpendTileMapper {
         var namedCount = 0
 
         for entry in entries {
-            // Free auto-review still needs its own named row; its zero cost would otherwise fold
-            // into Other whenever the period also contains paid models.
-            if entry.model == CodexUsagePricing.autoReviewModel, entry.costUSD == 0 {
+            // Keep auto-review named even when a period combines paid historical and free
+            // requests: its small aggregate cost must not fold their measured tokens into Other.
+            if entry.model == CodexUsagePricing.autoReviewModel {
                 visible.append(entry)
                 continue
             }

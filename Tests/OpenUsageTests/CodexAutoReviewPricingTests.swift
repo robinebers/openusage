@@ -215,6 +215,55 @@ final class CodexAutoReviewPricingTests: XCTestCase {
         }
     }
 
+    func testMixedPaidAndFreeAutoReviewStaysNamedInLast30DaysBelowTheSpendThreshold() throws {
+        let paidEvents = parsedEvents(timestamp: "2026-10-05T08:01:00Z")
+        let freeEvents = parsedEvents(timestamp: "2026-10-06T00:00:00Z")
+            + parsedEvents(timestamp: "2026-10-06T08:01:00Z")
+        let now = try XCTUnwrap(freeEvents.last?.timestamp)
+
+        let historical = CodexLogUsageScanner.aggregate(
+            events: paidEvents, since: .distantPast, pricing: TestPricing.bundled
+        )
+        let paid = try XCTUnwrap(historical.modelUsage?.daily.first?.models.first)
+        XCTAssertEqual(paid.model, autoReview)
+        XCTAssertEqual(paid.totalTokens, 110_000)
+        XCTAssertEqual(try XCTUnwrap(paid.costUSD), 0.0248, accuracy: 0.000_001)
+        let free = CodexLogUsageScanner.aggregate(
+            events: freeEvents, since: .distantPast, pricing: TestPricing.bundled
+        )
+        XCTAssertEqual(free.series.daily.reduce(0) { $0 + $1.totalTokens }, 220_000)
+        XCTAssertEqual(free.series.daily.compactMap(\.costUSD).reduce(0, +), 0)
+
+        // Historical auto-review and ordinary Luna each contribute less than 5% of the period's
+        // spend. Auto-review must keep its own row while ordinary small models still fold into Other.
+        let events = paidEvents + freeEvents
+            + parsedEvents(model: "gpt-6-astra") + parsedEvents(model: "gpt-5.6-luna")
+        let scan = CodexLogUsageScanner.aggregate(
+            events: events, since: .distantPast, pricing: TestPricing.bundled
+        )
+        var lines: [MetricLine] = []
+        SpendTileMapper.appendTokenUsage(
+            scan.series, to: &lines, now: now, modelUsage: scan.modelUsage,
+            modelSourceNote: "From Codex test logs"
+        )
+        guard case .values(_, let values, _, _, let unknown, let breakdown) = lines.first(where: { $0.label == "Last 30 Days" }) else {
+            return XCTFail("Expected a Last 30 Days spend row")
+        }
+        XCTAssertTrue(unknown.isEmpty)
+        let detail = try XCTUnwrap(breakdown)
+        XCTAssertEqual(detail.totalTokens, 550_000)
+        XCTAssertEqual(try XCTUnwrap(detail.totalCostUSD), 1.1896, accuracy: 0.000_001)
+        XCTAssertEqual(try XCTUnwrap(values.first?.number), 1.1896, accuracy: 0.000_001)
+        XCTAssertEqual(detail.models.map(\.model), ["gpt-6-astra", autoReview, ModelUsageEntry.otherModelName])
+        let review = try XCTUnwrap(detail.models.first(where: { $0.model == autoReview }))
+        XCTAssertEqual(review.totalTokens, 330_000)
+        XCTAssertEqual(try XCTUnwrap(review.costUSD), 0.02, accuracy: 0.000_001)
+        let other = try XCTUnwrap(detail.models.first(where: { $0.model == ModelUsageEntry.otherModelName }))
+        XCTAssertEqual(other.totalTokens, 110_000)
+        XCTAssertEqual(try XCTUnwrap(other.costUSD), 0.02, accuracy: 0.000_001)
+        XCTAssertEqual(other.variants?.map(\.model), ["gpt-5.6-luna"])
+    }
+
     func testFreeAutoReviewStaysVisibleInMixedAndAutoReviewOnlySpendTiles() throws {
         let autoEvents = parsedEvents()
         let now = try XCTUnwrap(autoEvents.first?.timestamp)
