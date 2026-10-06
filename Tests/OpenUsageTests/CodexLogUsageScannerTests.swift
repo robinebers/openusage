@@ -238,21 +238,10 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(CodexLogUsageScanner.parseFile(Data(line.utf8)).first?.cached, 100)
     }
 
-    // MARK: - Auto-review fallbacks
+    // MARK: - Auto-review
 
-    func testAutoReviewSlugMapsToDatedCodexModel() {
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-08-20T00:00:00Z"), "gpt-5.6-luna")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-09T00:00:00Z"), "gpt-5.6-luna")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-07-08T23:59:59Z"), "gpt-5.5")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-05-01T00:00:00Z"), "gpt-5.5")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2026-03-10T00:00:00Z"), "gpt-5.4")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2025-12-25T00:00:00Z"), "gpt-5.2-codex")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "2025-01-01T00:00:00Z"), "gpt-5")
-        XCTAssertEqual(CodexLogUsageScanner.autoReviewFallback(at: "garbage"), "gpt-5")
-    }
-
-    func testAutoReviewLinesPreserveSlugAndUseDateSpecificPricing() {
-        for (date, expectedModel) in [("2026-03-10", "gpt-5.4"), ("2026-08-20", "gpt-5.6-luna")] {
+    func testAutoReviewLinesPreserveSlugWithoutPaidPricingFallback() {
+        for date in ["2026-03-10", "2026-08-20", "2026-10-06"] {
             let lines = [
                 CodexLogFixture.turnContext(timestamp: "\(date)T08:00:00.000Z", model: "codex-auto-review"),
                 CodexLogFixture.tokenCount(
@@ -263,7 +252,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
             let event = CodexLogUsageScanner.parseFile(Data(lines.utf8)).first
             XCTAssertEqual(event?.model, "codex-auto-review", date)
-            XCTAssertEqual(event?.pricingModel, expectedModel, date)
+            XCTAssertNil(event?.pricingModel, date)
         }
     }
 
@@ -504,7 +493,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
         XCTAssertEqual(may12Models, [ModelUsageEntry(model: "gpt-5.2", totalTokens: 300, costUSD: 0.5)])
     }
 
-    func testAggregateAttributesAutoReviewUsageToSlugWhileUsingFallbackPrice() {
+    func testAggregateKeepsAutoReviewTokensButIgnoresCachedPaidPricingModel() {
         let scan = CodexLogUsageScanner.aggregate(
             events: [makeEvent(
                 "2026-05-12T08:00:00.000Z", model: "codex-auto-review",
@@ -513,10 +502,10 @@ final class CodexLogUsageScannerTests: XCTestCase {
             since: .distantPast, pricing: fixedRates()
         )
 
-        XCTAssertEqual(scan.series.daily.first?.costUSD ?? 0, 0.25, accuracy: 0.0001)
+        XCTAssertEqual(scan.series.daily.first?.costUSD, 0)
         XCTAssertEqual(
             scan.modelUsage?.daily.first?.models,
-            [ModelUsageEntry(model: "codex-auto-review", totalTokens: 150, costUSD: 0.25)]
+            [ModelUsageEntry(model: "codex-auto-review", totalTokens: 150, costUSD: 0)]
         )
     }
 

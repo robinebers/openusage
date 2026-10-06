@@ -42,7 +42,8 @@ extension CodexLogUsageScanner {
             guard let model = trimmedModel else {
                 continue
             }
-            let pricingModel = event.pricingModel ?? model
+            // Persisted events from older builds may still carry auto-review's paid Luna fallback.
+            let pricingModel = model == CodexUsagePricing.autoReviewModel ? model : event.pricingModel ?? model
             let resolution = CodexUsagePricing.resolveRates(pricing: pricing, model: pricingModel)
             var rateModel = resolution.rateModel
             var resolvedRates = resolution.rates

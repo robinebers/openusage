@@ -5,6 +5,8 @@ import Foundation
 /// prompt-cache, and priority-tier rules that must be applied consistently regardless of which local
 /// tool produced the request.
 enum CodexUsagePricing {
+    static let autoReviewModel = "codex-auto-review"
+
     /// Everything Codex pricing derives from the model slug alone, resolved once so a scanner pricing
     /// thousands of requests does not re-walk the supplement's alias rules per row.
     struct Prepared: Sendable {
@@ -28,6 +30,17 @@ enum CodexUsagePricing {
     /// its unscaled base rates so the Codex multiplier applies once; if a fast-only model has no base
     /// entry, its already-scaled rate is retained and no second multiplier is applied.
     static func resolveRates(pricing: ModelPricing, model: String) -> RateResolution {
+        // Auto-review is free for ChatGPT users. Keep its measured tokens and model name without
+        // consulting catalog aliases or a paid fallback (https://x.com/thsottiaux/status/2107368734981517634).
+        if model == autoReviewModel {
+            return RateResolution(
+                rates: ModelRates(inputPerMillion: 0, outputPerMillion: 0,
+                                  cacheWritePerMillion: 0, cacheReadPerMillion: 0),
+                rateModel: model,
+                isFastAlias: false,
+                hasBaseRates: true
+            )
+        }
         let canonicalModel = pricing.canonicalName(for: model)
         let isFastAlias = canonicalModel.hasSuffix("-fast")
         let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel

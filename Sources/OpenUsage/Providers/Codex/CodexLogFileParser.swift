@@ -105,9 +105,7 @@ struct CodexLogFileParser: Sendable {
             events.append(CodexLogUsageScanner.Event(
                 timestamp: timestamp,
                 model: model,
-                pricingModel: model == "codex-auto-review"
-                    ? CodexLogUsageScanner.autoReviewFallback(at: timestampRaw)
-                    : model == "gpt-reserve" ? CodexLogUsageScanner.reservePricingModel : nil,
+                pricingModel: model == "gpt-reserve" ? CodexLogUsageScanner.reservePricingModel : nil,
                 input: usage.input,
                 cached: min(usage.cached, usage.input),
                 output: usage.output,
