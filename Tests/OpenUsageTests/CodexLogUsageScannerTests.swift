@@ -496,7 +496,7 @@ final class CodexLogUsageScannerTests: XCTestCase {
     func testAggregateKeepsAutoReviewTokensButIgnoresCachedPaidPricingModel() {
         let scan = CodexLogUsageScanner.aggregate(
             events: [makeEvent(
-                "2026-05-12T08:00:00.000Z", model: "codex-auto-review",
+                "2026-10-06T08:00:00.000Z", model: "codex-auto-review",
                 pricingModel: "gpt-5.2"
             )],
             since: .distantPast, pricing: fixedRates()
@@ -1057,7 +1057,8 @@ final class CodexLogUsageScannerTests: XCTestCase {
         // the slug carries a snapshot date: $1.60 input + $0.08 cache read + $0.30 output.
         let cost = CodexUsagePricing.estimatedCost(
             pricing: pricing, model: "gpt-5.6-sol-2026-01-15",
-            tokens: TokenBreakdown(input: 200_000, cacheRead: 100_000, output: 10_000)
+            tokens: TokenBreakdown(input: 200_000, cacheRead: 100_000, output: 10_000),
+            at: OpenUsageISO8601.date(from: "2026-10-06T00:00:00Z")!
         )
         XCTAssertEqual(cost ?? -1, 1.98, accuracy: 0.000_001)
     }

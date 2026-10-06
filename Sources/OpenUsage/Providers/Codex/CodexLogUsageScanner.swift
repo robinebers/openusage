@@ -25,7 +25,8 @@ import Foundation
 ///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
 ///   `last_token_usage`.
 /// - Early sessions without model metadata fall back to `gpt-5`. The `codex-auto-review` slug stays
-///   visible in usage breakdowns with its measured tokens and zero cost.
+///   visible in usage breakdowns with its measured tokens. It uses dated model estimates before
+///   October 6, 2026 (00:00 UTC), and zero cost from then on.
 ///   The `gpt-reserve` slug (Luna Reserve fallback after regular usage is exhausted) stays visible
 ///   the same way and prices at `gpt-5.6-luna` rates.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied

@@ -244,7 +244,7 @@ final class CodexProvider: ProviderRuntime {
         )
         async let pi = claimsPiUsage ? piUsageScanner.scan(
             cardID: piCardID, now: now(), pricing: pricing,
-            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
+            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1, at: $2) }
         ) : nil
         async let openCode = claims.ownsDefaultLogin ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
         let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
