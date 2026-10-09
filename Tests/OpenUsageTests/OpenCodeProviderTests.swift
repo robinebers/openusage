@@ -8,8 +8,12 @@ final class OpenCodeProviderTests: XCTestCase {
     private let authJSON = #"{"opencode-go":{"type":"api","key":"sk-test"}}"#
     private let now = OpenUsageISO8601.date(from: "2026-07-12T12:00:00.000Z")!
 
-    private func authStore(files: TextFileAccessing) -> OpenCodeAuthStore {
-        openCodeAuthStore(files: files)
+    private func authStore(
+        files: TextFileAccessing,
+        sqlite: SQLiteAccessing = OpenCodeFakeSQLite(),
+        databasePaths: [String] = []
+    ) -> OpenCodeAuthStore {
+        openCodeAuthStore(files: files, sqlite: sqlite, databasePaths: databasePaths)
     }
 
     private func usageJSON(rolling: Int = 12, weekly: Int = 8, monthly: Int = 35) -> Data {
@@ -32,11 +36,13 @@ final class OpenCodeProviderTests: XCTestCase {
     private func provider(
         files: TextFileAccessing,
         scanner: OpenCodeUsageScanner,
-        client: OpenCodeUsageClient? = nil
+        client: OpenCodeUsageClient? = nil,
+        authSQLite: SQLiteAccessing = OpenCodeFakeSQLite(),
+        authDatabasePaths: [String] = []
     ) -> OpenCodeProvider {
         let now = self.now
         return OpenCodeProvider(
-            authStore: authStore(files: files),
+            authStore: authStore(files: files, sqlite: authSQLite, databasePaths: authDatabasePaths),
             usageClient: client ?? okClient(),
             usageScanner: scanner,
             now: { now }
@@ -100,6 +106,25 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertNotNil(snapshot.line(label: "Monthly"))
         XCTAssertNotNil(snapshot.line(label: "Usage Trend"))
         XCTAssertNotNil(snapshot.line(label: "Today"))
+    }
+
+    func testRefreshReadsGoKeyFromAuthJSONOnOpenCode118Database() async {
+        let path = "/oc/opencode.db"
+        let sqlite = OpenCodeFakeSQLite(
+            data: [path: "[]"],
+            openCode1CredentialTables: [path]
+        )
+        let snapshot = await provider(
+            files: FakeFiles(["/oc/auth.json": authJSON]),
+            scanner: OpenCodeUsageScanner(sqlite: sqlite, databasePaths: { [path] }),
+            authSQLite: sqlite,
+            authDatabasePaths: [path]
+        ).refresh()
+
+        XCTAssertEqual(snapshot.plan, "Go")
+        XCTAssertNotNil(snapshot.line(label: "Session"))
+        XCTAssertNotNil(snapshot.line(label: "Weekly"))
+        XCTAssertNotNil(snapshot.line(label: "Monthly"))
     }
 
     func testNewSubOnePercentSessionRendersCountdownThroughProviderAndStore() async throws {

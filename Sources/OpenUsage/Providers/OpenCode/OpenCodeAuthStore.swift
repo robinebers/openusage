@@ -7,8 +7,8 @@ import Foundation
 ///
 /// Codex attribution also needs to know whether OpenCode's `openai` provider is ChatGPT OAuth.
 /// OpenCode 2 moved that credential from `auth.json` into each channel database's `credential`
-/// table: it imports the file once per database and never deletes it, so once a database has that
-/// table the file is stale for it — a later login or logout only shows up in the table.
+/// table: it imports the file once per database and never deletes it, so after the import migration
+/// runs, later logins and logouts only show up in the table.
 struct OpenCodeAuthStore: Sendable {
     var files: TextFileAccessing
     var environment: EnvironmentReading
@@ -37,6 +37,8 @@ struct OpenCodeAuthStore: Sendable {
         LIMIT 1;
         """
 
+    static let credentialsImportedSQL = "SELECT 1 FROM migration WHERE id = '20260805200742_import_legacy_credentials' LIMIT 1;"
+
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader(),
@@ -61,10 +63,10 @@ struct OpenCodeAuthStore: Sendable {
 
     /// The non-empty `opencode-go` API key, or `nil` when the user has not logged into OpenCode Go.
     /// OpenCode 2 keeps it in each channel database's `credential` table; the first database holding
-    /// a key wins. `auth.json` stands in only when no database has that table — once one does, the
-    /// imported file is stale and a logout (which deletes the row) must not be revived by it. Reads
-    /// only the `opencode-go` entry, tolerant of unrelated sibling entries. A present file or database
-    /// that can't be read throws `credentialsUnreadable` so broken storage is never mistaken for logout.
+    /// a key wins. `auth.json` stays live until OpenCode 2 imports it into a database; after that, a
+    /// logout must not be revived by the file. Reads only the `opencode-go` entry, tolerant of
+    /// unrelated sibling entries. A present file or database that can't be read throws
+    /// `credentialsUnreadable` so broken storage is never mistaken for logout.
     func goAPIKey() throws -> String? {
         let paths: [String]
         do {
@@ -76,6 +78,7 @@ struct OpenCodeAuthStore: Sendable {
         var failure: Error?
         for path in paths {
             do {
+                guard try credentialsImported(path: path) else { continue }
                 let value = try sqlite.queryValue(path: path, sql: Self.credentialSQLGoKey)
                 hasCredentialTable = true
                 if let key = value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
@@ -109,29 +112,39 @@ struct OpenCodeAuthStore: Sendable {
     /// by release channel, so `opencode.db` and `opencode-next.db` can hold different logins and
     /// each database's usage must be judged by its own. The row is chosen before its type is
     /// checked — OAuth-first filtering would resurrect an inactive account while the live credential
-    /// is an API key. `auth.json` stands in only for an OpenCode 1 database (no `credential` table).
+    /// is an API key. `auth.json` stays live until OpenCode 2 imports it into this database.
     /// Throws when the database or `auth.json` can't be read; the caller must not read that as "no
     /// credential", or a locked file would revive the stale import.
     func openAICredential(databasePath: String) throws -> OpenAICredential {
         do {
-            if let json = try sqlite.queryValue(path: databasePath, sql: Self.credentialSQLCurrentOpenAI)?
-                .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
-                guard let row = Self.parseOpenAICredentialRow(json) else {
-                    throw OpenCodeUsageError.credentialsUnreadable(detail: "credential row is malformed")
+            if try credentialsImported(path: databasePath) {
+                if let json = try sqlite.queryValue(path: databasePath, sql: Self.credentialSQLCurrentOpenAI)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
+                    guard let row = Self.parseOpenAICredentialRow(json) else {
+                        throw OpenCodeUsageError.credentialsUnreadable(detail: "credential row is malformed")
+                    }
+                    return OpenAICredential(isOAuth: Self.isCodexOAuth(row.entry), since: row.since)
                 }
-                return OpenAICredential(isOAuth: Self.isCodexOAuth(row.entry), since: row.since)
+                // The table exists but holds no `openai` row: the user logged out of OpenCode 2, which
+                // deletes the row and leaves the imported `auth.json` behind. That file must not revive it.
+                return OpenAICredential(isOAuth: false, since: nil)
             }
-            // The table exists but holds no `openai` row: the user logged out of OpenCode 2, which
-            // deletes the row and leaves the imported `auth.json` behind. That file must not revive it.
-            return OpenAICredential(isOAuth: false, since: nil)
         } catch {
-            // Pre-OpenCode-2 databases have no `credential` table — `auth.json` is still live there.
+            // A missing credential table leaves `auth.json` as the available source.
             guard Self.isMissingTable(error) else { throw error }
         }
         if let entry = try authObject()?["openai"] as? [String: Any] {
             return OpenAICredential(isOAuth: Self.isCodexOAuth(entry), since: nil)
         }
         return OpenAICredential(isOAuth: false, since: nil)
+    }
+
+    private func credentialsImported(path: String) throws -> Bool {
+        do {
+            return try sqlite.queryValue(path: path, sql: Self.credentialsImportedSQL) != nil
+        } catch where Self.isMissingTable(error) {
+            return false
+        }
     }
 
     /// Whether an `openai` entry is the built-in ChatGPT / Codex OAuth flow. OpenCode stores API-key

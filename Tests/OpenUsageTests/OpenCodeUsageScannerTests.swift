@@ -260,9 +260,10 @@ func openCodeAuthStore(
 /// Stub that returns crafted payloads per database path and classifies the query by SQL shape.
 /// Shared by the OpenCode scanner and provider tests. `tables` holds each database's
 /// `group_concat(name)` probe output (default: both message tables present). `credentials` holds
-/// each OpenCode 2 database's current `openai` row; a database without an entry is OpenCode 1 (no
-/// `credential` table), and `""` is a table with no `openai` row. `goKeys` holds each database's
-/// current `opencode-go` key (`""` for none); it also implies a `credential` table.
+/// each imported OpenCode 2 database's current `openai` row; a database without an entry has not
+/// imported credentials. `openCode1CredentialTables` models OpenCode 1.18's empty `credential`
+/// table without the import marker. `goKeys` holds each imported database's current `opencode-go`
+/// key (`""` for none); it also implies the import marker.
 final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var data: [String: String]
     var failing: Set<String>
@@ -270,6 +271,7 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
     var tables: [String: String]
     var credentialTimes: [String: String]
     var goKeys: [String: String]
+    var openCode1CredentialTables: Set<String>
     var lastDataSQL: String?
     var dataSQL: [String: String] = [:]
 
@@ -279,7 +281,8 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         credentials: [String: String] = [:],
         tables: [String: String] = [:],
         credentialTimes: [String: String] = [:],
-        goKeys: [String: String] = [:]
+        goKeys: [String: String] = [:],
+        openCode1CredentialTables: Set<String> = []
     ) {
         self.data = data
         self.failing = failing
@@ -287,6 +290,7 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         self.tables = tables
         self.credentialTimes = credentialTimes
         self.goKeys = goKeys
+        self.openCode1CredentialTables = openCode1CredentialTables
     }
 
     func queryValue(path: String, sql: String) throws -> String? {
@@ -294,7 +298,11 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
         if sql == OpenCodeCodexUsageScanner.messageTablesSQL {
             return tables[path] ?? "message,session_message"
         }
+        if sql == OpenCodeAuthStore.credentialsImportedSQL {
+            return credentials[path] != nil || goKeys[path] != nil ? "1" : nil
+        }
         if sql == OpenCodeAuthStore.credentialSQLCurrentOpenAI {
+            if openCode1CredentialTables.contains(path) { return nil }
             guard let raw = credentials[path] else {
                 throw SQLiteError.queryFailed("Parse error: no such table: credential")
             }
@@ -302,6 +310,7 @@ final class OpenCodeFakeSQLite: SQLiteAccessing, @unchecked Sendable {
             return raw.isEmpty ? nil : "[\(raw),\(credentialTimes[path] ?? "0")]"
         }
         if sql == OpenCodeAuthStore.credentialSQLGoKey {
+            if openCode1CredentialTables.contains(path) { return nil }
             if let key = goKeys[path] { return key.isEmpty ? nil : key }
             if credentials[path] != nil { return nil }
             throw SQLiteError.queryFailed("Parse error: no such table: credential")
