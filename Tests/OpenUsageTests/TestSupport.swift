@@ -534,3 +534,10 @@ final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
         return try await handler(request)
     }
 }
+
+extension HTTPRequest {
+    /// Claude's hourly reset-grants check, which shares the usage endpoint's path.
+    var isClaudeResetGrantsCheck: Bool { url.query?.contains("cedar_ember=1") == true }
+    /// A regular Claude usage read, not the reset-grants check.
+    var isClaudeUsagePoll: Bool { url.path.hasSuffix("/api/oauth/usage") && !isClaudeResetGrantsCheck }
+}

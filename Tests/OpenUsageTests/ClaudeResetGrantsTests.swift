@@ -8,11 +8,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
 
     private func resetsLine(_ json: String) throws -> MetricLine? {
         let response = HTTPResponse(statusCode: 200, headers: [:], body: Data(json.utf8))
-        let mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: ClaudeOAuth(subscriptionType: "max"), now: now)
-        return mapped.lines.first { line in
-            if case .values(let label, _, _, _, _, _) = line { return label == "Rate Limit Resets" }
-            return false
-        }
+        return try ClaudeUsageMapper.mapResetGrantsResponse(response, now: now)
     }
 
     private func countAndExpiries(_ line: MetricLine?) -> (Double?, [Date])? {
@@ -65,12 +61,12 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertNil(try resetsLine(#"{"five_hour":{"utilization":3}}"#))
     }
 
-    func testUsageRequestOptsInToResetGrants() {
-        let url = ClaudeUsageClient.usageURLWithResetGrants(URL(string: "https://api.anthropic.com/api/oauth/usage")!)
-        XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage?cedar_ember=1")
+    func testResetGrantsRequestMatchesClaudeCode() {
+        let url = ClaudeUsageClient.resetGrantsURL(URL(string: "https://api.anthropic.com/api/oauth/usage")!)
+        XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")
     }
 
-    func testUsageRequestIdentifiesAsClaudeCode() async throws {
+    func testResetGrantsRequestIdentifiesAsClaudeCode() async throws {
         // Anthropic gates reset grants by client surface: an unrecognized User-Agent (we used to send
         // `claude-code/2.1.69`) comes back `eligible: false, ineligible_reason: "surface"` with no grants.
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
@@ -79,7 +75,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
             refreshURL: URL(string: "https://platform.claude.com/v1/oauth/token")!,
             clientID: "client"
         )
-        _ = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: "token", config: config)
+        _ = try await ClaudeUsageClient(httpClient: http).fetchResetGrants(accessToken: "token", config: config)
         let userAgent = try XCTUnwrap(http.requests.first?.headers["User-Agent"])
         XCTAssertTrue(userAgent.hasPrefix("claude-cli/"), userAgent)
         XCTAssertTrue(userAgent.hasSuffix("(external, cli)"), userAgent)

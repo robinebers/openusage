@@ -37,6 +37,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// memory only, so the first 429 after a relaunch can keep the painted limits instead of a bare badge.
     /// A successful live fetch discards it; only a login verified against the card's account consumes it.
     private var pendingLaunchSnapshot: ProviderSnapshot?
+    var resetGrantsCheck: ClaudeResetGrantsCheck?
 
     /// The plan Anthropic's profile endpoint reports for the current access token. Claude Code stamps
     /// `subscriptionType` / `rateLimitTier` into the login at sign-in and never updates them (a token refresh
@@ -428,6 +429,9 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
+        if let resetGrants = await resetGrantsLine(credentials: working.oauth) {
+            mapped.lines.append(resetGrants)
+        }
         // Only after the usage call succeeded: the token is known-good, so a profile failure here is a
         // label problem, never an auth signal, and it must not take the bars down with it.
         if let plan = await resolveLivePlan(credentials: working.oauth) {
@@ -487,22 +491,8 @@ final class ClaudeProvider: ProviderRuntime {
             switch line {
             case .progress(_, _, _, _, let resetsAt?, _, _) where resetsAt <= now:
                 return nil
-            case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown)
-                where expiriesAt.contains { $0 <= now }:
-                // Reset grants past their deadline are gone; grants without a known deadline still count.
-                let elapsed = expiriesAt.filter { $0 <= now }.count
-                let values = values.map { value in
-                    var value = value
-                    if value.kind == .count { value.number = max(0, value.number - Double(elapsed)) }
-                    return value
-                }
-                return .values(
-                    label: label, values: values, colorHex: colorHex,
-                    expiriesAt: expiriesAt.filter { $0 > now },
-                    unknownModels: unknownModels, modelBreakdown: breakdown
-                )
             default:
-                return line
+                return ClaudeUsageMapper.droppingElapsedResetGrants(line, now: now)
             }
         }
         guard !lines.isEmpty else { return }
@@ -589,7 +579,7 @@ final class ClaudeProvider: ProviderRuntime {
         rateLimitedUntil = nil
     }
 
-    private static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
+    static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
         let access = Data((credentials.accessToken ?? "").utf8)
         let refresh = Data((credentials.refreshToken ?? "").utf8)
         var pair = Data(SHA256.hash(data: access))

@@ -91,7 +91,7 @@ extension ClaudeDesktopAuthStoreTests {
                         logUsageScanner: ClaudeLogFixture.scanner(home: nil), pricing: { TestPricing.bundled })
                     let result = await provider.refresh()
                     XCTAssertNil(badge(result.lines, "Error"))
-                    XCTAssertEqual(http.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 1)
+                    XCTAssertEqual(http.requests.filter { $0.isClaudeUsagePoll }.count, 1)
                 }
             }
         }
@@ -137,7 +137,7 @@ extension ClaudeDesktopAuthStoreTests {
             }
             XCTAssertEqual(used, Double(20 + index * 50))
             XCTAssertEqual(fixture.files.files[path], replacement)
-            XCTAssertEqual(http.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 2)
+            XCTAssertEqual(http.requests.filter { $0.isClaudeUsagePoll }.count, 2)
         }
     }
 

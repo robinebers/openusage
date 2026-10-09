@@ -49,7 +49,7 @@ final class ClaudeLivePlanTests: XCTestCase {
         XCTAssertEqual(second.plan, "Max 20x")
         XCTAssertEqual(progress(first.lines, "Session")?.used, 42)
         // Profile only after the usage call proved the token, and never again for the same token.
-        XCTAssertEqual(http.requests.map(\.url.path), [
+        XCTAssertEqual(http.requests.filter { !$0.isClaudeResetGrantsCheck }.map(\.url.path), [
             "/api/oauth/usage", "/api/oauth/profile", "/api/oauth/usage"
         ])
     }
@@ -81,6 +81,7 @@ final class ClaudeLivePlanTests: XCTestCase {
             let authorization = request.headers["Authorization"] ?? ""
             switch request.url.path {
             case "/api/oauth/usage":
+                if request.isClaudeResetGrantsCheck { return Self.usage(percent: 42) }
                 // Second refresh: token-a has been revoked upstream, forcing a rotation to token-b.
                 if usageCalls.next() == 2, authorization == "Bearer token-a" {
                     return HTTPResponse(statusCode: 401, headers: [:], body: Data())
@@ -135,7 +136,7 @@ final class ClaudeLivePlanTests: XCTestCase {
 
         XCTAssertEqual(first.plan, "Max 20x")
         XCTAssertEqual(second.plan, "Max 20x")
-        XCTAssertEqual(http.requests.map(\.url.path), [
+        XCTAssertEqual(http.requests.filter { !$0.isClaudeResetGrantsCheck }.map(\.url.path), [
             "/api/oauth/profile", "/api/oauth/usage", "/api/oauth/usage"
         ])
     }

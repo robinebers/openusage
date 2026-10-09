@@ -263,7 +263,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
         let snapshot = await fixture.provider.refresh()
 
         XCTAssertEqual(sessionUsage(snapshot), 42)
-        XCTAssertEqual(fixture.http.requests.map(\.url.path), [
+        XCTAssertEqual(fixture.http.requests.filter { !$0.isClaudeResetGrantsCheck }.map(\.url.path), [
             "/api/oauth/profile", "/v1/oauth/token", "/api/oauth/profile", "/api/oauth/usage"
         ])
         XCTAssertTrue(fixture.files.files[path]?.contains("rotated") == true)
@@ -377,7 +377,7 @@ final class ClaudeAccountIsolationTests: XCTestCase {
     }
 
     private func usageRequests(_ http: RoutingHTTPClient) -> [HTTPRequest] {
-        http.requests.filter { $0.url.path.hasSuffix("/api/oauth/usage") }
+        http.requests.filter { $0.isClaudeUsagePoll }
     }
 
     private func sessionUsage(_ snapshot: ProviderSnapshot) -> Double? {
