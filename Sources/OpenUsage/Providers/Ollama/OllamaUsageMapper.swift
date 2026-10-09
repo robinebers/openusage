@@ -18,61 +18,61 @@ enum OllamaPlan: Equatable, Sendable {
     }
 }
 
-/// Builds metric lines from the ollama.com `/api/usage` payload and the plan name from `/api/me`.
+/// Builds metric lines from the ollama.com `/api/balance` payload and the plan name from `/api/me`.
 ///
-/// The usage payload looks like:
+/// Current plans carry a monthly dollar allowance:
 ///
-///     {"activity": {"cost": "0.00000", "period": {"type": "last_4_weeks", …}, "models": []},
-///      "limits": {"session": {"usage": 0.349, "models": […]},
-///                 "weekly":  {"usage": 0.316, "models": […]},
-///                 "monthly": {"usage": 0.053, "models": […]}}}
+///     {"included": {"balance_usd": 72.5, "allowance_usd": 100,
+///                   "period": {"from": "2026-09-15T09:30:00Z", "until": "2026-10-15T09:30:00Z"}},
+///      "purchased": {"balance_usd": 25}}
 ///
-/// `usage` is a **fraction** of the plan's allowance (0.349 → 34.9%), not a percentage.
+/// Legacy plans keep their session and weekly limits instead, as a percentage *remaining*:
 ///
-/// The limits carry no reset instant. Ollama documents the window *lengths* (session every 5 hours,
-/// weekly every 7 days) but not when the current window started, so the meters deliberately carry no
-/// `resetsAt` and no `periodDurationMs`: a period with no reset date renders as a flat "Resets in 5h"
-/// that never counts down, which reads as a real countdown while being pure guesswork. The window
-/// lengths live in `docs/providers/ollama.md` instead, where they can be stated as cadence.
+///     {"included": {"session": {"remaining_percent": 75, "resets_at": "2026-10-01T07:00:00Z"},
+///                   "weekly":  {"remaining_percent": 40, "resets_at": "2026-10-05T00:00:00Z"}},
+///      "purchased": {"balance_usd": 25}}
 ///
-/// The endpoint is undocumented (it backs Ollama's own settings page), so every field is read
-/// defensively: a limit that isn't present is simply not metered, rather than shown as zero usage.
-/// The mapper is pure — no I/O — so it tests directly against sample payloads.
+/// See https://docs.ollama.com/api/balance. The mapper is pure — no I/O — so it tests directly against
+/// sample payloads.
 enum OllamaUsageMapper {
-    /// `(plan, lines)` from the usage payload plus the optional account payload. `accountBody` may be
+    static let sessionPeriodMs = 5 * 60 * 60 * 1000
+    static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
+
+    /// `(plan, lines)` from the balance payload plus the optional account payload. `accountBody` may be
     /// `nil` — the plan request is best-effort and must never blank out the meters.
-    static func map(usageBody: Data, accountBody: Data?) throws -> (plan: OllamaPlan, lines: [MetricLine]) {
+    static func map(balanceBody: Data, accountBody: Data?) throws -> (plan: OllamaPlan, lines: [MetricLine]) {
         // A `nil` body means the account request itself failed, which the provider has already reported;
         // classifying it as unreadable here would warn about the same thing twice.
         let outcome = accountBody.map { plan(from: $0) } ?? .absent
-        return (outcome, try usageLines(usageBody))
+        return (outcome, try balanceLines(balanceBody))
     }
 
-    /// Session, weekly, and monthly meters plus the recent-activity spend row.
-    static func usageLines(_ body: Data) throws -> [MetricLine] {
-        guard let root = ProviderParse.jsonObject(body) else {
-            throw OllamaUsageError.invalidResponse
-        }
-        // `limits` is the reason this endpoint exists; its absence means the response isn't the shape
-        // OpenUsage understands, which is a loud failure rather than an empty dashboard.
-        guard let limits = root["limits"] as? [String: Any] else {
+    /// Session and Weekly (legacy plans) or Monthly (current plans), then Purchased Credits.
+    static func balanceLines(_ body: Data) throws -> [MetricLine] {
+        // `included` is the plan allowance this provider exists to show. Missing, or matching neither
+        // documented shape, means the response isn't one OpenUsage understands: a loud failure rather
+        // than an empty dashboard.
+        guard let root = ProviderParse.jsonObject(body),
+              let included = root["included"] as? [String: Any] else {
             throw OllamaUsageError.invalidResponse
         }
 
         var lines: [MetricLine] = []
-        if let session = percentLine(limits["session"], label: "Session") {
+        if let session = legacyLine(included["session"], label: "Session", periodMs: sessionPeriodMs) {
             lines.append(session)
         }
-        if let weekly = percentLine(limits["weekly"], label: "Weekly") {
+        if let weekly = legacyLine(included["weekly"], label: "Weekly", periodMs: weeklyPeriodMs) {
             lines.append(weekly)
         }
-        if let monthly = percentLine(limits["monthly"], label: "Monthly") {
+        if let monthly = monthlyLine(included) {
             lines.append(monthly)
         }
-        if let activity = activityLine(root["activity"]) {
-            lines.append(activity)
+        guard !lines.isEmpty else { throw OllamaUsageError.invalidResponse }
+
+        if let purchased = purchasedLine(root["purchased"]) {
+            lines.append(purchased)
         }
-        return lines.isEmpty ? [.noUsageData] : lines
+        return lines
     }
 
     /// The account's plan, title-cased for the header badge ("pro" → "Pro"). Called directly, ollama.com
@@ -95,30 +95,54 @@ enum OllamaUsageMapper {
 
     // MARK: - Private
 
-    /// One limit entry → a 0–100% meter. `usage` is a fraction of the plan allowance, so it scales by 100.
-    /// A missing entry or a missing `usage` yields no line: the meter is absent, not at zero.
-    private static func percentLine(_ entry: Any?, label: String) -> MetricLine? {
+    /// A legacy limit → a 0–100% used meter. Ollama reports what *remains*, so used = 100 − remaining.
+    private static func legacyLine(_ entry: Any?, label: String, periodMs: Int) -> MetricLine? {
         guard let entry = entry as? [String: Any],
-              let fraction = ProviderParse.number(entry["usage"]) else { return nil }
+              let remaining = ProviderParse.number(entry["remaining_percent"]) else { return nil }
+        // The period only pairs with a real reset; alone it would render a static "Resets in 5h".
+        let resetsAt = date(entry["resets_at"])
         return .progress(
             label: label,
-            used: ProviderParse.clampPercent(fraction * 100),
+            used: ProviderParse.clampPercent(100 - remaining),
             limit: 100,
-            format: .percent
+            format: .percent,
+            resetsAt: resetsAt,
+            periodDurationMs: resetsAt == nil ? nil : periodMs
         )
     }
 
-    /// `activity.cost` → an unbounded dollar row. Ollama reports it as a decimal string ("0.00000") over
-    /// a rolling four-week window; it stays $0.00 on a subscription and carries real spend for
-    /// pay-as-you-go and API-key usage. The label is fixed so it always matches its widget descriptor —
-    /// `activity.period` is informational and is not used to rename the row.
-    private static func activityLine(_ activity: Any?) -> MetricLine? {
-        guard let activity = activity as? [String: Any],
-              let cost = ProviderParse.number(activity["cost"]),
-              cost >= 0 else { return nil }
-        return .values(
-            label: "Last 4 Weeks",
-            values: [MetricValue(number: cost, kind: .dollars)]
+    /// The monthly allowance → a dollar meter: used = allowance − balance, resetting at `period.until`.
+    private static func monthlyLine(_ included: [String: Any]) -> MetricLine? {
+        guard let allowance = ProviderParse.number(included["allowance_usd"]), allowance > 0,
+              let balance = ProviderParse.number(included["balance_usd"]) else { return nil }
+        let period = included["period"] as? [String: Any]
+        let from = date(period?["from"])
+        let until = date(period?["until"])
+        var periodMs: Int?
+        if let from, let until, until > from {
+            periodMs = Int(until.timeIntervalSince(from) * 1000)
+        }
+        return .progress(
+            label: "Monthly",
+            used: min(allowance, max(0, allowance - balance)),
+            limit: allowance,
+            format: .dollars,
+            resetsAt: until,
+            periodDurationMs: periodMs
         )
+    }
+
+    /// Unexpired purchased credits → an unbounded dollar row. A real zero is shown, not "No data".
+    private static func purchasedLine(_ purchased: Any?) -> MetricLine? {
+        guard let purchased = purchased as? [String: Any],
+              let balance = ProviderParse.number(purchased["balance_usd"]) else { return nil }
+        return .values(
+            label: "Purchased Credits",
+            values: [MetricValue(number: max(0, balance), kind: .dollars)]
+        )
+    }
+
+    private static func date(_ value: Any?) -> Date? {
+        (value as? String).flatMap(OpenUsageISO8601.date(from:))
     }
 }

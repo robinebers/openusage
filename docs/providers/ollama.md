@@ -1,29 +1,28 @@
 # Ollama
 
-Tracks [Ollama Cloud](https://ollama.com) plan usage — the session, weekly, and monthly limits Ollama
-shows on its own settings page.
+Tracks [Ollama Cloud](https://ollama.com) plan usage — the credits and limits Ollama shows on its own
+settings page.
 
 ## What it tracks
 
 | Metric | Meaning |
 |---|---|
-| Session | 5-hour window usage (percentage of your plan's allowance) |
-| Weekly | 7-day window usage (percentage of your plan's allowance) |
-| Monthly | Monthly usage (percentage of your plan's allowance), when reported for your account |
-| Last 4 Weeks | Charges beyond your plan over the last four weeks. $0.00 on a subscription; real amounts for pay-as-you-go and API-key usage |
+| Session | Legacy plans: 5-hour window usage (percentage of your plan's allowance), with a reset countdown |
+| Weekly | Legacy plans: 7-day window usage (percentage of your plan's allowance), with a reset countdown |
+| Monthly | Current plans: dollars of your monthly included credits used, with a countdown to the monthly reset |
+| Purchased Credits | Dollars left of the extra credits you bought, which are used after your included credits run out |
+
+Ollama's current plans come with a monthly dollar allowance; plans from before that change keep their
+session and weekly limits instead. Each account reports one or the other, so OpenUsage shows whichever
+your plan has and leaves the other rows out.
 
 Your plan (Free, Pro, Max) is shown beside the provider name. If Ollama can't tell OpenUsage which plan
 you're on, the badge is left off and the card explains why — the meters keep working either way.
 
-Session, Weekly, and Monthly are always visible; Session and Weekly start pinned to the menu bar.
-Monthly starts unpinned and follows Weekly. Last 4 Weeks sits behind the provider's caret — you can
-move any of them in **Customize**. A $0.00 on that row means no extra charges,
-not an idle month: usage inside your plan's allowance is counted by the limit meters.
-
-The session window is 5 hours and the weekly window is 7 days, but Ollama reports only how much of each
-window you have used — never when the current one started or ends. These meters therefore show no reset
-countdown, rather than a guessed one. Monthly also has no reset countdown. Local models don't count
-toward these limits; only cloud models do.
+Session, Weekly, and Monthly are always visible and start pinned to the menu bar; since a plan only has
+Session and Weekly or Monthly, at most two of them show there. Purchased Credits sits behind the
+provider's caret — you can move any of them in **Customize**. Local models don't count toward these
+limits; only cloud models do.
 
 ## Where credentials come from
 
@@ -48,24 +47,25 @@ ollama signin
 
 3. Turn **Ollama** on in **Customize** — unlike most providers, it never enables itself (see above).
 
-The limits Ollama reports for your account appear on the next refresh. Free accounts can report a
-Monthly limit without Session or Weekly limits.
+The credits or limits Ollama reports for your account appear on the next refresh.
 
 ## Under the hood
 
 Two ollama.com endpoints, both authenticated with a signature from your local Ollama key:
 
-- `GET https://ollama.com/api/usage` — the session, weekly, and monthly meters plus recent activity spend.
+- [`GET https://ollama.com/api/balance`](https://docs.ollama.com/api/balance) — included credits
+  (`balance_usd` left of `allowance_usd`, plus the billing `period`) or, on legacy plans, `session` and
+  `weekly` limits as `remaining_percent` with `resets_at`; plus `purchased.balance_usd`.
 - `POST https://ollama.com/api/me` — the plan name (best-effort; a failure here doesn't blank the meters).
 
 Each request carries an `Authorization` header of `<public key>:<signature>`, signing the string
 `<METHOD>,<request-uri>` where the URI includes a `ts` unix-seconds parameter — the same scheme the
-Ollama CLI uses, so a captured header can't be replayed later.
+Ollama CLI uses, so a captured header can't be replayed later. Ollama allows 10 balance requests a minute.
 
-The usage endpoint is undocumented (it backs Ollama's own settings page), so OpenUsage reads it
-defensively: `usage` is a fraction (`0.349` → 34.9%) and `cost` is a decimal string; a limit that isn't
-in the response is omitted from the API and shows "No data" if its dashboard row is enabled, rather
-than being shown as zero usage. A response with no `limits` at all is reported as an invalid response.
+Ollama reports what *remains*; OpenUsage shows what's used (Monthly used = allowance − balance; Session
+used = 100% − remaining). A meter that isn't in the response is omitted from the API and shows "No data"
+if its dashboard row is enabled, rather than being shown as zero usage. A response with no included
+credits or limits OpenUsage can read is reported as an invalid response.
 
 ## Troubleshooting
 
@@ -78,5 +78,5 @@ than being shown as zero usage. A response with no `limits` at all is reported a
 - **"Couldn't read your Ollama plan"** (an amber notice by the name) — the plan badge is missing because
   Ollama either didn't answer that request or answered with something OpenUsage couldn't read. Your
   meters are unaffected and still current; the badge comes back on its own once Ollama answers normally.
-- **Meters show "No usage data"** — you're signed in, but Ollama returned no limits for the account yet.
+- **"Usage response invalid"** — Ollama answered, but without credits or limits OpenUsage can read.
   Check your usage at [ollama.com/settings](https://ollama.com/settings).
