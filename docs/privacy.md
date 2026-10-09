@@ -61,6 +61,12 @@ to PostHog, a provider, or iCloud. Old source-file records are dropped as the sc
 identity caches that have not been used for 35 days are removed. OpenUsage's pricing engine runs after
 the cache is read, so its computed aggregates and totals are not persisted in this cache.
 
+Cursor's usage export is cached the same way, under `~/Library/Application Support/OpenUsage/cursor-spend-cache/`.
+Each file holds one Cursor account's parsed rows — date, model, and token buckets — for about the last 35 days.
+It does not include the raw CSV, the account email, or credentials. Dollar totals are priced when the tiles
+are built, so they are not stored in the cache. The file is private to your macOS account and is never sent
+to PostHog, a provider, or iCloud.
+
 If you explicitly turn on [iCloud Sync](icloud-sync.md), OpenUsage writes normalized daily tokens,
 spend, and model totals to its private iCloud container so your own Macs can show one combined summary.
 Credentials, account limits, provider responses, and raw logs are never written there. This is separate

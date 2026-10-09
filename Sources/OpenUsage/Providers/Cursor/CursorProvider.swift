@@ -17,19 +17,22 @@ final class CursorProvider: ProviderRuntime {
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
     let usageCSVTimeout: TimeInterval
+    private let spendCache: CursorSpendCacheStore
 
     init(
         authStore: CursorAuthStore = CursorAuthStore(),
         usageClient: CursorUsageClient = CursorUsageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
-        usageCSVTimeout: TimeInterval = 20
+        usageCSVTimeout: TimeInterval = 20,
+        spendCache: CursorSpendCacheStore = .live
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.now = now
         self.pricing = pricing
         self.usageCSVTimeout = usageCSVTimeout
+        self.spendCache = spendCache
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -181,53 +184,65 @@ final class CursorProvider: ProviderRuntime {
         lines.append(line)
     }
 
-    /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
-    /// (no session, timeout, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping is never
-    /// affected and the spend tiles fall back to "No data".
+    /// Fetch one slice of the usage CSV and merge it into the on-disk spend cache. A timeout records a
+    /// smaller retry. A non-2xx response, a truncated body, or a zero-row body leaves cached rows in
+    /// place. Tiles render from the cache either way, so a short download cannot wipe older days.
     private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> ProviderUsageHistory? {
         let calendar = Calendar.current
         let end = now()
-        let startOfToday = calendar.startOfDay(for: end)
-        let start = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
+        guard let userID = CursorUsageClient.session(from: accessToken)?.userID else {
+            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request could not be prepared from the current session")
+            return nil
+        }
+        var snapshot = spendCache.load(userID: userID)
+        let range = CursorSpendPlanner.nextRange(snapshot: snapshot, now: end, calendar: calendar)
 
         let response: HTTPResponse?
         do {
-            switch try await fetchUsageCSV(accessToken: accessToken, start: start, end: end) {
+            switch try await fetchUsageCSV(accessToken: accessToken, start: range.start, end: range.end) {
             case .finished(let result):
                 response = result
             case .timedOut:
                 AppLog.warn(
                     LogTag.plugin("cursor"),
-                    "usage CSV request exceeded \(String(format: "%g", usageCSVTimeout))s; skipping spend history this refresh"
+                    "usage CSV request exceeded \(String(format: "%g", usageCSVTimeout))s; keeping cached spend history"
                 )
-                return nil
+                snapshot.retry = CursorSpendPlanner.halvedRetry(range)
+                spendCache.save(userID: userID, snapshot)
+                return await renderCachedSpend(snapshot, now: end, to: &lines)
             }
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
-            return nil
+            return await renderCachedSpend(snapshot, now: end, to: &lines)
         }
         guard let response else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request could not be prepared from the current session")
-            return nil
+            return await renderCachedSpend(snapshot, now: end, to: &lines)
         }
         guard (200..<300).contains(response.statusCode) else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV request returned HTTP \(response.statusCode)")
-            return nil
+            return await renderCachedSpend(snapshot, now: end, to: &lines)
         }
         guard let csv = String(data: response.body, encoding: .utf8) else {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV response was not valid UTF-8")
-            return nil
+            return await renderCachedSpend(snapshot, now: end, to: &lines)
         }
-        let pricing = await pricing()
+        let modelPricing = await pricing()
         do {
-            let parsed = try CursorUsageCSV.parse(csv: csv, pricing: pricing)
+            let parsed = try CursorUsageCSV.parse(csv: csv, pricing: modelPricing)
+            if CursorSpendPlanner.bodyIsTruncated(csv, rejectedRowCount: parsed.rejectedRowCount) {
+                AppLog.warn(LogTag.plugin("cursor"), "usage CSV ended on an incomplete record; keeping cached spend history")
+                return renderSpend(snapshot, pricing: modelPricing, now: end, to: &lines)
+            }
             if parsed.rejectedRowCount > 0 {
                 AppLog.warn(
                     LogTag.plugin("cursor"),
                     "usage CSV ignored \(parsed.rejectedRowCount) malformed row\(parsed.rejectedRowCount == 1 ? "" : "s")"
                 )
             }
-            return CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
+            snapshot = CursorSpendPlanner.merge(snapshot, range: range, rows: parsed.rows, now: end)
+            spendCache.save(userID: userID, snapshot)
+            return renderSpend(snapshot, pricing: modelPricing, now: end, to: &lines)
         } catch let error as CursorUsageCSVError {
             switch error {
             case .missingColumns(let columns):
@@ -238,7 +253,28 @@ final class CursorProvider: ProviderRuntime {
         } catch {
             AppLog.warn(LogTag.plugin("cursor"), "usage CSV could not be parsed")
         }
-        return nil
+        return await renderCachedSpend(snapshot, now: end, to: &lines)
+    }
+
+    private func renderCachedSpend(
+        _ snapshot: CursorSpendCacheSnapshot,
+        now: Date,
+        to lines: inout [MetricLine]
+    ) async -> ProviderUsageHistory? {
+        guard !snapshot.rows.isEmpty else { return nil }
+        let modelPricing = await pricing()
+        return renderSpend(snapshot, pricing: modelPricing, now: now, to: &lines)
+    }
+
+    private func renderSpend(
+        _ snapshot: CursorSpendCacheSnapshot,
+        pricing: ModelPricing,
+        now: Date,
+        to lines: inout [MetricLine]
+    ) -> ProviderUsageHistory? {
+        let rows = CursorSpendPlanner.pricedRows(snapshot.rows, pricing: pricing)
+        guard !rows.isEmpty else { return nil }
+        return CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: pricing, to: &lines)
     }
 
     /// The CSV can stream for minutes on heavy accounts, and URLRequest's timeout only fires on an idle

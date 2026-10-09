@@ -226,7 +226,11 @@ final class CursorEnterpriseProviderTests: XCTestCase {
             ),
             usageClient: CursorUsageClient(http: http),
             now: { now },
-            pricing: { TestPricing.bundled }
+            pricing: { TestPricing.bundled },
+            spendCache: CursorSpendCacheStore(
+                directory: FileManager.default.temporaryDirectory
+                    .appendingPathComponent("openusage-cursor-spend-\(UUID().uuidString)", isDirectory: true)
+            )
         )
 
         let snapshot = await provider.refresh()

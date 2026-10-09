@@ -31,7 +31,9 @@ Just be signed into the Cursor app. OpenUsage reads Cursor's local state databas
 
 ## Spend history
 
-Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity. OpenUsage leaves isolated malformed rows out instead of silently counting broken values as zero. A failed download, an export that takes longer than 20 seconds, invalid export schema, or broken CSV structure leaves spend history unavailable for that refresh; live plan usage still updates. Each failure is recorded in the diagnostic log without including the exported usage data.
+Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage export. OpenUsage uses the exported token counts and shared model pricing to estimate the cost locally. Cursor's export may occasionally arrive late, so the newest figures can lag behind current activity. OpenUsage leaves isolated malformed rows out instead of silently counting broken values as zero.
+
+Parsed rows are kept on this Mac, one file per Cursor account. Each refresh downloads a single slice, and that slice still has to finish within 20 seconds. Once the last 30 days are cached, the slice runs from six hours before the newest cached event through now, and those overlapping rows replace the cached ones. Until the window is full, each refresh fetches one missing calendar day, newest first. A day that still exceeds 20 seconds is retried as a smaller piece next time. A timeout, a non-2xx response, or a body that does not end on a complete record leaves the cached rows unchanged, and the spend tiles still render from them. A response with no rows does not delete the overlap. Live plan usage still updates when the export fails. Each failure is recorded in the diagnostic log without including the exported usage data.
 
 ## Troubleshooting
 

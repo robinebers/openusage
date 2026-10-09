@@ -356,7 +356,8 @@ final class CursorSpendProviderTests: XCTestCase {
             usageClient: CursorUsageClient(http: http),
             now: { now },
             pricing: { TestPricing.bundled },
-            usageCSVTimeout: 0.05
+            usageCSVTimeout: 0.05,
+            spendCache: isolatedSpendCache()
         )
 
         let clock = ContinuousClock()
@@ -377,9 +378,10 @@ final class CursorSpendProviderTests: XCTestCase {
     func testSpendTrackingDownloadsCSVExposesSpendTilesAndFlagsUnknownModels() async {
         // The provider downloads the usage CSV, exposes the spend-tile + trend descriptors, and emits
         // Today / Yesterday / Last 30 Days / Usage Trend lines
-        // alongside the live quota meters. A row that used a model no pricing source can price carries
+        // alongside the live quota meters. An empty cache asks for one calendar day, so Yesterday
+        // arrives on the next refresh. A row that used a model no pricing source can price carries
         // that model's name so the tile can warn its cost is incomplete.
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let now = Calendar.current.date(bySettingHour: 15, minute: 0, second: 0, of: Date(timeIntervalSince1970: 1_800_000_000))!
         let iso = ISO8601DateFormatter()
         let todayStr = iso.string(from: now)
         let yesterdayStr = iso.string(from: Calendar.current.date(byAdding: .day, value: -1, to: now)!)
@@ -421,17 +423,27 @@ final class CursorSpendProviderTests: XCTestCase {
             ),
             usageClient: CursorUsageClient(http: http),
             now: { now },
-            pricing: { TestPricing.bundled }
+            pricing: { TestPricing.bundled },
+            spendCache: isolatedSpendCache()
         )
 
         let snapshot = await provider.refresh()
 
-        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.contains("export-usage-events-csv") },
-                      "Cursor refresh must download the usage CSV for spend metrics")
-        // Live quota meter survives; spend tiles + trend are present.
+        let firstCSV = http.requests.filter { $0.url.absoluteString.contains("export-usage-events-csv") }
+        XCTAssertEqual(firstCSV.count, 1, "Cursor refresh must download the usage CSV for spend metrics")
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        assertCSVRange(firstCSV[0].url, start: startOfToday, end: now)
         XCTAssertTrue(snapshot.lines.contains { $0.label == "Total usage" })
+        XCTAssertNotNil(snapshot.lines.first { $0.label == "Today" })
+        XCTAssertNil(snapshot.lines.first { $0.label == "Yesterday" }, "an empty cache fills one day per refresh")
+
+        let filled = await provider.refresh()
+        let csvURLs = http.requests.filter { $0.url.absoluteString.contains("export-usage-events-csv") }.map(\.url)
+        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: startOfToday)!
+        XCTAssertEqual(csvURLs.count, 2)
+        assertCSVRange(csvURLs[1], start: yesterdayStart, end: startOfToday)
         for label in ["Today", "Yesterday", "Last 30 Days", "Usage Trend"] {
-            XCTAssertNotNil(snapshot.lines.first { $0.label == label }, "\(label) line must be present")
+            XCTAssertNotNil(filled.lines.first { $0.label == label }, "\(label) line must be present")
         }
         let ids = Set(provider.widgetDescriptors.map(\.id))
         for id in ["cursor.today", "cursor.yesterday", "cursor.last30", "cursor.trend"] {
@@ -439,14 +451,97 @@ final class CursorSpendProviderTests: XCTestCase {
         }
 
         // The unknown model rode onto Today (and the Last 30 Days union); a fully-priced Yesterday stays clean.
-        XCTAssertEqual(unknownModels(snapshot.lines, "Today"), ["totally-unknown-model-xyz"])
-        XCTAssertEqual(unknownModels(snapshot.lines, "Yesterday"), [])
-        XCTAssertEqual(unknownModels(snapshot.lines, "Last 30 Days"), ["totally-unknown-model-xyz"])
+        XCTAssertEqual(unknownModels(filled.lines, "Today"), ["totally-unknown-model-xyz"])
+        XCTAssertEqual(unknownModels(filled.lines, "Yesterday"), [])
+        XCTAssertEqual(unknownModels(filled.lines, "Last 30 Days"), ["totally-unknown-model-xyz"])
     }
 
     private func unknownModels(_ lines: [MetricLine], _ label: String) -> [String]? {
         guard case .values(_, _, _, _, let unknownModels, _) = lines.first(where: { $0.label == label }) else { return nil }
         return unknownModels
+    }
+
+    func testWarmCacheRequestsSixHoursBeforeTheLastEvent() async throws {
+        let now = cursorSpendMidday()
+        let calendar = Calendar.current
+        let cache = isolatedSpendCache()
+        let last = now.addingTimeInterval(-2 * 60 * 60)
+        cache.save(
+            userID: "user_abc123",
+            CursorSpendCacheSnapshot(
+                rows: [cachedRow(date: last, input: 10)],
+                covered: [CursorSpendInterval(
+                    start: CursorSpendPlanner.windowStart(now: now, calendar: calendar),
+                    end: calendar.startOfDay(for: now)
+                )],
+                retry: nil
+            )
+        )
+        let (provider, http) = probingProvider(now: now, cache: cache) { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.headerOnlyCSV.utf8))
+        }
+
+        let snapshot = await provider.refresh()
+
+        let url = try XCTUnwrap(http.requests.last { $0.url.absoluteString.contains("export-usage-events-csv") }?.url)
+        assertCSVRange(url, start: last.addingTimeInterval(-CursorSpendPlanner.overlap), end: now)
+        XCTAssertEqual(totalTokens(snapshot), 10)
+    }
+
+    func testTimeoutKeepsCachedDaysAndRetriesTheLaterHalf() async {
+        let now = cursorSpendMidday()
+        let calendar = Calendar.current
+        let cache = isolatedSpendCache()
+        let older = calendar.date(byAdding: .day, value: -10, to: now)!
+        cache.save(
+            userID: "user_abc123",
+            CursorSpendCacheSnapshot(rows: [cachedRow(date: older, input: 111)], covered: [], retry: nil)
+        )
+        let (provider, _) = probingProvider(now: now, cache: cache, timeout: 0.05) { _ in
+            try await Task.sleep(for: .seconds(30))
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data())
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(totalTokens(snapshot), 111)
+        let saved = cache.load(userID: "user_abc123")
+        let startOfToday = calendar.startOfDay(for: now)
+        XCTAssertEqual(saved.rows.map(\.input), [111])
+        XCTAssertEqual(
+            saved.retry,
+            CursorSpendPlanner.halvedRetry(CursorSpendInterval(start: startOfToday, end: now))
+        )
+    }
+
+    func testTruncatedCSVKeepsCachedDays() async {
+        let now = cursorSpendMidday()
+        let calendar = Calendar.current
+        let cache = isolatedSpendCache()
+        let inside = now.addingTimeInterval(-3600)
+        let older = calendar.date(byAdding: .day, value: -5, to: now)!
+        cache.save(
+            userID: "user_abc123",
+            CursorSpendCacheSnapshot(
+                rows: [cachedRow(date: older, input: 50), cachedRow(date: inside, input: 111)],
+                covered: [],
+                retry: nil
+            )
+        )
+        let iso = ISO8601DateFormatter()
+        let csv = """
+        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
+        \(iso.string(from: inside)),composer-1,No,0,1,0,0,Included
+        truncated
+        """
+        let (provider, _) = probingProvider(now: now, cache: cache) { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
+        }
+
+        let snapshot = await provider.refresh()
+
+        XCTAssertEqual(totalTokens(snapshot), 161)
+        XCTAssertEqual(cache.load(userID: "user_abc123").rows.map(\.input), [50, 111])
     }
 
     func testSpendTileRendersCombinedCostAndTokensWithValueTooltip() async {
@@ -511,6 +606,235 @@ final class CursorSpendProviderTests: XCTestCase {
     private func isolatedCache(_ defaults: UserDefaults) -> ProviderSnapshotCache {
         ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
     }
+
+    private func isolatedSpendCache() -> CursorSpendCacheStore {
+        CursorSpendCacheStore(
+            directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("openusage-cursor-spend-\(UUID().uuidString)", isDirectory: true)
+        )
+    }
+
+    private func assertCSVRange(
+        _ url: URL,
+        start: Date,
+        end: Date,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(
+            items?.first { $0.name == "startDate" }?.value,
+            String(Int(start.timeIntervalSince1970 * 1000)),
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            items?.first { $0.name == "endDate" }?.value,
+            String(Int(end.timeIntervalSince1970 * 1000)),
+            file: file,
+            line: line
+        )
+    }
+
+    private func totalTokens(_ snapshot: ProviderSnapshot) -> Int {
+        snapshot.usageHistory?.series.daily.reduce(0) { $0 + $1.totalTokens } ?? -1
+    }
+
+    private func cachedRow(date: Date, input: Int) -> CursorSpendCachedRow {
+        CursorSpendCachedRow(
+            date: date,
+            model: "composer-1",
+            input: input,
+            cacheWrite5m: 0,
+            cacheRead: 0,
+            output: 0
+        )
+    }
+
+    private nonisolated static let headerOnlyCSV = "Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost\n"
+
+    private func probingProvider(
+        now: Date,
+        cache: CursorSpendCacheStore,
+        timeout: TimeInterval = 20,
+        csv: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
+    ) -> (CursorProvider, RoutingHTTPClient) {
+        let accessToken = makeCursorJWT(sub: "google-oauth2|user_abc123")
+        let http = RoutingHTTPClient { request in
+            if request.url.absoluteString.contains("export-usage-events-csv") {
+                return try await csv(request)
+            }
+            if request.url.absoluteString.contains("GetCurrentPeriodUsage") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("""
+                {"enabled":true,"billingCycleEnd":1772592000000,"planUsage":{"limit":40000,"remaining":32000,"totalPercentUsed":20}}
+                """.utf8))
+            }
+            if request.url.absoluteString.contains("GetPlanInfo") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"pro plan"}}"#.utf8))
+            }
+            if request.url.absoluteString.contains("GetCreditGrantsBalance") {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"hasCreditGrants":false}"#.utf8))
+            }
+            return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+        }
+        let provider = CursorProvider(
+            authStore: CursorAuthStore(
+                sqlite: KeyValueSQLite(values: [CursorAuthStore.accessTokenKey: accessToken]),
+                keychain: FakeKeychain()
+            ),
+            usageClient: CursorUsageClient(http: http),
+            now: { now },
+            pricing: { TestPricing.bundled },
+            usageCSVTimeout: timeout,
+            spendCache: cache
+        )
+        return (provider, http)
+    }
+}
+
+final class CursorSpendPlannerTests: XCTestCase {
+    func testEmptyCacheRequestsTheCurrentDay() {
+        let now = cursorSpendMidday()
+        let range = CursorSpendPlanner.nextRange(snapshot: .empty, now: now, calendar: .current)
+        XCTAssertEqual(range.start, Calendar.current.startOfDay(for: now))
+        XCTAssertEqual(range.end, now)
+        XCTAssertLessThan(range.end.timeIntervalSince(range.start), 86_400)
+    }
+
+    func testWarmCacheRequestsSixHoursBeforeTheLastEvent() {
+        let now = cursorSpendMidday()
+        let calendar = Calendar.current
+        let last = now.addingTimeInterval(-2 * 60 * 60)
+        let snapshot = CursorSpendCacheSnapshot(
+            rows: [cachedRow(date: last, input: 10)],
+            covered: [CursorSpendInterval(
+                start: CursorSpendPlanner.windowStart(now: now, calendar: calendar),
+                end: calendar.startOfDay(for: now)
+            )],
+            retry: nil
+        )
+        let range = CursorSpendPlanner.nextRange(snapshot: snapshot, now: now, calendar: calendar)
+        XCTAssertEqual(range.start, last.addingTimeInterval(-CursorSpendPlanner.overlap))
+        XCTAssertEqual(range.end, now)
+    }
+
+    func testBackfillSkipsTheLiveTailAndRequestsYesterday() {
+        let now = cursorSpendMidday()
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: now)
+        let fetchedThrough = now.addingTimeInterval(-120)
+        let snapshot = CursorSpendCacheSnapshot(
+            rows: [],
+            covered: [CursorSpendInterval(start: todayStart, end: fetchedThrough)],
+            retry: nil
+        )
+        let range = CursorSpendPlanner.nextRange(snapshot: snapshot, now: now, calendar: calendar)
+        let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart)!
+        XCTAssertEqual(range.start, yesterdayStart)
+        XCTAssertEqual(range.end, todayStart)
+    }
+
+    func testOverlapReplacesRowsInsteadOfAppending() {
+        let now = cursorSpendMidday()
+        let startOfToday = Calendar.current.startOfDay(for: now)
+        let range = CursorSpendInterval(start: startOfToday, end: now)
+        let snapshot = CursorSpendCacheSnapshot(
+            rows: [
+                cachedRow(date: now.addingTimeInterval(-(CursorSpendPlanner.retention + 86_400)), input: 9),
+                cachedRow(date: startOfToday.addingTimeInterval(-3600), input: 7),
+                cachedRow(date: now, input: 100)
+            ],
+            covered: [],
+            retry: range
+        )
+        let merged = CursorSpendPlanner.merge(
+            snapshot,
+            range: range,
+            rows: [CursorUsageCSVRow(
+                date: now,
+                model: "composer-1",
+                tokens: TokenBreakdown(input: 40),
+                imputedCostDollars: 1
+            )],
+            now: now
+        )
+        XCTAssertEqual(merged.rows.map(\.input), [7, 40])
+        XCTAssertNil(merged.retry)
+    }
+
+    func testZeroRowMergeKeepsRowsAndMarksCoverage() {
+        let now = cursorSpendMidday()
+        let range = CursorSpendInterval(start: Calendar.current.startOfDay(for: now), end: now)
+        let snapshot = CursorSpendCacheSnapshot(
+            rows: [cachedRow(date: now, input: 100)],
+            covered: [],
+            retry: range
+        )
+        let merged = CursorSpendPlanner.merge(snapshot, range: range, rows: [], now: now)
+        XCTAssertEqual(merged.rows.map(\.input), [100])
+        XCTAssertEqual(merged.covered, [range])
+        XCTAssertNil(merged.retry)
+    }
+
+    func testRetryIsPreferredAndHalvesTowardTheRecentEdge() {
+        let now = cursorSpendMidday()
+        let retry = CursorSpendInterval(start: now.addingTimeInterval(-3600), end: now)
+        let snapshot = CursorSpendCacheSnapshot(rows: [], covered: [], retry: retry)
+        XCTAssertEqual(
+            CursorSpendPlanner.nextRange(snapshot: snapshot, now: now, calendar: .current),
+            retry
+        )
+
+        let day = CursorSpendInterval(start: now, end: now.addingTimeInterval(86_400))
+        let half = CursorSpendPlanner.halvedRetry(day)
+        XCTAssertEqual(half.start, now.addingTimeInterval(43_200))
+        XCTAssertEqual(half.end, day.end)
+        let tiny = CursorSpendInterval(start: now, end: now.addingTimeInterval(10 * 60))
+        XCTAssertEqual(CursorSpendPlanner.halvedRetry(tiny), tiny)
+    }
+
+    func testTruncationRequiresARejectedRowAndNoRecordBoundary() {
+        XCTAssertTrue(CursorSpendPlanner.bodyIsTruncated("row", rejectedRowCount: 1))
+        XCTAssertFalse(CursorSpendPlanner.bodyIsTruncated("row\n", rejectedRowCount: 1))
+        XCTAssertFalse(CursorSpendPlanner.bodyIsTruncated("row", rejectedRowCount: 0))
+    }
+
+    private func cachedRow(date: Date, input: Int) -> CursorSpendCachedRow {
+        CursorSpendCachedRow(date: date, model: "composer-1", input: input, cacheWrite5m: 0, cacheRead: 0, output: 0)
+    }
+}
+
+final class CursorSpendCacheStoreTests: XCTestCase {
+    func testLoadDoesNotCreateTheDirectoryAndAccountsStaySeparate() throws {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-cursor-spend-missing-\(UUID().uuidString)", isDirectory: true)
+        let emptyStore = CursorSpendCacheStore(directory: missing)
+        XCTAssertEqual(emptyStore.load(userID: "user-a"), .empty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path))
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("openusage-cursor-spend-\(UUID().uuidString)", isDirectory: true)
+        let store = CursorSpendCacheStore(directory: directory)
+        let now = cursorSpendMidday()
+        let snapshot = CursorSpendCacheSnapshot(
+            rows: [CursorSpendCachedRow(date: now, model: "composer-1", input: 5, cacheWrite5m: 1, cacheRead: 2, output: 3)],
+            covered: [CursorSpendInterval(start: now.addingTimeInterval(-3600), end: now)],
+            retry: nil
+        )
+        store.save(userID: "user-a", snapshot)
+        XCTAssertEqual(store.load(userID: "user-b"), .empty)
+        XCTAssertEqual(store.load(userID: "user-a"), snapshot)
+
+        let url = directory.appendingPathComponent("\(JSONLScanCachePaths.stableFingerprint("user-a")).json")
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        XCTAssertEqual((attrs[.posixPermissions] as? NSNumber)?.uint16Value, 0o600)
+        let dirAttrs = try FileManager.default.attributesOfItem(atPath: directory.path)
+        XCTAssertEqual((dirAttrs[.posixPermissions] as? NSNumber)?.uint16Value, 0o700)
+    }
+}
+
+private func cursorSpendMidday() -> Date {
+    Calendar.current.date(bySettingHour: 15, minute: 0, second: 0, of: Date(timeIntervalSince1970: 1_800_000_000))!
 }
 
 // MARK: - Client request contract
