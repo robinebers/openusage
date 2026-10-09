@@ -188,6 +188,8 @@ final class OpenCodeUsageScannerTests: XCTestCase {
               time_created INTEGER, time_updated INTEGER, data TEXT);
             CREATE TABLE credential (id TEXT PRIMARY KEY, integration_id TEXT, label TEXT, value TEXT,
               connector_id TEXT, method_id TEXT, active INTEGER, time_created INTEGER, time_updated INTEGER);
+            CREATE TABLE migration (id TEXT PRIMARY KEY, time_completed INTEGER);
+            INSERT INTO migration VALUES ('20260805200742_import_legacy_credentials',\(t));
             INSERT INTO message VALUES ('m1','s',\(t),\(t),
               '{"role":"assistant","providerID":"opencode-go","modelID":"glm-5.2","cost":2,"tokens":{"total":500}}');
             INSERT INTO session_message VALUES ('m1','s','assistant',1,\(t),\(t),
