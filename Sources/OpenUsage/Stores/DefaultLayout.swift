@@ -81,9 +81,9 @@ enum DefaultLayout {
         "codex.session", "codex.weekly",
         "cursor.auto", "cursor.api",
         "copilot.premium",
-        // Ollama sends Session and Weekly (legacy plans) or Monthly (current plans), never all three, and
-        // the strip drops pins without data — so at most two of these ever show.
-        "ollama.session", "ollama.weekly", "ollama.monthly",
+        // Ollama: Monthly is the current plans' meter. Legacy plans' Session and Weekly stay unpinned so
+        // they don't spend the two-star cap on rows a current plan never shows.
+        "ollama.monthly",
         "openrouter.credits",
         "zai.session", "zai.weekly"
     ]

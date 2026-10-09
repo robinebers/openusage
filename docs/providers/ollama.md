@@ -19,8 +19,8 @@ your plan has and leaves the other rows out.
 Your plan (Free, Pro, Max) is shown beside the provider name. If Ollama can't tell OpenUsage which plan
 you're on, the badge is left off and the card explains why — the meters keep working either way.
 
-Session, Weekly, and Monthly are always visible and start pinned to the menu bar; since a plan only has
-Session and Weekly or Monthly, at most two of them show there. Purchased Credits sits behind the
+Session, Weekly, and Monthly are always visible, and Monthly starts pinned to the menu bar. On a legacy
+plan, star Session or Weekly in **Customize** to put them there. Purchased Credits sits behind the
 provider's caret — you can move any of them in **Customize**. Local models don't count toward these
 limits; only cloud models do.
 

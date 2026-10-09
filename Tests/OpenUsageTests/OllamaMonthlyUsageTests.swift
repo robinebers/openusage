@@ -110,7 +110,11 @@ final class OllamaMonthlyUsageTests: XCTestCase {
         ])
         XCTAssertFalse(fresh.expandedMetricIDs.contains("ollama.monthly"))
         XCTAssertTrue(fresh.expandedMetricIDs.contains("ollama.purchasedCredits"))
-        XCTAssertEqual(fresh.pinnedMetricIDs, ["ollama.session", "ollama.weekly", "ollama.monthly"])
+        XCTAssertEqual(fresh.pinnedMetricIDs, ["ollama.monthly"])
+        // A current plan shows Monthly and Purchased Credits, so both fit under the two-star cap.
+        XCTAssertTrue(fresh.canPin("ollama.purchasedCredits"))
+        fresh.setPinned(true, for: "ollama.purchasedCredits")
+        XCTAssertEqual(fresh.pinnedMetricIDs, ["ollama.monthly", "ollama.purchasedCredits"])
 
         // A customized layout from before this change drops the removed Last 4 Weeks row, receives
         // Purchased Credits once, and keeps the user's own pins.
