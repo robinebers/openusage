@@ -5,7 +5,7 @@ final class CodexProvider: ProviderRuntime {
     static func makeProvider(id: String = "codex", displayName: String = "Codex") -> Provider {
         Provider(id: id, displayName: displayName, icon: .providerMark("codex"), links: [
             .init(label: "Status", url: "https://status.openai.com/"),
-            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+            .init(label: "Dashboard", url: "https://chatgpt.com/settings/usage")
         ])
     }
 
