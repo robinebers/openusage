@@ -8,6 +8,8 @@ struct ClaudeSwapAccount: Equatable, Sendable {
     let identityKey: String
     let organizationID: String
     var organizationName: String? = nil
+    /// Set for a plain `CLAUDE_CONFIG_DIR` folder (no Swap vault); Claude Code keys its Keychain item on this path.
+    var configDirectory: String? = nil
 
     func displayName(fallbackOrganization: String? = nil) -> String {
         let organization = organizationName ?? fallbackOrganization ?? "Organization \(organizationID.prefix(8))"
@@ -15,11 +17,33 @@ struct ClaudeSwapAccount: Equatable, Sendable {
     }
 
     var sessionDirectory: String {
+        if let configDirectory { return configDirectory }
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
         let slug = email.precomposedStringWithCanonicalMapping.unicodeScalars.map {
             allowed.contains($0) ? String($0) : "_"
         }.joined()
         return "\(root)/sessions/\(slot)-\(slug)"
+    }
+
+    /// `~/.claude-<name>` folders signed in with `CLAUDE_CONFIG_DIR=<folder> claude`, identified by their `.claude.json`.
+    static func discoverConfigDirectories(files: TextFileAccessing, home: URL, names: [String]) -> [Self] {
+        names.filter { $0.hasPrefix(".claude-") && $0 != ".claude-swap-backup" }.sorted().compactMap { name in
+            let directory = home.appendingPathComponent(name).path
+            guard let text = try? files.readTextIfPresent(directory + "/.claude.json"),
+                  let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+                  let oauth = object["oauthAccount"] as? [String: Any],
+                  let email = oauth["emailAddress"] as? String, !email.isEmpty,
+                  let uuid = (oauth["accountUuid"] as? String).flatMap(UUID.init(uuidString:)),
+                  let org = (oauth["organizationUuid"] as? String).flatMap(UUID.init(uuidString:))
+            else { return nil }
+            let organization = org.uuidString.lowercased()
+            return Self(root: directory, slot: name, email: email,
+                        identityKey: "\(uuid.uuidString.lowercased())|\(organization)",
+                        organizationID: organization,
+                        organizationName: (oauth["organizationName"] as? String)?
+                            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                        configDirectory: directory)
+        }
     }
 
     static func discover(files: TextFileAccessing, home: URL) -> [Self] {
@@ -62,6 +86,8 @@ extension ClaudeAuthStore {
     /// Vault copies belong to Claude Swap. Read their access tokens, but never rotate or overwrite
     /// them: that would leave Swap's active/session copies holding an invalidated refresh token.
     func loadSwapVaultCredential(_ account: ClaudeSwapAccount) -> ClaudeCredentialState? {
+        // A plain config folder has no vault; its login lives in the path-scoped Keychain item.
+        if account.configDirectory != nil { return nil }
         func candidate(_ text: String) -> ClaudeCredentialState? {
             guard let parsed = Self.parseCredentials(text), var oauth = parsed.claudeAiOauth,
                   oauth.accessToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false

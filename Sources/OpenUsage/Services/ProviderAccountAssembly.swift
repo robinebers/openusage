@@ -87,6 +87,9 @@ struct ProviderAccountAssembly {
                 else { return nil }
                 return url.lastPathComponent
             }
+        },
+        listHomeEntries: @escaping @Sendable (URL) -> [String] = { home in
+            (try? FileManager.default.contentsOfDirectory(atPath: home.path)) ?? []
         }
     ) async -> ProviderAccountAssembly {
         let codex = families.contains("codex")
@@ -127,7 +130,10 @@ struct ProviderAccountAssembly {
             return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
         }
 
-        let swapAccounts = ClaudeSwapAccount.discover(files: observer.files, home: observer.homeDirectory())
+        let home = observer.homeDirectory()
+        let swapAccounts = ClaudeSwapAccount.discover(files: observer.files, home: home)
+            + ClaudeSwapAccount.discoverConfigDirectories(files: observer.files, home: home,
+                                                          names: listHomeEntries(home))
         if !swapAccounts.isEmpty {
             AppLog.info(.config, "accounts: discovered \(swapAccounts.count) Claude Swap accounts")
         }
