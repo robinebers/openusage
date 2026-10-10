@@ -46,7 +46,7 @@ final class AppContainer {
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
-    private let refreshTask: Task<Void, Never>
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
     private let seedTask: Task<Void, Never>?
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
@@ -58,7 +58,8 @@ final class AppContainer {
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
-    init(isFreshInstall: Bool = false, initialProviderFamilies: Set<String>? = nil) async {
+    init(isFreshInstall: Bool = false, initialProviderFamilies: Set<String>? = nil,
+         startsServices: Bool = true, allowsAccountDiscoveryInteraction: Bool = false) async {
         // Capture the user's login-shell environment off-main so provider keys exported in a shell
         // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
@@ -68,9 +69,12 @@ final class AppContainer {
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
         // the snapshot cache's account stamp and reconciles the account registry.
-        let accountAssembly = await ProviderAccountAssembly.make(
-            waitsForLoginShell: true, enabledFamilies: initialProviderFamilies
+        let discoveryAccess = KeychainAccessContext(
+            mode: allowsAccountDiscoveryInteraction ? .interactive : .background
         )
+        let accountAssembly = await KeychainAccessContext.$current.withValue(discoveryAccess) {
+            await ProviderAccountAssembly.make(waitsForLoginShell: true, enabledFamilies: initialProviderFamilies)
+        }
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
@@ -223,12 +227,21 @@ final class AppContainer {
                 errors: dataStore.providerErrors
             )
         })
-        self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
-        localAPI.start()
+        if startsServices { startServices() }
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on in Settings, not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
+    }
+
+    var providerRuntimes: [ProviderRuntime] { providers }
+
+    /// Onboarding hands over this exact container, including its provider state and first results.
+    func startServices(firstRefreshAlreadyCompleted: Bool = false) {
+        guard refreshTask == nil else { return }
+        refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry,
+                                               waitsBeforeFirstRefresh: firstRefreshAlreadyCompleted)
+        localAPI.start()
     }
 
     /// A user toggling a provider on is already asking to connect it. Mark that intent before
@@ -242,7 +255,7 @@ final class AppContainer {
     }
 
     deinit {
-        refreshTask.cancel()
+        refreshTask?.cancel()
         seedTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()
@@ -309,9 +322,14 @@ final class AppContainer {
     /// Sparkle's update bookkeeping, and unrelated global-domain changes from other processes. Waking on
     /// that, with no minimum interval before re-refreshing, collapsed the fixed 5-minute cadence into a
     /// refresh storm.
-    private static func startPeriodicRefresh(dataStore: WidgetDataStore, telemetry: TelemetryRecorder) -> Task<Void, Never> {
+    private static func startPeriodicRefresh(
+        dataStore: WidgetDataStore, telemetry: TelemetryRecorder, waitsBeforeFirstRefresh: Bool = false
+    ) -> Task<Void, Never> {
         Task {
             let wakeSignal = RefreshWakeSignal()
+            if waitsBeforeFirstRefresh {
+                await wakeSignal.waitForWake(timeout: RefreshSetting.interval)
+            }
             while !Task.isCancelled {
                 await dataStore.refreshAll()
                 // Re-evaluate quota pace milestones every tick — after the refresh so it sees fresh data,

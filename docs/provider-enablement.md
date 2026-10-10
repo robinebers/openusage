@@ -6,7 +6,9 @@ How OpenUsage decides which providers start on, what happens when an update adds
 
 On the first launch, a welcome screen looks for existing sign-ins without requesting Keychain access or contacting providers. Choose the providers you want, then click **Connect Selected**. Only the selected providers are connected, one at a time. macOS may ask for access to their saved sign-ins; **Always Allow** lets later background updates read the same items.
 
-Failed connections stay on the welcome screen with a retry option. **Open Dashboard** enables the providers that connected successfully. **Skip for Now** opens the dashboard with no providers enabled; use Customize to enable a provider later. Turning a provider on immediately requests any needed access. Closing the app before completing setup shows the welcome screen again next time.
+Access failures stay on the welcome screen with a retry option. A temporary network failure leaves the provider enabled and shows that its usage is unavailable. **Open Dashboard** reuses the providers and first results from setup; it does not immediately fetch them a second time. Normal scheduled updates resume afterward.
+
+**Skip for Now** opens the dashboard with no providers enabled. The welcome screen appears on every launch until at least one provider is enabled. Use Customize to enable a provider later; turning it on immediately requests any needed access. Once a provider is enabled, normal restarts and updates go straight to the dashboard.
 
 Detection is evidence of a local sign-in, not proof that it is valid. A protected Keychain entry can appear as detected before its contents have been read. Background refreshes never intentionally request Keychain authorization: when access is needed, the provider asks you to use Refresh.
 

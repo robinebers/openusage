@@ -52,8 +52,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // The fresh-install answer is captured BEFORE migrating (the schema stamp makes the domain
         // non-empty) and handed to `AppContainer`, whose `FirstRunSeeder` seeds a minimal provider set.
         let isFreshInstall = SettingsMigrator.isFreshInstall()
-        _ = FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall)
         SettingsMigrator.migrate()
+        _ = FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall)
         // Let only the `SMAppService` login item drive startup: opt out of AppKit's reopen-on-login
         // so a reboot doesn't also restore us and race the login item in the first place. The lock
         // above resolves same-bundle startup races even if both launch triggers fire; this just avoids
@@ -89,12 +89,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func finishLaunching(isFreshInstall: Bool) async {
         if FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall) {
             UserDefaults.standard.set(true, forKey: FirstLaunchSetup.pendingKey)
-            let setup = FirstLaunchSetup(providers: ProviderCatalog.make())
-            firstLaunchWindow = FirstLaunchWindowController(setup: setup) { [weak self] selected in
+            let setup = FirstLaunchSetup(providers: ProviderCatalog.make()) { selected in
+                await AppContainer(initialProviderFamilies: selected, startsServices: false,
+                                   allowsAccountDiscoveryInteraction: true)
+            }
+            firstLaunchWindow = FirstLaunchWindowController(setup: setup) { [weak self, weak setup] selected in
                 guard let self else { return }
+                let prepared = setup?.preparedContainer
                 self.firstLaunchWindow?.finish()
                 self.firstLaunchWindow = nil
-                Task { await self.startDashboard(initialProviderFamilies: selected) }
+                Task { await self.startDashboard(initialProviderFamilies: selected, preparedContainer: prepared) }
             }
             firstLaunchWindow?.show()
             return
@@ -102,8 +106,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         await startDashboard()
     }
 
-    private func startDashboard(initialProviderFamilies: Set<String>? = nil) async {
-        let container = await AppContainer(initialProviderFamilies: initialProviderFamilies)
+    private func startDashboard(initialProviderFamilies: Set<String>? = nil,
+                                preparedContainer: AppContainer? = nil) async {
+        let container: AppContainer
+        if let preparedContainer {
+            container = preparedContainer
+            let families = initialProviderFamilies ?? []
+            container.enablement.seedEnabledProviders(Set(container.providerRuntimes.map { $0.provider.id }.filter {
+                families.contains(ProviderAccountID.family(of: $0))
+            }))
+            container.startServices(firstRefreshAlreadyCompleted: true)
+        } else {
+            container = await AppContainer(initialProviderFamilies: initialProviderFamilies)
+        }
         self.container = container
         statusItemController = StatusItemController(container: container, updater: updater)
         if initialProviderFamilies != nil {

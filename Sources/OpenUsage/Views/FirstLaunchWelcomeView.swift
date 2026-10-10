@@ -57,39 +57,67 @@ struct FirstLaunchWelcomeView: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
-                .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.primary.opacity(0.07), lineWidth: 1))
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
             }
             .padding(.horizontal, 28)
 
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "lock").padding(.top, 2)
-                Text("When you connect, macOS may ask to access saved sign-ins. Only your selected providers will be requested, one at a time. Choose Always Allow in macOS for background updates.")
-                    .fixedSize(horizontal: false, vertical: true)
+            GroupBox {
+                HStack(alignment: .top, spacing: 11) {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 20, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Access to Your Saved Sign-Ins")
+                            .font(.callout.weight(.semibold))
+                        Text("Connecting may open macOS permission dialogs for your selected providers. Choose Always Allow to keep background updates working.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(6)
             }
-            .font(.caption).foregroundStyle(.secondary)
-            .padding(.horizontal, 30).padding(.vertical, 18)
+            .padding(.horizontal, 28)
+            .padding(.top, 16)
 
-            Divider()
-            HStack {
-                Button("Skip for Now") { finish([]) }
-                    .disabled(setup.isConnecting)
-                Spacer()
-                if setup.hasAttemptedConnection, setup.hasFailures {
-                    Button("Retry Failed") { connect() }.disabled(setup.isConnecting)
-                }
-                Button(setup.hasAttemptedConnection && !setup.isConnecting ? "Open Dashboard" : "Connect Selected") {
-                    if setup.hasAttemptedConnection { finish(setup.connectedIDs) } else { connect() }
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                .disabled(setup.isDetecting || setup.isConnecting || (!setup.hasAttemptedConnection && setup.selectedIDs.isEmpty))
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer(spacing: 12) { actionButtons }
+                    .padding(20)
+            } else {
+                actionButtons.padding(20)
             }
-            .controlSize(.large)
-            .padding(20)
+
         }
         .frame(width: 520, height: 650)
         .onDisappear { connectionTask?.cancel() }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Button("Skip for Now") { finish([]) }
+                .onboardingSecondaryAction()
+                .disabled(setup.isConnecting)
+            Spacer()
+            if setup.hasAttemptedConnection, setup.hasFailures {
+                Button("Retry") { connect() }
+                    .onboardingSecondaryAction()
+                    .disabled(setup.isConnecting)
+            }
+            Button(primaryActionTitle) {
+                if setup.hasAttemptedConnection { finish(setup.connectedIDs) } else { connect() }
+            }
+            .onboardingPrimaryAction()
+            .keyboardShortcut(.defaultAction)
+            .disabled(setup.isDetecting || setup.isConnecting || (!setup.hasAttemptedConnection && setup.selectedIDs.isEmpty))
+        }
+        .controlSize(.large)
+    }
+
+    private var primaryActionTitle: String {
+        if setup.isConnecting { return "Connecting…" }
+        return setup.hasAttemptedConnection ? "Open Dashboard" : "Connect Selected"
     }
 
     private func connect() {
@@ -113,12 +141,15 @@ struct FirstLaunchWelcomeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(choice.provider.displayName).font(.body.weight(.medium))
                 Text(status(choice)).font(.caption)
-                    .foregroundStyle(choice.error == nil ? Color.secondary : Color.red)
+                    .foregroundStyle(choice.error == nil ? Color.secondary
+                                     : choice.usageUnavailable ? Color.orange : Color.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             if choice.connecting {
                 ProgressView().controlSize(.small)
+            } else if choice.usageUnavailable {
+                Image(systemName: "clock").foregroundStyle(.secondary)
             } else if choice.connected {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             }
@@ -129,8 +160,8 @@ struct FirstLaunchWelcomeView: View {
 
     private func status(_ choice: FirstLaunchSetup.Choice) -> String {
         if choice.connecting { return "Connecting…" }
-        if choice.connected { return "Connected" }
         if let error = choice.error { return error }
+        if choice.connected { return "Enabled" }
         if choice.needsAccess { return "Needs macOS permissions" }
         return choice.detected ? "Sign-In Detected" : "Set Up or Sign In First"
     }

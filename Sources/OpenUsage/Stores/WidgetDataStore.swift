@@ -196,6 +196,22 @@ final class WidgetDataStore {
         }
     }
 
+    func adoptFirstRefresh(_ snapshot: ProviderSnapshot) {
+        let id = snapshot.providerID
+        guard providersByID[id] != nil else { return }
+        if let message = Self.errorMessage(in: snapshot) {
+            providerErrors[id] = message
+            failureRetryAfter[id] = now().addingTimeInterval(RefreshSetting.interval)
+        } else {
+            providerErrors[id] = nil
+            failureRetryAfter[id] = nil
+            localSnapshots[id] = snapshot
+            cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[id])
+            rebuildRenderedSnapshots()
+        }
+        lastRefreshAt = now()
+    }
+
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
     /// Everything stays MainActor-isolated; the overlap happens at the network awaits inside each
     /// provider, and the per-provider in-flight guard in `refresh` still prevents duplicate fetches.

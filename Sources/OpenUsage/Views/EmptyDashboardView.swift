@@ -31,7 +31,7 @@ struct EmptyDashboardView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 3)
             }
-            .buttonStyle(.borderedProminent)
+            .onboardingPrimaryAction()
             .controlSize(.large)
         }
         .frame(maxWidth: .infinity)

@@ -14,6 +14,46 @@ final class FirstLaunchSetupTests: XCTestCase {
         XCTAssertFalse(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
     }
 
+    func testFirstLaunchFlagDoesNotCauseLegacySettingsMigration() throws {
+        let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fresh = SettingsMigrator.isFreshInstall(defaults: defaults, domainName: suite)
+        XCTAssertTrue(fresh)
+        SettingsMigrator.migrate(defaults: defaults, domainName: suite)
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: fresh, defaults: defaults))
+        XCTAssertNil(ProviderEnablementStore(defaults: defaults).enabledIDs)
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+    }
+
+    func testNoEnabledProvidersAlwaysNeedsSetupEvenAfterSkipping() throws {
+        let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let enablement = ProviderEnablementStore(defaults: defaults)
+        enablement.seedEnabledProviders([])
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+        defaults.set(true, forKey: FirstLaunchSetup.pendingKey)
+        enablement.setEnabled(true, for: "claude")
+        XCTAssertFalse(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+    }
+
+    func testNetworkFailureKeepsProviderEnabledAndRetainsFirstResult() async {
+        let provider = Stub(id: "test", available: true, needsPermission: true)
+        provider.networkFailure = true
+        let setup = FirstLaunchSetup(providers: [provider])
+        await setup.detect()
+        await setup.connectSelected()
+        XCTAssertEqual(setup.connectedIDs, ["test"])
+        XCTAssertTrue(setup.choices[0].usageUnavailable)
+        XCTAssertEqual(setup.firstSnapshots["test"]?.errorCategory, .network)
+        XCTAssertEqual(provider.refreshes, 1)
+        provider.networkFailure = false
+        await setup.connectSelected()
+        XCTAssertFalse(setup.choices[0].usageUnavailable)
+        XCTAssertEqual(provider.refreshes, 2)
+    }
+
     func testDiscoveryDoesNotConnectAndKeepsPermissionOnlyProvidersVisible() async {
         let file = Stub(id: "file", available: true)
         let protected = Stub(id: "protected", needsPermission: true)
@@ -94,6 +134,7 @@ final class FirstLaunchSetupTests: XCTestCase {
         let needsPermission: Bool
         let recorder: Recorder?
         var fail = false
+        var networkFailure = false
         var refreshes = 0
         var interactive = false
         var discoveryMode: KeychainAccessContext.Mode?
@@ -119,6 +160,10 @@ final class FirstLaunchSetupTests: XCTestCase {
             }
             await Task.yield()
             if let recorder { recorder.active -= 1 }
+            if networkFailure {
+                if needsPermission { KeychainAccessContext.current?.recordPermissionNeeded() }
+                return .error(provider: provider, message: "Temporarily offline", category: .network)
+            }
             if fail {
                 KeychainAccessContext.current?.recordPermissionNeeded()
                 return .error(provider: provider, error: KeychainPermissionNeeded())

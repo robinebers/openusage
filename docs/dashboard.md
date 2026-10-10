@@ -4,7 +4,7 @@ The popover that opens from the menu bar icon. Providers are sections; each sect
 
 ## First launch
 
-The welcome screen detects existing sign-ins without opening permission dialogs. Select providers and choose **Connect Selected** to connect them in order. macOS may request access to saved credentials for those providers. You can retry failures, open the dashboard with successful connections, or choose **Skip for Now** and set up later in Customize.
+The welcome screen detects existing sign-ins without opening permission dialogs. Select providers and choose **Connect Selected** to connect them in order. macOS may request access to saved credentials for those providers. You can retry access failures or open the dashboard using those first results. Temporary network failures keep providers enabled and retry on the normal update schedule. **Skip for Now** lets you set up later in Customize; if no provider is enabled, the welcome screen returns on the next launch.
 
 
 When the dashboard has no visible providers, **Choose Providers** opens Customize so you can add them.
