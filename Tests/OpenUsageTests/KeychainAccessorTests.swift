@@ -1,30 +1,19 @@
+import Security
 import XCTest
 @testable import OpenUsage
 
 final class KeychainAccessorTests: XCTestCase {
-    /// Returns a fixed `ProcessResult` for any invocation — lets us drive the accessor's exit-code
-    /// handling without a real `security` subprocess.
-    private struct StubRunner: ProcessRunning {
-        let result: ProcessResult
-        func run(executable: String, arguments: [String], environment: [String: String], timeout: TimeInterval) throws -> ProcessResult {
-            result
-        }
-    }
-
-    func testItemNotFoundExitReturnsNil() throws {
-        // Exit 44 (errSecItemNotFound) is the legitimate "no credential stored" case → nil.
-        let accessor = SecurityKeychainAccessor(processRunner: StubRunner(
-            result: ProcessResult(exitCode: 44, stdout: "", stderr: "The specified item could not be found in the keychain.")
-        ))
+    func testItemNotFoundReturnsNil() throws {
+        let accessor = SecurityKeychainAccessor(
+            itemAccessor: StubItemAccessor(readStatus: errSecItemNotFound)
+        )
         XCTAssertNil(try accessor.readGenericPassword(service: "Test"))
     }
 
     func testNonItemNotFoundFailureThrowsReadFailed() {
-        // A non-44 non-zero exit (locked keychain / access denied / cancelled unlock) must throw, not
-        // collapse into the same nil as "no credential" — otherwise it gets mislabeled "not signed in".
-        let accessor = SecurityKeychainAccessor(processRunner: StubRunner(
-            result: ProcessResult(exitCode: 51, stdout: "", stderr: "User interaction is not allowed.")
-        ))
+        let accessor = SecurityKeychainAccessor(
+            itemAccessor: StubItemAccessor(readStatus: errSecInteractionNotAllowed)
+        )
         XCTAssertThrowsError(try accessor.readGenericPassword(service: "Test")) { error in
             guard case KeychainError.readFailed = error else {
                 return XCTFail("expected KeychainError.readFailed, got \(error)")
@@ -33,30 +22,30 @@ final class KeychainAccessorTests: XCTestCase {
     }
 
     func testFoundValueIsReturnedTrimmed() throws {
-        let accessor = SecurityKeychainAccessor(processRunner: StubRunner(
-            result: ProcessResult(exitCode: 0, stdout: "secret-token\n", stderr: "")
-        ))
+        let accessor = SecurityKeychainAccessor(
+            itemAccessor: StubItemAccessor(data: Data("secret-token\n".utf8))
+        )
         XCTAssertEqual(try accessor.readGenericPassword(service: "Test"), "secret-token")
     }
 
     func testExplicitAccountReadAndWriteUseTheSameItem() throws {
-        let runner = RecordingRunner()
-        let accessor: any KeychainAccessing = SecurityKeychainAccessor(processRunner: runner)
+        let itemAccessor = StubItemAccessor()
+        let accessor: any KeychainAccessing = SecurityKeychainAccessor(itemAccessor: itemAccessor)
         let account = "cli|0123456789abcdef"
 
         _ = try accessor.readGenericPassword(service: "Codex Auth", account: account)
         try accessor.writeGenericPassword(service: "Codex Auth", account: account, value: "synthetic-token")
 
-        XCTAssertEqual(runner.arguments, [
-            ["find-generic-password", "-a", account, "-s", "Codex Auth", "-w"],
-            ["add-generic-password", "-U", "-a", account, "-s", "Codex Auth", "-w", "synthetic-token"]
+        XCTAssertEqual(itemAccessor.requests, [
+            .init(operation: .read, service: "Codex Auth", account: account),
+            .init(operation: .update, service: "Codex Auth", account: account),
         ])
     }
 
     func testExplicitAccountWriteFailurePropagates() {
-        let accessor = SecurityKeychainAccessor(processRunner: StubRunner(
-            result: ProcessResult(exitCode: 51, stdout: "", stderr: "User interaction is not allowed.")
-        ))
+        let accessor = SecurityKeychainAccessor(
+            itemAccessor: StubItemAccessor(updateStatus: errSecInteractionNotAllowed)
+        )
         XCTAssertThrowsError(try accessor.writeGenericPassword(
             service: "Codex Auth", account: "cli|0123456789abcdef", value: "synthetic-token"
         )) { error in
@@ -74,13 +63,63 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertEqual(keychain.value, "original")
     }
 
-    private final class RecordingRunner: ProcessRunning, @unchecked Sendable {
-        var arguments: [[String]] = []
+    func testWriteAddsOnlyWhenNoExistingItemMatches() throws {
+        let itemAccessor = StubItemAccessor(updateStatus: errSecItemNotFound)
+        let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
 
-        func run(executable: String, arguments: [String], environment: [String: String], timeout: TimeInterval) throws -> ProcessResult {
-            XCTAssertEqual(executable, "/usr/bin/security")
-            self.arguments.append(arguments)
-            return ProcessResult(exitCode: 0, stdout: "synthetic-token", stderr: "")
+        try accessor.writeGenericPassword(
+            service: "Codex Auth",
+            account: "cli|0123456789abcdef",
+            value: "synthetic-token"
+        )
+
+        XCTAssertEqual(itemAccessor.requests.map(\.operation), [.update, .add])
+    }
+
+    private final class StubItemAccessor: SecurityItemAccessing, @unchecked Sendable {
+        enum Operation: Equatable {
+            case read
+            case update
+            case add
+        }
+
+        struct Request: Equatable {
+            let operation: Operation
+            let service: String
+            let account: String?
+        }
+
+        let readStatus: OSStatus
+        let data: Data?
+        let updateStatus: OSStatus
+        let addStatus: OSStatus
+        var requests: [Request] = []
+
+        init(
+            readStatus: OSStatus = errSecSuccess,
+            data: Data? = Data("synthetic-token".utf8),
+            updateStatus: OSStatus = errSecSuccess,
+            addStatus: OSStatus = errSecSuccess
+        ) {
+            self.readStatus = readStatus
+            self.data = data
+            self.updateStatus = updateStatus
+            self.addStatus = addStatus
+        }
+
+        func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
+            requests.append(.init(operation: .read, service: service, account: account))
+            return (readStatus, data)
+        }
+
+        func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+            requests.append(.init(operation: .update, service: service, account: account))
+            return updateStatus
+        }
+
+        func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+            requests.append(.init(operation: .add, service: service, account: account))
+            return addStatus
         }
     }
 }

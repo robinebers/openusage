@@ -30,7 +30,7 @@ If Codex reports only a 7-day window, it maps to Weekly without inventing a 5-ho
 
 ## Where credentials come from
 
-Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a Keychain fallback. Tokens refresh automatically and rotate back into the same auth file or Keychain item they came from.
+Sign in once with the Codex CLI (`codex`); OpenUsage reads the same auth files (`$CODEX_HOME` respected) with a Keychain fallback. The first Keychain read can ask you to grant OpenUsage access; choosing **Always Allow** authorizes the signed app for later background reads. Tokens refresh automatically and rotate back into the same auth file or Keychain item they came from.
 
 The Keychain fallback selects the Codex CLI item for `$CODEX_HOME` (or `~/.codex` when unset), including when that home is a symlink. Other Codex homes can have separate Keychain logins; OpenUsage does not pick an unrelated item just because it has the same service name.
 
