@@ -2,6 +2,23 @@ import Foundation
 
 struct CursorUsageDay: Codable, Sendable, Equatable {
     var models: [String: TokenBreakdown]
+    var isComplete: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case models
+        case isComplete
+    }
+
+    init(models: [String: TokenBreakdown], isComplete: Bool) {
+        self.models = models
+        self.isComplete = isComplete
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        models = try container.decode([String: TokenBreakdown].self, forKey: .models)
+        isComplete = try container.decodeIfPresent(Bool.self, forKey: .isComplete) ?? false
+    }
 
     mutating func add(_ tokens: TokenBreakdown, for model: String) {
         var existing = models[model] ?? TokenBreakdown()
@@ -23,7 +40,7 @@ struct CursorUsageHistoryStore: Sendable {
         var days: [String: CursorUsageDay]
     }
 
-    private static let schemaVersion = 1
+    private static let schemaVersion = 2
 
     var directory: URL
 

@@ -157,7 +157,10 @@ final class CursorUsageHistoryTests: XCTestCase {
             expectedThirtyDayCost,
             accuracy: 0.000_001
         )
-        XCTAssertEqual(store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier).count, 30)
+        let savedDays = store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier)
+        XCTAssertEqual(savedDays.count, 30)
+        XCTAssertFalse(try XCTUnwrap(savedDays[dayStarts[0].key]).isComplete)
+        XCTAssertTrue(try XCTUnwrap(savedDays[dayStarts[1].key]).isComplete)
         XCTAssertTrue((try FileManager.default.contentsOfDirectory(atPath: directory.path)).contains { $0.hasSuffix(".json") })
     }
 
@@ -185,15 +188,61 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(unchangedOlderDay.day.models["composer-1"]?.input, 2_002)
     }
 
+    func testRefetchesIncompleteOlderDayAndPublishesFinalizedTotals() async throws {
+        let (store, directory) = makeStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let now = self.now
+        let dayStarts = dayStarts(now: now)
+        let incompleteDay = dayStarts[5]
+        var cachedDays = cachedHistory(now: now)
+        cachedDays[incompleteDay.key] = CursorUsageDay(
+            models: ["composer-1": TokenBreakdown(input: 100)],
+            isComplete: false
+        )
+        store.save(cachedDays, userID: userID, timeZone: Calendar.current.timeZone.identifier)
+        let http = historyHTTP { request in
+            guard let params = CursorHistoryTestData.parameters(request) else {
+                return CursorHistoryTestData.invalidRequest
+            }
+            guard params.startKey == incompleteDay.key else {
+                return try CursorHistoryTestData.page(total: 0, events: [])
+            }
+            let event = CursorHistoryTestData.event(on: params.start, model: "composer-1", input: 900)
+            return try CursorHistoryTestData.page(total: 1, events: params.page == 1 ? [event] : [])
+        }
+        let fetcher = makeFetcher(http: http, store: store)
+
+        let history = await fetcher.refresh(accessToken: token, userID: userID, now: now)
+
+        XCTAssertEqual(http.requests.count, 3)
+        XCTAssertEqual(
+            Set(http.requests.compactMap { CursorHistoryTestData.parameters($0)?.startKey }),
+            Set([dayStarts[0].key, dayStarts[1].key, incompleteDay.key])
+        )
+        let publishedDay = try XCTUnwrap(history?.first { $0.dayStart == incompleteDay.start })
+        XCTAssertEqual(publishedDay.day.models["composer-1"]?.input, 900)
+        XCTAssertTrue(publishedDay.day.isComplete)
+        let savedDay = try XCTUnwrap(
+            store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier)[incompleteDay.key]
+        )
+        XCTAssertEqual(savedDay.models["composer-1"]?.input, 900)
+        XCTAssertTrue(savedDay.isComplete)
+    }
+
     func testIncompleteSecondPageKeepsPreviouslyCachedDayAndPublishesHistory() async throws {
         let (store, directory) = makeStore()
         defer { try? FileManager.default.removeItem(at: directory) }
         let now = self.now
-        let cachedDays = cachedHistory(now: now)
+        let days = dayStarts(now: now)
+        let todayKey = days[0].key
+        var cachedDays = cachedHistory(now: now)
+        cachedDays[todayKey] = CursorUsageDay(
+            models: ["composer-1": TokenBreakdown(input: 2_000)],
+            isComplete: false
+        )
         store.save(cachedDays, userID: userID, timeZone: Calendar.current.timeZone.identifier)
-        let todayKey = dayStarts(now: now)[0].key
         let pageOneEvents = (0..<1000).map { _ in
-            CursorHistoryTestData.event(on: dayStarts(now: now)[0].start, model: "composer-1", input: 1)
+            CursorHistoryTestData.event(on: days[0].start, model: "composer-1", input: 1)
         }
         let http = historyHTTP { request in
             guard let params = CursorHistoryTestData.parameters(request) else {
@@ -215,7 +264,9 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(http.requests.filter { CursorHistoryTestData.parameters($0)?.startKey == todayKey }.count, 2)
         XCTAssertEqual(history?.count, 30)
         XCTAssertEqual(history?.first?.day.models["composer-1"]?.input, 2_000)
-        XCTAssertEqual(store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier)[todayKey]?.models["composer-1"]?.input, 2_000)
+        let savedToday = store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier)[todayKey]
+        XCTAssertEqual(savedToday?.models["composer-1"]?.input, 2_000)
+        XCTAssertEqual(savedToday?.isComplete, false)
         XCTAssertEqual(history?.first(where: { $0.dayStart == dayStarts(now: now)[2].start })?.day.models["composer-1"]?.input, 2_002)
     }
 
@@ -393,7 +444,10 @@ final class CursorUsageHistoryTests: XCTestCase {
 
     private func cachedHistory(now: Date) -> [String: CursorUsageDay] {
         Dictionary(uniqueKeysWithValues: dayStarts(now: now).enumerated().map { index, day in
-            (day.key, CursorUsageDay(models: ["composer-1": TokenBreakdown(input: 2_000 + index)]))
+            (
+                day.key,
+                CursorUsageDay(models: ["composer-1": TokenBreakdown(input: 2_000 + index)], isComplete: true)
+            )
         })
     }
 

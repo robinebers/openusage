@@ -34,16 +34,18 @@ struct CursorSpendHistoryFetcher: Sendable {
         localCalendar.timeZone = .current
         let calendar = localCalendar
         let today = calendar.startOfDay(for: now)
-        let window = (0..<30).compactMap { offset -> (key: String, start: Date, end: Date)? in
+        let window = (0..<30).compactMap { offset -> (key: String, start: Date, end: Date, isComplete: Bool)? in
             guard let start = calendar.date(byAdding: .day, value: -offset, to: today),
                   let nextDay = calendar.date(byAdding: .day, value: 1, to: start)
             else {
                 return nil
             }
+            let end = min(nextDay, now)
             return (
                 DailyUsageAccumulator.dayKey(from: start, calendar: calendar),
                 start,
-                min(nextDay, now)
+                end,
+                end == nextDay
             )
         }
         let timeZone = calendar.timeZone.identifier
@@ -51,7 +53,7 @@ struct CursorSpendHistoryFetcher: Sendable {
         let windowKeys = Set(window.map(\.key))
         cached = cached.filter { windowKeys.contains($0.key) }
         let daysToFetch = window.enumerated().compactMap { index, day in
-            index < 2 || cached[day.key] == nil ? day : nil
+            index < 2 || cached[day.key] == nil || cached[day.key]?.isComplete == false ? day : nil
         }
 
         var failures = 0
@@ -72,6 +74,7 @@ struct CursorSpendHistoryFetcher: Sendable {
                         dayKey: day.key,
                         dayStart: day.start,
                         dayEnd: day.end,
+                        isComplete: day.isComplete,
                         calendar: calendar
                     )
                 }
@@ -98,6 +101,7 @@ struct CursorSpendHistoryFetcher: Sendable {
                                 dayKey: nextDay.key,
                                 dayStart: nextDay.start,
                                 dayEnd: nextDay.end,
+                                isComplete: nextDay.isComplete,
                                 calendar: calendar
                             )
                         }
@@ -116,6 +120,7 @@ struct CursorSpendHistoryFetcher: Sendable {
                                 dayKey: nextDay.key,
                                 dayStart: nextDay.start,
                                 dayEnd: nextDay.end,
+                                isComplete: nextDay.isComplete,
                                 calendar: calendar
                             )
                         }
@@ -156,6 +161,7 @@ struct CursorSpendHistoryFetcher: Sendable {
         dayKey: String,
         dayStart: Date,
         dayEnd: Date,
+        isComplete: Bool,
         calendar: Calendar
     ) async -> DayTaskResult {
         let endMilliseconds = Int(dayEnd.timeIntervalSince1970 * 1000) - 1
@@ -163,7 +169,7 @@ struct CursorSpendHistoryFetcher: Sendable {
         var pageNumber = 1
         var expectedTotal: Int?
         var receivedCount = 0
-        var day = CursorUsageDay(models: [:])
+        var day = CursorUsageDay(models: [:], isComplete: isComplete)
 
         while true {
             do {
