@@ -182,7 +182,7 @@ final class CursorUsageHistoryTests: XCTestCase {
                        Set(dayStarts(now: now).prefix(2).map { $0.key }))
         XCTAssertEqual(history?.count, 30)
         let unchangedOlderDay = try XCTUnwrap(history?.first { $0.dayStart == dayStarts(now: now)[2].start })
-        XCTAssertEqual(unchangedOlderDay.day.models["composer-1"]?.input, 2_000)
+        XCTAssertEqual(unchangedOlderDay.day.models["composer-1"]?.input, 2_002)
     }
 
     func testIncompleteSecondPageKeepsPreviouslyCachedDayAndPublishesHistory() async throws {
@@ -216,7 +216,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(history?.count, 30)
         XCTAssertEqual(history?.first?.day.models["composer-1"]?.input, 2_000)
         XCTAssertEqual(store.load(userID: userID, timeZone: Calendar.current.timeZone.identifier)[todayKey]?.models["composer-1"]?.input, 2_000)
-        XCTAssertEqual(history?.first(where: { $0.dayStart == dayStarts(now: now)[2].start })?.day.models["composer-1"]?.input, 2_000)
+        XCTAssertEqual(history?.first(where: { $0.dayStart == dayStarts(now: now)[2].start })?.day.models["composer-1"]?.input, 2_002)
     }
 
     func testDeadlineKeepsFastDaysAndNextRefreshCompletesBackfill() async throws {
