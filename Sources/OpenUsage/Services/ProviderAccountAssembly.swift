@@ -274,7 +274,7 @@ struct ProviderAccountAssembly {
         listDirectories: @Sendable (URL) -> [String]
     ) -> [DesktopOrganization] {
         guard let user = desktop.lastKnownAccountUUID(), desktop.hasCredentialMaterial() else { return [] }
-        let active = desktop.load(allowInteraction: false, expectedAccountUUID: user)
+        let active = desktop.load(expectedAccountUUID: user)
         let activeOrganization = active.organization
 
         let root = desktop.homeDirectory().appendingPathComponent("Library/Application Support/Claude")
@@ -315,7 +315,7 @@ struct ProviderAccountAssembly {
                 || organization == activeOrganization || organization == cliOrganization
             else { return nil }
             let result = organization == activeOrganization ? active : desktop.load(
-                allowInteraction: false, organization: organization, expectedAccountUUID: user
+                organization: organization, expectedAccountUUID: user
             )
             guard result.status == .available || result.status == .permissionRequired else { return nil }
             let plan = result.oauth?.subscriptionType?.lowercased()

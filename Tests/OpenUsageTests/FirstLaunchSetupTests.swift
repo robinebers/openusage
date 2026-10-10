@@ -3,122 +3,217 @@ import XCTest
 
 @MainActor
 final class FirstLaunchSetupTests: XCTestCase {
-    func testInterruptedFirstLaunchRemainsPendingAfterSettingsExist() throws {
-        let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertFalse(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
-        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: true, defaults: defaults))
-        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
-        defaults.removeObject(forKey: FirstLaunchSetup.pendingKey)
-        XCTAssertFalse(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+    // MARK: - When the welcome screen shows
+
+    func testInterruptedFirstLaunchStaysPendingUntilCleared() throws {
+        let defaults = try makeDefaults()
+        XCTAssertFalse(FirstLaunchSetup.needsSetup(defaults: defaults))
+        FirstLaunchSetup.markPending(defaults: defaults)
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(defaults: defaults))
+        FirstLaunchSetup.clearPending(defaults: defaults)
+        XCTAssertFalse(FirstLaunchSetup.needsSetup(defaults: defaults))
     }
 
     func testFirstLaunchFlagDoesNotCauseLegacySettingsMigration() throws {
         let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let fresh = SettingsMigrator.isFreshInstall(defaults: defaults, domainName: suite)
-        XCTAssertTrue(fresh)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(SettingsMigrator.isFreshInstall(defaults: defaults, domainName: suite))
         SettingsMigrator.migrate(defaults: defaults, domainName: suite)
-        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: fresh, defaults: defaults))
+        FirstLaunchSetup.markPending(defaults: defaults)
         XCTAssertNil(ProviderEnablementStore(defaults: defaults).enabledIDs)
-        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(defaults: defaults))
     }
 
     func testNoEnabledProvidersAlwaysNeedsSetupEvenAfterSkipping() throws {
-        let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = try makeDefaults()
         let enablement = ProviderEnablementStore(defaults: defaults)
         enablement.seedEnabledProviders([])
-        XCTAssertTrue(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
-        defaults.set(true, forKey: FirstLaunchSetup.pendingKey)
+        XCTAssertTrue(FirstLaunchSetup.needsSetup(defaults: defaults))
+        FirstLaunchSetup.markPending(defaults: defaults)
         enablement.setEnabled(true, for: "claude")
-        XCTAssertFalse(FirstLaunchSetup.needsSetup(isFreshInstall: false, defaults: defaults))
+        XCTAssertFalse(FirstLaunchSetup.needsSetup(defaults: defaults))
     }
 
-    func testNetworkFailureKeepsProviderEnabledAndRetainsFirstResult() async {
-        let provider = Stub(id: "test", available: true, needsPermission: true)
-        provider.networkFailure = true
-        let setup = FirstLaunchSetup(providers: [provider])
-        await setup.detect()
-        await setup.connectSelected()
-        XCTAssertEqual(setup.connectedIDs, ["test"])
-        XCTAssertTrue(setup.choices[0].usageUnavailable)
-        XCTAssertEqual(setup.firstSnapshots["test"]?.errorCategory, .network)
-        XCTAssertEqual(provider.refreshes, 1)
-        provider.networkFailure = false
-        await setup.connectSelected()
-        XCTAssertFalse(setup.choices[0].usageUnavailable)
-        XCTAssertEqual(provider.refreshes, 2)
-    }
+    // MARK: - Detection
 
-    func testDiscoveryDoesNotConnectAndKeepsPermissionOnlyProvidersVisible() async {
-        let file = Stub(id: "file", available: true)
-        let protected = Stub(id: "protected", needsPermission: true)
+    func testDetectionSelectsDetectedProvidersWithoutConnecting() async throws {
+        let file = Stub(id: "file", detected: true)
         let absent = Stub(id: "absent")
-        let setup = FirstLaunchSetup(providers: [file, protected, absent])
+        let harness = try Harness([file, absent])
 
-        await setup.detect()
+        await harness.setup.detect()
 
-        XCTAssertFalse(setup.isDetecting)
-        XCTAssertEqual(setup.selectedIDs, ["file", "protected"])
-        XCTAssertEqual(setup.visibleChoices.map(\.id), ["file", "protected"])
-        XCTAssertEqual(protected.discoveryMode, .discovery)
-        XCTAssertEqual(file.refreshes + protected.refreshes + absent.refreshes, 0)
-        XCTAssertTrue(setup.choices[1].needsAccess)
-        setup.showAll = true
-        XCTAssertEqual(setup.visibleChoices.count, 3)
+        XCTAssertFalse(harness.setup.isDetecting)
+        XCTAssertEqual(harness.setup.selectedIDs, ["file"])
+        XCTAssertEqual(harness.setup.visibleChoices.map(\.id), ["file"])
+        XCTAssertEqual(file.interactions + absent.interactions, [])
+        XCTAssertNil(harness.store, "detection must not build the dashboard")
+        harness.setup.showAll = true
+        XCTAssertEqual(harness.setup.visibleChoices.count, 2)
     }
 
-    func testOnlySelectedProvidersConnectInOrderWithExplicitPermission() async {
-        let recorder = Recorder()
-        let first = Stub(id: "first", available: true, recorder: recorder)
-        let skip = Stub(id: "skip", available: true, recorder: recorder)
-        let last = Stub(id: "last", available: true, recorder: recorder)
-        let setup = FirstLaunchSetup(providers: [first, skip, last])
-        await setup.detect()
-        setup.selectedIDs.remove("skip")
+    func testLoginAwaitingKeychainApprovalIsDetectedWithoutPrompting() async throws {
+        let protected = Stub(id: "protected", detectionRefusal: .permissionNeeded)
+        let busy = Stub(id: "busy", detectionRefusal: .busy)
+        let harness = try Harness([protected, busy])
 
-        await setup.connectSelected()
+        await harness.setup.detect()
+
+        XCTAssertEqual(harness.setup.selectedIDs, ["protected"])
+        XCTAssertEqual(protected.detectionInteraction, false)
+    }
+
+    // MARK: - Connecting
+
+    func testOnlySelectedProvidersConnectInOrderOneAtATimeWithPermission() async throws {
+        let recorder = Recorder()
+        let first = Stub(id: "first", detected: true, recorder: recorder)
+        let skip = Stub(id: "skip", detected: true, recorder: recorder)
+        let last = Stub(id: "last", detected: true, recorder: recorder)
+        let harness = try Harness([first, skip, last])
+        await harness.setup.detect()
+        harness.setup.selectedIDs.remove("skip")
+
+        await harness.setup.connectSelected()
 
         XCTAssertEqual(recorder.order, ["first", "last"])
         XCTAssertEqual(recorder.maxActive, 1)
-        XCTAssertEqual(setup.connectedIDs, ["first", "last"])
-        XCTAssertEqual(skip.refreshes, 0)
-        XCTAssertTrue(first.interactive)
-        XCTAssertTrue(last.interactive)
+        XCTAssertEqual(harness.setup.connectedIDs, ["first", "last"])
+        XCTAssertEqual(harness.preparedFamilies, [["first", "last"]])
+        XCTAssertEqual(skip.interactions, [])
+        XCTAssertEqual(first.interactions, [true])
+        XCTAssertEqual(last.interactions, [true])
     }
 
-    func testDeniedConnectionStaysPendingUntilExplicitRetry() async {
-        let provider = Stub(id: "protected", needsPermission: true)
-        provider.fail = true
-        let setup = FirstLaunchSetup(providers: [provider])
-        await setup.detect()
+    func testEveryAccountCardInAFamilyConnects() async throws {
+        let main = Stub(id: "claude", detected: true)
+        let work = Stub(id: "claude@ab12cd34")
+        let harness = try Harness(detecting: [main], dashboard: [main, work])
+        await harness.setup.detect()
 
-        await setup.connectSelected()
-        await Task.yield()
+        await harness.setup.connectSelected()
 
-        XCTAssertEqual(provider.refreshes, 1)
-        XCTAssertTrue(setup.connectedIDs.isEmpty)
-        XCTAssertTrue(setup.hasFailures)
-        XCTAssertEqual(setup.choices[0].error, "Access wasn't granted. You can retry or skip for now.")
-        provider.fail = false
-        await setup.connectSelected()
-        XCTAssertEqual(provider.refreshes, 2)
-        XCTAssertEqual(setup.connectedIDs, ["protected"])
-        XCTAssertFalse(setup.hasFailures)
+        XCTAssertEqual(main.interactions, [true])
+        XCTAssertEqual(work.interactions, [true])
+        XCTAssertEqual(harness.setup.connectedIDs, ["claude"])
+    }
+
+    func testDashboardReusesSuccessfulFirstResult() async throws {
+        let provider = Stub(id: "test", detected: true)
+        let harness = try Harness([provider])
+        await harness.setup.detect()
+        await harness.setup.connectSelected()
+
+        let outcome = await harness.store?.refresh(providerID: "test")
+
+        XCTAssertEqual(outcome, .cacheHit)
+        XCTAssertEqual(provider.interactions.count, 1)
+    }
+
+    func testNetworkFailureKeepsProviderOnWithoutImmediateRefetch() async throws {
+        let provider = Stub(id: "test", detected: true)
+        provider.result = .network
+        let harness = try Harness([provider])
+        await harness.setup.detect()
+
+        await harness.setup.connectSelected()
+
+        XCTAssertEqual(harness.setup.connectedIDs, ["test"])
+        XCTAssertEqual(harness.setup.choices[0].connection, .usageUnavailable)
+        XCTAssertFalse(harness.setup.hasFailures)
+        let outcome = await harness.store?.refresh(providerID: "test")
+        XCTAssertEqual(outcome, .backedOff)
+        XCTAssertEqual(provider.interactions.count, 1)
+    }
+
+    func testDeniedAccessStaysOffUntilExplicitRetry() async throws {
+        let provider = Stub(id: "protected", detected: true)
+        provider.result = .denied
+        let harness = try Harness([provider])
+        await harness.setup.detect()
+
+        await harness.setup.connectSelected()
+
+        XCTAssertTrue(harness.setup.connectedIDs.isEmpty)
+        XCTAssertEqual(harness.setup.choices[0].connection, .failed(FirstLaunchSetup.accessDeniedMessage))
+        provider.result = .success
+        await harness.setup.connectSelected()
+        XCTAssertEqual(provider.interactions, [true, true])
+        XCTAssertEqual(harness.setup.connectedIDs, ["protected"])
+        XCTAssertFalse(harness.setup.hasFailures)
+        XCTAssertEqual(harness.preparedFamilies.count, 1, "retry reuses the prepared dashboard")
+    }
+
+    func testBusyKeychainIsNotShownAsDenied() async throws {
+        let provider = Stub(id: "test", detected: true)
+        provider.result = .busy
+        let harness = try Harness([provider])
+        await harness.setup.detect()
+
+        await harness.setup.connectSelected()
+
+        XCTAssertEqual(harness.setup.choices[0].connection,
+                       .failed(KeychainAccessError.busy.errorDescription ?? ""))
+    }
+
+    func testRefusalDoesNotHideAProviderNetworkError() async throws {
+        let provider = Stub(id: "test", detected: true)
+        provider.result = .networkAfterRefusal
+        let harness = try Harness([provider])
+        await harness.setup.detect()
+
+        await harness.setup.connectSelected()
+
+        XCTAssertEqual(harness.setup.choices[0].connection, .usageUnavailable)
     }
 
     func testForceRefreshDoesNotAuthorizeKeychainByItself() async {
         let provider = Stub(id: "test")
-        _ = await ProviderRefreshDeadline.snapshot(from: provider, force: true, timeout: 1)
-        XCTAssertFalse(provider.interactive)
-        _ = await ProviderRefreshDeadline.snapshot(
-            from: provider, force: true, timeout: 1, allowsKeychainInteraction: true
-        )
-        XCTAssertTrue(provider.interactive)
+        _ = await ProviderRefreshDeadline.snapshot(from: provider, timeout: 1)
+        _ = await ProviderRefreshDeadline.snapshot(from: provider, timeout: 1, allowsKeychainInteraction: true)
+        XCTAssertEqual(provider.interactions, [false, true])
+    }
+
+    // MARK: - Helpers
+
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    /// Builds the setup with a `prepare` that mirrors the app: a data store over the dashboard's
+    /// runtimes, with the chosen families turned on.
+    @MainActor
+    private final class Harness {
+        private(set) var setup: FirstLaunchSetup!
+        private(set) var store: WidgetDataStore?
+        private(set) var preparedFamilies: [Set<String>] = []
+
+        convenience init(_ providers: [Stub]) throws {
+            try self.init(detecting: providers, dashboard: providers)
+        }
+
+        init(detecting: [Stub], dashboard: [Stub]) throws {
+            let suite = "FirstLaunchSetupTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defaults.removePersistentDomain(forName: suite)
+            setup = FirstLaunchSetup(providers: detecting) { [unowned self] families in
+                preparedFamilies.append(families)
+                let enabled = Set(dashboard.map(\.provider.id).filter {
+                    families.contains(ProviderAccountID.family(of: $0))
+                })
+                let store = WidgetDataStore(
+                    registry: WidgetRegistry(providers: dashboard.map(\.provider), descriptors: []),
+                    providers: dashboard, cache: ProviderSnapshotCache(userDefaults: defaults),
+                    defaults: defaults, isProviderEnabled: { enabled.contains($0) }
+                )
+                self.store = store
+                return store
+            }
+        }
     }
 
     private final class Recorder {
@@ -128,31 +223,33 @@ final class FirstLaunchSetupTests: XCTestCase {
     }
 
     private final class Stub: ProviderRuntime {
+        enum Result { case success, network, denied, busy, networkAfterRefusal }
+
         let provider: Provider
         var widgetDescriptors: [WidgetDescriptor] { [] }
-        let available: Bool
-        let needsPermission: Bool
+        let detected: Bool
+        let detectionRefusal: KeychainAccessError?
         let recorder: Recorder?
-        var fail = false
-        var networkFailure = false
-        var refreshes = 0
-        var interactive = false
-        var discoveryMode: KeychainAccessContext.Mode?
+        var result = Result.success
+        var interactions: [Bool] = []
+        var detectionInteraction: Bool?
 
-        init(id: String, available: Bool = false, needsPermission: Bool = false, recorder: Recorder? = nil) {
+        init(id: String, detected: Bool = false, detectionRefusal: KeychainAccessError? = nil,
+             recorder: Recorder? = nil) {
             provider = Provider(id: id, displayName: id, icon: .providerMark(id))
-            self.available = available
-            self.needsPermission = needsPermission
+            self.detected = detected
+            self.detectionRefusal = detectionRefusal
             self.recorder = recorder
         }
+
         func hasLocalCredentials() async -> Bool {
-            discoveryMode = KeychainAccessContext.current?.mode
-            if needsPermission { KeychainAccessContext.current?.recordPermissionNeeded() }
-            return available
+            detectionInteraction = await loadOffMainActor { KeychainAccessContext.allowsInteraction }
+            if let detectionRefusal { KeychainAccessContext.current?.record(detectionRefusal) }
+            return detected
         }
+
         func refresh() async -> ProviderSnapshot {
-            refreshes += 1
-            interactive = await loadOffMainActor { KeychainAccessContext.allowsInteraction }
+            interactions.append(await loadOffMainActor { KeychainAccessContext.allowsInteraction })
             recorder?.order.append(provider.id)
             if let recorder {
                 recorder.active += 1
@@ -160,15 +257,21 @@ final class FirstLaunchSetupTests: XCTestCase {
             }
             await Task.yield()
             if let recorder { recorder.active -= 1 }
-            if networkFailure {
-                if needsPermission { KeychainAccessContext.current?.recordPermissionNeeded() }
+            switch result {
+            case .success:
+                return .make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
+            case .network:
+                return .error(provider: provider, message: "Temporarily offline", category: .network)
+            case .denied:
+                KeychainAccessContext.current?.record(.permissionNeeded)
+                return .error(provider: provider, message: "Not logged in", category: .notLoggedIn)
+            case .busy:
+                KeychainAccessContext.current?.record(.busy)
+                return .error(provider: provider, message: "Not logged in", category: .notLoggedIn)
+            case .networkAfterRefusal:
+                KeychainAccessContext.current?.record(.permissionNeeded)
                 return .error(provider: provider, message: "Temporarily offline", category: .network)
             }
-            if fail {
-                KeychainAccessContext.current?.recordPermissionNeeded()
-                return .error(provider: provider, error: KeychainPermissionNeeded())
-            }
-            return .make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
         }
     }
 }

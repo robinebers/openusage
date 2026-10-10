@@ -4,17 +4,15 @@ import XCTest
 @testable import OpenUsage
 
 final class KeychainInteractionTests: XCTestCase {
-    func testSystemPasswordQueryDefaultsToNoUI() {
-        let query = SystemSecurityItemAccessor.passwordReadQuery(
-            service: "synthetic", account: "account", allowsInteraction: false
-        )
+    func testQuietQueryForbidsEveryPromptButInteractiveQueryAllowsThem() {
+        let query = KeychainSystemAccess.genericPasswordQuery(service: "synthetic", account: "account", interactive: false)
         XCTAssertEqual(query[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIFail as String)
         XCTAssertEqual(query[kSecAttrAccount as String] as? String, "account")
         XCTAssertEqual((query[kSecUseAuthenticationContext as String] as? LAContext)?.interactionNotAllowed, true)
-        let interactive = SystemSecurityItemAccessor.passwordReadQuery(
-            service: "synthetic", account: nil, allowsInteraction: true
-        )
+        let interactive = KeychainSystemAccess.genericPasswordQuery(service: "synthetic", account: nil, interactive: true)
         XCTAssertEqual(interactive[kSecUseAuthenticationUI as String] as? String, kSecUseAuthenticationUIAllow as String)
+        XCTAssertNil(interactive[kSecAttrAccount as String])
+        XCTAssertNil(interactive[kSecUseAuthenticationContext as String])
     }
 
     func testBackgroundKeychainDoesNotWaitBehindPermissionDialog() {
@@ -44,42 +42,39 @@ final class KeychainInteractionTests: XCTestCase {
         XCTAssertEqual(items.reads, 0)
     }
 
-    func testDiscoveryReadsOnlyMetadataAndTracksPermissionRequirement() throws {
-        let items = Items()
-        let keychain = SecurityKeychainAccessor(itemAccessor: items)
-        let context = KeychainAccessContext(mode: .discovery)
-        try KeychainAccessContext.$current.withValue(context) {
-            XCTAssertThrowsError(try keychain.readGenericPassword(service: "synthetic")) {
-                XCTAssertTrue($0 is KeychainPermissionNeeded)
-            }
-        }
-        XCTAssertEqual(items.probes, 1)
-        XCTAssertEqual(items.reads, 0)
-        XCTAssertTrue(context.needsPermission)
+    func testMissingItemIsNotDetectedAndUnknownStaysUnknown() {
+        XCTAssertEqual(SecurityKeychainAccessor(itemAccessor: Items(probe: errSecItemNotFound))
+            .genericPasswordExists(service: "missing"), false)
+        XCTAssertNil(SecurityKeychainAccessor(itemAccessor: Items(probe: errSecInteractionNotAllowed))
+            .genericPasswordExists(service: "locked"))
     }
 
-    func testMissingItemIsNotReportedAsDetected() throws {
-        let context = KeychainAccessContext(mode: .discovery)
-        let keychain = SecurityKeychainAccessor(itemAccessor: Items(present: false))
+    func testDeniedReadIsRecordedAsPermissionNeeded() throws {
+        let context = KeychainAccessContext(allowsInteraction: false)
+        let keychain = SecurityKeychainAccessor(itemAccessor: Items(read: errSecInteractionNotAllowed))
         try KeychainAccessContext.$current.withValue(context) {
-            XCTAssertNil(try keychain.readGenericPassword(service: "missing"))
+            XCTAssertThrowsError(try keychain.readGenericPassword(service: "synthetic"))
         }
-        XCTAssertFalse(context.needsPermission)
+        XCTAssertEqual(context.refused, .permissionNeeded)
     }
 
-    func testDiscoveryCannotWriteCredentials() throws {
-        let items = Items()
-        let context = KeychainAccessContext(mode: .discovery)
+    func testBusyGateIsNotReportedAsADenial() throws {
+        let context = KeychainAccessContext(allowsInteraction: false)
+        let keychain = SecurityKeychainAccessor(itemAccessor: Items(read: KeychainSystemAccess.busyStatus))
         try KeychainAccessContext.$current.withValue(context) {
-            XCTAssertThrowsError(try SecurityKeychainAccessor(itemAccessor: items)
-                .writeGenericPassword(service: "synthetic", value: "synthetic"))
+            XCTAssertThrowsError(try keychain.readGenericPassword(service: "synthetic"))
         }
-        XCTAssertEqual(items.writes, 0)
+        XCTAssertEqual(context.refused, .busy)
+        // A denial later in the same refresh is the more useful explanation and wins.
+        context.record(.permissionNeeded)
+        XCTAssertEqual(context.refused, .permissionNeeded)
+        context.record(.busy)
+        XCTAssertEqual(context.refused, .permissionNeeded)
     }
 
     func testInteractionContextSurvivesBothDetachedLoadHelpers() async throws {
         XCTAssertFalse(KeychainAccessContext.allowsInteraction)
-        let context = KeychainAccessContext(mode: .interactive)
+        let context = KeychainAccessContext(allowsInteraction: true)
         let values = try await KeychainAccessContext.$current.withValue(context) {
             let plain = await loadOffMainActor { KeychainAccessContext.allowsInteraction }
             let throwing = try await loadOffMainActor { () throws -> Bool in
@@ -92,27 +87,24 @@ final class KeychainInteractionTests: XCTestCase {
     }
 
     private final class Items: SecurityItemAccessing, @unchecked Sendable {
-        let present: Bool
+        let probe: OSStatus
+        let read: OSStatus
         var probes = 0
         var reads = 0
-        var writes = 0
-        init(present: Bool = true) { self.present = present }
-        func probeGenericPassword(service: String, account: String?) -> OSStatus {
+        init(probe: OSStatus = errSecSuccess, read: OSStatus = errSecSuccess) {
+            self.probe = probe
+            self.read = read
+        }
+        func probeGenericPassword(service: String) -> OSStatus {
             probes += 1
-            return present ? errSecSuccess : errSecItemNotFound
+            return probe
         }
         func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
             reads += 1
-            return (errSecSuccess, Data("synthetic".utf8))
+            return (read, read == errSecSuccess ? Data("synthetic".utf8) : nil)
         }
         func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) { (errSecSuccess, nil) }
-        func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
-            writes += 1
-            return errSecSuccess
-        }
-        func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
-            writes += 1
-            return errSecSuccess
-        }
+        func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus { errSecSuccess }
+        func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus { errSecSuccess }
     }
 }

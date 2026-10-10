@@ -5,6 +5,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
     private var firstLaunchWindow: FirstLaunchWindowController?
+    /// Built by the welcome screen's first Connect, then handed to the dashboard.
+    private var onboardingContainer: AppContainer?
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
 
@@ -50,10 +52,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // install still presents an empty domain — how the migrator tells a first launch from an upgrade.
         // Nothing is wiped now; settings carry across updates. See `SettingsMigrator`.
         // The fresh-install answer is captured BEFORE migrating (the schema stamp makes the domain
-        // non-empty) and handed to `AppContainer`, whose `FirstRunSeeder` seeds a minimal provider set.
+        // non-empty), and persisted so quitting mid-welcome shows the welcome screen again.
         let isFreshInstall = SettingsMigrator.isFreshInstall()
         SettingsMigrator.migrate()
-        _ = FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall)
+        if isFreshInstall { FirstLaunchSetup.markPending() }
         // Let only the `SMAppService` login item drive startup: opt out of AppKit's reopen-on-login
         // so a reboot doesn't also restore us and race the login item in the first place. The lock
         // above resolves same-bundle startup races even if both launch triggers fire; this just avoids
@@ -77,54 +79,52 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
                 await Task.detached(priority: .userInitiated) {
                     _ = LoginShellEnvironment.shared.ensureCaptured()
                 }.value
-                await self?.finishLaunching(isFreshInstall: isFreshInstall)
+                await self?.finishLaunching()
             }
             return
         }
         Task { [weak self] in
-            await self?.finishLaunching(isFreshInstall: isFreshInstall)
+            await self?.finishLaunching()
         }
     }
 
-    private func finishLaunching(isFreshInstall: Bool) async {
-        if FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall) {
-            UserDefaults.standard.set(true, forKey: FirstLaunchSetup.pendingKey)
-            let setup = FirstLaunchSetup(providers: ProviderCatalog.make()) { selected in
-                await AppContainer(initialProviderFamilies: selected, startsServices: false,
-                                   allowsAccountDiscoveryInteraction: true)
-            }
-            firstLaunchWindow = FirstLaunchWindowController(setup: setup) { [weak self, weak setup] selected in
-                guard let self else { return }
-                let prepared = setup?.preparedContainer
-                self.firstLaunchWindow?.finish()
-                self.firstLaunchWindow = nil
-                Task { await self.startDashboard(initialProviderFamilies: selected, preparedContainer: prepared) }
-            }
-            firstLaunchWindow?.show()
+    private func finishLaunching() async {
+        guard FirstLaunchSetup.needsSetup() else {
+            startDashboard(await AppContainer())
             return
         }
-        await startDashboard()
+        // The welcome screen connects through the same container the dashboard then uses, so its
+        // results land in the snapshot cache and the dashboard's first pass doesn't fetch them again.
+        let setup = FirstLaunchSetup(providers: ProviderCatalog.make()) { [weak self] families in
+            let container = await AppContainer(accountFamilies: families)
+            container.applyFirstLaunchChoice(families)
+            self?.onboardingContainer = container
+            return container.dataStore
+        }
+        firstLaunchWindow = FirstLaunchWindowController(setup: setup) { [weak self] connected in
+            Task { await self?.finishSetup(connected: connected) }
+        }
+        firstLaunchWindow?.show()
     }
 
-    private func startDashboard(initialProviderFamilies: Set<String>? = nil,
-                                preparedContainer: AppContainer? = nil) async {
+    private func finishSetup(connected families: Set<String>) async {
+        firstLaunchWindow?.finish()
+        firstLaunchWindow = nil
+        let prepared = onboardingContainer
+        onboardingContainer = nil
         let container: AppContainer
-        if let preparedContainer {
-            container = preparedContainer
-            let families = initialProviderFamilies ?? []
-            container.enablement.seedEnabledProviders(Set(container.providerRuntimes.map { $0.provider.id }.filter {
-                families.contains(ProviderAccountID.family(of: $0))
-            }))
-            container.startServices(firstRefreshAlreadyCompleted: true)
-        } else {
-            container = await AppContainer(initialProviderFamilies: initialProviderFamilies)
-        }
+        if let prepared { container = prepared } else { container = await AppContainer(accountFamilies: families) }
+        container.applyFirstLaunchChoice(families)
+        FirstLaunchSetup.clearPending()
+        startDashboard(container)
+        MenuBarPopover.showHandler?()
+    }
+
+    private func startDashboard(_ container: AppContainer) {
         self.container = container
+        container.startServices()
         statusItemController = StatusItemController(container: container, updater: updater)
-        if initialProviderFamilies != nil {
-            UserDefaults.standard.removeObject(forKey: FirstLaunchSetup.pendingKey)
-            MenuBarPopover.showHandler?()
-        }
+        // Starts background update checks (release build only; dormant under preview/`swift run`).
         updater.start()
     }
 

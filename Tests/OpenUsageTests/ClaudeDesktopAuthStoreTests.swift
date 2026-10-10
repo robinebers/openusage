@@ -23,20 +23,6 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertThrowsError(try ClaudeDesktopAuthStore.decrypt(Data("v11bad".utf8), key: key))
     }
 
-    func testDiscoveryDoesNotDecryptDesktopCredentials() throws {
-        let fixture = try makeFixture(
-            activeOrganization: organization,
-            v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)]
-        )
-        let context = KeychainAccessContext(mode: .discovery)
-        let result = KeychainAccessContext.$current.withValue(context) {
-            fixture.store.load(allowInteraction: false)
-        }
-        XCTAssertEqual(result.status, .permissionRequired)
-        XCTAssertTrue(context.needsPermission)
-        XCTAssertTrue(fixture.keyReader.calls.isEmpty)
-    }
-
     func testSelectsActiveOrganizationFromV2Cache() throws {
         let fixture = try makeFixture(
             activeOrganization: organization,
@@ -49,7 +35,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             ]
         )
 
-        let result = fixture.store.load(allowInteraction: false)
+        let result = fixture.store.load()
 
         XCTAssertEqual(result.status, .available)
         XCTAssertEqual(result.oauth?.accessToken, "desktop-token")
@@ -95,15 +81,13 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             accountUUID: accountUUID
         )
 
-        let result = fixture.store.load(
-            allowInteraction: false, organization: otherOrganization, expectedAccountUUID: accountUUID
+        let result = fixture.store.load(organization: otherOrganization, expectedAccountUUID: accountUUID
         )
 
         XCTAssertEqual(result.status, .available)
         XCTAssertEqual(result.organization, otherOrganization)
         XCTAssertEqual(result.oauth?.accessToken, "other-token")
-        XCTAssertEqual(fixture.store.load(
-            allowInteraction: false, organization: otherOrganization,
+        XCTAssertEqual(fixture.store.load(organization: otherOrganization,
             expectedAccountUUID: "ffffffff-ffff-4fff-8fff-ffffffffffff"
         ).status, .notFound)
     }
@@ -123,8 +107,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         )
 
         XCTAssertFalse(loggedOut.hasCredentialMaterial())
-        XCTAssertEqual(loggedOut.load(
-            allowInteraction: false, organization: organization, expectedAccountUUID: accountUUID
+        XCTAssertEqual(loggedOut.load(organization: organization, expectedAccountUUID: accountUUID
         ).status, .notFound)
         XCTAssertTrue(fixture.keyReader.calls.isEmpty)
     }
@@ -291,13 +274,16 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             requiresInteraction: true
         )
 
-        XCTAssertEqual(fixture.store.load(allowInteraction: false).status, .permissionRequired)
+        XCTAssertEqual(fixture.store.load().status, .permissionRequired)
         XCTAssertEqual(fixture.keyReader.calls, [false])
-        XCTAssertEqual(fixture.store.load(allowInteraction: true).status, .available)
+        let manual = KeychainAccessContext.$current.withValue(KeychainAccessContext(allowsInteraction: true)) {
+            fixture.store.load().status
+        }
+        XCTAssertEqual(manual, .available)
         XCTAssertEqual(fixture.keyReader.calls, [false, true])
 
         // The derived key is cached after approval, so later background refreshes are prompt-free.
-        XCTAssertEqual(fixture.store.load(allowInteraction: false).status, .available)
+        XCTAssertEqual(fixture.store.load().status, .available)
         XCTAssertEqual(fixture.keyReader.calls, [false, true])
     }
 
@@ -307,7 +293,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             v2: [cacheKey(organization: organization): tokenEntry("expired", expiresIn: -1)]
         )
 
-        XCTAssertEqual(fixture.store.load(allowInteraction: false).status, .stale)
+        XCTAssertEqual(fixture.store.load().status, .stale)
     }
 
     func testWorkingCLICredentialsSkipDesktopProbe() throws {
@@ -415,7 +401,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         }
         let provider = makeProvider(fixture, environment: [:], keychainJSON: nil, httpClient: httpClient)
 
-        let snapshot = await ProviderRefreshContext.$isManual.withValue(true) {
+        let snapshot = await KeychainAccessContext.$current.withValue(KeychainAccessContext(allowsInteraction: true)) {
             await provider.refresh()
         }
 
@@ -452,7 +438,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
             httpClient: httpClient
         )
 
-        let snapshot = await ProviderRefreshContext.$isManual.withValue(true) {
+        let snapshot = await KeychainAccessContext.$current.withValue(KeychainAccessContext(allowsInteraction: true)) {
             await provider.refresh()
         }
 
@@ -473,7 +459,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         }
         let provider = makeProvider(fixture, keychainJSON: cliCredentials(token: "revoked-cli"), httpClient: httpClient)
 
-        let snapshot = await ProviderRefreshContext.$isManual.withValue(true) {
+        let snapshot = await KeychainAccessContext.$current.withValue(KeychainAccessContext(allowsInteraction: true)) {
             await provider.refresh()
         }
 

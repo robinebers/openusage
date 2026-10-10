@@ -1,7 +1,6 @@
 import CommonCrypto
 import CryptoKit
 import Foundation
-import LocalAuthentication
 import Security
 
 enum ClaudeDesktopCredentialStatus: Sendable, Equatable {
@@ -19,35 +18,28 @@ struct ClaudeDesktopCredentialResult: Sendable {
     var organization: String? = nil
 }
 
+/// Reads Claude Desktop's safe-storage password. May prompt only inside an interactive
+/// `KeychainAccessContext`.
 protocol ClaudeDesktopSafeStorageKeyReading: Sendable {
-    func readPassword(allowInteraction: Bool) throws -> String?
+    func readPassword() throws -> String?
 }
 
 struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
     private static let service = "Claude Safe Storage"
     private static let account = "Claude Key"
 
-    func readPassword(allowInteraction: Bool) throws -> String? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
-            kSecAttrAccount as String: Self.account,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnData as String: true
-        ]
-        if !allowInteraction || !KeychainAccessContext.allowsInteraction {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext as String] = context
-        }
+    func readPassword() throws -> String? {
+        var query = KeychainSystemAccess.genericPasswordQuery(
+            service: Self.service, account: Self.account, interactive: KeychainAccessContext.allowsInteraction
+        )
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = true
 
         var result: CFTypeRef?
-        let status = KeychainSystemAccess.perform(
-            interactive: allowInteraction && KeychainAccessContext.allowsInteraction,
-            unavailable: errSecInteractionNotAllowed
-        ) {
+        let status = KeychainSystemAccess.perform(unavailable: KeychainSystemAccess.busyStatus) {
             SecItemCopyMatching(query as CFDictionary, &result)
         }
+        KeychainSystemAccess.recordRefusal(status)
         switch status {
         case errSecSuccess:
             guard let data = result as? Data,
@@ -59,8 +51,7 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             return password
         case errSecItemNotFound:
             return nil
-        case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
-            KeychainAccessContext.current?.recordPermissionNeeded()
+        case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled, KeychainSystemAccess.busyStatus:
             throw ClaudeDesktopCredentialError.permissionRequired
         default:
             throw ClaudeDesktopCredentialError.keychainFailure(Int(status))
@@ -143,7 +134,6 @@ struct ClaudeDesktopAuthStore: Sendable {
     }
 
     func load(
-        allowInteraction: Bool,
         organization: String? = nil,
         expectedAccountUUID: String? = nil
     ) -> ClaudeDesktopCredentialResult {
@@ -156,13 +146,9 @@ struct ClaudeDesktopAuthStore: Sendable {
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
         }
-        if KeychainAccessContext.current?.mode == .discovery {
-            KeychainAccessContext.current?.recordPermissionNeeded()
-            return ClaudeDesktopCredentialResult(oauth: nil, status: .permissionRequired)
-        }
 
         do {
-            guard let key = try safeStorageKey(allowInteraction: allowInteraction) else {
+            guard let key = try safeStorageKey() else {
                 return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
             }
             guard let activeOrg = try loadActiveOrganization(key: key),
@@ -199,9 +185,9 @@ struct ClaudeDesktopAuthStore: Sendable {
         }
     }
 
-    private func safeStorageKey(allowInteraction: Bool) throws -> Data? {
+    private func safeStorageKey() throws -> Data? {
         if let cached = keyCache.value { return cached }
-        guard let password = try keyReader.readPassword(allowInteraction: allowInteraction) else {
+        guard let password = try keyReader.readPassword() else {
             return nil
         }
         let key = try Self.deriveKey(password: password)

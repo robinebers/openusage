@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// One-time onboarding state. Today that's a single bit: whether the dashboard should still show the
-/// first-run Customize hint card. `FirstRunSeeder` marks it pending when it seeds a fresh install's
-/// provider set (existing installs are never seeded, so they never see the card); it clears when the
+/// first-run Customize hint card. The welcome screen marks it pending when the user connects providers
+/// (existing installs never see the welcome screen, so they never see the card); it clears when the
 /// user dismisses the card or visits Customize.
 @MainActor
 @Observable

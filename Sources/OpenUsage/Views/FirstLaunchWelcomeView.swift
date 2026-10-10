@@ -139,21 +139,23 @@ struct FirstLaunchWelcomeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(choice.provider.displayName).font(.body.weight(.medium))
                 Text(status(choice)).font(.caption)
-                    .foregroundStyle(choice.error == nil ? Color.secondary
-                                     : choice.usageUnavailable ? Color.orange : Color.red)
+                    .foregroundStyle(statusColor(choice.connection))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            if choice.connecting {
+            switch choice.connection {
+            case .notChecked:
+                EmptyView()
+            case .checking:
                 ProgressView().controlSize(.small)
-            } else if choice.usageUnavailable {
+            case .connected:
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+            case .usageUnavailable:
                 Image(systemName: "clock").foregroundStyle(.secondary)
-            } else if choice.error != nil {
+            case .failed:
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.red)
                     .accessibilityLabel("Needs Attention")
-            } else if choice.connected {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             }
         }
         .disabled(setup.isConnecting || setup.hasAttemptedConnection)
@@ -161,10 +163,20 @@ struct FirstLaunchWelcomeView: View {
     }
 
     private func status(_ choice: FirstLaunchSetup.Choice) -> String {
-        if choice.connecting { return "Checking…" }
-        if let error = choice.error { return error }
-        if choice.connected { return "Enabled" }
-        if choice.needsAccess { return "Needs macOS permissions" }
-        return choice.detected ? "Sign-In Detected" : "Set Up or Sign In First"
+        switch choice.connection {
+        case .notChecked: choice.detected ? "Sign-In Detected" : "Set Up or Sign In First"
+        case .checking: "Checking…"
+        case .connected: "Enabled"
+        case .usageUnavailable: "Enabled · Usage temporarily unavailable"
+        case .failed(let message): message
+        }
+    }
+
+    private func statusColor(_ connection: FirstLaunchSetup.Connection) -> Color {
+        switch connection {
+        case .usageUnavailable: .orange
+        case .failed: .red
+        default: .secondary
+        }
     }
 }

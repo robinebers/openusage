@@ -1,36 +1,50 @@
 import Foundation
 import Observation
 
-/// The welcome screen exists before AppContainer, account discovery, or automatic refreshes.
+/// The welcome screen's model. It runs before the dashboard exists: detection only checks what is on
+/// this Mac, and Connect refreshes the chosen providers through the dashboard's own data store.
 @MainActor @Observable
 final class FirstLaunchSetup {
     static let pendingKey = "openusage.onboarding.connectionPending"
-    static func needsSetup(isFreshInstall: Bool, defaults: UserDefaults = .standard) -> Bool {
-        if isFreshInstall {
-            defaults.set(true, forKey: pendingKey)
-            return true
-        }
+
+    /// Shown until at least one provider is on: an install that skipped setup, or quit mid-welcome,
+    /// sees the welcome screen again on the next launch.
+    static func needsSetup(defaults: UserDefaults = .standard) -> Bool {
         if let enabled = ProviderEnablementStore(defaults: defaults).enabledIDs {
             return enabled.isEmpty
         }
         return defaults.bool(forKey: pendingKey)
     }
 
+    static func markPending(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: pendingKey)
+    }
+
+    static func clearPending(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: pendingKey)
+    }
+
+    enum Connection: Equatable {
+        case notChecked, checking, connected
+        /// Credentials worked but the usage service didn't answer; the provider stays on and retries
+        /// on the normal schedule.
+        case usageUnavailable
+        case failed(String)
+    }
+
     struct Choice: Identifiable {
         let provider: Provider
         var id: String { provider.id }
         var detected = false
-        var needsAccess = false
-        var connecting = false
-        var connected = false
-        var error: String?
-        var usageUnavailable = false
+        var connection = Connection.notChecked
     }
 
+    static let accessDeniedMessage = "Access wasn't granted. You can retry or skip for now."
+
     private let providers: [ProviderRuntime]
-    private let makeContainer: (@MainActor (Set<String>) async -> AppContainer)?
-    private(set) var preparedContainer: AppContainer?
-    private(set) var firstSnapshots: [String: ProviderSnapshot] = [:]
+    /// Builds the dashboard's data store for the selected provider families, with those families on.
+    private let prepare: @MainActor (Set<String>) async -> WidgetDataStore
+    private var dataStore: WidgetDataStore?
     private(set) var choices: [Choice]
     var selectedIDs: Set<String> = []
     var showAll = false
@@ -38,93 +52,69 @@ final class FirstLaunchSetup {
     private(set) var isConnecting = false
     private(set) var hasAttemptedConnection = false
     var visibleChoices: [Choice] { choices.filter { showAll || $0.detected } }
-    var connectedIDs: Set<String> { Set(choices.filter(\.connected).map(\.id)) }
-    var hasFailures: Bool { choices.contains { $0.error != nil } }
+    var connectedIDs: Set<String> {
+        Set(choices.filter { $0.connection == .connected || $0.connection == .usageUnavailable }.map(\.id))
+    }
+    var hasFailures: Bool {
+        choices.contains { if case .failed = $0.connection { true } else { false } }
+    }
 
-    init(providers: [ProviderRuntime],
-         makeContainer: (@MainActor (Set<String>) async -> AppContainer)? = nil) {
+    init(providers: [ProviderRuntime], prepare: @escaping @MainActor (Set<String>) async -> WidgetDataStore) {
         self.providers = providers
-        self.makeContainer = makeContainer
+        self.prepare = prepare
         self.choices = providers.map { Choice(provider: $0.provider) }
     }
 
     func detect() async {
-        let tasks = providers.map { provider in
-            Task { @MainActor in
-                let access = KeychainAccessContext(mode: .discovery)
-                let usable = await KeychainAccessContext.$current.withValue(access) {
-                    await provider.hasLocalCredentials()
-                }
-                return (provider.provider.id, usable || access.needsPermission, access.needsPermission)
-            }
+        let detected = await FirstRunSeeder.detectLocalProviders(providers)
+        guard !Task.isCancelled else { return }
+        for index in choices.indices where detected.contains(choices[index].id) {
+            choices[index].detected = true
         }
-        for task in tasks {
-            let (id, detected, needsAccess) = await task.value
-            guard !Task.isCancelled else { return }
-            if let index = choices.firstIndex(where: { $0.id == id }) {
-                choices[index].detected = detected
-                choices[index].needsAccess = needsAccess
-                if detected { selectedIDs.insert(id) }
-            }
-        }
+        selectedIDs = detected
         isDetecting = false
-        AppLog.info(.config, "welcome: detected \(selectedIDs.count) providers without requesting Keychain access")
+        AppLog.info(.config, "welcome: detected \(detected.sorted()) without Keychain prompts")
     }
 
+    /// Connects the selected providers one at a time, so at most one macOS access dialog is up. A
+    /// provider that already connected isn't fetched again on retry.
     func connectSelected() async {
         guard !isConnecting, !isDetecting else { return }
         isConnecting = true
         hasAttemptedConnection = true
         defer { isConnecting = false }
-        if preparedContainer == nil, let makeContainer {
-            preparedContainer = await makeContainer(selectedIDs)
+        let store: WidgetDataStore
+        if let dataStore { store = dataStore } else {
+            store = await prepare(selectedIDs)
+            dataStore = store
         }
-        let runtimes = preparedContainer?.providerRuntimes ?? providers
-        // Account discovery happens once. The dashboard receives these exact runtimes and results.
         for index in choices.indices {
             let family = choices[index].id
+            guard selectedIDs.contains(family), choices[index].connection != .connected else { continue }
             guard !Task.isCancelled else { return }
-            guard selectedIDs.contains(family),
-                  !choices[index].connected || choices[index].usageUnavailable else { continue }
-            choices[index].connecting = true
-            choices[index].error = nil
-            choices[index].usageUnavailable = false
-            var accessFailed = false
-            for provider in runtimes where ProviderAccountID.family(of: provider.provider.id) == family {
-                let access = KeychainAccessContext(mode: .interactive)
-                let snapshot = await KeychainAccessContext.$current.withValue(access) {
-                    await ProviderRefreshContext.$isManual.withValue(true) { await provider.refresh() }
-                }
-                guard !Task.isCancelled else { return }
-                firstSnapshots[provider.provider.id] = snapshot
-                preparedContainer?.dataStore.adoptFirstRefresh(snapshot)
-                if let category = snapshot.errorCategory {
-                    if Self.isUsageFailure(category) {
-                        choices[index].usageUnavailable = true
-                        choices[index].error = "Enabled · Usage temporarily unavailable"
-                    } else {
-                        accessFailed = true
-                        if access.needsPermission {
-                            choices[index].error = "Access wasn't granted. You can retry or skip for now."
-                        } else if case .badge(_, let message, _, _) = snapshot.lines.first {
-                            choices[index].error = message
-                        } else {
-                            choices[index].error = "Couldn't connect. Try again when you're ready."
-                        }
-                    }
-                }
-            }
-            choices[index].connecting = false
-            choices[index].connected = !accessFailed
-            choices[index].needsAccess = accessFailed
-            AppLog.info(.config, "welcome: \(family) enabled=\(!accessFailed), usageUnavailable=\(choices[index].usageUnavailable)")
+            choices[index].connection = .checking
+            choices[index].connection = await connect(family, in: store)
+            AppLog.info(.config, "welcome: \(family) → \(choices[index].connection)")
         }
     }
 
-    private static func isUsageFailure(_ category: ErrorCategory) -> Bool {
-        switch category {
-        case .network, .http5xx, .rateLimited, .decoding: true
-        default: false
+    /// A family connects when every card in it refreshes; the first card that can't use its
+    /// credentials decides the failure shown.
+    private func connect(_ family: String, in store: WidgetDataStore) async -> Connection {
+        var result = Connection.connected
+        for id in store.providerIDs(inFamily: family) {
+            let outcome = await store.refresh(providerID: id, force: true, allowsKeychainInteraction: true)
+            guard outcome != .skipped else {
+                AppLog.error(.config, "welcome: \(id) refresh was skipped while connecting")
+                return .failed("Couldn't connect. Try again when you're ready.")
+            }
+            guard let message = store.errorMessage(for: id) else { continue }
+            if message == KeychainAccessError.permissionNeeded.errorDescription {
+                return .failed(Self.accessDeniedMessage)
+            }
+            guard store.providerErrorCategories[id]?.isTransient == true else { return .failed(message) }
+            result = .usageUnavailable
         }
+        return result
     }
 }

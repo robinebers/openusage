@@ -43,7 +43,6 @@ struct AntigravityAuthStore: Sendable {
                 account: Self.keychainAccount
             )
         } catch {
-            if error is KeychainPermissionNeeded { throw error }
             AppLog.error(LogTag.auth("antigravity"), "keychain credential read failed")
             throw AntigravityError.credentialStoreUnreadable
         }
@@ -125,7 +124,6 @@ struct AntigravityAuthStore: Sendable {
 
     /// Remove only OpenUsage's derived token; Antigravity's Keychain entry is never modified.
     func discardCachedToken() {
-        guard KeychainAccessContext.current?.mode != .discovery else { return }
         do {
             try files.remove(Self.cachePath)
         } catch {

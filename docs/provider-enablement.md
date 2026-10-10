@@ -10,7 +10,9 @@ Access failures stay on the welcome screen with a retry option. A temporary netw
 
 **Skip for Now** opens the dashboard with no providers enabled. The welcome screen appears on every launch until at least one provider is enabled. Use Customize to enable a provider later; turning it on immediately requests any needed access. Once a provider is enabled, normal restarts and updates go straight to the dashboard.
 
-Detection is evidence of a local sign-in, not proof that it is valid. A protected Keychain entry can appear as detected before its contents have been read. Background refreshes never intentionally request Keychain authorization: when access is needed, the provider asks you to use Refresh.
+Detection never opens a macOS permission dialog. A saved sign-in that macOS won't share until you approve it still counts as detected; connecting that provider asks for the approval. Detection is evidence of a local sign-in, not proof that it is valid.
+
+Only something you do — Connect, Refresh, or turning a provider on — can open a Keychain dialog. Background updates never do: when access is needed, the provider asks you to choose Refresh. While one dialog is waiting on you, other providers' Keychain reads pause and retry shortly instead of stacking more dialogs.
 
 ## When an update adds a new provider
 

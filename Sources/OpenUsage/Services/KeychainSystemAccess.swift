@@ -2,10 +2,15 @@ import Foundation
 import LocalAuthentication
 import Security
 
-/// Legacy login-Keychain ACL checks can present UI despite per-query flags. Every native call in
-/// the app shares this gate, so an interactive request cannot lend permission to background work.
+/// Legacy login-Keychain ACL checks can present UI despite per-query flags; only the process-wide
+/// interaction switch suppresses them. Every native call in the app shares this gate, so an
+/// interactive request cannot lend permission to background work.
 enum KeychainSystemAccess {
     private static let gate = KeychainOperationGate()
+
+    /// Not a Security framework result: the gate refused a background call because an interactive
+    /// request is waiting on the user.
+    static let busyStatus: OSStatus = 1
 
     static func perform<T>(interactive: Bool = KeychainAccessContext.allowsInteraction,
                            unavailable: T, _ operation: () -> T) -> T {
@@ -23,11 +28,31 @@ enum KeychainSystemAccess {
         return operation()
     }
 
-    static func disallowInteraction(in query: inout [String: Any]) {
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        query[kSecUseAuthenticationContext as String] = context
-        query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail
+    /// A generic-password query for one item. Non-interactive queries also carry every per-query
+    /// "fail instead of prompting" flag; `perform` covers the legacy ACL dialogs those miss.
+    static func genericPasswordQuery(service: String, account: String?, interactive: Bool) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecUseAuthenticationUI as String: interactive ? kSecUseAuthenticationUIAllow : kSecUseAuthenticationUIFail,
+        ]
+        if let account { query[kSecAttrAccount as String] = account }
+        if !interactive {
+            let context = LAContext()
+            context.interactionNotAllowed = true
+            query[kSecUseAuthenticationContext as String] = context
+        }
+        return query
+    }
+
+    /// Records a refused status on the current operation so its refresh can say what happened.
+    static func recordRefusal(_ status: OSStatus) {
+        switch status {
+        case busyStatus: KeychainAccessContext.current?.record(.busy)
+        case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+            KeychainAccessContext.current?.record(.permissionNeeded)
+        default: break
+        }
     }
 }
 

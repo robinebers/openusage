@@ -84,11 +84,17 @@ final class WidgetDataStore {
     /// renders it as a warning indicator beside the provider name; the last good snapshot keeps
     /// displaying (stale-while-revalidate) instead of being replaced by dead "No data" rows.
     var providerErrors: [String: String] = [:]
+    /// The telemetry category behind each `providerErrors` entry, so callers can tell a refused Keychain
+    /// read from a transient network failure without parsing the message.
+    @ObservationIgnored private(set) var providerErrorCategories: [String: ErrorCategory] = [:]
 
     /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
     /// observable UI state, so it's excluded from `@Observable` tracking.
     @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
-    @ObservationIgnored private var pendingKeychainInteraction: Set<String> = []
+    /// In-flight refreshes that may show Keychain prompts, and user requests that arrived while a quiet
+    /// refresh was already running. Each queued request runs once, interactively, after that refresh.
+    @ObservationIgnored private var interactiveInFlight: Set<String> = []
+    @ObservationIgnored private var interactiveFollowUps: Set<String> = []
 
     /// Owns the quota pace-notification subsystem (dedup state, fire/deliver decision, trace). This store
     /// just gathers each pass's enabled bounded metrics and delegates.
@@ -196,22 +202,6 @@ final class WidgetDataStore {
         }
     }
 
-    func adoptFirstRefresh(_ snapshot: ProviderSnapshot) {
-        let id = snapshot.providerID
-        guard providersByID[id] != nil else { return }
-        if let message = Self.errorMessage(in: snapshot) {
-            providerErrors[id] = message
-            failureRetryAfter[id] = now().addingTimeInterval(RefreshSetting.interval)
-        } else {
-            providerErrors[id] = nil
-            failureRetryAfter[id] = nil
-            localSnapshots[id] = snapshot
-            cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[id])
-            rebuildRenderedSnapshots()
-        }
-        lastRefreshAt = now()
-    }
-
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
     /// Everything stays MainActor-isolated; the overlap happens at the network awaits inside each
     /// provider, and the per-provider in-flight guard in `refresh` still prevents duplicate fetches.
@@ -300,8 +290,6 @@ final class WidgetDataStore {
         notifyHistoryChange: Bool = true
     ) async -> RefreshOutcome {
         guard isProviderEnabled(providerID) else { return .skipped }
-        let requestedInteraction = allowsKeychainInteraction || pendingKeychainInteraction.contains(providerID)
-        let effectiveForce = force || requestedInteraction
         // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
         // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
         // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
@@ -309,7 +297,7 @@ final class WidgetDataStore {
             providerID: providerID,
             currentIdentityKey: providerIdentityKeys[providerID]
         )
-        if !effectiveForce, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
+        if !force, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
             AppLog.debug(.refresh, "cache hit \(providerID)")
@@ -319,11 +307,11 @@ final class WidgetDataStore {
             }
             return .cacheHit
         }
-        if !effectiveForce { AppLog.debug(.refresh, "cache miss \(providerID)") }
+        if !force { AppLog.debug(.refresh, "cache miss \(providerID)") }
 
         // A provider that just failed isn't cached, so nothing else stops the loop from re-probing it on
         // every wake. Hold off until its backoff expires; the manual `force` refresh ignores the backoff.
-        if !effectiveForce, let retryAfter = failureRetryAfter[providerID], now() < retryAfter {
+        if !force, let retryAfter = failureRetryAfter[providerID], now() < retryAfter {
             AppLog.debug(.refresh, "backoff skip \(providerID) (failed <\(Int(Self.failureRetryBackoff))s ago)")
             return .backedOff
         }
@@ -332,15 +320,20 @@ final class WidgetDataStore {
         // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
         // first popover open), so we never fire duplicate network calls for the same provider.
         guard !refreshingProviderIDs.contains(providerID) else {
+            // A quiet refresh can't ask for Keychain access, so a user's request must not vanish into it.
+            if allowsKeychainInteraction, !interactiveInFlight.contains(providerID) {
+                interactiveFollowUps.insert(providerID)
+            }
             AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
             return .skipped
         }
-        pendingKeychainInteraction.remove(providerID)
         refreshingProviderIDs.insert(providerID)
+        if allowsKeychainInteraction { interactiveInFlight.insert(providerID) }
         defer {
             refreshingProviderIDs.remove(providerID)
-            if pendingKeychainInteraction.contains(providerID), isProviderEnabled(providerID) {
-                Task { await self.refresh(providerID: providerID) }
+            interactiveInFlight.remove(providerID)
+            if interactiveFollowUps.remove(providerID) != nil, isProviderEnabled(providerID) {
+                Task { await self.refresh(providerID: providerID, force: true, allowsKeychainInteraction: true) }
             }
         }
         let start = monotonicNow()
@@ -348,14 +341,11 @@ final class WidgetDataStore {
         // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
         guard var snapshot = await ProviderRefreshDeadline.snapshot(
             from: provider,
-            force: effectiveForce,
             timeout: providerRefreshTimeout,
-            allowsKeychainInteraction: requestedInteraction
+            allowsKeychainInteraction: allowsKeychainInteraction
         ) else {
-            providerErrors[providerID] = "Refresh timed out after \(Int(providerRefreshTimeout))s"
-            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
-            AppLog.warn(.refresh, "\(providerID) timed out after \(Int(providerRefreshTimeout))s")
-            onRefreshOutcome?(providerID, .failed, .network, effectiveForce)
+            recordFailure(providerID, message: "Refresh timed out after \(Int(providerRefreshTimeout))s",
+                          category: .network, force: force)
             return .failed
         }
         // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
@@ -372,18 +362,13 @@ final class WidgetDataStore {
             )
         }
         if let message = Self.errorMessage(in: snapshot) {
-            // Failed refresh: surface the error but keep the last good snapshot on screen rather than
-            // collapsing every row to "No data". The provider error string is already user-safe.
-            providerErrors[providerID] = message
-            // Negative-cache the failure so a wake burst can't re-probe this provider in a tight loop.
-            failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
-            AppLog.warn(.refresh, "\(providerID) failed: \(message)")
-            onRefreshOutcome?(providerID, .failed, snapshot.errorCategory, effectiveForce)
+            recordFailure(providerID, message: message, category: snapshot.errorCategory, force: force)
             return .failed
         }
         if providerErrors[providerID] != nil {
             providerErrors[providerID] = nil
         }
+        providerErrorCategories[providerID] = nil
         // Recovered: drop any backoff so the provider resumes the normal cadence immediately.
         failureRetryAfter[providerID] = nil
         // A provider can refresh its live limits successfully while its optional local log/CSV scan
@@ -411,15 +396,19 @@ final class WidgetDataStore {
         rebuildRenderedSnapshots()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
-        onRefreshOutcome?(providerID, .refreshed, nil, effectiveForce)
+        onRefreshOutcome?(providerID, .refreshed, nil, force)
         return .refreshed
     }
 
-    /// Preserve a user's enable action if the automatic refresh wins the scheduling race. Only the
-    /// next actual attempt can consume this permission; it never authorizes later background polls.
-    func requestKeychainInteraction(_ requested: Bool, for providerID: String) {
-        if requested { pendingKeychainInteraction.insert(providerID) }
-        else { pendingKeychainInteraction.remove(providerID) }
+    /// Surfaces a failed refresh while keeping the last good snapshot on screen rather than collapsing
+    /// every row to "No data" (the message is already user-safe), and negative-caches it so a wake burst
+    /// can't re-probe the provider in a tight loop.
+    private func recordFailure(_ providerID: String, message: String, category: ErrorCategory?, force: Bool) {
+        providerErrors[providerID] = message
+        providerErrorCategories[providerID] = category
+        failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
+        AppLog.warn(.refresh, "\(providerID) failed: \(message)")
+        onRefreshOutcome?(providerID, .failed, category, force)
     }
 
     private func durationMilliseconds(since start: TimeInterval) -> Int {
@@ -552,6 +541,11 @@ final class WidgetDataStore {
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.
     func errorMessage(for providerID: String) -> String? {
         providerErrors[providerID]
+    }
+
+    /// Every card in a provider family (e.g. each Claude account), in registry order.
+    func providerIDs(inFamily family: String) -> [String] {
+        registry.providers.map(\.id).filter { ProviderAccountID.family(of: $0) == family }
     }
 
     /// A soft, non-blocking notice from the provider's latest *successful* snapshot (e.g. Claude's

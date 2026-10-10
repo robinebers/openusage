@@ -4,10 +4,17 @@ The popover that opens from the menu bar icon. Providers are sections; each sect
 
 ## First launch
 
-The welcome screen detects existing sign-ins without opening permission dialogs. Select providers and choose **Connect Selected** to connect them in order. macOS may request access to saved credentials for those providers. You can retry access failures or open the dashboard using those first results. Temporary network failures keep providers enabled and retry on the normal update schedule. **Skip for Now** lets you set up later in Customize; if no provider is enabled, the welcome screen returns on the next launch.
+The welcome screen detects existing sign-ins without opening permission dialogs. Select providers and choose **Connect Selected** to connect them in order. macOS may request access to saved credentials for those providers. You can retry access failures or open the dashboard using those first results. Temporary network failures keep providers enabled and retry on the normal update schedule. **Skip for Now** lets you set up later in Customize; if no provider is enabled, the welcome screen returns on the next launch. After you connect providers, a one-time card at the top of the dashboard points to **Customize**, where you can turn any provider on or off; the card stays until you close it with its ✕ button.
 
+Updates never change the providers you already have on or off — but when an update ships a provider you've never seen, a local check runs once for just that provider and turns it on only if you actually have the tool. See [Which Providers Are On](provider-enablement.md) for the full lifecycle.
 
 When the dashboard has no visible providers, **Choose Providers** opens Customize so you can add them.
+
+Each provider card leads with its **Always Visible** metrics. Any metrics you've moved below the **On Demand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with neither On Demand metrics nor quick links shows no caret.
+
+When you expand a card, the tucked-away metrics open below the caret as a single-column list, so each detail row keeps the full card width.
+
+A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. Buttons lay out up to three across, wrapping to a second row when there are more.
 
 ## Total Spend
 

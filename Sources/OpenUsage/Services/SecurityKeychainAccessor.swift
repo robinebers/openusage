@@ -3,6 +3,9 @@ import Security
 import Synchronization
 
 protocol KeychainAccessing: Sendable {
+    /// Whether an item exists, without reading its secret. `nil` means the probe itself failed
+    /// (locked keychain, denied) — the caller picks its own safe side, which is not the same for every
+    /// caller. A requirement, so existential calls reach the real metadata-only probe.
     func genericPasswordExists(service: String) -> Bool?
     func readGenericPassword(service: String) throws -> String?
     func writeGenericPassword(service: String, value: String) throws
@@ -37,11 +40,7 @@ extension KeychainAccessing {
         throw KeychainError.writeFailed("Account-scoped Keychain writes are unavailable.")
     }
 
-    /// Whether an item exists for `service`, without reading its secret. `nil` means the probe
-    /// itself failed (locked keychain, denied) — the caller picks its own safe side, which is not
-    /// the same for every caller. The default (for mocks) falls back to a read; the real
-    /// `SecurityKeychainAccessor` overrides this with an in-process attributes-only probe, safe for
-    /// the launch path — it can't trigger an unlock prompt and returns in microseconds.
+    /// Default for in-memory mocks, which have no prompts to avoid: answer from a read.
     func genericPasswordExists(service: String) -> Bool? {
         do {
             return try readGenericPassword(service: service) != nil
@@ -52,7 +51,7 @@ extension KeychainAccessing {
 }
 
 protocol SecurityItemAccessing: Sendable {
-    func probeGenericPassword(service: String, account: String?) -> OSStatus
+    func probeGenericPassword(service: String) -> OSStatus
     func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?)
     func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?)
     func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus
@@ -61,57 +60,35 @@ protocol SecurityItemAccessing: Sendable {
 
 extension SecurityItemAccessing {
     // Test adapters without a metadata model remain indeterminate; never read a secret to probe.
-    func probeGenericPassword(service: String, account: String?) -> OSStatus { errSecInteractionNotAllowed }
+    func probeGenericPassword(service: String) -> OSStatus { errSecInteractionNotAllowed }
 }
 
 struct SystemSecurityItemAccessor: SecurityItemAccessing {
-    func probeGenericPassword(service: String, account: String?) -> OSStatus {
-        var query = itemQuery(service: service, account: account)
-        KeychainSystemAccess.disallowInteraction(in: &query)
+    func probeGenericPassword(service: String) -> OSStatus {
+        var query = KeychainSystemAccess.genericPasswordQuery(service: service, account: nil, interactive: false)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
-        return KeychainSystemAccess.perform(interactive: false, unavailable: errSecInteractionNotAllowed) {
+        return KeychainSystemAccess.perform(interactive: false, unavailable: KeychainSystemAccess.busyStatus) {
             SecItemCopyMatching(query as CFDictionary, nil)
         }
     }
-    static func passwordReadQuery(service: String, account: String?, allowsInteraction: Bool) -> [String: Any] {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnData as String: true,
-            kSecUseAuthenticationUI as String: allowsInteraction
-                ? kSecUseAuthenticationUIAllow : kSecUseAuthenticationUIFail,
-        ]
-        if let account {
-            query[kSecAttrAccount as String] = account
-        }
-
-        if !allowsInteraction { KeychainSystemAccess.disallowInteraction(in: &query) }
-        return query
-    }
 
     func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
-        let query = Self.passwordReadQuery(service: service, account: account,
-                                           allowsInteraction: KeychainAccessContext.allowsInteraction)
+        var query = itemQuery(service: service, account: account)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnData as String] = true
         var result: CFTypeRef?
-        let status = KeychainSystemAccess.perform(unavailable: errSecInteractionNotAllowed) {
+        let status = KeychainSystemAccess.perform(unavailable: KeychainSystemAccess.busyStatus) {
             SecItemCopyMatching(query as CFDictionary, &result)
         }
         return (status, result as? Data)
     }
 
     func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecReturnAttributes as String: true,
-            kSecUseAuthenticationUI as String: KeychainAccessContext.allowsInteraction
-                ? kSecUseAuthenticationUIAllow : kSecUseAuthenticationUIFail,
-        ]
-        if !KeychainAccessContext.allowsInteraction { KeychainSystemAccess.disallowInteraction(in: &query) }
+        var query = itemQuery(service: service, account: nil)
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        query[kSecReturnAttributes as String] = true
         var result: CFTypeRef?
-        let status = KeychainSystemAccess.perform(unavailable: errSecInteractionNotAllowed) {
+        let status = KeychainSystemAccess.perform(unavailable: KeychainSystemAccess.busyStatus) {
             SecItemCopyMatching(query as CFDictionary, &result)
         }
         let account = (result as? [String: Any])?[kSecAttrAccount as String] as? String ?? ""
@@ -119,7 +96,7 @@ struct SystemSecurityItemAccessor: SecurityItemAccessing {
     }
 
     func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
-        KeychainSystemAccess.perform(unavailable: errSecInteractionNotAllowed) {
+        KeychainSystemAccess.perform(unavailable: KeychainSystemAccess.busyStatus) {
             SecItemUpdate(
                 itemQuery(service: service, account: account) as CFDictionary,
                 [kSecValueData as String: data] as CFDictionary
@@ -130,23 +107,15 @@ struct SystemSecurityItemAccessor: SecurityItemAccessing {
     func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
         var attributes = itemQuery(service: service, account: account)
         attributes[kSecValueData as String] = data
-        return KeychainSystemAccess.perform(unavailable: errSecInteractionNotAllowed) {
+        return KeychainSystemAccess.perform(unavailable: KeychainSystemAccess.busyStatus) {
             SecItemAdd(attributes as CFDictionary, nil)
         }
     }
 
     private func itemQuery(service: String, account: String?) -> [String: Any] {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecUseAuthenticationUI as String: KeychainAccessContext.allowsInteraction
-                ? kSecUseAuthenticationUIAllow : kSecUseAuthenticationUIFail,
-        ]
-        if let account {
-            query[kSecAttrAccount as String] = account
-        }
-        if !KeychainAccessContext.allowsInteraction { KeychainSystemAccess.disallowInteraction(in: &query) }
-        return query
+        KeychainSystemAccess.genericPasswordQuery(
+            service: service, account: account, interactive: KeychainAccessContext.allowsInteraction
+        )
     }
 }
 
@@ -163,13 +132,10 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         try readPassword(service: service, account: nil)
     }
 
-    /// Attributes-only existence probe used on the launch path: an in-process Security-framework
-    /// query (no subprocess, returns in microseconds) that never requests the secret and forbids
-    /// any UI, so it can neither trigger an unlock prompt nor stall launch. A failed probe (locked
-    /// keychain, denied) reports `nil` ("unknown"), never a definite answer, so callers can pick
-    /// their safe side.
+    /// Attributes-only existence probe: an in-process Security-framework query that never requests
+    /// the secret and forbids any UI, so it can neither trigger a prompt nor stall launch.
     func genericPasswordExists(service: String) -> Bool? {
-        switch itemAccessor.probeGenericPassword(service: service, account: nil) {
+        switch itemAccessor.probeGenericPassword(service: service) {
         case errSecSuccess: return true
         case errSecItemNotFound: return false
         default: return nil
@@ -185,20 +151,12 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     private func readPassword(service: String, account: String?) throws -> String? {
-        if KeychainAccessContext.current?.mode == .discovery {
-            let status = itemAccessor.probeGenericPassword(service: service, account: account)
-            if status == errSecItemNotFound { return nil }
-            KeychainAccessContext.current?.recordPermissionNeeded()
-            throw KeychainPermissionNeeded()
-        }
         let result = Self.withAccessLock(service: service) {
             itemAccessor.readGenericPasswordData(service: service, account: account)
         }
         guard result.status == errSecSuccess else {
             if result.status == errSecItemNotFound { return nil }
-            if [errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled].contains(result.status) {
-                KeychainAccessContext.current?.recordPermissionNeeded()
-            }
+            KeychainSystemAccess.recordRefusal(result.status)
             let message = Self.errorMessage(for: result.status)
             AppLog.warn(.keychain, "read failed for service '\(service)' (\(result.status)): \(message)")
             throw KeychainError.readFailed(message)
@@ -225,7 +183,6 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     private func writePassword(service: String, account: String?, value: String) throws {
-        guard KeychainAccessContext.current?.mode != .discovery else { throw KeychainPermissionNeeded() }
         let data = Data(value.utf8)
         let status = Self.withAccessLock(service: service) {
             if account == nil {
@@ -243,9 +200,7 @@ struct SecurityKeychainAccessor: KeychainAccessing {
             return updateOrAddPassword(service: service, account: account, data: data)
         }
         guard status == errSecSuccess else {
-            if [errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled].contains(status) {
-                KeychainAccessContext.current?.recordPermissionNeeded()
-            }
+            KeychainSystemAccess.recordRefusal(status)
             let message = Self.errorMessage(for: status)
             AppLog.warn(.keychain, "write failed for service '\(service)' (\(status)): \(message)")
             throw KeychainError.writeFailed(message)
@@ -275,7 +230,8 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     private static func errorMessage(for status: OSStatus) -> String {
-        SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+        if status == KeychainSystemAccess.busyStatus { return "another Keychain request is waiting on the user" }
+        return SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
     }
 
     private func currentUserAccount() -> String {
@@ -297,4 +253,3 @@ enum KeychainError: Error, LocalizedError {
         }
     }
 }
-
