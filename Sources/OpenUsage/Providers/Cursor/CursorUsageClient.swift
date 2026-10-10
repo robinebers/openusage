@@ -14,7 +14,7 @@ struct CursorUsageClient: Sendable {
     static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
     static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let stripeURL = URL(string: "https://cursor.com/api/auth/stripe")!
-    static let exportCSVURL = URL(string: "https://cursor.com/api/dashboard/export-usage-events-csv")!
+    static let usageEventsURL = URL(string: "https://cursor.com/api/dashboard/get-filtered-usage-events")!
     static let clientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
 
     var http: any HTTPClient
@@ -88,27 +88,31 @@ struct CursorUsageClient: Sendable {
         ))
     }
 
-    /// GET the dashboard usage CSV for `[start, end]` (epoch-ms query params, token strategy) using the
-    /// same `WorkosCursorSessionToken` cookie as the Stripe/REST calls. Returns nil when the access token
-    /// carries no usable session.
-    func fetchUsageCSV(accessToken: String, start: Date, end: Date) async throws -> HTTPResponse? {
+    func fetchUsageEventsPage(
+        accessToken: String,
+        start: Date,
+        end: Date,
+        page: Int,
+        pageSize: Int
+    ) async throws -> HTTPResponse? {
         guard let session = Self.session(from: accessToken) else { return nil }
-        var components = URLComponents(url: Self.exportCSVURL, resolvingAgainstBaseURL: false)
-        components?.queryItems = [
-            URLQueryItem(name: "startDate", value: String(Int(start.timeIntervalSince1970 * 1000))),
-            URLQueryItem(name: "endDate", value: String(Int(end.timeIntervalSince1970 * 1000))),
-            URLQueryItem(name: "strategy", value: "tokens")
+        let body: [String: Any] = [
+            "startDate": String(Int(start.timeIntervalSince1970 * 1000)),
+            "endDate": String(Int(end.timeIntervalSince1970 * 1000)),
+            "page": page,
+            "pageSize": pageSize
         ]
-        guard let url = components?.url else { return nil }
 
         return try await http.send(HTTPRequest(
-            method: "GET",
-            url: url,
+            method: "POST",
+            url: Self.usageEventsURL,
             headers: [
                 "Cookie": "WorkosCursorSessionToken=\(session.sessionToken)",
-                "Accept": "text/csv"
+                "Content-Type": "application/json",
+                "Origin": "https://cursor.com"
             ],
-            timeout: 30
+            body: try JSONSerialization.data(withJSONObject: body),
+            timeout: 15
         ))
     }
 

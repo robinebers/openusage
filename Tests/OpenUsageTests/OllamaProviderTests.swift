@@ -2,11 +2,11 @@ import CryptoKit
 import XCTest
 @testable import OpenUsage
 
-/// A live `GET /api/usage` response, trimmed to the fields OpenUsage reads.
-private let usageJSON = #"""
-{"activity":{"cost":"1.25000","period":{"type":"last_4_weeks","starting_at":"2026-08-03T00:00:00Z","ending_at":"2026-08-24T19:39:56Z"},"models":[]},
- "limits":{"session":{"usage":0.349,"models":[{"name":"minimax-m3","request_count":139}]},
-           "weekly":{"usage":0.316,"models":[{"name":"minimax-m3","request_count":646}]}}}
+/// A legacy-plan `GET /api/balance` response, from https://docs.ollama.com/api/balance.
+private let legacyBalanceJSON = #"""
+{"included":{"session":{"remaining_percent":75,"resets_at":"2026-10-01T07:00:00Z"},
+             "weekly":{"remaining_percent":40,"resets_at":"2026-10-05T00:00:00Z"}},
+ "purchased":{"balance_usd":25}}
 """#
 
 private let accountJSON = #"{"ID":"527bb449","Email":"user@example.com","Name":"user","Plan":"pro"}"#
@@ -17,7 +17,7 @@ private func ok(_ json: String) -> HTTPResponse {
     HTTPResponse(statusCode: 200, headers: [:], body: data(json))
 }
 
-/// Answers per request path, so the required usage call and the best-effort account call can have
+/// Answers per request path, so the required balance call and the best-effort account call can have
 /// different outcomes — the case a single canned `FakeHTTPClient` response cannot express.
 private final class RoutedHTTPClient: HTTPClient, @unchecked Sendable {
     private let responses: [String: HTTPResponse]
@@ -165,14 +165,14 @@ final class OllamaAuthStoreTests: XCTestCase {
 final class OllamaRequestSignerTests: XCTestCase {
     func testSignsTheMethodAndTimestampedURIOllamaExpects() async throws {
         let key = try XCTUnwrap(OpenSSHEd25519Key.parse(pem: testPrivateKeyPEM))
-        let http = FakeHTTPClient(response: ok(usageJSON))
+        let http = FakeHTTPClient(response: ok(legacyBalanceJSON))
         let client = OllamaUsageClient(http: http, now: { Date(timeIntervalSince1970: 1_700_000_000) })
 
-        _ = try await client.fetchUsage(key: key)
+        _ = try await client.fetchBalance(key: key)
 
         let request = try XCTUnwrap(http.requests.first)
         XCTAssertEqual(request.method, "GET")
-        XCTAssertEqual(request.url.absoluteString, "https://ollama.com/api/usage?ts=1700000000")
+        XCTAssertEqual(request.url.absoluteString, "https://ollama.com/api/balance?ts=1700000000")
 
         // The header is "<base64 public key>:<base64 signature>" over "<METHOD>,<request-uri>".
         let header = try XCTUnwrap(request.headers["Authorization"])
@@ -184,7 +184,7 @@ final class OllamaRequestSignerTests: XCTestCase {
         let blob = try XCTUnwrap(Data(base64Encoded: key.publicKeyBase64))
         // The raw public key is the last 32 bytes of the SSH blob (type string + length + key).
         let publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: Data(blob.suffix(32)))
-        XCTAssertTrue(publicKey.isValidSignature(signature, for: Data("GET,/api/usage?ts=1700000000".utf8)))
+        XCTAssertTrue(publicKey.isValidSignature(signature, for: Data("GET,/api/balance?ts=1700000000".utf8)))
     }
 
     func testAccountRequestIsAPost() async throws {
@@ -202,68 +202,52 @@ final class OllamaRequestSignerTests: XCTestCase {
 // MARK: - Mapping
 
 final class OllamaUsageMapperTests: XCTestCase {
-    func testMapsLiveResponseToSessionWeeklyAndSpend() throws {
-        let mapped = try OllamaUsageMapper.map(usageBody: data(usageJSON), accountBody: data(accountJSON))
+    /// Regression for #1358: legacy limits now arrive as percent *remaining* with real reset times.
+    func testMapsLegacyPlanToSessionWeeklyAndPurchasedCredits() throws {
+        let mapped = try OllamaUsageMapper.map(balanceBody: data(legacyBalanceJSON), accountBody: data(accountJSON))
 
         XCTAssertEqual(mapped.plan, .named("Pro"))
-        XCTAssertEqual(mapped.lines.count, 3)
-
-        // `usage` arrives as a fraction of the plan allowance, so 0.349 is 34.9%, not 0.349%.
-        guard case .progress(let label, let used, let limit, let format, let resetsAt, let periodMs, _) =
-                mapped.lines[0] else {
-            return XCTFail("expected a session meter, got \(mapped.lines[0])")
-        }
-        XCTAssertEqual(label, "Session")
-        XCTAssertEqual(used, 34.9, accuracy: 0.0001)
-        XCTAssertEqual(limit, 100)
-        XCTAssertEqual(format, .percent)
-        // Ollama publishes neither a reset instant nor the current window's start, so the meter carries
-        // no countdown and no period — a period without a reset date renders as a static "Resets in 5h".
-        XCTAssertNil(resetsAt)
-        XCTAssertNil(periodMs)
-
-        guard case .progress(let weeklyLabel, let weeklyUsed, _, _, _, let weeklyPeriod, _) =
-                mapped.lines[1] else {
-            return XCTFail("expected a weekly meter, got \(mapped.lines[1])")
-        }
-        XCTAssertEqual(weeklyLabel, "Weekly")
-        XCTAssertEqual(weeklyUsed, 31.6, accuracy: 0.0001)
-        XCTAssertNil(weeklyPeriod)
-
-        // `cost` is a decimal string, not a number.
-        guard case .values(let spendLabel, let values, _, _, _, _) = mapped.lines[2] else {
-            return XCTFail("expected a spend row, got \(mapped.lines[2])")
-        }
-        XCTAssertEqual(spendLabel, "Last 4 Weeks")
-        XCTAssertEqual(values.map(\.kind), [.dollars])
-        XCTAssertEqual(values.first?.number, 1.25)
+        XCTAssertEqual(mapped.lines, [
+            .progress(label: "Session", used: 25, limit: 100, format: .percent,
+                      resetsAt: OpenUsageISO8601.date(from: "2026-10-01T07:00:00Z"),
+                      periodDurationMs: OllamaUsageMapper.sessionPeriodMs),
+            .progress(label: "Weekly", used: 60, limit: 100, format: .percent,
+                      resetsAt: OpenUsageISO8601.date(from: "2026-10-05T00:00:00Z"),
+                      periodDurationMs: OllamaUsageMapper.weeklyPeriodMs),
+            .values(label: "Purchased Credits", values: [MetricValue(number: 25, kind: .dollars)])
+        ])
     }
 
     func testMetricLabelsMatchTheProvidersWidgetDescriptors() async throws {
-        let mapped = try OllamaUsageMapper.map(usageBody: data(usageJSON), accountBody: nil)
+        let mapped = try OllamaUsageMapper.map(balanceBody: data(legacyBalanceJSON), accountBody: nil)
         let labels = await MainActor.run { OllamaProvider().widgetDescriptors.map(\.metricLabel) }
 
-        // This captured response predates the monthly meter and must still omit absent limits.
+        // A legacy plan has no monthly allowance, so its row is omitted rather than shown at zero.
         XCTAssertEqual(mapped.lines.map(\.label), labels.filter { $0 != "Monthly" })
     }
 
-    func testMissingLimitsIsALoudFailureRatherThanAnEmptyDashboard() {
-        XCTAssertThrowsError(try OllamaUsageMapper.usageLines(data(#"{"activity":{"cost":"0"}}"#))) { error in
-            XCTAssertEqual(error as? OllamaUsageError, .invalidResponse)
-        }
-        XCTAssertThrowsError(try OllamaUsageMapper.usageLines(data("not json"))) { error in
-            XCTAssertEqual(error as? OllamaUsageError, .invalidResponse)
+    /// Regression for #1358: the old `/api/usage` shape, or anything else without an `included`
+    /// allowance OpenUsage can read, is a loud failure rather than an empty dashboard.
+    func testUnreadableAllowanceIsALoudFailureRatherThanAnEmptyDashboard() {
+        let bodies = [
+            "not json",
+            #"{"limits":{"session":{"usage":0.349}}}"#,
+            #"{"purchased":{"balance_usd":25}}"#,
+            #"{"included":{},"purchased":{"balance_usd":25}}"#
+        ]
+        for body in bodies {
+            XCTAssertThrowsError(try OllamaUsageMapper.balanceLines(data(body)), body) { error in
+                XCTAssertEqual(error as? OllamaUsageError, .invalidResponse, body)
+            }
         }
     }
 
-    func testAbsentMeterIsOmittedRatherThanShownAtZero() throws {
-        let lines = try OllamaUsageMapper.usageLines(data(#"{"limits":{"weekly":{"usage":0.5}}}"#))
+    func testAbsentLegacyMeterIsOmittedRatherThanShownAtZero() throws {
+        let lines = try OllamaUsageMapper.balanceLines(data(#"{"included":{"weekly":{"remaining_percent":50}}}"#))
 
-        XCTAssertEqual(lines.map(\.label), ["Weekly"])
-    }
-
-    func testEmptyLimitsReadAsNoUsageData() throws {
-        XCTAssertEqual(try OllamaUsageMapper.usageLines(data(#"{"limits":{}}"#)), [.noUsageData])
+        XCTAssertEqual(lines, [
+            .progress(label: "Weekly", used: 50, limit: 100, format: .percent)
+        ])
     }
 
     func testPlanNameAcceptsBothCasingsAndIsTitleCased() {
@@ -285,7 +269,7 @@ final class OllamaUsageMapperTests: XCTestCase {
 @MainActor
 final class OllamaProviderRefreshTests: XCTestCase {
     func testMissingKeyReportsNotLoggedInWithoutCallingTheNetwork() async {
-        let http = FakeHTTPClient(response: ok(usageJSON))
+        let http = FakeHTTPClient(response: ok(legacyBalanceJSON))
         let provider = OllamaProvider(
             authStore: OllamaAuthStore(files: FakeFiles()),
             usageClient: OllamaUsageClient(http: http, now: { Date(timeIntervalSince1970: 0) })
@@ -297,7 +281,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
         XCTAssertEqual(snapshot.errorCategory, .notLoggedIn)
     }
 
-    func testUnauthorizedUsageReportsSignInRatherThanAnHTTPError() async {
+    func testUnauthorizedBalanceReportsSignInRatherThanAnHTTPError() async {
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 401, headers: [:], body: Data()))
         let provider = makeProvider(http: http)
 
@@ -317,23 +301,23 @@ final class OllamaProviderRefreshTests: XCTestCase {
         XCTAssertEqual(snapshot.errorCategory, .http5xx)
     }
 
-    /// The account call is best-effort: `FakeHTTPClient` answers every request with the usage body, so
+    /// The account call is best-effort: `FakeHTTPClient` answers every request with the balance body, so
     /// the plan can't be read — the meters must still map.
     func testMetersSurviveAnUnreadablePlanResponse() async {
-        let provider = makeProvider(http: FakeHTTPClient(response: ok(usageJSON)))
+        let provider = makeProvider(http: FakeHTTPClient(response: ok(legacyBalanceJSON)))
 
         let snapshot = await provider.refresh()
 
         XCTAssertNil(snapshot.plan)
         XCTAssertNil(snapshot.errorCategory)
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Last 4 Weeks"])
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Purchased Credits"])
     }
 
     /// Ollama is opt-in: the signing key exists from Ollama's first run, so probing it would auto-enable
     /// the provider for every local-models user and greet them with a Cloud sign-in warning. The probe
     /// must stay false even when a perfectly good key is on disk.
     func testProviderIsOptInEvenWithAUsableKeyOnDisk() async {
-        let provider = makeProvider(http: FakeHTTPClient(response: ok(usageJSON)))
+        let provider = makeProvider(http: FakeHTTPClient(response: ok(legacyBalanceJSON)))
 
         let hasCredentials = await provider.hasLocalCredentials()
 
@@ -344,7 +328,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
     /// no plan. The meters must still refresh, but the failure has to be visible.
     func testFailedPlanLookupWarnsAndKeepsTheMeters() async {
         let provider = makeProvider(http: RoutedHTTPClient([
-            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
             OllamaUsageClient.accountPath: HTTPResponse(statusCode: 500, headers: [:], body: Data())
         ]))
 
@@ -353,7 +337,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
         XCTAssertNil(snapshot.errorCategory)
         XCTAssertNil(snapshot.plan)
         XCTAssertNotNil(snapshot.warning)
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Last 4 Weeks"])
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Purchased Credits"])
     }
 
     /// Regression: the failure path covered HTTP 500, but a `200 OK` carrying a body OpenUsage cannot
@@ -362,7 +346,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
     func testUnreadablePlanResponseWarnsAndKeepsTheMeters() async {
         for body in ["not json", "[]", #"{"Name":"user"}"#] {
             let provider = makeProvider(http: RoutedHTTPClient([
-                OllamaUsageClient.usagePath: ok(usageJSON),
+                OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
                 OllamaUsageClient.accountPath: ok(body)
             ]))
 
@@ -371,7 +355,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
             XCTAssertNil(snapshot.errorCategory, body)
             XCTAssertNil(snapshot.plan, body)
             XCTAssertNotNil(snapshot.warning, body)
-            XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Last 4 Weeks"], body)
+            XCTAssertEqual(snapshot.lines.map(\.label), ["Session", "Weekly", "Purchased Credits"], body)
         }
     }
 
@@ -379,11 +363,11 @@ final class OllamaProviderRefreshTests: XCTestCase {
     /// different-looking problems to the user.
     func testUnreadableAndFailedPlanLookupsShareOneWarning() async {
         let unreadable = makeProvider(http: RoutedHTTPClient([
-            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
             OllamaUsageClient.accountPath: ok("not json")
         ]))
         let failed = makeProvider(http: RoutedHTTPClient([
-            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
             OllamaUsageClient.accountPath: HTTPResponse(statusCode: 500, headers: [:], body: Data())
         ]))
 
@@ -397,7 +381,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
     /// An account with no plan is not a fault: the badge is simply absent, with nothing to warn about.
     func testAccountWithoutAPlanIsNotTreatedAsAFailure() async {
         let provider = makeProvider(http: RoutedHTTPClient([
-            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
             OllamaUsageClient.accountPath: ok(#"{"Name":"user","Plan":""}"#)
         ]))
 
@@ -409,7 +393,7 @@ final class OllamaProviderRefreshTests: XCTestCase {
 
     func testSuccessfulPlanLookupCarriesNoWarning() async {
         let provider = makeProvider(http: RoutedHTTPClient([
-            OllamaUsageClient.usagePath: ok(usageJSON),
+            OllamaUsageClient.balancePath: ok(legacyBalanceJSON),
             OllamaUsageClient.accountPath: ok(accountJSON)
         ]))
 
@@ -417,16 +401,6 @@ final class OllamaProviderRefreshTests: XCTestCase {
 
         XCTAssertEqual(snapshot.plan, "Pro")
         XCTAssertNil(snapshot.warning)
-    }
-
-    /// The spend row counts charges beyond the plan, so $0.00 does not mean an idle period. Marking it
-    /// as a usage period would give it the "No usage in this period" hover, which would be wrong for a
-    /// subscriber who used Ollama heavily inside their allowance.
-    func testSpendRowIsNotMarkedAsAUsagePeriod() {
-        let descriptors = OllamaProvider().widgetDescriptors
-        let spend = descriptors.first { $0.id == "ollama.last4Weeks" }
-
-        XCTAssertEqual(spend?.sample.isUsagePeriod, false)
     }
 
     private func makeProvider(http: any HTTPClient) -> OllamaProvider {
