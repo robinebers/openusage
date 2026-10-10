@@ -107,10 +107,7 @@ struct ClaudeAuthStore: Sendable {
     /// (`ClaudeAuthError.allowsAuthFallback`) — falls through to the next, so an external `claude`
     /// re-login is picked up no matter which source it lands in, even when a stale/locked-out token still
     /// sits in another. Re-read on every refresh; nothing is cached in memory.
-    func loadCredentialSet(
-        allowDesktopInteraction: Bool = false,
-        forceDesktopFallback: Bool = false
-    ) -> ClaudeCredentialLoad {
+    func loadCredentialSet(forceDesktopFallback: Bool = false) -> ClaudeCredentialLoad {
         var stored: [ClaudeCredentialState]
         if let swapAccount {
             var candidates: [ClaudeCredentialState] = []
@@ -143,7 +140,6 @@ struct ClaudeAuthStore: Sendable {
         if swapAccount != nil || forceDesktopFallback || !hasUsableCLILogin || preferOrganizationScopedDesktop {
             let expectedUser = expectedIdentityKey?.split(separator: "|").first.map(String.init)
             let result = desktop.load(
-                allowInteraction: allowDesktopInteraction,
                 organization: desktopOrganization,
                 expectedAccountUUID: expectedUser
             )

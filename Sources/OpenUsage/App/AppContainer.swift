@@ -34,21 +34,20 @@ final class AppContainer {
     /// wordmark while the screen is shared or recorded.
     let privacy: MenuBarPrivacyStore
     /// One-time onboarding state (the first-run Customize hint card). Only ever marked pending by
-    /// `FirstRunSeeder` on a fresh install, so existing installs never see the card.
+    /// `applyFirstLaunchChoice`, so existing installs never see the card.
     let onboarding: OnboardingStore
     /// Claims Codex rate-limit reset credits from the resets popover (the app's only provider-API
     /// write). Each service shares its card's auth store and usage client. The view tree selects
     /// the matching service from `\.codexResetClaims` for each card's resets popover.
     let codexResetClaims: [String: CodexResetClaimService]
     /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
-    /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
+    /// can re-probe `hasLocalCredentials()` the same way the welcome screen does.
     private let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
-    // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
-    private let refreshTask: Task<Void, Never>
-    /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
-    private let seedTask: Task<Void, Never>?
+    /// `nil` until `startServices()`: the welcome screen builds the container before the user has chosen
+    /// what to connect, so nothing may poll yet.
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
     /// the first with a provider the install has never seen.
     private let newProviderTask: Task<Void, Never>?
@@ -56,9 +55,9 @@ final class AppContainer {
     /// launch can read shell-exported facts (provider home overrides) even when its own capture is slow.
     private let shellEnvironmentSnapshotTask: Task<Void, Never>
 
-    /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
-    /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
-    init(isFreshInstall: Bool = false) async {
+    /// `accountFamilies` limits launch account discovery to those provider families (the welcome
+    /// screen's selection); `nil` discovers every family. Discovery never shows a Keychain prompt.
+    init(accountFamilies: Set<String>? = nil) async {
         // Capture the user's login-shell environment off-main so provider keys exported in a shell
         // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
@@ -68,7 +67,9 @@ final class AppContainer {
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
         // the snapshot cache's account stamp and reconciles the account registry.
-        let accountAssembly = await ProviderAccountAssembly.make(waitsForLoginShell: true)
+        let accountAssembly = await ProviderAccountAssembly.make(
+            waitsForLoginShell: true, enabledFamilies: accountFamilies
+        )
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
@@ -105,18 +106,10 @@ final class AppContainer {
             dataStore?.providerEnablementDidChange()
             iCloudSync?.scheduleWrite()
         }
-        // Fresh installs start minimal: seed the enabled-provider list (Claude/Codex/Cursor right away,
-        // then the detected set once the local credential probe finishes). No-op on every later launch.
         let onboarding = OnboardingStore()
-        self.seedTask = FirstRunSeeder.seedIfNeeded(
-            isFreshInstall: isFreshInstall,
-            providers: providers,
-            enablement: enablement,
-            onboarding: onboarding
-        )
         // Providers added by an update get the same credential detection on their first launch — enabled
         // only when the user actually has the tool. Runs every launch; a no-op unless the registry has a
-        // provider this install has never seen (fresh installs were just baselined by FirstRunSeeder).
+        // provider this install has never seen (fresh installs are baselined by `applyFirstLaunchChoice`).
         self.newProviderTask = NewProviderSeeder.reconcileIfNeeded(
             providers: providers,
             enablement: enablement
@@ -214,17 +207,39 @@ final class AppContainer {
                 errors: dataStore.providerErrors
             )
         })
-        self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
-        localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on in Settings, not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
     }
 
+    /// Starts the periodic refresh loop and the local API. Idempotent. Results the welcome screen
+    /// already fetched sit in the snapshot cache, so the first pass reuses them instead of refetching.
+    func startServices() {
+        guard refreshTask == nil else { return }
+        refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
+        localAPI.start()
+    }
+
+    /// Turns on exactly the providers in the chosen families (every card of each), and baselines every
+    /// shipping provider as seen so `NewProviderSeeder` only probes providers added in a later release.
+    func applyFirstLaunchChoice(_ families: Set<String>) {
+        let ids = providers.map(\.provider.id)
+        enablement.registerKnownProviders(Set(ids))
+        enablement.seedEnabledProviders(Set(ids.filter { families.contains(ProviderAccountID.family(of: $0)) }))
+        if families.isEmpty { onboarding.dismissCustomizeHint() } else { onboarding.markCustomizeHintPending() }
+    }
+
+    /// A user toggling a provider on is asking to connect it, so this first refresh may show the
+    /// Keychain prompt; later background polls stay quiet.
+    func setProviderEnabled(_ enabled: Bool, for providerID: String) {
+        enablement.setEnabled(enabled, for: providerID)
+        guard enabled else { return }
+        Task { await dataStore.refresh(providerID: providerID, force: true, allowsKeychainInteraction: true) }
+    }
+
     deinit {
-        refreshTask.cancel()
-        seedTask?.cancel()
+        refreshTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()
     }

@@ -163,7 +163,8 @@ final class FakeClaudeDesktopKeyReader: ClaudeDesktopSafeStorageKeyReading, @unc
         self.requiresInteraction = requiresInteraction
     }
 
-    func readPassword(allowInteraction: Bool) throws -> String? {
+    func readPassword() throws -> String? {
+        let allowInteraction = KeychainAccessContext.allowsInteraction
         calls.append(allowInteraction)
         if requiresInteraction, !allowInteraction {
             throw ClaudeDesktopCredentialError.permissionRequired

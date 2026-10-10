@@ -123,12 +123,8 @@ final class ClaudeProvider: ProviderRuntime {
         forceDesktopFallback: Bool,
         previousFallbackError: ClaudeAuthError?
     ) async -> ProviderSnapshot {
-        let allowDesktopInteraction = ProviderRefreshContext.isManual
         let credentialLoad = await loadOffMainActor { [authStore] in
-            authStore.loadCredentialSet(
-                allowDesktopInteraction: allowDesktopInteraction,
-                forceDesktopFallback: forceDesktopFallback
-            )
+            authStore.loadCredentialSet(forceDesktopFallback: forceDesktopFallback)
         }
         let storedCandidates = credentialLoad.candidates
         let candidates = storedCandidates.filter {

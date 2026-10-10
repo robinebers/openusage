@@ -1,9 +1,5 @@
 import Foundation
 
-enum ProviderRefreshContext {
-    @TaskLocal static var isManual = false
-}
-
 /// One AI provider OpenUsage can track. A conformer reads credentials already on the machine, calls the
 /// provider's API, and normalizes the result into a `ProviderSnapshot` of `MetricLine` values that the UI
 /// renders. See `docs/adding-a-provider.md` for the full walkthrough.
@@ -32,9 +28,10 @@ protocol ProviderRuntime: AnyObject {
     func refresh() async -> ProviderSnapshot
 
     /// Whether credentials for this provider already exist on this machine — a cheap, local-only probe
-    /// (files, keychain, SQLite; never the network). Used once, on a fresh install's first launch, by
-    /// `FirstRunSeeder` to enable exactly the providers the user actually has. Mirror the credential
-    /// sources `refresh()` reads, and run blocking loads via `loadOffMainActor`.
+    /// (files, keychain, SQLite; never the network). Used by the welcome screen, `NewProviderSeeder`,
+    /// and Reset All to find the tools the user actually has. Mirror the credential sources `refresh()`
+    /// reads, and run blocking loads via `loadOffMainActor`. Detection runs with Keychain prompts off;
+    /// a read macOS refuses for lack of approval still counts as detected (`FirstRunSeeder`).
     func hasLocalCredentials() async -> Bool
 
     /// Hands the provider the snapshot painted from the launch cache, called once at launch and only
@@ -56,10 +53,16 @@ extension ProviderRuntime {
 /// detached task moves the wait onto a background executor; the `Sendable` result crosses back cleanly.
 /// It is awaited immediately, so it reads like a normal call while no longer blocking the actor.
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {
-    await Task.detached(priority: .utility, operation: load).value
+    let access = KeychainAccessContext.current
+    return await Task.detached(priority: .utility) {
+        KeychainAccessContext.$current.withValue(access, operation: load)
+    }.value
 }
 
 /// Throwing counterpart for blocking credential reads that distinguish absence from access failure.
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () throws -> T) async throws -> T {
-    try await Task.detached(priority: .utility, operation: load).value
+    let access = KeychainAccessContext.current
+    return try await Task.detached(priority: .utility) {
+        try KeychainAccessContext.$current.withValue(access, operation: load)
+    }.value
 }

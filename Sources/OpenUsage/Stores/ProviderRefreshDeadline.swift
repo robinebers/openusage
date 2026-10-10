@@ -16,12 +16,19 @@ enum ProviderRefreshDeadline {
     /// The refreshed snapshot, or `nil` if `timeout` elapsed first.
     static func snapshot(
         from provider: ProviderRuntime,
-        force: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        allowsKeychainInteraction: Bool = false
     ) async -> ProviderSnapshot? {
         let work = Task { @MainActor in
-            await ProviderRefreshContext.$isManual.withValue(force) {
-                await provider.refresh()
+            let access = KeychainAccessContext(allowsInteraction: allowsKeychainInteraction)
+            return await KeychainAccessContext.$current.withValue(access) {
+                let snapshot = await provider.refresh()
+                // A refused Keychain read explains a credential failure better than the provider's own
+                // "not logged in". Network or server errors keep their real message.
+                if snapshot.errorCategory?.isCredentialFailure == true, let refused = access.refused {
+                    return ProviderSnapshot.error(provider: provider.provider, error: refused)
+                }
+                return snapshot
             }
         }
         let claim = ContinuationClaim()

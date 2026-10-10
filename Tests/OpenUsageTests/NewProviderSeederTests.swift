@@ -56,6 +56,18 @@ final class NewProviderSeederTests: XCTestCase {
         XCTAssertEqual(grok.probeCount, 0)
     }
 
+    func testNewAccountCardsDoNotUndoSkippedProviderFamily() async {
+        let enablement = seededStore("skipped-family", enabled: [], known: ["claude", "codex"])
+        let claude = probe("claude@new", hasCredentials: true)
+        let codex = probe("codex@new", hasCredentials: true)
+        let task = NewProviderSeeder.reconcileIfNeeded(providers: [claude, codex], enablement: enablement)
+        await task?.value
+        XCTAssertNil(task)
+        XCTAssertEqual(enablement.enabledIDs, [])
+        XCTAssertEqual(claude.probeCount + codex.probeCount, 0)
+        XCTAssertTrue(enablement.knownIDs.contains("claude@new"))
+    }
+
     func testLegacyModeStoreIsUntouched() {
         // Legacy disabled-list installs get new providers on by default already; the seeder must not
         // switch their mode or write anything.

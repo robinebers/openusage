@@ -4,7 +4,15 @@ How OpenUsage decides which providers start on, what happens when an update adds
 
 ## First install
 
-A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which providers have credentials available on your Mac — an existing local login, saved API key, or supported environment variable; nothing is sent anywhere — and switches to exactly that set. All providers are checked at once, so detection takes as long as the slowest single check, not the sum of them. If nothing is found, the Claude/Codex/Cursor starter set stays. Providers the check turns on are fetched right away, so they appear with data instead of waiting for the next scheduled refresh. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
+On the first launch, a welcome screen looks for existing sign-ins without requesting Keychain access or contacting providers. Choose the providers you want, then click **Connect Selected**. Only the selected providers are connected, one at a time. macOS may ask for access to their saved sign-ins; **Always Allow** lets later background updates read the same items.
+
+Access failures stay on the welcome screen with a retry option. A temporary network failure leaves the provider enabled and shows that its usage is unavailable. **Open Dashboard** reuses the providers and first results from setup; it does not immediately fetch them a second time. Normal scheduled updates resume afterward.
+
+**Skip for Now** opens the dashboard with no providers enabled. The welcome screen appears on every launch until at least one provider is enabled. Use Customize to enable a provider later; turning it on immediately requests any needed access. Once a provider is enabled, normal restarts and updates go straight to the dashboard.
+
+Detection never opens a macOS permission dialog. A saved sign-in that macOS won't share until you approve it still counts as detected; connecting that provider asks for the approval. Detection is evidence of a local sign-in, not proof that it is valid.
+
+Only something you do — Connect, Refresh, or turning a provider on — can open a Keychain dialog. Background updates never do: when access is needed, the provider asks you to choose Refresh. While one dialog is waiting on you, other providers' Keychain reads pause and retry shortly instead of stacking more dialogs.
 
 ## When an update adds a new provider
 
@@ -12,6 +20,8 @@ The same detection runs for providers that arrive later. On the first launch aft
 
 - **Credentials are available locally** → the provider turns on and appears on the dashboard.
 - **No credentials are available** → it stays off. You can always turn it on later in **Customize**.
+
+A newly discovered account for a provider you already know is not treated as a new provider; it cannot turn a skipped or disabled provider back on.
 
 This check happens **once per provider**. After that, the provider is yours to manage: if you turn it off, no update will ever turn it back on, and installing the tool later won't flip it on behind your back either — head to Customize when you want it.
 

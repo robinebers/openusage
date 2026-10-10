@@ -28,7 +28,10 @@ struct ProviderAccountAssembly {
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
     /// launch's process environment already carries the user's exports).
-    static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) async -> ProviderAccountAssembly {
+    static func make(
+        defaults: UserDefaults = .standard, waitsForLoginShell: Bool,
+        enabledFamilies: Set<String>? = nil
+    ) async -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
         // default homes), and it reads them through the very same reader the provider auth stores
         // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
@@ -54,7 +57,7 @@ struct ProviderAccountAssembly {
         return await make(
             observer: DefaultAccountObserver(),
             accountsStore: ProviderAccountsStore(defaults: defaults),
-            families: families
+            families: enabledFamilies.map { families.intersection($0) } ?? families
         )
     }
 
@@ -271,7 +274,7 @@ struct ProviderAccountAssembly {
         listDirectories: @Sendable (URL) -> [String]
     ) -> [DesktopOrganization] {
         guard let user = desktop.lastKnownAccountUUID(), desktop.hasCredentialMaterial() else { return [] }
-        let active = desktop.load(allowInteraction: false, expectedAccountUUID: user)
+        let active = desktop.load(expectedAccountUUID: user)
         let activeOrganization = active.organization
 
         let root = desktop.homeDirectory().appendingPathComponent("Library/Application Support/Claude")
@@ -312,7 +315,7 @@ struct ProviderAccountAssembly {
                 || organization == activeOrganization || organization == cliOrganization
             else { return nil }
             let result = organization == activeOrganization ? active : desktop.load(
-                allowInteraction: false, organization: organization, expectedAccountUUID: user
+                organization: organization, expectedAccountUUID: user
             )
             guard result.status == .available || result.status == .permissionRequired else { return nil }
             let plan = result.oauth?.subscriptionType?.lowercased()

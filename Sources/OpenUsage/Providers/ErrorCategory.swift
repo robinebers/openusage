@@ -38,6 +38,22 @@ enum ErrorCategory: String, Sendable, CaseIterable, Codable {
         default: return .other
         }
     }
+
+    /// The credential itself couldn't be used — the failures a refused Keychain read explains.
+    var isCredentialFailure: Bool {
+        switch self {
+        case .notLoggedIn, .authExpired, .authInvalid, .credentialAccess: return true
+        default: return false
+        }
+    }
+
+    /// Credentials worked but the usage service didn't answer usefully right now.
+    var isTransient: Bool {
+        switch self {
+        case .network, .decoding, .http5xx, .rateLimited: return true
+        default: return false
+        }
+    }
 }
 
 /// An error that knows its own telemetry bucket. Conformed by every provider error enum below so the

@@ -58,37 +58,28 @@ struct CursorAuthStore: Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
-        let keychainAccessToken = readKeychainValue(Self.keychainAccessTokenService)
-        let keychainRefreshToken = readKeychainValue(Self.keychainRefreshTokenService)
-
-        let hasSQLiteAuth = sqliteAccessToken != nil || sqliteRefreshToken != nil
-        let hasKeychainAuth = keychainAccessToken != nil || keychainRefreshToken != nil
-
-        if hasSQLiteAuth {
-            let sqliteSubject = Self.tokenSubject(sqliteAccessToken)
-            let keychainSubject = Self.tokenSubject(keychainAccessToken)
-            let subjectsDiffer = sqliteSubject != nil && keychainSubject != nil && sqliteSubject != keychainSubject
-            if hasKeychainAuth, sqliteMembershipType == "free", subjectsDiffer {
-                return CursorAuthState(
-                    accessToken: keychainAccessToken,
-                    refreshToken: keychainRefreshToken,
-                    source: .keychain
-                )
+        if sqliteAccessToken != nil || sqliteRefreshToken != nil {
+            // Only the known stale/free-account case can prefer a different Keychain login.
+            // Otherwise the database is authoritative, so do not request unrelated access.
+            if sqliteMembershipType == "free" {
+                let keychainAccessToken = readKeychainValue(Self.keychainAccessTokenService)
+                let sqliteSubject = Self.tokenSubject(sqliteAccessToken)
+                let keychainSubject = Self.tokenSubject(keychainAccessToken)
+                if sqliteSubject != nil, keychainSubject != nil, sqliteSubject != keychainSubject {
+                    return CursorAuthState(
+                        accessToken: keychainAccessToken,
+                        refreshToken: readKeychainValue(Self.keychainRefreshTokenService),
+                        source: .keychain
+                    )
+                }
             }
-
-            return CursorAuthState(
-                accessToken: sqliteAccessToken,
-                refreshToken: sqliteRefreshToken,
-                source: .sqlite
-            )
+            return CursorAuthState(accessToken: sqliteAccessToken, refreshToken: sqliteRefreshToken, source: .sqlite)
         }
 
-        if hasKeychainAuth {
-            return CursorAuthState(
-                accessToken: keychainAccessToken,
-                refreshToken: keychainRefreshToken,
-                source: .keychain
-            )
+        let keychainAccessToken = readKeychainValue(Self.keychainAccessTokenService)
+        let keychainRefreshToken = readKeychainValue(Self.keychainRefreshTokenService)
+        if keychainAccessToken != nil || keychainRefreshToken != nil {
+            return CursorAuthState(accessToken: keychainAccessToken, refreshToken: keychainRefreshToken, source: .keychain)
         }
 
         return nil

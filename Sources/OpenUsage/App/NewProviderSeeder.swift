@@ -31,7 +31,12 @@ enum NewProviderSeeder {
             return nil
         }
 
-        let newIDs = enablement.registerKnownProviders(currentIDs)
+        let knownFamilies = Set(enablement.knownIDs.map(ProviderAccountID.family(of:)))
+        let newIDs = enablement.registerKnownProviders(currentIDs).filter {
+            !knownFamilies.contains(ProviderAccountID.family(of: $0))
+        }
+        // A newly discovered account belongs to an existing provider family. It is not a newly
+        // shipped provider and must not reverse a choice to leave that family switched off.
         guard !newIDs.isEmpty else { return nil }
         AppLog.info(.config, "new providers since last run: \(newIDs.sorted()); probing local credentials")
 

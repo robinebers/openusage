@@ -99,7 +99,7 @@ struct CodexPricingSection: View {
                 }
                 for providerID in providerIDs {
                     dataStore.clearFailureBackoff(for: providerID)
-                    await dataStore.refresh(providerID: providerID, force: true)
+                    await dataStore.refresh(providerID: providerID, force: true, allowsKeychainInteraction: true)
                 }
             }
         }

@@ -52,7 +52,7 @@ struct CustomizeProviderListView: View {
                     grip
                 }
             },
-            onToggle: { container.enablement.setEnabled($0, for: row.id) },
+            onToggle: { container.setProviderEnabled($0, for: row.id) },
             onOpen: { withAnimation(Motion.spring) { layout.customizeProviderID = row.id } }
         )
         .opacity(activeProviderID == row.id ? 0 : 1)

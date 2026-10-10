@@ -208,7 +208,7 @@ enum SettingsMigrator {
     ///
     /// Internal (not just the migrator's own check) because `AppDelegate` reads it BEFORE calling
     /// `migrate()` — stamping the schema version makes the domain non-empty, so the answer must be
-    /// captured first. `FirstRunSeeder` keys off it to seed a fresh install's enabled providers.
+    /// captured first. A fresh install marks the welcome screen pending (`FirstLaunchSetup`).
     static func isFreshInstall(
         defaults: UserDefaults = .standard,
         domainName: String = Bundle.main.bundleIdentifier ?? ""
