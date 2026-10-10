@@ -18,7 +18,7 @@ struct DailyUsageAccumulator {
     private var fallbackPricingModelsByDay: [String: Set<String>] = [:]
 
     /// Local calendar day as `yyyy-MM-dd`. The single day-key contract shared by the accumulator,
-    /// `SpendTileMapper`, and the Cursor CSV aggregation. `calendar` is injectable for tests; production
+    /// `SpendTileMapper`, and the Cursor usage-history aggregation. `calendar` is injectable for tests; production
     /// uses `.current`.
     static func dayKey(from date: Date, calendar: Calendar = .current) -> String {
         let components = calendar.dateComponents([.year, .month, .day], from: date)

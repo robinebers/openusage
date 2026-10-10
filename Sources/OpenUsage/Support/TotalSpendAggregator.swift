@@ -62,7 +62,7 @@ enum TotalSpendMetric: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// One provider's contribution to a period's total: dollars and tokens from the same spend line,
-/// plus whether the dollars are a local estimate (log-scanned providers) or measured (Cursor's CSV).
+/// plus whether the dollars are a local estimate (log-scanned providers) or measured (Cursor usage events).
 struct TotalSpendSlice: Identifiable, Equatable {
     let provider: Provider
     let amountUSD: Double

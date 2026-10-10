@@ -2,24 +2,36 @@ import XCTest
 @testable import OpenUsage
 
 final class CursorGrokBotPricingTests: XCTestCase {
-    func testGrokBotCSVPricesFlowIntoEverySpendRange() throws {
+    func testGrokBotUsageEventsPriceIntoEverySpendRange() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: now))
-        let formatter = ISO8601DateFormatter()
+        let pricing = TestPricing.bundled
 
         // Exercise all four token buckets both below and above long-context thresholds.
-        // CSV rows aggregate requests; their size must not add a long-context surcharge.
         for scale in [1, 1_000] {
-            var csv = "Date,Model,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost\n"
+            var rows: [CursorUsageRow] = []
             for date in [now, yesterday] {
                 for model in ["grok-bot-default", "grok-bot-automation", "grok-bot-cua"] {
-                    csv += "\(formatter.string(from: date)),\(model),\(2_000 * scale),\(1_000 * scale),\(3_000 * scale),\(4_000 * scale),0\n"
+                    let tokens = TokenBreakdown(
+                        input: 1_000 * scale,
+                        cacheWrite5m: 2_000 * scale,
+                        cacheRead: 3_000 * scale,
+                        output: 4_000 * scale
+                    )
+                    rows.append(CursorUsageRow(
+                        date: date,
+                        model: model,
+                        tokens: tokens,
+                        imputedCostDollars: pricing.estimatedCostDollars(
+                            model: model,
+                            tokens: tokens,
+                            applyLongContextRates: false
+                        )
+                    ))
                 }
             }
-            let parsed = try CursorUsageCSV.parse(csv: csv, pricing: TestPricing.bundled)
-            XCTAssertEqual(parsed.rejectedRowCount, 0)
-            XCTAssertEqual(parsed.rows.count, 6)
-            for row in parsed.rows {
+            XCTAssertEqual(rows.count, 6)
+            for row in rows {
                 // Default: $4 input/write, $1 read, $12 output per million.
                 // Automation and CUA use Grok 4.7 base: $2 input/write, $0.50 read, $6 output.
                 let cost = row.model == "grok-bot-default" ? 0.063 : 0.0315
@@ -27,7 +39,7 @@ final class CursorGrokBotPricingTests: XCTestCase {
             }
 
             var lines: [MetricLine] = []
-            _ = CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: now, pricing: TestPricing.bundled, to: &lines)
+            _ = CursorUsageMapper.appendSpendLines(rows: rows, now: now, pricing: pricing, to: &lines)
 
             for (label, days) in [("Today", 1), ("Yesterday", 1), ("Last 30 Days", 2)] {
                 let line = try XCTUnwrap(lines.first { $0.label == label })
