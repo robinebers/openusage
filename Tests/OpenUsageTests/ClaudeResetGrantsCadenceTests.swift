@@ -78,12 +78,109 @@ final class ClaudeResetGrantsCadenceTests: XCTestCase {
         XCTAssertEqual(resetsAvailable(second.lines), 0)
     }
 
+    func testTokenRotationKeepsLastGoodGrantsWhenHourlyCheckFails() async {
+        let clock = TestClock(Self.start)
+        let expiresAt = Int(Self.start.addingTimeInterval(30 * 60).timeIntervalSince1970 * 1000)
+        let files = FakeFiles(["/tmp/claude/.credentials.json": Self.credentials
+            .replacingOccurrences(of: "4102444800000", with: String(expiresAt))])
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/v1/oauth/token":
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(
+                    #"{"access_token":"token-b","refresh_token":"refresh-b","expires_in":7200}"#.utf8))
+            case "/api/oauth/usage":
+                if request.url.query == nil { return Self.usage() }
+                return request.headers["Authorization"] == "Bearer token-a"
+                    ? Self.grants(resetsLeft: 1)
+                    : HTTPResponse(statusCode: 429, headers: [:], body: Data())
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let provider = makeProvider(http: http, clock: clock, files: files)
+
+        let first = await provider.refresh()
+        clock.set(Self.start.addingTimeInterval(61 * 60))
+        let rotated = await provider.refresh()
+        clock.set(Self.start.addingTimeInterval(62 * 60))
+        let held = await provider.refresh()
+
+        XCTAssertEqual(resetsAvailable(first.lines), 1)
+        XCTAssertEqual(resetsAvailable(rotated.lines), 1)
+        XCTAssertEqual(resetsAvailable(held.lines), 1)
+        XCTAssertEqual(http.requests.filter { $0.isClaudeResetGrantsCheck }.count, 2)
+    }
+
+    func testLoginReplacementDuringGrantsReloadsUsageAndDoesNotCacheOldGrants() async {
+        for statusCode in [200, 429] {
+            let clock = TestClock(Self.start)
+            let files = FakeFiles(["/tmp/claude/.credentials.json": Self.credentials])
+            let replacement = Self.credentials.replacingOccurrences(of: "token-a", with: "token-b")
+                .replacingOccurrences(of: "refresh-a", with: "refresh-b")
+            let http = RoutingHTTPClient { request in
+                guard request.url.path == "/api/oauth/usage" else {
+                    return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+                }
+                let originalLogin = request.headers["Authorization"] == "Bearer token-a"
+                if request.url.query == nil { return Self.usage(used: originalLogin ? 42 : 77) }
+                if originalLogin {
+                    files.files["/tmp/claude/.credentials.json"] = replacement
+                    return statusCode == 200 ? Self.grants(resetsLeft: 1)
+                        : HTTPResponse(statusCode: statusCode, headers: [:], body: Data())
+                }
+                return Self.grants(resetsLeft: 2)
+            }
+            let provider = makeProvider(http: http, clock: clock, files: files)
+
+            let replaced = await provider.refresh()
+            let held = await provider.refresh()
+
+            XCTAssertNil(replaced.warning)
+            guard case .progress(_, let used, _, _, _, _, _) = replaced.line(label: "Session") else {
+                return XCTFail("Expected replacement login's live usage")
+            }
+            XCTAssertEqual(used, 77)
+            XCTAssertEqual(resetsAvailable(replaced.lines), 2)
+            XCTAssertEqual(resetsAvailable(held.lines), 2)
+            XCTAssertEqual(http.requests.filter { $0.isClaudeResetGrantsCheck }.count, 2)
+        }
+    }
+
+    func testLoginReplacementDuringProfileReloadsUsageBeforePublishing() async {
+        let clock = TestClock(Self.start)
+        let files = FakeFiles(["/tmp/claude/.credentials.json": Self.credentials])
+        let replacement = Self.credentials.replacingOccurrences(of: "token-a", with: "token-b")
+            .replacingOccurrences(of: "refresh-a", with: "refresh-b")
+        let http = RoutingHTTPClient { request in
+            let originalLogin = request.headers["Authorization"] == "Bearer token-a"
+            switch request.url.path {
+            case "/api/oauth/usage":
+                return request.url.query == nil ? Self.usage(used: originalLogin ? 42 : 77)
+                    : Self.grants(resetsLeft: originalLogin ? 1 : 2)
+            case "/api/oauth/profile":
+                if originalLogin { files.files["/tmp/claude/.credentials.json"] = replacement }
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let provider = makeProvider(http: http, clock: clock, files: files)
+
+        let snapshot = await provider.refresh()
+
+        guard case .progress(_, let used, _, _, _, _, _) = snapshot.line(label: "Session") else {
+            return XCTFail("Expected replacement login's live usage")
+        }
+        XCTAssertEqual(used, 77)
+        XCTAssertEqual(resetsAvailable(snapshot.lines), 2)
+    }
+
     // MARK: - Helpers
 
-    private func makeProvider(http: RoutingHTTPClient, clock: TestClock) -> ClaudeProvider {
+    private func makeProvider(http: RoutingHTTPClient, clock: TestClock, files: FakeFiles? = nil) -> ClaudeProvider {
         let authStore = ClaudeAuthStore(
             environment: FakeEnvironment(["CLAUDE_CONFIG_DIR": "/tmp/claude"]),
-            files: FakeFiles(["/tmp/claude/.credentials.json": Self.credentials]),
+            files: files ?? FakeFiles(["/tmp/claude/.credentials.json": Self.credentials]),
             keychain: FakeKeychain(),
             now: { clock.now }
         )
@@ -107,10 +204,10 @@ final class ClaudeResetGrantsCadenceTests: XCTestCase {
         return values.first?.number
     }
 
-    private nonisolated static func usage() -> HTTPResponse {
+    private nonisolated static func usage(used: Int = 42) -> HTTPResponse {
         HTTPResponse(
             statusCode: 200, headers: [:],
-            body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"},"cedar_ember":null}"#.utf8)
+            body: Data(#"{"five_hour":{"utilization":\#(used),"resets_at":"2099-01-01T00:00:00.000Z"},"cedar_ember":null}"#.utf8)
         )
     }
 

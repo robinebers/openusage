@@ -413,10 +413,7 @@ final class ClaudeProvider: ProviderRuntime {
         )
 
         let forceDesktopGeneration = working.source == .desktop
-        let currentGeneration = await loadOffMainActor { [authStore] in
-            authStore.credentialGeneration(forceDesktopFallback: forceDesktopGeneration)
-        }
-        guard currentGeneration == expectedGeneration else { throw ClaudeAuthError.credentialsChanged }
+        try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopGeneration)
 
         // 429 can come back from either attempt; the helper hands both through unchanged. Start a cooldown
         // (respecting Retry-After) and serve the last-good usage rather than a bare badge.
@@ -429,7 +426,10 @@ final class ClaudeProvider: ProviderRuntime {
         }
 
         var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
-        if let resetGrants = await resetGrantsLine(credentials: working.oauth) {
+        if let resetGrants = try await resetGrantsLine(
+            credentials: working.oauth, expectedGeneration: expectedGeneration,
+            forceDesktopFallback: forceDesktopGeneration
+        ) {
             mapped.lines.append(resetGrants)
         }
         // Only after the usage call succeeded: the token is known-good, so a profile failure here is a
@@ -437,6 +437,7 @@ final class ClaudeProvider: ProviderRuntime {
         if let plan = await resolveLivePlan(credentials: working.oauth) {
             mapped.plan = plan
         }
+        try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopGeneration)
         lastGoodUsage = mapped
         rateLimitedUntil = nil
         pendingLaunchSnapshot = nil
@@ -644,6 +645,9 @@ final class ClaudeProvider: ProviderRuntime {
         }
         if cachedCredentialFingerprint == Self.credentialFingerprint(previousOAuth) {
             cachedCredentialFingerprint = Self.credentialFingerprint(state.oauth)
+        }
+        if resetGrantsCheck?.credentialFingerprint == Self.credentialFingerprint(previousOAuth) {
+            resetGrantsCheck?.credentialFingerprint = Self.credentialFingerprint(state.oauth)
         }
         AppLog.info(LogTag.auth("claude"), "token refresh ok (rotated)")
         return RefreshedAccess(accessToken: decoded.accessToken, persisted: persisted)

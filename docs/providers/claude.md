@@ -142,7 +142,9 @@ row comes from a separate `GET https://api.anthropic.com/api/oauth/usage?cedar_e
 (`cedar_ember` is Anthropic's internal name for the reset grants), the same request Claude Code makes.
 Anthropic throttles that request when it's polled, so OpenUsage checks it at most once an hour per
 login and shows the last answer in between; a failed check keeps the previous value and tries again an
-hour later. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
+hour later. Token refreshes keep that cached answer; switching accounts starts a separate check. If
+the login changes while a request is running, OpenUsage discards the old account's answer and reloads
+the current login before showing usage. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
 
 The plan badge reads `GET https://api.anthropic.com/api/oauth/profile` (the organization's `rate_limit_tier`), because the plan Claude Code saves at sign-in never updates afterwards. To stay clear of Anthropic's rate limits, that lookup runs at most once per access token — after a usage fetch has succeeded — and cards bound to a specific account reuse the profile they already fetched to verify identity, so they make no extra request. Inference-only tokens skip it entirely.
 
