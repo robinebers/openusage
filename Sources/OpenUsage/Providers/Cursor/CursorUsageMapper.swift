@@ -302,14 +302,14 @@ enum CursorUsageMapper {
         return (false, "")
     }
 
-    /// Append the shared Today / Yesterday / Last 30 Days spend tiles from Cursor's CSV rows. The rows
+    /// Append the shared Today / Yesterday / Last 30 Days spend tiles from Cursor's usage-event rows. The rows
     /// are aggregated into one local-calendar-day `DailyUsageSeries` and handed to `SpendTileMapper`
     /// — the same builder the Claude/Codex/Grok tiles use — so the output is identical apart from the
-    /// source note. Cursor's costs are calculated locally from the exported token counts, so the dollar
-    /// values carry the estimate icon. Callers only invoke this when the CSV fetched and parsed, so a
+    /// source note. Cursor's costs are calculated locally from the usage-event token counts, so the dollar
+    /// values carry the estimate icon. Callers only invoke this when usage history is complete, so a
     /// failure appends nothing and the tiles read "No data".
     ///
-    /// Model breakdown rows group by base model, not raw CSV slug: Cursor exports one slug per thinking
+    /// Model breakdown rows group by base model, not raw slug: Cursor reports one slug per thinking
     /// effort / fast combination (`claude-opus-4-8-thinking-max`, `gpt-5.5-extra-high-fast`, …), and a
     /// panel of near-duplicate rows hides the actual ranking. The supplement's alias rules already
     /// collapse those slugs to a canonical pricing key, and `-fast` canonicals fold into their base, so
@@ -317,7 +317,7 @@ enum CursorUsageMapper {
     /// family grouping). The raw slugs survive as `variants` — the per-effort breakdown the row's
     /// tooltip shows.
     static func appendSpendLines(
-        rows: [CursorUsageCSVRow],
+        rows: [CursorUsageRow],
         now: Date,
         pricing: ModelPricing,
         to lines: inout [MetricLine]
@@ -375,11 +375,11 @@ enum CursorUsageMapper {
         SpendTileMapper.appendTokenUsage(series, to: &lines, now: now, estimated: true,
                                          unknownModelsByDay: unknownModelsByDay,
                                          modelUsage: modelUsage,
-                                         modelSourceNote: "From your Cursor usage export")
-        // Cursor's tokens come from the server-exported usage CSV, not a local CLI log, so the trend
+                                         modelSourceNote: "From your Cursor usage history")
+        // Cursor's tokens come from the server usage history, not a local CLI log, so the trend
         // note names that source rather than the "estimated from local logs" line the log-scanning
         // providers use. Tokens are measured either way.
-        SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage export")
+        SpendTileMapper.appendUsageTrend(series, to: &lines, now: now, note: "From your Cursor usage history")
         return ProviderUsageHistory(
             series: series,
             modelUsage: modelUsage,

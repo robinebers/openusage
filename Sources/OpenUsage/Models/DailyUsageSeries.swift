@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Sources build it from very different inputs and hand `SpendTileMapper` the same shape so the tiles
 /// render identically regardless of origin: Claude/Codex/Grok from their native log scanners, Cursor
-/// from its usage CSV export.
+/// from its usage history.
 ///
 /// These are internal types with no serialization impact: the local HTTP API serializes `MetricLine`,
 /// not these.
@@ -39,7 +39,7 @@ enum UsageHistoryWindow {
 /// breakdown, matching the spend-row totals.
 ///
 /// `variants` carries the raw slugs folded into this entry when a provider groups by base model —
-/// Cursor's thinking-effort/fast CSV slugs (`claude-opus-4-8-thinking-max` under `claude-opus-4-8`) —
+/// Cursor's thinking-effort/fast model slugs (`claude-opus-4-8-thinking-max` under `claude-opus-4-8`) —
 /// and the models rolled into the `Other` row. Nil when the entry is exactly one raw model (the log
 /// scanners' entries), so the hover panel knows there is no finer breakdown to offer.
 struct ModelUsageEntry: Hashable, Sendable, Codable {

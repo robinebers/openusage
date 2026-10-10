@@ -5,7 +5,34 @@ import Foundation
 /// prompt-cache, and priority-tier rules that must be applied consistently regardless of which local
 /// tool produced the request.
 enum CodexUsagePricing {
-    /// Everything Codex pricing derives from the model slug alone, resolved once so a scanner pricing
+    static let autoReviewModel = "codex-auto-review"
+    /// The announcement establishes a calendar date, not a precise activation time. Use that UTC
+    /// day's start, without making earlier estimates free: https://x.com/thsottiaux/status/2107368734981517634.
+    static let autoReviewFreeSince = OpenUsageISO8601.date(from: "2026-10-06T00:00:00Z")!
+
+    /// Preserve the dated model estimates used before auto-review became free.
+    private static let autoReviewFallbacks: [(releasedOn: Date, model: String)] = [
+        ("2026-07-09", "gpt-5.6-luna"),
+        ("2026-04-23", "gpt-5.5"),
+        ("2026-03-05", "gpt-5.4"),
+        ("2026-02-05", "gpt-5.3-codex"),
+        ("2025-12-11", "gpt-5.2-codex"),
+        ("2025-11-13", "gpt-5.1-codex"),
+        ("2025-09-15", "gpt-5-codex"),
+        ("2025-08-07", "gpt-5")
+    ].map { (OpenUsageISO8601.date(from: $0.0 + "T00:00:00Z")!, $0.1) }
+
+    static func isFreeAutoReview(model: String, at timestamp: Date) -> Bool {
+        model == autoReviewModel && timestamp >= autoReviewFreeSince
+    }
+
+    /// Also identifies a preparation-cache entry: auto-review's historical model or its free era.
+    static func pricingModel(for model: String, at timestamp: Date) -> String {
+        guard model == autoReviewModel, timestamp < autoReviewFreeSince else { return model }
+        return autoReviewFallbacks.first(where: { timestamp >= $0.releasedOn })?.model ?? "gpt-5"
+    }
+
+    /// Codex pricing for one effective model and pricing era, resolved once so a scanner pricing
     /// thousands of requests does not re-walk the supplement's alias rules per row.
     struct Prepared: Sendable {
         /// Base rates with Codex's long-context, cache, and priority adjustments already applied.
@@ -27,23 +54,34 @@ enum CodexUsagePricing {
     /// Codex speed is a provider tier, not Cursor's `-fast` price variant. Resolve a fast alias through
     /// its unscaled base rates so the Codex multiplier applies once; if a fast-only model has no base
     /// entry, its already-scaled rate is retained and no second multiplier is applied.
-    static func resolveRates(pricing: ModelPricing, model: String) -> RateResolution {
-        let canonicalModel = pricing.canonicalName(for: model)
+    static func resolveRates(pricing: ModelPricing, model: String, at timestamp: Date) -> RateResolution {
+        // Free requests keep their measured tokens and model name, without a catalog or paid fallback.
+        if isFreeAutoReview(model: model, at: timestamp) {
+            return RateResolution(
+                rates: ModelRates(inputPerMillion: 0, outputPerMillion: 0,
+                                  cacheWritePerMillion: 0, cacheReadPerMillion: 0),
+                rateModel: model,
+                isFastAlias: false,
+                hasBaseRates: true
+            )
+        }
+        let effectiveModel = pricingModel(for: model, at: timestamp)
+        let canonicalModel = pricing.canonicalName(for: effectiveModel)
         let isFastAlias = canonicalModel.hasSuffix("-fast")
         let rateModel = isFastAlias ? String(canonicalModel.dropLast("-fast".count)) : canonicalModel
         let baseRates = pricing.resolve(model: rateModel)
         return RateResolution(
-            rates: baseRates ?? pricing.resolve(model: model),
+            rates: baseRates ?? pricing.resolve(model: effectiveModel),
             rateModel: rateModel,
             isFastAlias: isFastAlias,
             hasBaseRates: baseRates != nil
         )
     }
 
-    /// Resolves the model once. Callers pricing many requests should hold the result and reuse it
-    /// rather than calling `estimatedCost` per request.
-    static func prepare(pricing: ModelPricing, model: String) -> Prepared? {
-        let resolution = resolveRates(pricing: pricing, model: model)
+    /// Resolves a timestamped request's model. Reuse only for requests with the same effective
+    /// `pricingModel(for:at:)`, so historical and free auto-review never share prepared rates.
+    static func prepare(pricing: ModelPricing, model: String, at timestamp: Date) -> Prepared? {
+        let resolution = resolveRates(pricing: pricing, model: model, at: timestamp)
         guard let rates = resolution.rates else { return nil }
         return Prepared(
             rates: adjusted(rates, model: resolution.rateModel),
@@ -53,8 +91,8 @@ enum CodexUsagePricing {
 
     /// Prices an already normalized request. Unlike native Codex rollout events, `tokens.input` here
     /// is non-cached input; cache reads/writes are disjoint buckets in `TokenBreakdown`.
-    static func estimatedCost(pricing: ModelPricing, model: String, tokens: TokenBreakdown) -> Double? {
-        guard let prepared = prepare(pricing: pricing, model: model) else { return nil }
+    static func estimatedCost(pricing: ModelPricing, model: String, tokens: TokenBreakdown, at timestamp: Date) -> Double? {
+        guard let prepared = prepare(pricing: pricing, model: model, at: timestamp) else { return nil }
         return cost(prepared: prepared, tokens: tokens)
     }
 

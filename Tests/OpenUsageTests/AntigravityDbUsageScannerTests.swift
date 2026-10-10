@@ -46,6 +46,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
             .init(index: 2, blob: antigravityGenerationBlob(model: "gemini-pro-agent", input: 1, output: 0, timestamp: timestamp)),
             .init(index: 3, blob: antigravityGenerationBlob(model: "gemini-3.7-flash-exp-a", input: 2, output: 0, timestamp: timestamp)),
             .init(index: 4, blob: antigravityGenerationBlob(model: "gemini-3.7-flash-tiered", input: 3, output: 0, timestamp: timestamp)),
+            .init(index: 5, blob: antigravityGenerationBlob(model: "gemini-3.8-flash-n", input: 4, output: 0, timestamp: timestamp)),
         ]])
         let scanner = AntigravityDbUsageScanner(sqlite: sqlite, conversationsDirectories: { [fixture.url.path] })
 
@@ -55,7 +56,7 @@ final class AntigravityDbUsageScannerTests: XCTestCase {
         let models = try XCTUnwrap(scan.modelUsage?.daily.first?.models)
         XCTAssertEqual(
             Dictionary(uniqueKeysWithValues: models.map { ($0.model, $0.totalTokens) }),
-            ["gemini-3.1-pro": 16, "gemini-3.7-flash": 5]
+            ["gemini-3.1-pro": 16, "gemini-3.7-flash": 5, "gemini-3.8-flash": 4]
         )
     }
 
