@@ -360,7 +360,10 @@ final class CodexProvider: ProviderRuntime {
         // continue. This is also the only call site of authStore.save, so a genuinely undecodable
         // payload (CodexAuthError.invalidAuthPayload) now surfaces in the log instead of vanishing.
         do {
-            try authStore.save(rotated, replacing: onDisk)
+            let replacing = onDisk
+            try await loadOffMainActor { [authStore, rotated, replacing] in
+                try authStore.save(rotated, replacing: replacing)
+            }
             onDisk = rotated
         } catch CodexAuthError.tokenConflict {
             AppLog.warn(LogTag.auth("codex"), "login changed while refreshing the token; keeping the login on disk")

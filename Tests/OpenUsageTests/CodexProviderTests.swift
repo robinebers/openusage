@@ -475,6 +475,38 @@ final class CodexUsageMapperTests: XCTestCase {
 
 @MainActor
 final class CodexProviderTests: XCTestCase {
+    func testRotatedKeychainTokenPersistsOffMainThread() async {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let keychain = ThreadRecordingKeychain(values: [
+            CodexAuthStore.keychainService:
+                #"{"tokens":{"access_token":"old","refresh_token":"old-refresh"},"last_refresh":"2000-01-01T00:00:00Z"}"#
+        ])
+        let http = RoutingHTTPClient { request in
+            if request.url == CodexUsageClient.refreshURL {
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: Data(#"{"access_token":"rotated","refresh_token":"rotated-refresh"}"#.utf8)
+                )
+            }
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
+        }
+        let provider = CodexProvider(
+            authStore: CodexAuthStore(
+                environment: FakeEnvironment(["CODEX_HOME": "/test/codex"]),
+                files: FakeFiles(),
+                keychain: keychain,
+                now: { now }
+            ),
+            usageClient: CodexUsageClient(http: http),
+            now: { now }
+        )
+
+        _ = await provider.refresh()
+
+        XCTAssertEqual(keychain.lastWriteWasMainThread, false)
+    }
+
     func testLiveQuotaReturnsWhileLocalHistoryIsStillRunning() async throws {
         let home = try CodexLogFixture.makeHome(files: [:])
         let provider = CodexProvider.isolated(

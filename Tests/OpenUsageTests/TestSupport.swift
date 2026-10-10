@@ -309,6 +309,44 @@ final class FakeKeychain: KeychainAccessing, @unchecked Sendable {
     }
 }
 
+final class ThreadRecordingKeychain: KeychainAccessing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: String]
+    private var writeWasMainThread: Bool?
+
+    var lastWriteWasMainThread: Bool? {
+        lock.lock()
+        defer { lock.unlock() }
+        return writeWasMainThread
+    }
+
+    init(values: [String: String] = [:]) {
+        self.values = values
+    }
+
+    func readGenericPassword(service: String) throws -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return values[service]
+    }
+
+    func writeGenericPassword(service: String, value: String) throws {
+        let isMainThread = Thread.isMainThread
+        lock.lock()
+        values[service] = value
+        writeWasMainThread = isMainThread
+        lock.unlock()
+    }
+
+    func readGenericPassword(service: String, account: String) throws -> String? {
+        try readGenericPassword(service: service)
+    }
+
+    func writeGenericPassword(service: String, account: String, value: String) throws {
+        try writeGenericPassword(service: service, value: value)
+    }
+}
+
 final class ServiceKeychain: KeychainAccessing, @unchecked Sendable {
     var values: [String: String]
     var currentUserValues: [String: String]
