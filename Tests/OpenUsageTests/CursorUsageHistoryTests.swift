@@ -241,6 +241,7 @@ final class CursorUsageHistoryTests: XCTestCase {
             isComplete: false
         )
         store.save(cachedDays, userID: userID, timeZone: Calendar.current.timeZone.identifier)
+        let cachedDaysForResponses = cachedDays
         let pageOneEvents = (0..<1000).map { _ in
             CursorHistoryTestData.event(on: days[0].start, model: "composer-1", input: 1)
         }
@@ -251,7 +252,7 @@ final class CursorUsageHistoryTests: XCTestCase {
             if params.startKey == todayKey {
                 return try CursorHistoryTestData.page(total: 1500, events: params.page == 1 ? pageOneEvents : [])
             }
-            let existing = cachedDays[params.startKey]?.models["composer-1"]?.input ?? 0
+            let existing = cachedDaysForResponses[params.startKey]?.models["composer-1"]?.input ?? 0
             let events = existing > 0
                 ? [CursorHistoryTestData.event(on: params.start, model: "composer-1", input: existing)]
                 : []
