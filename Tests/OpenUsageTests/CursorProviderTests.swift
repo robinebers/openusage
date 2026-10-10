@@ -23,6 +23,53 @@ final class CursorAuthStoreTests: XCTestCase {
         XCTAssertEqual(state?.refreshToken, "keychain-refresh")
     }
 
+    func testDatabaseLoginDoesNotReadKeychainUnlessMarkedFree() {
+        for membership in ["pro", "enterprise", ""] {
+            let keychain = ReadCountingKeychain()
+            let sqlite = KeyValueSQLite(values: [
+                CursorAuthStore.accessTokenKey: "database-token",
+                CursorAuthStore.membershipTypeKey: membership
+            ])
+            let state = CursorAuthStore(sqlite: sqlite, keychain: keychain).loadAuthState()
+            XCTAssertEqual(state?.source, .sqlite)
+            XCTAssertTrue(keychain.services.isEmpty)
+        }
+    }
+
+    func testSameFreeAccountDoesNotReadKeychainRefreshToken() {
+        let token = makeCursorJWT(sub: "same-user")
+        let keychain = ReadCountingKeychain(values: [CursorAuthStore.keychainAccessTokenService: token])
+        let sqlite = KeyValueSQLite(values: [
+            CursorAuthStore.accessTokenKey: token,
+            CursorAuthStore.membershipTypeKey: "free"
+        ])
+        let state = CursorAuthStore(sqlite: sqlite, keychain: keychain).loadAuthState()
+        XCTAssertEqual(state?.source, .sqlite)
+        XCTAssertEqual(keychain.services, [CursorAuthStore.keychainAccessTokenService])
+    }
+
+    func testMissingDatabaseStillLoadsBothKeychainTokens() {
+        let keychain = ReadCountingKeychain(values: [
+            CursorAuthStore.keychainAccessTokenService: "access",
+            CursorAuthStore.keychainRefreshTokenService: "refresh"
+        ])
+        let state = CursorAuthStore(sqlite: KeyValueSQLite(), keychain: keychain).loadAuthState()
+        XCTAssertEqual(state?.source, .keychain)
+        XCTAssertEqual(state?.refreshToken, "refresh")
+        XCTAssertEqual(keychain.services, [CursorAuthStore.keychainAccessTokenService, CursorAuthStore.keychainRefreshTokenService])
+    }
+
+    private final class ReadCountingKeychain: KeychainAccessing, @unchecked Sendable {
+        let values: [String: String]
+        var services: [String] = []
+        init(values: [String: String] = [:]) { self.values = values }
+        func readGenericPassword(service: String) throws -> String? {
+            services.append(service)
+            return values[service]
+        }
+        func writeGenericPassword(service: String, value: String) throws {}
+    }
+
     func testPersistsSQLiteAccessToken() throws {
         let sqlite = KeyValueSQLite()
         let store = CursorAuthStore(sqlite: sqlite, keychain: FakeKeychain())

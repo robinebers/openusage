@@ -84,7 +84,13 @@ enum FirstRunSeeder {
     /// providers visibly trickled in on first launch.
     static func detectLocalProviders(_ providers: [ProviderRuntime]) async -> Set<String> {
         let probes = providers.map { provider in
-            (provider.provider.id, Task { await provider.hasLocalCredentials() })
+            (provider.provider.id, Task {
+                let access = KeychainAccessContext(mode: .discovery)
+                let found = await KeychainAccessContext.$current.withValue(access) {
+                    await provider.hasLocalCredentials()
+                }
+                return found || access.needsPermission
+            })
         }
         var detected = Set<String>()
         for (id, probe) in probes where await probe.value {

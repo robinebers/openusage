@@ -4,7 +4,11 @@ How OpenUsage decides which providers start on, what happens when an update adds
 
 ## First install
 
-A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which providers have credentials available on your Mac — an existing local login, saved API key, or supported environment variable; nothing is sent anywhere — and switches to exactly that set. All providers are checked at once, so detection takes as long as the slowest single check, not the sum of them. If nothing is found, the Claude/Codex/Cursor starter set stays. Providers the check turns on are fetched right away, so they appear with data instead of waiting for the next scheduled refresh. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
+On the first launch, a welcome screen looks for existing sign-ins without requesting Keychain access or contacting providers. Choose the providers you want, then click **Connect Selected**. Only the selected providers are connected, one at a time. macOS may ask for access to their saved sign-ins; **Always Allow** lets later background updates read the same items.
+
+Failed connections stay on the welcome screen with a retry option. **Open Dashboard** enables the providers that connected successfully. **Skip for Now** opens the dashboard with no providers enabled; use Customize to enable a provider later. Turning a provider on immediately requests any needed access. Closing the app before completing setup shows the welcome screen again next time.
+
+Detection is evidence of a local sign-in, not proof that it is valid. A protected Keychain entry can appear as detected before its contents have been read. Background refreshes never intentionally request Keychain authorization: when access is needed, the provider asks you to use Refresh.
 
 ## When an update adds a new provider
 
@@ -12,6 +16,8 @@ The same detection runs for providers that arrive later. On the first launch aft
 
 - **Credentials are available locally** → the provider turns on and appears on the dashboard.
 - **No credentials are available** → it stays off. You can always turn it on later in **Customize**.
+
+A newly discovered account for a provider you already know is not treated as a new provider; it cannot turn a skipped or disabled provider back on.
 
 This check happens **once per provider**. After that, the provider is yours to manage: if you turn it off, no update will ever turn it back on, and installing the tool later won't flip it on behind your back either — head to Customize when you want it.
 

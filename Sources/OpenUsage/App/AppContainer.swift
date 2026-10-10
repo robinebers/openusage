@@ -58,7 +58,7 @@ final class AppContainer {
 
     /// `isFreshInstall` must be captured by the caller BEFORE `SettingsMigrator.migrate()` runs (the
     /// migrator's schema stamp makes the defaults domain non-empty). See `AppDelegate`.
-    init(isFreshInstall: Bool = false) async {
+    init(isFreshInstall: Bool = false, initialProviderFamilies: Set<String>? = nil) async {
         // Capture the user's login-shell environment off-main so provider keys exported in a shell
         // profile (e.g. OPENROUTER_API_KEY) resolve in a Finder/Dock-launched build, not only when
         // run from a terminal. Warmed here so the first refresh finds the cache ready.
@@ -68,7 +68,9 @@ final class AppContainer {
         self.shellEnvironmentSnapshotTask = ShellEnvironmentSnapshotStore(defaults: .standard).startRefreshTask()
         // The launch account pass: which account is signed in at each family's default home. Feeds
         // the snapshot cache's account stamp and reconciles the account registry.
-        let accountAssembly = await ProviderAccountAssembly.make(waitsForLoginShell: true)
+        let accountAssembly = await ProviderAccountAssembly.make(
+            waitsForLoginShell: true, enabledFamilies: initialProviderFamilies
+        )
 
         let providers = ProviderCatalog.make(
             claudeCards: accountAssembly.claudeCards,
@@ -108,12 +110,19 @@ final class AppContainer {
         // Fresh installs start minimal: seed the enabled-provider list (Claude/Codex/Cursor right away,
         // then the detected set once the local credential probe finishes). No-op on every later launch.
         let onboarding = OnboardingStore()
-        self.seedTask = FirstRunSeeder.seedIfNeeded(
-            isFreshInstall: isFreshInstall,
-            providers: providers,
-            enablement: enablement,
-            onboarding: onboarding
-        )
+        if let initialProviderFamilies {
+            enablement.registerKnownProviders(Set(providers.map { $0.provider.id }))
+            enablement.seedEnabledProviders(Set(providers.map { $0.provider.id }.filter {
+                initialProviderFamilies.contains(ProviderAccountID.family(of: $0))
+            }))
+            if !initialProviderFamilies.isEmpty { onboarding.markCustomizeHintPending() }
+            self.seedTask = nil
+        } else {
+            self.seedTask = FirstRunSeeder.seedIfNeeded(
+                isFreshInstall: isFreshInstall, providers: providers,
+                enablement: enablement, onboarding: onboarding
+            )
+        }
         // Providers added by an update get the same credential detection on their first launch — enabled
         // only when the user actually has the tool. Runs every launch; a no-op unless the registry has a
         // provider this install has never seen (fresh installs were just baselined by FirstRunSeeder).
@@ -220,6 +229,16 @@ final class AppContainer {
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on in Settings, not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
+    }
+
+    /// A user toggling a provider on is already asking to connect it. Mark that intent before
+    /// publishing enablement so either the immediate task or the wake loop can perform the request.
+    func setProviderEnabled(_ enabled: Bool, for providerID: String) {
+        dataStore.requestKeychainInteraction(enabled, for: providerID)
+        enablement.setEnabled(enabled, for: providerID)
+        if enabled {
+            Task { await dataStore.refresh(providerID: providerID) }
+        }
     }
 
     deinit {

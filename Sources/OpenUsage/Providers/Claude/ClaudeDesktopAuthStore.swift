@@ -35,14 +35,19 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true
         ]
-        if !allowInteraction {
+        if !allowInteraction || !KeychainAccessContext.allowsInteraction {
             let context = LAContext()
             context.interactionNotAllowed = true
             query[kSecUseAuthenticationContext as String] = context
         }
 
         var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = KeychainSystemAccess.perform(
+            interactive: allowInteraction && KeychainAccessContext.allowsInteraction,
+            unavailable: errSecInteractionNotAllowed
+        ) {
+            SecItemCopyMatching(query as CFDictionary, &result)
+        }
         switch status {
         case errSecSuccess:
             guard let data = result as? Data,
@@ -55,6 +60,7 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
         case errSecItemNotFound:
             return nil
         case errSecInteractionNotAllowed, errSecAuthFailed, errSecUserCanceled:
+            KeychainAccessContext.current?.recordPermissionNeeded()
             throw ClaudeDesktopCredentialError.permissionRequired
         default:
             throw ClaudeDesktopCredentialError.keychainFailure(Int(status))
@@ -149,6 +155,10 @@ struct ClaudeDesktopAuthStore: Sendable {
         }
         guard hasCredentialMaterial() else {
             return ClaudeDesktopCredentialResult(oauth: nil, status: .notFound)
+        }
+        if KeychainAccessContext.current?.mode == .discovery {
+            KeychainAccessContext.current?.recordPermissionNeeded()
+            return ClaudeDesktopCredentialResult(oauth: nil, status: .permissionRequired)
         }
 
         do {

@@ -4,15 +4,10 @@ The popover that opens from the menu bar icon. Providers are sections; each sect
 
 ## First launch
 
-A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which providers have credentials available on your Mac (existing local logins, saved API keys, or supported environment variables — nothing is sent anywhere) and switches to exactly that set. If nothing is found, the Claude/Codex/Cursor starter set stays. A one-time card at the top of the dashboard explains this and points to **Customize**, where you can turn any provider on or off; the card stays until you close it with its ✕ button.
+The welcome screen detects existing sign-ins without opening permission dialogs. Select providers and choose **Connect Selected** to connect them in order. macOS may request access to saved credentials for those providers. You can retry failures, open the dashboard with successful connections, or choose **Skip for Now** and set up later in Customize.
 
-This full detection only happens on a brand-new install. Updates never change the providers you already have on or off — but when an update ships a provider you've never seen, the same local check runs once for just that provider and turns it on only if you actually have the tool. See [Which Providers Are On](provider-enablement.md) for the full lifecycle.
 
-Each provider card leads with its **Always Visible** metrics. Any metrics you've moved below the **On Demand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with neither On Demand metrics nor quick links shows no caret.
-
-When you expand a card, the tucked-away metrics open below the caret as a single-column list, so each detail row keeps the full card width.
-
-A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. Buttons lay out up to three across, wrapping to a second row when there are more.
+When the dashboard has no visible providers, **Choose Providers** opens Customize so you can add them.
 
 ## Total Spend
 
@@ -71,7 +66,7 @@ The bar pinned to the bottom of the popover. On the left: the app version, and a
 
 Open Customize from the footer's **Options** menu (or press **Return**). It's a two-level screen: a list of providers, then a provider's detail.
 
-The **provider list** shows every provider with a switch to turn it on or off, a count of its metrics, and a chevron into its detail. Turn a provider off and it stays in the list, greyed — its metrics hide from the dashboard and menu bar but keep their setup for when you turn it back on. Drag enabled providers by their grip to reorder; tap a row to open its detail. On a fresh install only the providers detected on your Mac start on (see "First launch" above); this list is where you add the rest.
+The **provider list** shows every provider with a switch to turn it on or off, a count of its metrics, and a chevron into its detail. Turn a provider off and it stays in the list, greyed — its metrics hide from the dashboard and menu bar but keep their setup for when you turn it back on. Drag enabled providers by their grip to reorder; tap a row to open its detail. On a fresh install only the providers you connect start on (see "First launch" above); this list is where you add the rest.
 
 A provider's **detail** has a back button and provider-specific Reset control in its top bar, followed by two metric sections: **Always Visible** (shown on the dashboard card) and **On Demand** (tucked behind the card's caret). Each metric row has a drag grip, its name, an always-visible star for the menu bar, and an on/off switch. Drag a metric into the other card—or onto one of that card's rows—to move it between Always Visible and On Demand. An empty card shows a dashed **Drag metrics here** target. You can star up to two metrics per provider. OpenRouter and Z.ai also show an **API Key** section here, where you can add, replace, reveal, or clear that provider's key.
 
@@ -81,7 +76,7 @@ The default reset layout keeps each provider's core quota meters and Usage Trend
 
 Made a change you didn't mean to? Press **⌘Z** to undo — it works anywhere in the popover (the dashboard and Customize alike) and steps back through your recent customization changes one at a time: hiding or showing a metric, reordering metrics or whole providers, starring or unstarring, and moving a metric across the divider all undo. Each step restores the exact previous arrangement. Undo is per-session (it starts fresh after a relaunch), and resetting clears it.
 
-When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. A provider's **Reset** button (top right of its detail) restores that provider's default metrics, order, menu-bar stars, and which metrics start on demand, but leaves other providers and the provider order untouched. The **Reset All Customization** button (top right of the provider list) does the same for every provider at once, restores the default provider order, and re-detects your installed tools — turning providers back on for exactly the tools set up on your Mac, just like first launch (see [Which Providers Are On](provider-enablement.md)). It asks for confirmation first, since it wipes the whole layout and re-detects providers, and can't be undone.
+When OpenUsage ships a new default metric, existing layouts get it once. If you turn it off, it stays off. A provider's **Reset** button (top right of its detail) restores that provider's default metrics, order, menu-bar stars, and which metrics start on demand, but leaves other providers and the provider order untouched. The **Reset All Customization** button (top right of the provider list) does the same for every provider at once, restores the default provider order, and re-detects your installed tools — turning providers back on for exactly the tools set up on your Mac, using the local checks described in [Which Providers Are On](provider-enablement.md). It asks for confirmation first, since it wipes the whole layout and re-detects providers, and can't be undone.
 
 ## Keyboard
 

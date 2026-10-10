@@ -245,7 +245,7 @@ struct APIKeysSection: View {
     private func triggerRefresh() {
         let id = provider.provider.id
         dataStore.clearFailureBackoff(for: id)
-        Task { await dataStore.refresh(providerID: id, force: true) }
+        Task { await dataStore.refresh(providerID: id, force: true, allowsKeychainInteraction: true) }
     }
 }
 

@@ -4,6 +4,7 @@ import AppKit
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
+    private var firstLaunchWindow: FirstLaunchWindowController?
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
 
@@ -51,6 +52,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // The fresh-install answer is captured BEFORE migrating (the schema stamp makes the domain
         // non-empty) and handed to `AppContainer`, whose `FirstRunSeeder` seeds a minimal provider set.
         let isFreshInstall = SettingsMigrator.isFreshInstall()
+        _ = FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall)
         SettingsMigrator.migrate()
         // Let only the `SMAppService` login item drive startup: opt out of AppKit's reopen-on-login
         // so a reboot doesn't also restore us and race the login item in the first place. The lock
@@ -85,11 +87,39 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func finishLaunching(isFreshInstall: Bool) async {
-        let container = await AppContainer(isFreshInstall: isFreshInstall)
+        if FirstLaunchSetup.needsSetup(isFreshInstall: isFreshInstall) {
+            UserDefaults.standard.set(true, forKey: FirstLaunchSetup.pendingKey)
+            let setup = FirstLaunchSetup(providers: ProviderCatalog.make())
+            firstLaunchWindow = FirstLaunchWindowController(setup: setup) { [weak self] selected in
+                guard let self else { return }
+                self.firstLaunchWindow?.finish()
+                self.firstLaunchWindow = nil
+                Task { await self.startDashboard(initialProviderFamilies: selected) }
+            }
+            firstLaunchWindow?.show()
+            return
+        }
+        await startDashboard()
+    }
+
+    private func startDashboard(initialProviderFamilies: Set<String>? = nil) async {
+        let container = await AppContainer(initialProviderFamilies: initialProviderFamilies)
         self.container = container
         statusItemController = StatusItemController(container: container, updater: updater)
-        // Starts background update checks (release build only; dormant under preview/`swift run`).
+        if initialProviderFamilies != nil {
+            UserDefaults.standard.removeObject(forKey: FirstLaunchSetup.pendingKey)
+            MenuBarPopover.showHandler?()
+        }
         updater.start()
+    }
+
+    public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let firstLaunchWindow {
+            firstLaunchWindow.show()
+        } else {
+            MenuBarPopover.showHandler?()
+        }
+        return true
     }
 
     /// Flush queued telemetry on quit. The SDK's lifecycle autocapture is off (we emit our own daily

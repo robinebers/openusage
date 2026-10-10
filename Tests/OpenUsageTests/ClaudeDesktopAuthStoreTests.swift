@@ -23,6 +23,20 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         XCTAssertThrowsError(try ClaudeDesktopAuthStore.decrypt(Data("v11bad".utf8), key: key))
     }
 
+    func testDiscoveryDoesNotDecryptDesktopCredentials() throws {
+        let fixture = try makeFixture(
+            activeOrganization: organization,
+            v2: [cacheKey(organization: organization): tokenEntry("desktop-token", expiresIn: 3_600)]
+        )
+        let context = KeychainAccessContext(mode: .discovery)
+        let result = KeychainAccessContext.$current.withValue(context) {
+            fixture.store.load(allowInteraction: false)
+        }
+        XCTAssertEqual(result.status, .permissionRequired)
+        XCTAssertTrue(context.needsPermission)
+        XCTAssertTrue(fixture.keyReader.calls.isEmpty)
+    }
+
     func testSelectsActiveOrganizationFromV2Cache() throws {
         let fixture = try makeFixture(
             activeOrganization: organization,

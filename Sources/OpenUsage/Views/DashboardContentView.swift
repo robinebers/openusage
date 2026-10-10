@@ -54,13 +54,9 @@ struct DashboardContentView: View {
                 .padding(.bottom, density.sectionSpacing)
         }
         if layout.displayGroups.isEmpty {
-            Text("Turn on Customize to choose what to show.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-                .padding(.horizontal, 16)
+            EmptyDashboardView {
+                withAnimation(Motion.modeSwitch) { layout.screen = .customize }
+            }
         } else {
             WidgetGroupedListView(
                 reorderSpaceName: reorderSpaceName,

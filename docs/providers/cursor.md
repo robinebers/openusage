@@ -27,6 +27,8 @@ into the Grok CLI is not required.
 
 ## Where credentials come from
 
+When the local Cursor database already supplies the selected login, OpenUsage avoids Keychain reads. Keychain is used when the database has no login or its free account differs from the saved Keychain account.
+
 Just be signed into the Cursor app. OpenUsage reads Cursor's local state database (and its keychain entries) for the session tokens; refreshed tokens are persisted back. Nothing extra to install or configure.
 
 ## Spend history

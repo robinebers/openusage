@@ -17,11 +17,19 @@ enum ProviderRefreshDeadline {
     static func snapshot(
         from provider: ProviderRuntime,
         force: Bool,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        allowsKeychainInteraction: Bool = false
     ) async -> ProviderSnapshot? {
         let work = Task { @MainActor in
-            await ProviderRefreshContext.$isManual.withValue(force) {
-                await provider.refresh()
+            let access = KeychainAccessContext(mode: allowsKeychainInteraction ? .interactive : .background)
+            return await KeychainAccessContext.$current.withValue(access) {
+                let snapshot = await ProviderRefreshContext.$isManual.withValue(force) {
+                    await provider.refresh()
+                }
+                if snapshot.errorCategory != nil, access.needsPermission {
+                    return ProviderSnapshot.error(provider: provider.provider, error: KeychainPermissionNeeded())
+                }
+                return snapshot
             }
         }
         let claim = ContinuationClaim()
