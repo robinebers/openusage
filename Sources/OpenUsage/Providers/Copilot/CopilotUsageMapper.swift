@@ -200,7 +200,7 @@ enum CopilotUsageMapper {
     }
 
     /// `nonisolated(unsafe)` is sound: `DateFormatter` is documented thread-safe on macOS 10.9+, and the
-    /// formatter is never mutated after creation (same pattern as `CursorUsageCSV`/`OpenUsageISO8601`).
+    /// formatter is never mutated after creation (same pattern as `OpenUsageISO8601`).
     private nonisolated(unsafe) static let dayOnlyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)

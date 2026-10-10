@@ -98,7 +98,7 @@ final class ModelPricingTests: XCTestCase {
         let canonical = "gemini-3.8-flash"
         let variants = [
             canonical, "gemini-3.8-flash-preview",
-            "gemini-3.8-flash-none", "gemini-3.8-flash-low", "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-none", "gemini-3.8-flash-n", "gemini-3.8-flash-low", "gemini-3.8-flash-medium",
             "gemini-3.8-flash-high", "gemini-3.8-flash-xhigh", "gemini-3.8-flash-exp-a", "gemini-3.8-flash-exp-b-high",
             "gemini-3.8-flash-preview-high", "gemini-3.8-flash-xhigh-preview",
             "Gemini 3.8 Flash (Auto)", "Gemini 3.8 Flash (Auto Balanced)",
