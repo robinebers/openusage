@@ -25,7 +25,8 @@ import Foundation
 ///   is a re-emitted stale snapshot, not new usage, and is skipped even when it carries a
 ///   `last_token_usage`.
 /// - Early sessions without model metadata fall back to `gpt-5`. The `codex-auto-review` slug stays
-///   visible in usage breakdowns and carries a dated fallback model only for cost estimation.
+///   visible in usage breakdowns with its measured tokens. It uses dated model estimates before
+///   October 6, 2026 (00:00 UTC), and zero cost from then on.
 ///   The `gpt-reserve` slug (Luna Reserve fallback after regular usage is exhausted) stays visible
 ///   the same way and prices at `gpt-5.6-luna` rates.
 /// - Identical events (same timestamp + model + token counts) appearing in multiple files (copied
@@ -78,7 +79,7 @@ actor CodexLogUsageScanner {
     /// once. The version is the parser schema version; bump it when `Event` semantics change.
     private static let sharedScanner = IncrementalJSONLScanner<Event>(
         logTag: LogTag.plugin("codex"),
-        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 5)
+        persistence: JSONLScanCachePersistence(namespace: "codex", schemaVersion: 6)
     )
 
     static func flushPersistentCacheWrites() async {
@@ -307,33 +308,6 @@ actor CodexLogUsageScanner {
             model = "gpt-5"
         }
         return model
-    }
-
-    /// `codex-auto-review` release timeline (newest first), from ccusage's embedded snapshot: a
-    /// line dated on/after a release prices as that codex model.
-    ///
-    /// The `gpt-5.6-luna` entry is ours; ccusage's snapshot still stops at gpt-5.5. OpenAI moved
-    /// auto-review onto the GPT-5.6 family when it shipped on 2026-07-09, and the Codex model
-    /// catalog (`~/.codex/models_cache.json`) lists `codex-auto-review` with Luna's exact profile.
-    /// Without this entry every auto-review event since July prices at gpt-5.5 rates, which are 25x
-    /// Luna's across input, cache reads and output alike.
-    private static let autoReviewFallbacks: [(releasedOn: String, model: String)] = [
-        ("2026-07-09", "gpt-5.6-luna"),
-        ("2026-04-23", "gpt-5.5"),
-        ("2026-03-05", "gpt-5.4"),
-        ("2026-02-05", "gpt-5.3-codex"),
-        ("2025-12-11", "gpt-5.2-codex"),
-        ("2025-11-13", "gpt-5.1-codex"),
-        ("2025-09-15", "gpt-5-codex"),
-        ("2025-08-07", "gpt-5")
-    ]
-
-    static func autoReviewFallback(at timestamp: String) -> String {
-        let date = String(timestamp.prefix(10))
-        guard date.count == 10, date.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
-            return "gpt-5"
-        }
-        return autoReviewFallbacks.first(where: { date >= $0.releasedOn })?.model ?? "gpt-5"
     }
 
     /// Luna Reserve keeps its `gpt-reserve` slug in breakdowns while using Luna's cost estimates.

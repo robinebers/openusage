@@ -6,8 +6,8 @@ import Foundation
 ///
 /// Pi records an authoritative per-message `usage.cost.total` (like OpenCode), so that carried cost is
 /// used when present; when pi logs a `$0` cost (subscription usage it doesn't impute), the tokens are
-/// priced through the shared engine instead — the same `carried cost, else price` rule the Claude and
-/// Codex log scanners use. Pi's usage shape differs from Claude Code's (`usage.input`/`output`,
+/// priced through the shared engine instead. Codex auto-review requests from its free date use $0
+/// even when pi carries an estimate. Pi's usage shape differs from Claude Code's (`usage.input`/`output`,
 /// nested `usage.cost.total`), so it has its own parser rather than routing through those scanners.
 ///
 /// An actor holding the versioned incremental parse cache (keyed path + size + mtime) in memory and
@@ -17,7 +17,7 @@ actor PiUsageScanner {
     /// How a card prices a pi request that carries no cost of its own. Providers with their own
     /// request rules (Codex's long-context and priority tiers) supply their estimator; the rest use
     /// the shared pricing engine.
-    typealias CostEstimator = @Sendable (String, TokenBreakdown) -> Double?
+    typealias CostEstimator = @Sendable (String, TokenBreakdown, Date) -> Double?
 
     static let shared = PiUsageScanner()
 
@@ -51,7 +51,7 @@ actor PiUsageScanner {
         var timestamp: Date
         var cardID: String
         var model: String
-        /// pi's own `usage.cost.total`, used directly when > 0; nil/0 falls through to engine pricing.
+        /// pi's own `usage.cost.total`, used when > 0 except free Codex auto-review; nil/0 is estimated.
         var carriedCost: Double?
         /// The token buckets, for pricing the fall-through case.
         var tokens: TokenBreakdown
@@ -151,15 +151,16 @@ actor PiUsageScanner {
         return out
     }
 
-    /// Bucket the card's entries into local calendar days. Cost is pi's carried total when it recorded
-    /// one, else the tokens priced through `pricing`; a model that can't be priced and carries no cost
+    /// Bucket entries into local calendar days. Cost is pi's carried total when it recorded one,
+    /// except free Codex auto-review, else the timestamped tokens priced through `pricing`.
+    /// A model that can't be priced and carries no cost
     /// is excluded from the totals and surfaced as the tile's unknown-model warning, matching the log
     /// scanners.
     static func aggregate(
         entries: [Entry], cardID: String, since: Date, pricing: ModelPricing,
         estimateCost: CostEstimator? = nil
     ) -> LogUsageScan {
-        let estimate = estimateCost ?? { pricing.estimatedCostDollars(model: $0, tokens: $1) }
+        let estimate = estimateCost ?? { model, tokens, _ in pricing.estimatedCostDollars(model: model, tokens: tokens) }
         var accumulator = DailyUsageAccumulator()
         for entry in entries where entry.cardID == cardID && entry.timestamp >= since {
             let day = DailyUsageAccumulator.dayKey(from: entry.timestamp)
@@ -167,9 +168,12 @@ actor PiUsageScanner {
             let modelName = trimmedModel ?? ModelUsageEntry.unattributedModelName
 
             let cost: Double
-            if let carried = entry.carriedCost, carried > 0 {
+            if cardID == "codex", CodexUsagePricing.isFreeAutoReview(model: modelName, at: entry.timestamp) {
+                // A carried estimate must not charge for free ChatGPT auto-review requests.
+                cost = 0
+            } else if let carried = entry.carriedCost, carried > 0 {
                 cost = carried
-            } else if let model = trimmedModel, let estimated = estimate(model, entry.tokens) {
+            } else if let model = trimmedModel, let estimated = estimate(model, entry.tokens, entry.timestamp) {
                 cost = estimated
             } else {
                 if let model = trimmedModel, entry.reportedTotalTokens > 0 {

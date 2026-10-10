@@ -91,7 +91,7 @@ final class ClaudeSwapReviewRegressionTests: XCTestCase {
             }
             XCTAssertEqual(used, expected)
         }
-        XCTAssertEqual(http.requests.map(\.url.path), ["/api/oauth/profile", "/api/oauth/usage"])
+        XCTAssertEqual(http.requests.filter { !$0.isClaudeResetGrantsCheck }.map(\.url.path), ["/api/oauth/profile", "/api/oauth/usage"])
         XCTAssertTrue(http.requests.allSatisfy { $0.headers["Authorization"] == "Bearer session" })
         XCTAssertEqual(auth.credentialGeneration(), generation)
     }

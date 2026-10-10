@@ -158,6 +158,41 @@ final class OpenCodeCodexUsageScannerTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(scan?.series.daily.first?.costUSD), 0.825, accuracy: 0.000_001)
     }
 
+    func testAutoReviewPricingAcrossEffectiveBoundaryIsIndependentOfRowOrder() async throws {
+        let dates = [
+            "2026-10-05T23:59:59.999Z",
+            "2026-10-06T00:00:00.000Z",
+            "2026-10-06T00:00:00.001Z"
+        ]
+        // Empty message IDs retain input order through deduplication, so both preparation orders
+        // are exercised. OpenCode's input and cache-read counts are disjoint buckets.
+        let rows = dates.map {
+            row(
+                $0, cost: "0", total: 110_000, model: "codex-auto-review",
+                input: 60_000, cacheRead: 40_000, output: 10_000, id: ""
+            )
+        }
+        let now = OpenUsageISO8601.date(from: "2026-10-07T12:00:00.000Z")!
+        for orderedRows in [rows, Array(rows.reversed())] {
+            let result = await scanner(
+                auth: oauthAuth, rows: "[" + orderedRows.joined(separator: ",") + "]"
+            ).scan(now: now, pricing: TestPricing.bundled)
+            let scan = try XCTUnwrap(result)
+
+            // Only the request before the cutoff carries Luna's $0.0248 estimate. Reusing its
+            // prepared rates for free rows, or free rates for that paid row, changes this total.
+            XCTAssertEqual(scan.series.daily.reduce(0) { $0 + $1.totalTokens }, 330_000)
+            let costs = try scan.series.daily.map { try XCTUnwrap($0.costUSD) }
+            XCTAssertEqual(costs.reduce(0, +), 0.0248, accuracy: 0.000_001)
+            let models = try XCTUnwrap(scan.modelUsage).daily.flatMap(\.models)
+            XCTAssertTrue(models.allSatisfy { $0.model == "codex-auto-review" })
+            XCTAssertEqual(models.reduce(0) { $0 + $1.totalTokens }, 330_000)
+            let modelCosts = try models.map { try XCTUnwrap($0.costUSD) }
+            XCTAssertEqual(modelCosts.reduce(0, +), 0.0248, accuracy: 0.000_001)
+            XCTAssertTrue(scan.unknownModelsByDay.isEmpty)
+        }
+    }
+
     func testUnknownOAuthModelIsExcludedAndWarned() async throws {
         let rows = "[" + row(
             "2026-07-12T10:00:00.000Z", cost: "0", total: 150, model: "gpt-mystery",

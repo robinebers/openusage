@@ -42,8 +42,9 @@ extension CodexLogUsageScanner {
             guard let model = trimmedModel else {
                 continue
             }
-            let pricingModel = event.pricingModel ?? model
-            let resolution = CodexUsagePricing.resolveRates(pricing: pricing, model: pricingModel)
+            // Date-aware auto-review pricing also handles caches with a paid or absent pricing model.
+            let pricingModel = model == CodexUsagePricing.autoReviewModel ? model : event.pricingModel ?? model
+            let resolution = CodexUsagePricing.resolveRates(pricing: pricing, model: pricingModel, at: event.timestamp)
             var rateModel = resolution.rateModel
             var resolvedRates = resolution.rates
             var appliesCodexFastTier = resolution.isFastAlias ? resolution.hasBaseRates : event.isFast

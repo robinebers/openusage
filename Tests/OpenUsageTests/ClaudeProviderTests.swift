@@ -336,7 +336,11 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(values(snapshot.lines, "Today"),
                        [MetricValue(number: 0.25, kind: .dollars, estimated: true),
                         MetricValue(number: 150, kind: .count, label: "tokens")])
-        XCTAssertTrue(httpClient.requests.contains { $0.url.absoluteString == "https://api.anthropic.com/api/oauth/usage?cedar_ember=1" })
+        XCTAssertEqual(httpClient.requests.map(\.url.absoluteString), [
+            "https://api.anthropic.com/api/oauth/usage",
+            "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1",
+            "https://api.anthropic.com/api/oauth/profile"
+        ])
     }
 
     func testNoCredentialsStillScansLocalSpendAndPreservesNotLoggedInWarning() async throws {
@@ -525,7 +529,7 @@ final class ClaudeProviderTests: XCTestCase {
         let snapshot = await provider.refresh()
 
         XCTAssertNotNil(snapshot.lines.first(where: { $0.label == "Session" }))
-        let usageCalls = httpClient.requests.filter { $0.url.path.hasSuffix("/api/oauth/usage") }
+        let usageCalls = httpClient.requests.filter { $0.isClaudeUsagePoll }
         XCTAssertEqual(usageCalls.count, 2)
         let saved = files.files["/tmp/claude/.credentials.json"] ?? ""
         XCTAssertTrue(saved.contains("fresh-token"))
@@ -624,7 +628,7 @@ final class ClaudeProviderTests: XCTestCase {
         XCTAssertEqual(httpClient.requests.filter {
             $0.url.path == "/api/oauth/profile" && $0.headers["Authorization"] == "Bearer owned-token"
         }.count, 1)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 2)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 2)
     }
 
     func testSurfacesAuthErrorWhenAllCredentialSourcesAreExpired() async {
@@ -762,7 +766,7 @@ final class ClaudeProviderTests: XCTestCase {
         let third = await provider.refresh()
         XCTAssertEqual(Self.progress(third.lines, "Session")?.used, 25)
         XCTAssertEqual(third.warning?.hasPrefix("Updates blocked by Anthropic"), true)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.path.hasSuffix("/api/oauth/usage") }.count, 2)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 2)
     }
 
     func testRefreshSurfacesRequestFailureForNonOAuthRefreshErrorBody() async {
@@ -846,7 +850,7 @@ private final class CallCounter: @unchecked Sendable {
 }
 
 /// A mutable clock so a test can advance `now` between refreshes to exercise time-based gates.
-private final class TestClock: @unchecked Sendable {
+final class TestClock: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Date
     init(_ value: Date) { self.value = value }

@@ -18,13 +18,13 @@ enum OllamaRequestSigner {
 
 /// Calls ollama.com's account endpoints with a signed request.
 ///
-/// - `GET /api/usage` — the session, weekly, and monthly limit meters plus recent activity spend.
-///   This is the endpoint Ollama's own settings page reads; it is undocumented, so the mapper treats
-///   every field as optional rather than assuming a shape.
+/// - `GET /api/balance` — the plan's included allowance (monthly credits, or session and weekly limits
+///   on legacy plans) plus purchased credits. Documented at https://docs.ollama.com/api/balance; the
+///   local Ollama server proxies the same endpoint to ollama.com signed with this same key.
 /// - `POST /api/me` — the account's plan name (`free` / `pro` / `max`), used only for the plan badge.
 struct OllamaUsageClient: Sendable {
     static let host = "https://ollama.com"
-    static let usagePath = "/api/usage"
+    static let balancePath = "/api/balance"
     static let accountPath = "/api/me"
 
     var http: any HTTPClient
@@ -36,9 +36,9 @@ struct OllamaUsageClient: Sendable {
         self.now = now
     }
 
-    /// Session, weekly, and monthly limits plus recent activity. Required for a usable snapshot.
-    func fetchUsage(key: OllamaSigningKey) async throws -> HTTPResponse {
-        try await send(method: "GET", path: Self.usagePath, key: key)
+    /// Included and purchased credits. Required for a usable snapshot.
+    func fetchBalance(key: OllamaSigningKey) async throws -> HTTPResponse {
+        try await send(method: "GET", path: Self.balancePath, key: key)
     }
 
     /// The signed-in account — best-effort, used only to surface the plan name.

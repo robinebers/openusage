@@ -25,9 +25,10 @@ subscription), the cap meters are hidden and you'll just see the spend tiles.
 Use OpenCode as usual. OpenUsage reads the `opencode-go` API key from OpenCode's local data directory
 (`~/.local/share/opencode`, or `$OPENCODE_DATA_DIR` / `$XDG_DATA_HOME` if you've set them) and sends it
 as a Bearer token to the usage API. OpenCode 2 keeps that key in its local databases; OpenCode 1 keeps
-it in `auth.json`. OpenCode 2 leaves an old copy of `auth.json` behind after upgrading, so once the
-databases hold credentials, OpenUsage ignores that file — logging out of Go in OpenCode 2 is respected. There's no login prompt and no token to paste. Spend tiles
-still read the local SQLite logs in that same directory.
+it in `auth.json`. Once OpenCode 2 has moved your logins into its databases, OpenUsage ignores that
+file. OpenCode 1 keeps using `auth.json`, even though recent 1.x versions already create the empty
+database table. Logging out of Go in OpenCode 2 is respected. There's no login prompt and no token
+to paste. Spend tiles still read the local SQLite logs in that same directory.
 
 When OpenCode uses its built-in ChatGPT Pro/Plus OAuth login, that usage belongs to the Codex
 subscription and appears in OpenUsage's **Codex** spend tiles and trend, including OpenCode 2's

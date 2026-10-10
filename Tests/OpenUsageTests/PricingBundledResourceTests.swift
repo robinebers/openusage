@@ -32,7 +32,7 @@ final class PricingBundledResourceTests: XCTestCase {
         }
     }
 
-    /// Spot-check Cursor CSV slugs end to end against known rates (the old manifest's assertions,
+    /// Spot-check Cursor model slugs end to end against known rates (the old manifest's assertions,
     /// now against live catalogs — update the constants if the providers themselves reprice).
     func testKnownCursorSlugsPriceCorrectly() {
         let pricing = Self.pricing
@@ -104,7 +104,7 @@ final class PricingBundledResourceTests: XCTestCase {
     }
 
     /// Claude Fable 5.1: same $10/$50 input/output as Fable 5, but cache reads are $0.25/M
-    /// (0.025x). Cursor CSV slugs (`claude-fable-5-1-thinking-*`) and the Anthropic API id
+    /// (0.025x). Cursor model slugs (`claude-fable-5-1-thinking-*`) and the Anthropic API id
     /// (`claude-fable-5-1`) must not collapse into the Fable 5 catalog entry.
     func testClaudeFable51PricingAndAliases() throws {
         let pricing = Self.pricing
@@ -236,7 +236,7 @@ final class PricingBundledResourceTests: XCTestCase {
     }
 
     /// Kimi K3: Cursor's published rates. Cursor lists no separate cache-write fee, so cache writes
-    /// bill at the input rate, and the effort suffixes Cursor's CSV uses fold into the one entry.
+    /// bill at the input rate, and the effort suffixes Cursor uses fold into the one entry.
     func testKimiK3PricingAndAliases() throws {
         let pricing = Self.pricing
         let k3 = try XCTUnwrap(pricing.resolve(model: "kimi-k3"))
@@ -251,7 +251,7 @@ final class PricingBundledResourceTests: XCTestCase {
         XCTAssertNotEqual(pricing.resolve(model: "kimi-k2.7-code"), k3)
     }
 
-    /// Cursor's CSV still carries a bare, unversioned `composer` slug from before the model was
+    /// Cursor still carries a bare, unversioned `composer` slug from before the model was
     /// numbered. It maps to the current non-fast Composer so those rows price instead of tripping
     /// the unknown-model warning, and must not pick up the fast variant's higher rates.
     func testBareComposerSlugPricesAsCurrentComposer() throws {

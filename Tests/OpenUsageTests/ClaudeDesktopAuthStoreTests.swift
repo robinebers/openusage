@@ -67,7 +67,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
         XCTAssertNil(snapshot.warning)
-        XCTAssertEqual(httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }.count, 1)
+        XCTAssertEqual(httpClient.requests.filter { $0.isClaudeUsagePoll }.count, 1)
         XCTAssertEqual(fixture.keyReader.calls, [false])
     }
 
@@ -443,7 +443,7 @@ final class ClaudeDesktopAuthStoreTests: XCTestCase {
         }
 
         XCTAssertNil(badge(snapshot.lines, "Error"))
-        let usageRequests = httpClient.requests.filter { $0.url.path == "/api/oauth/usage" }
+        let usageRequests = httpClient.requests.filter { $0.isClaudeUsagePoll }
         XCTAssertEqual(usageRequests.count, 2)
         XCTAssertTrue(usageRequests.last?.headers["Authorization"]?.contains("desktop-token") == true)
     }

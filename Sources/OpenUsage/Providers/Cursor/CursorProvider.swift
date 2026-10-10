@@ -16,20 +16,23 @@ final class CursorProvider: ProviderRuntime {
     let usageClient: CursorUsageClient
     let now: @Sendable () -> Date
     let pricing: @Sendable () async -> ModelPricing
-    let usageCSVTimeout: TimeInterval
+    let spendHistoryBudget: TimeInterval
+    let usageHistoryStore: CursorUsageHistoryStore
 
     init(
         authStore: CursorAuthStore = CursorAuthStore(),
         usageClient: CursorUsageClient = CursorUsageClient(),
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
-        usageCSVTimeout: TimeInterval = 20
+        spendHistoryBudget: TimeInterval = 20,
+        usageHistoryStore: CursorUsageHistoryStore = CursorUsageHistoryStore()
     ) {
         self.authStore = authStore
         self.usageClient = usageClient
         self.now = now
         self.pricing = pricing
-        self.usageCSVTimeout = usageCSVTimeout
+        self.spendHistoryBudget = spendHistoryBudget
+        self.usageHistoryStore = usageHistoryStore
     }
 
     var widgetDescriptors: [WidgetDescriptor] {
@@ -53,7 +56,7 @@ final class CursorProvider: ProviderRuntime {
                 .exportingHistory(
                     scope: .accountWide,
                     estimatedCost: true,
-                    sourceNote: "From your Cursor usage export"
+                    sourceNote: "From your Cursor usage history"
                 )
         ] + WidgetDescriptor.spendTiles(
             provider: provider,
@@ -181,81 +184,41 @@ final class CursorProvider: ProviderRuntime {
         lines.append(line)
     }
 
-    /// Strictly additive: fetch the usage CSV and append the three per-day spend tiles. Any failure
-    /// (no session, timeout, non-2xx, or undecodable body) appends nothing, so the live Cursor mapping is never
-    /// affected and the spend tiles fall back to "No data".
+    /// Spend history is best-effort and never affects the live Cursor usage mapping.
     private func appendSpendLines(to lines: inout [MetricLine], accessToken: String) async -> ProviderUsageHistory? {
-        let calendar = Calendar.current
-        let end = now()
-        let startOfToday = calendar.startOfDay(for: end)
-        let start = calendar.date(byAdding: .day, value: -29, to: startOfToday) ?? startOfToday
-
-        let response: HTTPResponse?
-        do {
-            switch try await fetchUsageCSV(accessToken: accessToken, start: start, end: end) {
-            case .finished(let result):
-                response = result
-            case .timedOut:
-                AppLog.warn(
-                    LogTag.plugin("cursor"),
-                    "usage CSV request exceeded \(String(format: "%g", usageCSVTimeout))s; skipping spend history this refresh"
-                )
-                return nil
-            }
-        } catch {
-            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request failed")
+        guard let session = CursorUsageClient.session(from: accessToken) else {
+            AppLog.warn(LogTag.plugin("cursor"), "usage events could not be prepared from the current session")
             return nil
         }
-        guard let response else {
-            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request could not be prepared from the current session")
-            return nil
-        }
-        guard (200..<300).contains(response.statusCode) else {
-            AppLog.warn(LogTag.plugin("cursor"), "usage CSV request returned HTTP \(response.statusCode)")
-            return nil
-        }
-        guard let csv = String(data: response.body, encoding: .utf8) else {
-            AppLog.warn(LogTag.plugin("cursor"), "usage CSV response was not valid UTF-8")
+        let currentTime = now()
+        let fetcher = CursorSpendHistoryFetcher(
+            client: usageClient,
+            store: usageHistoryStore,
+            budget: spendHistoryBudget
+        )
+        guard let days = await fetcher.refresh(
+            accessToken: accessToken,
+            userID: session.userID,
+            now: currentTime
+        ) else {
             return nil
         }
         let pricing = await pricing()
-        do {
-            let parsed = try CursorUsageCSV.parse(csv: csv, pricing: pricing)
-            if parsed.rejectedRowCount > 0 {
-                AppLog.warn(
-                    LogTag.plugin("cursor"),
-                    "usage CSV ignored \(parsed.rejectedRowCount) malformed row\(parsed.rejectedRowCount == 1 ? "" : "s")"
+        let rows = days.flatMap { dayStart, day in
+            day.models.map { model, tokens in
+                CursorUsageRow(
+                    date: dayStart,
+                    model: model,
+                    tokens: tokens,
+                    imputedCostDollars: pricing.estimatedCostDollars(
+                        model: model,
+                        tokens: tokens,
+                        applyLongContextRates: false
+                    )
                 )
             }
-            return CursorUsageMapper.appendSpendLines(rows: parsed.rows, now: end, pricing: pricing, to: &lines)
-        } catch let error as CursorUsageCSVError {
-            switch error {
-            case .missingColumns(let columns):
-                AppLog.warn(LogTag.plugin("cursor"), "usage CSV missing required columns: \(columns.joined(separator: ", "))")
-            case .malformedCSV:
-                AppLog.warn(LogTag.plugin("cursor"), "usage CSV is structurally malformed")
-            }
-        } catch {
-            AppLog.warn(LogTag.plugin("cursor"), "usage CSV could not be parsed")
         }
-        return nil
-    }
-
-    /// The CSV can stream for minutes on heavy accounts, and URLRequest's timeout only fires on an idle
-    /// connection, so the whole download is raced against a wall-clock deadline. Cancelling the losing
-    /// child cancels URLSession's in-flight data task.
-    private func fetchUsageCSV(accessToken: String, start: Date, end: Date) async throws -> CursorUsageCSVFetch {
-        let client = usageClient
-        let timeout = usageCSVTimeout
-        return try await withThrowingTaskGroup(of: CursorUsageCSVFetch.self) { group in
-            group.addTask { .finished(try await client.fetchUsageCSV(accessToken: accessToken, start: start, end: end)) }
-            group.addTask {
-                try await Task.sleep(for: .seconds(timeout))
-                return .timedOut
-            }
-            defer { group.cancelAll() }
-            return try await group.next() ?? .timedOut
-        }
+        return CursorUsageMapper.appendSpendLines(rows: rows, now: currentTime, pricing: pricing, to: &lines)
     }
 
     private func fetchUsageWithRetry(accessToken: String, authState: inout CursorAuthState) async throws -> HTTPResponse {
@@ -449,9 +412,4 @@ final class CursorProvider: ProviderRuntime {
             usageHistory: usageHistory
         )
     }
-}
-
-private enum CursorUsageCSVFetch: Sendable {
-    case finished(HTTPResponse?)
-    case timedOut
 }

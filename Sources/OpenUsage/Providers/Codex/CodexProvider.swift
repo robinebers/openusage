@@ -5,7 +5,7 @@ final class CodexProvider: ProviderRuntime {
     static func makeProvider(id: String = "codex", displayName: String = "Codex") -> Provider {
         Provider(id: id, displayName: displayName, icon: .providerMark("codex"), links: [
             .init(label: "Status", url: "https://status.openai.com/"),
-            .init(label: "Dashboard", url: "https://chatgpt.com/codex/settings/usage")
+            .init(label: "Dashboard", url: "https://chatgpt.com/settings/usage")
         ])
     }
 
@@ -244,7 +244,7 @@ final class CodexProvider: ProviderRuntime {
         )
         async let pi = claimsPiUsage ? piUsageScanner.scan(
             cardID: piCardID, now: now(), pricing: pricing,
-            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1) }
+            estimateCost: { CodexUsagePricing.estimatedCost(pricing: pricing, model: $0, tokens: $1, at: $2) }
         ) : nil
         async let openCode = claims.ownsDefaultLogin ? openCodeUsageScanner.scan(now: now(), pricing: pricing) : nil
         let (nativeScan, piScan, openCodeScan) = await (native, pi, openCode)
