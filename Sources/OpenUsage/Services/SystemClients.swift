@@ -285,6 +285,7 @@ extension KeychainAccessing {
 
 protocol SecurityItemAccessing: Sendable {
     func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?)
+    func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?)
     func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus
     func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus
 }
@@ -305,6 +306,19 @@ struct SystemSecurityItemAccessor: SecurityItemAccessing {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         return (status, result as? Data)
+    }
+
+    func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnAttributes as String: true,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let account = (result as? [String: Any])?[kSecAttrAccount as String] as? String ?? ""
+        return (status, account)
     }
 
     func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
@@ -406,19 +420,35 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     private func writePassword(service: String, account: String?, value: String) throws {
         let data = Data(value.utf8)
         let status = Self.withAccessLock {
-            let updateStatus = itemAccessor.updateGenericPasswordData(
-                service: service,
-                account: account,
-                data: data
-            )
-            guard updateStatus == errSecItemNotFound else { return updateStatus }
-            return itemAccessor.addGenericPasswordData(service: service, account: account, data: data)
+            if account == nil {
+                let lookup = itemAccessor.firstGenericPasswordAccount(service: service)
+                if lookup.status == errSecItemNotFound {
+                    return itemAccessor.addGenericPasswordData(service: service, account: nil, data: data)
+                }
+                guard lookup.status == errSecSuccess else { return lookup.status }
+                return updateOrAddPassword(
+                    service: service,
+                    account: lookup.account ?? "",
+                    data: data
+                )
+            }
+            return updateOrAddPassword(service: service, account: account, data: data)
         }
         guard status == errSecSuccess else {
             let message = Self.errorMessage(for: status)
             AppLog.warn(.keychain, "write failed for service '\(service)' (\(status)): \(message)")
             throw KeychainError.writeFailed(message)
         }
+    }
+
+    private func updateOrAddPassword(service: String, account: String?, data: Data) -> OSStatus {
+        let updateStatus = itemAccessor.updateGenericPasswordData(
+            service: service,
+            account: account,
+            data: data
+        )
+        guard updateStatus == errSecItemNotFound else { return updateStatus }
+        return itemAccessor.addGenericPasswordData(service: service, account: account, data: data)
     }
 
     private static func withAccessLock<T>(_ operation: () throws -> T) rethrows -> T {

@@ -76,9 +76,48 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertEqual(itemAccessor.requests.map(\.operation), [.update, .add])
     }
 
+    func testServiceOnlyWriteUpdatesTheFirstMatchingAccount() throws {
+        let itemAccessor = StubItemAccessor(lookupAccount: "legacy")
+        let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
+
+        try accessor.writeGenericPassword(service: "Cursor", value: "synthetic-token")
+
+        XCTAssertEqual(itemAccessor.requests, [
+            .init(operation: .lookup, service: "Cursor", account: nil),
+            .init(operation: .update, service: "Cursor", account: "legacy"),
+        ])
+    }
+
+    func testServiceOnlyWriteAddsWithoutAccountWhenNoItemMatches() throws {
+        let itemAccessor = StubItemAccessor(lookupStatus: errSecItemNotFound)
+        let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
+
+        try accessor.writeGenericPassword(service: "Cursor", value: "synthetic-token")
+
+        XCTAssertEqual(itemAccessor.requests, [
+            .init(operation: .lookup, service: "Cursor", account: nil),
+            .init(operation: .add, service: "Cursor", account: nil),
+        ])
+    }
+
+    func testServiceOnlyWriteLookupFailurePropagatesWithoutUpdatingOrAdding() {
+        let itemAccessor = StubItemAccessor(lookupStatus: errSecInteractionNotAllowed)
+        let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
+
+        XCTAssertThrowsError(try accessor.writeGenericPassword(service: "Cursor", value: "synthetic-token")) { error in
+            guard case KeychainError.writeFailed = error else {
+                return XCTFail("expected KeychainError.writeFailed, got \(error)")
+            }
+        }
+        XCTAssertEqual(itemAccessor.requests, [
+            .init(operation: .lookup, service: "Cursor", account: nil),
+        ])
+    }
+
     private final class StubItemAccessor: SecurityItemAccessing, @unchecked Sendable {
         enum Operation: Equatable {
             case read
+            case lookup
             case update
             case add
         }
@@ -91,6 +130,8 @@ final class KeychainAccessorTests: XCTestCase {
 
         let readStatus: OSStatus
         let data: Data?
+        let lookupStatus: OSStatus
+        let lookupAccount: String?
         let updateStatus: OSStatus
         let addStatus: OSStatus
         var requests: [Request] = []
@@ -98,11 +139,15 @@ final class KeychainAccessorTests: XCTestCase {
         init(
             readStatus: OSStatus = errSecSuccess,
             data: Data? = Data("synthetic-token".utf8),
+            lookupStatus: OSStatus = errSecSuccess,
+            lookupAccount: String? = "synthetic-account",
             updateStatus: OSStatus = errSecSuccess,
             addStatus: OSStatus = errSecSuccess
         ) {
             self.readStatus = readStatus
             self.data = data
+            self.lookupStatus = lookupStatus
+            self.lookupAccount = lookupAccount
             self.updateStatus = updateStatus
             self.addStatus = addStatus
         }
@@ -110,6 +155,11 @@ final class KeychainAccessorTests: XCTestCase {
         func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
             requests.append(.init(operation: .read, service: service, account: account))
             return (readStatus, data)
+        }
+
+        func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {
+            requests.append(.init(operation: .lookup, service: service, account: nil))
+            return (lookupStatus, lookupAccount)
         }
 
         func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
