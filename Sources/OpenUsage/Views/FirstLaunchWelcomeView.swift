@@ -17,8 +17,6 @@ struct FirstLaunchWelcomeView: View {
                     .accessibilityHidden(true)
                 Text("Welcome to OpenUsage")
                     .font(.system(size: 27, weight: .semibold))
-                Text("Your AI usage, together in the menu bar.")
-                    .foregroundStyle(.secondary)
                 Text("Choose the tools you want to follow. We'll use the sign-ins already on this Mac.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -116,7 +114,7 @@ struct FirstLaunchWelcomeView: View {
     }
 
     private var primaryActionTitle: String {
-        if setup.isConnecting { return "Connecting…" }
+        if setup.isConnecting { return "Checking…" }
         return setup.hasAttemptedConnection ? "Open Dashboard" : "Connect Selected"
     }
 
@@ -150,6 +148,10 @@ struct FirstLaunchWelcomeView: View {
                 ProgressView().controlSize(.small)
             } else if choice.usageUnavailable {
                 Image(systemName: "clock").foregroundStyle(.secondary)
+            } else if choice.error != nil {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Needs Attention")
             } else if choice.connected {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             }
@@ -159,7 +161,7 @@ struct FirstLaunchWelcomeView: View {
     }
 
     private func status(_ choice: FirstLaunchSetup.Choice) -> String {
-        if choice.connecting { return "Connecting…" }
+        if choice.connecting { return "Checking…" }
         if let error = choice.error { return error }
         if choice.connected { return "Enabled" }
         if choice.needsAccess { return "Needs macOS permissions" }
