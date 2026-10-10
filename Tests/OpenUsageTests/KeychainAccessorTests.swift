@@ -1,3 +1,4 @@
+import Dispatch
 import Security
 import XCTest
 @testable import OpenUsage
@@ -114,6 +115,51 @@ final class KeychainAccessorTests: XCTestCase {
         ])
     }
 
+    func testDifferentServiceReadDoesNotWaitForBlockedRead() {
+        let slowReadStarted = DispatchSemaphore(value: 0)
+        let releaseSlowRead = DispatchSemaphore(value: 0)
+        let itemAccessor = BlockingItemAccessor(
+            slowReadStarted: slowReadStarted,
+            releaseSlowRead: releaseSlowRead
+        )
+        let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
+        let readsFinished = DispatchGroup()
+        let slowReadFinished = expectation(description: "Slow read finishes")
+        let fastReadFinished = expectation(description: "Fast read finishes")
+
+        readsFinished.enter()
+        DispatchQueue.global().async {
+            defer {
+                readsFinished.leave()
+                slowReadFinished.fulfill()
+            }
+            _ = try? accessor.readGenericPassword(service: "Slow")
+        }
+
+        guard slowReadStarted.wait(timeout: .now() + 1) == .success else {
+            releaseSlowRead.signal()
+            XCTFail("Slow read did not reach the blocking stub")
+            wait(for: [slowReadFinished], timeout: 1)
+            XCTAssertEqual(readsFinished.wait(timeout: .now() + 1), .success)
+            return
+        }
+
+        readsFinished.enter()
+        DispatchQueue.global().async {
+            defer {
+                readsFinished.leave()
+                fastReadFinished.fulfill()
+            }
+            _ = try? accessor.readGenericPassword(service: "Fast")
+        }
+
+        let fastReadFinishedBeforeRelease = XCTWaiter.wait(for: [fastReadFinished], timeout: 0.5) == .completed
+        releaseSlowRead.signal()
+        wait(for: [slowReadFinished], timeout: 1)
+        XCTAssertEqual(readsFinished.wait(timeout: .now() + 1), .success, "Both reads should finish")
+        XCTAssertTrue(fastReadFinishedBeforeRelease, "Fast read should not wait for the Slow service lock")
+    }
+
     private final class StubItemAccessor: SecurityItemAccessing, @unchecked Sendable {
         enum Operation: Equatable {
             case read
@@ -170,6 +216,36 @@ final class KeychainAccessorTests: XCTestCase {
         func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
             requests.append(.init(operation: .add, service: service, account: account))
             return addStatus
+        }
+    }
+
+    private final class BlockingItemAccessor: SecurityItemAccessing, @unchecked Sendable {
+        let slowReadStarted: DispatchSemaphore
+        let releaseSlowRead: DispatchSemaphore
+
+        init(slowReadStarted: DispatchSemaphore, releaseSlowRead: DispatchSemaphore) {
+            self.slowReadStarted = slowReadStarted
+            self.releaseSlowRead = releaseSlowRead
+        }
+
+        func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
+            if service == "Slow" {
+                slowReadStarted.signal()
+                releaseSlowRead.wait()
+            }
+            return (errSecItemNotFound, nil)
+        }
+
+        func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {
+            (errSecItemNotFound, nil)
+        }
+
+        func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+            errSecSuccess
+        }
+
+        func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+            errSecSuccess
         }
     }
 }

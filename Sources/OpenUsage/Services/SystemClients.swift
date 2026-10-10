@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Security
+import Synchronization
 
 protocol EnvironmentReading: Sendable {
     func value(for name: String) -> String?
@@ -347,8 +348,8 @@ struct SystemSecurityItemAccessor: SecurityItemAccessing {
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
-    // Prevent concurrent refreshes from stacking authorization dialogs before the first grant lands.
-    private static let accessLock = NSLock()
+    // Prevent concurrent refreshes for a service from stacking authorization dialogs before the first grant lands.
+    private static let accessLocks = Mutex<[String: NSLock]>([:])
     let itemAccessor: any SecurityItemAccessing
 
     init(itemAccessor: any SecurityItemAccessing = SystemSecurityItemAccessor()) {
@@ -387,7 +388,7 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     }
 
     private func readPassword(service: String, account: String?) throws -> String? {
-        let result = Self.withAccessLock {
+        let result = Self.withAccessLock(service: service) {
             itemAccessor.readGenericPasswordData(service: service, account: account)
         }
         guard result.status == errSecSuccess else {
@@ -419,7 +420,7 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
     private func writePassword(service: String, account: String?, value: String) throws {
         let data = Data(value.utf8)
-        let status = Self.withAccessLock {
+        let status = Self.withAccessLock(service: service) {
             if account == nil {
                 let lookup = itemAccessor.firstGenericPasswordAccount(service: service)
                 if lookup.status == errSecItemNotFound {
@@ -451,9 +452,15 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         return itemAccessor.addGenericPasswordData(service: service, account: account, data: data)
     }
 
-    private static func withAccessLock<T>(_ operation: () throws -> T) rethrows -> T {
-        accessLock.lock()
-        defer { accessLock.unlock() }
+    private static func withAccessLock<T>(service: String, _ operation: () throws -> T) rethrows -> T {
+        let lock = accessLocks.withLock { locks in
+            if let lock = locks[service] { return lock }
+            let lock = NSLock()
+            locks[service] = lock
+            return lock
+        }
+        lock.lock()
+        defer { lock.unlock() }
         return try operation()
     }
 
