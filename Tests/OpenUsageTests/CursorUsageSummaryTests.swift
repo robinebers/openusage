@@ -159,10 +159,11 @@ final class CursorEnterpriseProviderTests: XCTestCase {
     func testRefreshCombinesEnterpriseMetersAndStillAppendsUsageHistory() async throws {
         let now = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-07-13T12:00:00.000Z"))
         let accessToken = makeCursorJWT(sub: "google-oauth2|enterprise-user")
-        let csv = """
-        Date,Model,Max Mode,Input (w/ Cache Write),Input (w/o Cache Write),Cache Read,Output Tokens,Cost
-        2026-07-13T10:00:00Z,composer-1,No,0,1000,0,100,Included
-        """
+        let historyDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cursor-enterprise-history-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: historyDirectory) }
+        let todayStart = Calendar.current.startOfDay(for: now)
+        let todayStartMilliseconds = String(Int(todayStart.timeIntervalSince1970 * 1000))
         let http = RoutingHTTPClient { request in
             if request.url == CursorUsageClient.usageURL {
                 return HTTPResponse(
@@ -214,8 +215,25 @@ final class CursorEnterpriseProviderTests: XCTestCase {
                 }
                 """.utf8))
             }
-            if request.url.absoluteString.hasPrefix(CursorUsageClient.exportCSVURL.absoluteString) {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(csv.utf8))
+            if request.url == CursorUsageClient.usageEventsURL {
+                let payload = request.body
+                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                let events: [[String: Any]] = payload?["startDate"] as? String == todayStartMilliseconds
+                    ? [[
+                        "timestamp": "1783936800000",
+                        "model": "composer-1",
+                        "tokenUsage": ["inputTokens": 1000, "outputTokens": 100]
+                    ]]
+                    : []
+                let response: [String: Any] = [
+                    "totalUsageEventsCount": events.count,
+                    "usageEventsDisplay": events
+                ]
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: [:],
+                    body: try JSONSerialization.data(withJSONObject: response)
+                )
             }
             return HTTPResponse(statusCode: 404, headers: [:], body: Data())
         }
@@ -226,7 +244,8 @@ final class CursorEnterpriseProviderTests: XCTestCase {
             ),
             usageClient: CursorUsageClient(http: http),
             now: { now },
-            pricing: { TestPricing.bundled }
+            pricing: { TestPricing.bundled },
+            usageHistoryStore: CursorUsageHistoryStore(directory: historyDirectory)
         )
 
         let snapshot = await provider.refresh()
@@ -252,7 +271,7 @@ final class CursorEnterpriseProviderTests: XCTestCase {
                 $0.name == "user" && $0.value == "enterprise-user"
             } == true
         })
-        XCTAssertTrue(http.requests.contains { $0.url.absoluteString.hasPrefix(CursorUsageClient.exportCSVURL.absoluteString) })
+        XCTAssertTrue(http.requests.contains { $0.url == CursorUsageClient.usageEventsURL })
 
         let descriptors = provider.widgetDescriptors
         let runtime = TestProviderRuntime(
