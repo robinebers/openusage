@@ -160,6 +160,69 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertTrue(fastReadFinishedBeforeRelease, "Fast read should not wait for the Slow service lock")
     }
 
+    func testExistenceCheckThroughTheProtocolDoesNotReadTheSecret() {
+        let keychain: any KeychainAccessing = MetadataOnlyKeychain()
+
+        XCTAssertEqual(keychain.genericPasswordExists(service: "Codex Auth"), true)
+    }
+
+    func testDeniedOrCancelledPopupIsNotShownAgain() {
+        for (service, status) in [("Denied Login", errSecAuthFailed), ("Cancelled Login", errSecUserCanceled)] {
+            let itemAccessor = StubItemAccessor(readStatus: status)
+            let accessor = SecurityKeychainAccessor(itemAccessor: itemAccessor)
+
+            XCTAssertThrowsError(try accessor.readGenericPassword(service: service))
+            XCTAssertThrowsError(try accessor.readGenericPassword(service: service))
+
+            XCTAssertEqual(itemAccessor.requests.count, 1, "\(service) must not ask again on its own")
+        }
+    }
+
+    @MainActor
+    func testManualRefreshAsksAgainAfterDeny() async {
+        let itemAccessor = StubItemAccessor(readStatus: errSecAuthFailed)
+        let runtime = KeychainReadingRuntime(
+            keychain: SecurityKeychainAccessor(itemAccessor: itemAccessor),
+            service: "Denied Then Refreshed Login"
+        )
+
+        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: false, timeout: 5)
+        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: false, timeout: 5)
+        XCTAssertEqual(itemAccessor.requests.count, 1, "background refreshes must not ask again after Deny")
+
+        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: true, timeout: 5)
+        XCTAssertEqual(itemAccessor.requests.count, 2, "a manual refresh asks again")
+    }
+
+    private struct MetadataOnlyKeychain: KeychainAccessing {
+        func readGenericPassword(service: String) throws -> String? {
+            XCTFail("an existence check must not read the secret, which can show a Keychain popup")
+            return nil
+        }
+
+        func writeGenericPassword(service: String, value: String) throws {}
+
+        func genericPasswordExists(service: String) -> Bool? { true }
+    }
+
+    @MainActor
+    private final class KeychainReadingRuntime: ProviderRuntime {
+        let provider = Provider(id: "keychain-test", displayName: "Keychain Test", icon: .providerMark("codex"))
+        let widgetDescriptors: [WidgetDescriptor] = []
+        let keychain: SecurityKeychainAccessor
+        let service: String
+
+        init(keychain: SecurityKeychainAccessor, service: String) {
+            self.keychain = keychain
+            self.service = service
+        }
+
+        func refresh() async -> ProviderSnapshot {
+            _ = try? keychain.readGenericPassword(service: service)
+            return ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [])
+        }
+    }
+
     private final class StubItemAccessor: SecurityItemAccessing, @unchecked Sendable {
         enum Operation: Equatable {
             case read
