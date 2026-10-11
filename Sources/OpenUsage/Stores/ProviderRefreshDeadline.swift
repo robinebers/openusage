@@ -19,6 +19,7 @@ enum ProviderRefreshDeadline {
         force: Bool,
         timeout: TimeInterval
     ) async -> ProviderSnapshot? {
+        if force { KeychainAccessGuard.forgetDenials() }
         let work = Task { @MainActor in
             await ProviderRefreshContext.$isManual.withValue(force) {
                 await provider.refresh()

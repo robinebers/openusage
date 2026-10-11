@@ -194,6 +194,36 @@ final class KeychainAccessorTests: XCTestCase {
         XCTAssertEqual(itemAccessor.requests.count, 2, "a manual refresh asks again")
     }
 
+    func testEachLoginIsReadTheWayItsOwnToolSavesIt() throws {
+        let inProcess = StubItemAccessor(data: Data("in-process".utf8))
+        let securityTool = StubItemAccessor(data: Data("security".utf8))
+        let accessor = SecurityKeychainAccessor(itemAccessor: inProcess, securityTool: securityTool)
+
+        for service in [
+            "Claude Code-credentials", "gh:github.com", "cursor-access-token", "cursor-refresh-token", "gemini",
+            "com.robinebers.openusage.icloud-sync-device-id.v1",
+        ] {
+            XCTAssertEqual(try accessor.readGenericPassword(service: service), "security", service)
+        }
+        for service in ["Codex Auth", "claude-swap"] {
+            XCTAssertEqual(try accessor.readGenericPassword(service: service), "in-process", service)
+        }
+    }
+
+    func testSecurityToolLoginIsSavedThroughTheSecurityTool() throws {
+        let inProcess = StubItemAccessor()
+        let securityTool = StubItemAccessor(lookupAccount: "cursor-user")
+        let accessor = SecurityKeychainAccessor(itemAccessor: inProcess, securityTool: securityTool)
+
+        try accessor.writeGenericPassword(service: "cursor-access-token", value: "renewed")
+
+        XCTAssertEqual(securityTool.requests, [
+            .init(operation: .lookup, service: "cursor-access-token", account: nil),
+            .init(operation: .update, service: "cursor-access-token", account: "cursor-user"),
+        ])
+        XCTAssertEqual(inProcess.requests, [])
+    }
+
     private struct MetadataOnlyKeychain: KeychainAccessing {
         func readGenericPassword(service: String) throws -> String? {
             XCTFail("an existence check must not read the secret, which can show a Keychain popup")

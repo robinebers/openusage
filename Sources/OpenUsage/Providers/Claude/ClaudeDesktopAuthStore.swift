@@ -41,11 +41,14 @@ struct ClaudeDesktopSafeStorageKeyReader: ClaudeDesktopSafeStorageKeyReading {
             query[kSecUseAuthenticationContext as String] = context
         }
 
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let (status, data) = KeychainAccessGuard.read(service: Self.service) {
+            var result: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
+            return (status, result as? Data)
+        }
         switch status {
         case errSecSuccess:
-            guard let data = result as? Data,
+            guard let data,
                   let password = String(data: data, encoding: .utf8),
                   !password.isEmpty
             else {

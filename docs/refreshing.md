@@ -46,6 +46,15 @@ contribution from an iCloud-combined spend total.
 
 Rows that have never had data show "No data" rather than made-up numbers.
 
+## Keychain access
+
+Some logins live in your macOS Keychain, and macOS asks before OpenUsage can read them.
+
+- Choose **Always Allow** so later refreshes stay quiet.
+- Each login shows one request at a time, and OpenUsage waits for your answer.
+- If you choose **Deny**, OpenUsage stops asking for that login until you refresh manually.
+- Checking which accounts exist at launch never asks.
+
 ## Stale data
 
 Because a failed refresh keeps the last good values on screen, those values can persist if refreshes keep failing — so a plan or limit that changed on the provider's side could otherwise keep showing the old figures indefinitely. To make that obvious, a small **"Outdated"** tag appears next to the provider's name once its data is more than a couple of refresh cycles old (about ten minutes); hover it for the precise age ("Last updated 3h ago"). The tag stays short so it never crowds a long plan name. When you see it, the numbers below are from that earlier time, not live — usually because the provider is failing to refresh (check the warning triangle) or the Mac was asleep. A successful refresh clears it.

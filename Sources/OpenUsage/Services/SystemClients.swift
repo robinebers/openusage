@@ -1,7 +1,6 @@
 import Darwin
 import Foundation
 import Security
-import Synchronization
 
 protocol EnvironmentReading: Sendable {
     func value(for name: String) -> String?
@@ -247,6 +246,10 @@ protocol KeychainAccessing: Sendable {
     func readGenericPassword(service: String, account: String) throws -> String?
     /// Update the item belonging to this exact account, without changing another account's login.
     func writeGenericPassword(service: String, account: String, value: String) throws
+    /// Whether an item exists for `service`, without reading its secret. `nil` means the probe
+    /// itself failed (locked keychain, denied) — the caller picks its own safe side, which is not
+    /// the same for every caller.
+    func genericPasswordExists(service: String) -> Bool?
 }
 
 extension KeychainAccessing {
@@ -270,11 +273,7 @@ extension KeychainAccessing {
         throw KeychainError.writeFailed("Account-scoped Keychain writes are unavailable.")
     }
 
-    /// Whether an item exists for `service`, without reading its secret. `nil` means the probe
-    /// itself failed (locked keychain, denied) — the caller picks its own safe side, which is not
-    /// the same for every caller. The default (for mocks) falls back to a read; the real
-    /// `SecurityKeychainAccessor` overrides this with an in-process attributes-only probe, safe for
-    /// the launch path — it can't trigger an unlock prompt and returns in microseconds.
+    /// Default for mocks: falls back to a read.
     func genericPasswordExists(service: String) -> Bool? {
         do {
             return try readGenericPassword(service: service) != nil
@@ -348,12 +347,15 @@ struct SystemSecurityItemAccessor: SecurityItemAccessing {
 }
 
 struct SecurityKeychainAccessor: KeychainAccessing {
-    // Prevent concurrent refreshes for a service from stacking authorization dialogs before the first grant lands.
-    private static let accessLocks = Mutex<[String: NSLock]>([:])
     let itemAccessor: any SecurityItemAccessing
+    let securityTool: any SecurityItemAccessing
 
-    init(itemAccessor: any SecurityItemAccessing = SystemSecurityItemAccessor()) {
+    init(
+        itemAccessor: any SecurityItemAccessing = SystemSecurityItemAccessor(),
+        securityTool: any SecurityItemAccessing = SecurityToolItemAccessor()
+    ) {
         self.itemAccessor = itemAccessor
+        self.securityTool = securityTool
     }
 
     func readGenericPassword(service: String) throws -> String? {
@@ -387,9 +389,15 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         try readPassword(service: service, account: account)
     }
 
+    /// Each login is read and saved the way its own tool saves it, so the user's Always Allow survives
+    /// that tool's next save.
+    private func accessor(for service: String) -> any SecurityItemAccessing {
+        SecurityToolItemAccessor.handles(service: service) ? securityTool : itemAccessor
+    }
+
     private func readPassword(service: String, account: String?) throws -> String? {
-        let result = Self.withAccessLock(service: service) {
-            itemAccessor.readGenericPasswordData(service: service, account: account)
+        let result = KeychainAccessGuard.read(service: service) {
+            accessor(for: service).readGenericPasswordData(service: service, account: account)
         }
         guard result.status == errSecSuccess else {
             if result.status == errSecItemNotFound { return nil }
@@ -420,20 +428,17 @@ struct SecurityKeychainAccessor: KeychainAccessing {
 
     private func writePassword(service: String, account: String?, value: String) throws {
         let data = Data(value.utf8)
-        let status = Self.withAccessLock(service: service) {
+        let items = accessor(for: service)
+        let status = KeychainAccessGuard.write(service: service) {
             if account == nil {
-                let lookup = itemAccessor.firstGenericPasswordAccount(service: service)
+                let lookup = items.firstGenericPasswordAccount(service: service)
                 if lookup.status == errSecItemNotFound {
-                    return itemAccessor.addGenericPasswordData(service: service, account: nil, data: data)
+                    return items.addGenericPasswordData(service: service, account: nil, data: data)
                 }
                 guard lookup.status == errSecSuccess else { return lookup.status }
-                return updateOrAddPassword(
-                    service: service,
-                    account: lookup.account ?? "",
-                    data: data
-                )
+                return Self.updateOrAddPassword(items, service: service, account: lookup.account ?? "", data: data)
             }
-            return updateOrAddPassword(service: service, account: account, data: data)
+            return Self.updateOrAddPassword(items, service: service, account: account, data: data)
         }
         guard status == errSecSuccess else {
             let message = Self.errorMessage(for: status)
@@ -442,26 +447,15 @@ struct SecurityKeychainAccessor: KeychainAccessing {
         }
     }
 
-    private func updateOrAddPassword(service: String, account: String?, data: Data) -> OSStatus {
-        let updateStatus = itemAccessor.updateGenericPasswordData(
-            service: service,
-            account: account,
-            data: data
-        )
+    private static func updateOrAddPassword(
+        _ items: any SecurityItemAccessing,
+        service: String,
+        account: String?,
+        data: Data
+    ) -> OSStatus {
+        let updateStatus = items.updateGenericPasswordData(service: service, account: account, data: data)
         guard updateStatus == errSecItemNotFound else { return updateStatus }
-        return itemAccessor.addGenericPasswordData(service: service, account: account, data: data)
-    }
-
-    private static func withAccessLock<T>(service: String, _ operation: () throws -> T) rethrows -> T {
-        let lock = accessLocks.withLock { locks in
-            if let lock = locks[service] { return lock }
-            let lock = NSLock()
-            locks[service] = lock
-            return lock
-        }
-        lock.lock()
-        defer { lock.unlock() }
-        return try operation()
+        return items.addGenericPasswordData(service: service, account: account, data: data)
     }
 
     private static func errorMessage(for status: OSStatus) -> String {

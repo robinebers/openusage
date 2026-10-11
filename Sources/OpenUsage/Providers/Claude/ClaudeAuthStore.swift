@@ -61,7 +61,7 @@ struct ClaudeOAuthConfig: Hashable, Sendable {
 struct ClaudeAuthStore: Sendable {
     private static let defaultClaudeHome = "~/.claude"
     private static let credentialFileName = ".credentials.json"
-    private static let keychainServicePrefix = "Claude Code"
+    static let keychainServicePrefix = "Claude Code"
     private static let prodBaseAPIURL = "https://api.anthropic.com"
     private static let prodRefreshURL = "https://platform.claude.com/v1/oauth/token"
     private static let prodClientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"

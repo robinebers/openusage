@@ -18,6 +18,7 @@ protocol ICloudDeviceIDStoring: Sendable {
 }
 
 struct KeychainICloudDeviceIDStore: ICloudDeviceIDStoring {
+    static let serviceSuffix = ".icloud-sync-device-id.v1"
     private let service: String
     private let keychain: any KeychainAccessing
 
@@ -26,7 +27,7 @@ struct KeychainICloudDeviceIDStore: ICloudDeviceIDStoring {
         bundleIdentifier: String = Bundle.main.bundleIdentifier ?? "com.robinebers.openusage"
     ) {
         self.keychain = keychain
-        self.service = "\(bundleIdentifier).icloud-sync-device-id.v1"
+        self.service = bundleIdentifier + Self.serviceSuffix
     }
 
     func readDeviceID() throws -> String? {
