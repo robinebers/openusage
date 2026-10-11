@@ -4,6 +4,11 @@ import XCTest
 @testable import OpenUsage
 
 final class KeychainAccessorTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        KeychainAccessGuard.forgetDenials()
+    }
+
     func testItemNotFoundReturnsNil() throws {
         let accessor = SecurityKeychainAccessor(
             itemAccessor: StubItemAccessor(readStatus: errSecItemNotFound)
@@ -194,7 +199,7 @@ final class KeychainAccessorTests: XCTestCase {
         await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertEqual(itemAccessor.requests.count, 1, "refreshes the app starts itself must not ask again after Deny")
 
-        await store.refreshNow()
+        await store.refreshOnUserRequest()
         XCTAssertEqual(itemAccessor.requests.count, 2, "the user's Refresh asks again")
     }
 

@@ -66,7 +66,7 @@ struct WidgetGroupedListView: View {
             }
             Divider()
             Button("Refresh \(group.provider.displayName)") {
-                Task { await dataStore.refreshNow(providerID: group.provider.id) }
+                Task { await dataStore.refreshOnUserRequest(providerID: group.provider.id) }
             }
             Button("Customize…") {
                 openCustomize(for: group.provider.id)
@@ -265,7 +265,7 @@ struct WidgetGroupedListView: View {
         Divider()
         if let provider = layout.provider(id: providerID) {
             Button("Refresh \(provider.displayName)") {
-                Task { await dataStore.refreshNow(providerID: providerID) }
+                Task { await dataStore.refreshOnUserRequest(providerID: providerID) }
             }
         }
         Button("Customize…") {

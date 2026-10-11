@@ -230,7 +230,7 @@ final class WidgetDataStore {
     }
 
     /// The user's own Refresh. It's the only refresh that lets a login they denied ask again.
-    func refreshNow(providerID: String? = nil) async {
+    func refreshOnUserRequest(providerID: String? = nil) async {
         KeychainAccessGuard.forgetDenials()
         if let providerID {
             await refresh(providerID: providerID, force: true)
