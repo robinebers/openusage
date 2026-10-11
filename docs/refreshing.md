@@ -53,7 +53,6 @@ Some logins live in your macOS Keychain, and macOS asks before OpenUsage can rea
 - Choose **Always Allow** so later refreshes stay quiet.
 - Each login shows one request at a time, and OpenUsage waits for your answer.
 - If you choose **Deny**, OpenUsage stops asking for that login until you refresh manually.
-- Checking which accounts exist at launch never asks.
 
 ## Stale data
 

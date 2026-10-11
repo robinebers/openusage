@@ -350,12 +350,15 @@ struct SecurityKeychainAccessor: KeychainAccessing {
     let itemAccessor: any SecurityItemAccessing
     let securityTool: any SecurityItemAccessing
 
-    init(
-        itemAccessor: any SecurityItemAccessing = SystemSecurityItemAccessor(),
-        securityTool: any SecurityItemAccessing = SecurityToolItemAccessor()
-    ) {
+    init() {
+        self.init(itemAccessor: SystemSecurityItemAccessor(), securityTool: SecurityToolItemAccessor())
+    }
+
+    /// An injected fake serves both paths unless a test sets the `security` path apart, so a test can
+    /// never run the real `/usr/bin/security` against the user's Keychain by accident.
+    init(itemAccessor: any SecurityItemAccessing, securityTool: (any SecurityItemAccessing)? = nil) {
         self.itemAccessor = itemAccessor
-        self.securityTool = securityTool
+        self.securityTool = securityTool ?? itemAccessor
     }
 
     func readGenericPassword(service: String) throws -> String? {

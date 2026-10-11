@@ -63,15 +63,13 @@ struct SecurityToolItemAccessor: SecurityItemAccessing {
             return (errSecInternalComponent, "")
         }
         if result.succeeded { return (errSecSuccess, result.stdout) }
-        // `security` exits with the low byte of the failing status.
-        if let status = Self.expectedFailures.first(where: { $0 & 0xFF == result.exitCode }) {
-            return (status, "")
-        }
+        if let status = Self.statusByExitCode[result.exitCode] { return (status, "") }
         AppLog.warn(.keychain, "security exited \(result.exitCode) for '\(service)': \(result.stderr)")
         return (errSecInternalComponent, "")
     }
 
-    private static let expectedFailures: [OSStatus] = [
-        errSecItemNotFound, errSecAuthFailed, errSecUserCanceled, errSecInteractionNotAllowed, errSecDuplicateItem,
-    ]
+    /// `security` exits with the low byte of the failing status.
+    private static let statusByExitCode = Dictionary(uniqueKeysWithValues: [
+        errSecItemNotFound, errSecAuthFailed, errSecUserCanceled, errSecInteractionNotAllowed,
+    ].map { ($0 & 0xFF, $0) })
 }

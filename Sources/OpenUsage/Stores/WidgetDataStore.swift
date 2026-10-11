@@ -229,6 +229,16 @@ final class WidgetDataStore {
         AppLog.info(.refresh, "batch end (\(durationMs)ms, \(refreshed) ok / \(failed) failed / \(cached) cached / \(backedOff) backed off)")
     }
 
+    /// The user's own Refresh. It's the only refresh that lets a login they denied ask again.
+    func refreshNow(providerID: String? = nil) async {
+        KeychainAccessGuard.forgetDenials()
+        if let providerID {
+            await refresh(providerID: providerID, force: true)
+        } else {
+            await refreshAll(force: true)
+        }
+    }
+
     /// Evaluate every visible, enabled metric for a quota pace milestone and post a notification for any
     /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
     /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by

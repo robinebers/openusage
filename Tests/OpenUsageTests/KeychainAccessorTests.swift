@@ -179,19 +179,23 @@ final class KeychainAccessorTests: XCTestCase {
     }
 
     @MainActor
-    func testManualRefreshAsksAgainAfterDeny() async {
+    func testOnlyTheUsersRefreshAsksAgainAfterDeny() async {
         let itemAccessor = StubItemAccessor(readStatus: errSecAuthFailed)
         let runtime = KeychainReadingRuntime(
             keychain: SecurityKeychainAccessor(itemAccessor: itemAccessor),
             service: "Denied Then Refreshed Login"
         )
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [runtime.provider], descriptors: []),
+            providers: [runtime]
+        )
 
-        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: false, timeout: 5)
-        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: false, timeout: 5)
-        XCTAssertEqual(itemAccessor.requests.count, 1, "background refreshes must not ask again after Deny")
+        await store.refresh(providerID: runtime.provider.id, force: true)
+        await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(itemAccessor.requests.count, 1, "refreshes the app starts itself must not ask again after Deny")
 
-        _ = await ProviderRefreshDeadline.snapshot(from: runtime, force: true, timeout: 5)
-        XCTAssertEqual(itemAccessor.requests.count, 2, "a manual refresh asks again")
+        await store.refreshNow()
+        XCTAssertEqual(itemAccessor.requests.count, 2, "the user's Refresh asks again")
     }
 
     func testEachLoginIsReadTheWayItsOwnToolSavesIt() throws {

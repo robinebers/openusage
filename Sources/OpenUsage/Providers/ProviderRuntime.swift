@@ -50,7 +50,8 @@ extension ProviderRuntime {
 /// Run a blocking, `Sendable` credential load off the MainActor.
 ///
 /// Auth stores read credentials via the `security` (keychain) and `sqlite3` CLIs, whose `ProcessRunner`
-/// waits block the calling thread for up to ~5s each. Those loads run at the top of a provider's
+/// waits block the calling thread: up to ~5s for `sqlite3`, and up to 10 minutes for `security` while a
+/// Keychain popup waits for the user. Those loads run at the top of a provider's
 /// `@MainActor refresh()`, so calling them inline freezes the popover and the periodic-refresh loop for
 /// the whole subprocess window (Cursor issues several reads per refresh — up to ~25s). Offloading to a
 /// detached task moves the wait onto a background executor; the `Sendable` result crosses back cleanly.
