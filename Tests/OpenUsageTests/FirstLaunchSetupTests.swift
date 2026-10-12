@@ -37,6 +37,17 @@ final class FirstLaunchSetupTests: XCTestCase {
         XCTAssertEqual(setup.visibleChoices.map(\.id), ["claude", "codex"])
     }
 
+    func testDetectionAsksEveryDashboardCard() async {
+        let (setup, _) = makeSetup(cards: [
+            StubRuntime("codex", hasCredentials: false),
+            StubRuntime("codex@ab12cd34", hasCredentials: true),
+        ])
+
+        await setup.detect()
+
+        XCTAssertEqual(setup.selectedIDs, ["codex"], "a login only an account card sees, like a second Codex home, is on this Mac")
+    }
+
     func testCodexKeychainLoginCountsBeforeOpenUsageMayReadIt() async {
         let codex = CodexProvider(
             authStore: CodexAuthStore(
@@ -97,6 +108,29 @@ final class FirstLaunchSetupTests: XCTestCase {
         XCTAssertEqual(enablement.enabledIDs, [])
     }
 
+    func testPopupLeftOpenPastTheRefreshDeadlineHoldsTheNextProvider() async throws {
+        let popup = OpenPopupItemAccessor()
+        let keychain = SecurityKeychainAccessor(itemAccessor: popup)
+        let log = RefreshLog()
+        let (setup, _) = makeSetup(cards: [
+            StubRuntime("claude") {
+                DispatchQueue.global().async { _ = try? keychain.readGenericPassword(service: "Open Welcome Popup") }
+                await popup.waitUntilShown()
+                return "Timed out."
+            },
+            StubRuntime("codex") { await log.record("codex") },
+        ])
+        await setup.detect()
+
+        let connecting = Task { await setup.connectSelected() }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(log.events, [], "a second popup must not open while the first is still up")
+        popup.answer()
+        await connecting.value
+
+        XCTAssertEqual(log.events, ["start codex", "end codex"])
+    }
+
     // MARK: - Helpers
 
     private func makeSetup(cards: [StubRuntime]) -> (FirstLaunchSetup, ProviderEnablementStore) {
@@ -111,8 +145,8 @@ final class FirstLaunchSetupTests: XCTestCase {
             isProviderEnabled: { enablement.isEnabled($0) }
         )
         let setup = FirstLaunchSetup(
-            providers: cards.filter { ProviderAccountID.family(of: $0.provider.id) == $0.provider.id },
-            cardIDs: cards.map(\.provider.id),
+            providers: cards.map(\.provider).filter { ProviderAccountID.family(of: $0.id) == $0.id },
+            cards: cards,
             enablement: enablement,
             dataStore: dataStore
         )
@@ -166,6 +200,43 @@ private struct UnreadableKeychain: KeychainAccessing {
 private struct DenyingItemAccessor: SecurityItemAccessing {
     func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
         (errSecAuthFailed, nil)
+    }
+
+    func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {
+        (errSecItemNotFound, nil)
+    }
+
+    func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+        errSecSuccess
+    }
+
+    func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
+        errSecSuccess
+    }
+}
+
+/// A read that shows a popup and blocks until the test answers it.
+private final class OpenPopupItemAccessor: SecurityItemAccessing, Sendable {
+    private let shown = DispatchSemaphore(value: 0)
+    private let answered = DispatchSemaphore(value: 0)
+
+    func readGenericPasswordData(service: String, account: String?) -> (status: OSStatus, data: Data?) {
+        shown.signal()
+        answered.wait()
+        return (errSecSuccess, Data("login".utf8))
+    }
+
+    func waitUntilShown() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { [shown] in
+                shown.wait()
+                continuation.resume()
+            }
+        }
+    }
+
+    func answer() {
+        answered.signal()
     }
 
     func firstGenericPasswordAccount(service: String) -> (status: OSStatus, account: String?) {

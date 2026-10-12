@@ -15,6 +15,8 @@ enum KeychainAccessGuard {
     /// OpenUsage's own popup fail as not allowed. Logins read through `/usr/bin/security` were
     /// saved with it, so reading them doesn't ask.
     private static let popupsHeld = Mutex(false)
+    /// A read can outlive the refresh that gave up on it while its popup waits for the user.
+    private static let readsInProgress = Mutex(0)
     /// A popup stays open until the user answers. Reads give up well inside the 120-second provider
     /// refresh deadline, so unanswered popups can't pile up blocked threads.
     private static let readLockWait: TimeInterval = 60
@@ -35,6 +37,8 @@ enum KeychainAccessGuard {
         if deniedServices.withLock({ $0.contains(service) }) {
             return (errSecAuthFailed, nil)
         }
+        readsInProgress.withLock { $0 += 1 }
+        defer { readsInProgress.withLock { $0 -= 1 } }
         let result = read()
         if result.status == errSecAuthFailed || result.status == errSecUserCanceled {
             deniedServices.withLock { _ = $0.insert(service) }
@@ -67,6 +71,14 @@ enum KeychainAccessGuard {
 
     static func allowPopups() {
         popupsHeld.withLock { $0 = false }
+    }
+
+    /// Waits until every read has returned, so a popup still open from an earlier read isn't joined
+    /// by a second one.
+    static func waitForReadsToFinish() async {
+        while readsInProgress.withLock({ $0 }) > 0 {
+            guard (try? await Task.sleep(for: .milliseconds(250))) != nil else { return }
+        }
     }
 
     private static func lock(for service: String) -> NSLock {

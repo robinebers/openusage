@@ -40,9 +40,9 @@ final class AppContainer {
     /// write). Each service shares its card's auth store and usage client. The view tree selects
     /// the matching service from `\.codexResetClaims` for each card's resets popover.
     let codexResetClaims: [String: CodexResetClaimService]
-    /// The provider runtimes, kept so on-demand credential detection (the Customize "Reset All" reseed)
-    /// can re-probe `hasLocalCredentials()` the same way first-run seeding does.
-    private let providers: [ProviderRuntime]
+    /// The provider runtimes, kept so on-demand credential detection (the welcome screen and the
+    /// Customize "Reset All" reseed) can re-probe `hasLocalCredentials()` on every card.
+    let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     /// `nil` until `startRefreshing()`, which the welcome screen delays until the user has picked providers.

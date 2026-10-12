@@ -100,8 +100,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let setup = FirstLaunchSetup(
-            providers: ProviderCatalog.make(),
-            cardIDs: container.registry.providers.map(\.id),
+            providers: ProviderCatalog.make().map(\.provider),
+            cards: container.providers,
             enablement: container.enablement,
             dataStore: container.dataStore
         )

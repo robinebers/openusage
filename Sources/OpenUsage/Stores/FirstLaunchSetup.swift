@@ -36,8 +36,7 @@ final class FirstLaunchSetup {
 
     static let accessDeniedMessage = "Access wasn't granted. You can retry or skip for now."
 
-    private let providers: [ProviderRuntime]
-    private let cardIDs: [String]
+    private let cards: [ProviderRuntime]
     private let enablement: ProviderEnablementStore
     private let dataStore: WidgetDataStore
     private(set) var choices: [Choice]
@@ -51,23 +50,23 @@ final class FirstLaunchSetup {
         choices.contains { if case .failed = $0.connection { true } else { false } }
     }
 
-    /// `providers` holds one runtime per provider; `cardIDs` are the dashboard's cards, where one
-    /// provider can have a card per account.
+    /// `providers` are the choices, one per provider. `cards` are the dashboard's cards, built from
+    /// every sign-in found at launch, where one provider can have a card per account.
     init(
-        providers: [ProviderRuntime],
-        cardIDs: [String],
+        providers: [Provider],
+        cards: [ProviderRuntime],
         enablement: ProviderEnablementStore,
         dataStore: WidgetDataStore
     ) {
-        self.providers = providers
-        self.cardIDs = cardIDs
+        self.cards = cards
         self.enablement = enablement
         self.dataStore = dataStore
-        self.choices = providers.map { Choice(provider: $0.provider) }
+        self.choices = providers.map { Choice(provider: $0) }
     }
 
     func detect() async {
-        let detected = await FirstRunSeeder.detectLocalProviders(providers)
+        let detectedCards = await FirstRunSeeder.detectLocalProviders(cards)
+        let detected = Set(detectedCards.map(ProviderAccountID.family(of:)))
         guard !Task.isCancelled else { return }
         for index in choices.indices where detected.contains(choices[index].id) {
             choices[index].detected = true
@@ -96,12 +95,13 @@ final class FirstLaunchSetup {
         }
     }
 
-    /// Turns on each of the provider's cards and refreshes it. A card that fails goes back off, and
-    /// the first failure is what the row shows.
+    /// Turns on each of the provider's cards and refreshes it once no earlier popup is still open. A
+    /// card that fails goes back off, and the first failure is what the row shows.
     private func connect(_ providerID: String) async -> Connection {
         let deniedBefore = KeychainAccessGuard.denials()
         var failure: String?
-        for cardID in cardIDs where ProviderAccountID.family(of: cardID) == providerID {
+        for cardID in cards.map(\.provider.id) where ProviderAccountID.family(of: cardID) == providerID {
+            await KeychainAccessGuard.waitForReadsToFinish()
             enablement.setEnabled(true, for: cardID)
             await dataStore.refresh(providerID: cardID, force: true)
             guard let message = dataStore.errorMessage(for: cardID) else { continue }
