@@ -91,7 +91,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let showsWelcome = FirstLaunchSetup.isPending()
         // Nothing asks for Keychain access before the user picks providers on the welcome screen.
         if showsWelcome { KeychainAccessGuard.holdPopups() }
-        let container = await AppContainer(isFreshInstall: isFreshInstall)
+        // A first launch that quit before seeding still owes the empty seed, or the welcome would
+        // open with every provider on.
+        let container = await AppContainer(isFreshInstall: isFreshInstall || showsWelcome)
         self.container = container
         guard showsWelcome else {
             startDashboard(container)
