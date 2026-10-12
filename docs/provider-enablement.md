@@ -17,6 +17,8 @@ The same detection runs for providers that arrive later. On the first launch aft
 - **Credentials are available locally** → the provider turns on and appears on the dashboard.
 - **No credentials are available** → it stays off. You can always turn it on later in **Customize**.
 
+A new account of a provider you already have (say, a second Codex login) follows that provider instead: it turns on with credentials if the provider is on, and stays off if you turned the provider off or skipped it on the welcome screen.
+
 This check happens **once per provider**. After that, the provider is yours to manage: if you turn it off, no update will ever turn it back on, and installing the tool later won't flip it on behind your back either — head to Customize when you want it.
 
 ## Your choices always stick

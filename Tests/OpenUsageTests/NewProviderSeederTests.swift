@@ -56,6 +56,25 @@ final class NewProviderSeederTests: XCTestCase {
         XCTAssertEqual(grok.probeCount, 0)
     }
 
+    func testNewAccountFollowsItsProvidersOnOffChoice() async {
+        // An account whose login only the Keychain holds turns up a launch after the welcome screen.
+        // The user skipped Codex there, so its new account stays off; Claude is on, so its joins.
+        let enablement = seededStore("late-account", enabled: ["claude"], known: ["claude", "codex"])
+        let codexAccount = probe("codex@ab12cd34", hasCredentials: true)
+        let providers = [
+            probe("claude", hasCredentials: true),
+            probe("claude@ef56ab78", hasCredentials: true),
+            probe("codex", hasCredentials: true),
+            codexAccount
+        ]
+
+        let task = NewProviderSeeder.reconcileIfNeeded(providers: providers, enablement: enablement)
+        await task?.value
+
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "claude@ef56ab78"])
+        XCTAssertEqual(codexAccount.probeCount, 0)
+    }
+
     func testLegacyModeStoreIsUntouched() {
         // Legacy disabled-list installs get new providers on by default already; the seeder must not
         // switch their mode or write anything.

@@ -5,7 +5,8 @@ import Foundation
 /// `FirstRunSeeder` handles the very first launch; this is its every-later-launch sibling. It diffs the
 /// registry against the store's known-provider set: anything never seen before gets the same local-only
 /// `hasLocalCredentials()` probe as first-run detection, and is enabled on a hit. Providers the install
-/// has already seen are never touched, so a user's choice to keep one off is never overridden.
+/// has already seen are never touched, so a user's choice to keep one off is never overridden, and a new
+/// account of a provider the install already has follows that provider's on/off choice.
 ///
 /// One-shot semantics: new IDs are marked known synchronously, before the probe. A new provider without
 /// credentials stays off and is never probed again — enabling it later is the user's call.
@@ -31,13 +32,19 @@ enum NewProviderSeeder {
             return nil
         }
 
+        let knownFamilies = Set(enablement.knownIDs.map(ProviderAccountID.family(of:)))
+        let enabledFamilies = Set((enablement.enabledIDs ?? []).map(ProviderAccountID.family(of:)))
         let newIDs = enablement.registerKnownProviders(currentIDs)
-        guard !newIDs.isEmpty else { return nil }
-        AppLog.info(.config, "new providers since last run: \(newIDs.sorted()); probing local credentials")
+        let probedIDs = newIDs.filter { id in
+            let family = ProviderAccountID.family(of: id)
+            return !knownFamilies.contains(family) || enabledFamilies.contains(family)
+        }
+        guard !probedIDs.isEmpty else { return nil }
+        AppLog.info(.config, "new providers since last run: \(probedIDs.sorted()); probing local credentials")
 
         return Task {
             // Same concurrent local-only probe as first-run detection and the Reset All reseed.
-            let newProviders = providers.filter { newIDs.contains($0.provider.id) }
+            let newProviders = providers.filter { probedIDs.contains($0.provider.id) }
             let detected = await FirstRunSeeder.detectLocalProviders(newProviders)
             for id in detected.sorted() {
                 // The probe takes a moment; if the user already turned the provider on themselves,
