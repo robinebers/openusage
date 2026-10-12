@@ -4,7 +4,11 @@ How OpenUsage decides which providers start on, what happens when an update adds
 
 ## First install
 
-A fresh install doesn't turn on every provider OpenUsage knows about. It starts with Claude, Codex, and Cursor, then quickly checks which providers have credentials available on your Mac — an existing local login, saved API key, or supported environment variable; nothing is sent anywhere — and switches to exactly that set. All providers are checked at once, so detection takes as long as the slowest single check, not the sum of them. If nothing is found, the Claude/Codex/Cursor starter set stays. Providers the check turns on are fetched right away, so they appear with data instead of waiting for the next scheduled refresh. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
+A fresh install starts with no providers on and opens a welcome screen. It looks for sign-ins already on your Mac — an existing local login, saved API key, or supported environment variable — without contacting any provider or asking for Keychain access. The providers it finds are preselected; **Show All** lists the rest. A Claude desktop or Codex sign-in that macOS hasn't shared with OpenUsage yet still counts as found.
+
+Click **Connect Selected** to turn the selected providers on. They connect one at a time, so at most one macOS access dialog is open at once; choosing **Always Allow** lets later updates read that sign-in without asking again. A provider that can't connect stays off and shows why, with **Retry**. **Open Dashboard** continues with what connected, and scheduled updates start from there.
+
+**Skip for Now** opens the dashboard with nothing on; turn providers on later in **Customize**. Closing the welcome window quits OpenUsage, and the welcome screen returns on the next launch. See [Dashboard § First launch](dashboard.md#first-launch) for how the dashboard presents this.
 
 ## When an update adds a new provider
 
@@ -19,7 +23,7 @@ This check happens **once per provider**. After that, the provider is yours to m
 
 Everything you set in Customize — providers on or off, metric layout, menu-bar stars — carries across updates untouched. The only thing an update may ever change is turning **on** a provider you have never seen before, and only when you actually have that tool installed.
 
-The one exception is deliberate: the **Reset All Customization** button at the top of the Customize provider list. Because you asked for a clean slate, it re-runs the same local credential detection as first launch and switches the enabled set back to exactly the providers with credentials available on your Mac (Claude/Codex/Cursor if none are found) — so it can turn a provider off even if you had it on, or back on if you had turned it off. It also asks for confirmation first. See [Dashboard](dashboard.md) for the metric side of that reset.
+The one exception is deliberate: the **Reset All Customization** button at the top of the Customize provider list. Because you asked for a clean slate, it re-runs the same local credential detection as the welcome screen and switches the enabled set back to exactly the providers with credentials available on your Mac (Claude/Codex/Cursor if none are found) — so it can turn a provider off even if you had it on, or back on if you had turned it off. It also asks for confirmation first. See [Dashboard](dashboard.md) for the metric side of that reset.
 
 ## How it works (for the curious)
 

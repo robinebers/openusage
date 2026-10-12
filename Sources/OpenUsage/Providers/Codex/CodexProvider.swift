@@ -86,7 +86,13 @@ final class CodexProvider: ProviderRuntime {
             return true
         }
         let keychain = await loadOffMainActor { [authStore] in authStore.loadKeychainAuth() }
-        return keychain?.hasUsableAccessToken == true
+        if let keychain { return keychain.hasUsableAccessToken }
+        // A Keychain login macOS hasn't let OpenUsage read yet is still a login on this Mac. An account
+        // card can't tell whose login it is without reading it.
+        guard authStore.expectedIdentity == nil else { return false }
+        return await loadOffMainActor { [authStore] in
+            authStore.keychain.genericPasswordExists(service: CodexAuthStore.keychainService) == true
+        }
     }
 
     func refresh() async -> ProviderSnapshot {

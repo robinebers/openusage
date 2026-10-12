@@ -45,10 +45,8 @@ final class AppContainer {
     private let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
-    // A `let` of a `Sendable` `Task` is implicitly nonisolated, so the nonisolated `deinit` can cancel it.
-    private let refreshTask: Task<Void, Never>
-    /// The fresh-install credential-detection pass (see `FirstRunSeeder`); `nil` on every later launch.
-    private let seedTask: Task<Void, Never>?
+    /// `nil` until `startRefreshing()`, which the welcome screen delays until the user has picked providers.
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
     /// the first with a provider the install has never seen.
     private let newProviderTask: Task<Void, Never>?
@@ -105,10 +103,10 @@ final class AppContainer {
             dataStore?.providerEnablementDidChange()
             iCloudSync?.scheduleWrite()
         }
-        // Fresh installs start minimal: seed the enabled-provider list (Claude/Codex/Cursor right away,
-        // then the detected set once the local credential probe finishes). No-op on every later launch.
+        // Fresh installs start with nothing on; the welcome screen turns on the user's picks. No-op on
+        // every later launch.
         let onboarding = OnboardingStore()
-        self.seedTask = FirstRunSeeder.seedIfNeeded(
+        FirstRunSeeder.seedIfNeeded(
             isFreshInstall: isFreshInstall,
             providers: providers,
             enablement: enablement,
@@ -214,7 +212,6 @@ final class AppContainer {
                 errors: dataStore.providerErrors
             )
         })
-        self.refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is
@@ -223,10 +220,14 @@ final class AppContainer {
     }
 
     deinit {
-        refreshTask.cancel()
-        seedTask?.cancel()
+        refreshTask?.cancel()
         newProviderTask?.cancel()
         shellEnvironmentSnapshotTask.cancel()
+    }
+
+    func startRefreshing() {
+        guard refreshTask == nil else { return }
+        refreshTask = Self.startPeriodicRefresh(dataStore: dataStore, telemetry: telemetry)
     }
 
     /// Re-runs first-launch credential detection on demand — the enablement half of the Customize
@@ -280,8 +281,8 @@ final class AppContainer {
     /// Between passes the loop sleeps via `RefreshWakeSignal`, which wakes it early when the user
     /// enables/disables a provider so a newly-enabled provider is fetched promptly instead of waiting out
     /// the full interval. The signal subscribes BEFORE the first pass and buffers, so an enablement change
-    /// landing while a pass is still running (first-run credential detection, `NewProviderSeeder`, the
-    /// Customize "Reset All" reseed — all of which typically finish faster than the network fetches) is
+    /// landing while a pass is still running (`NewProviderSeeder`, the Customize "Reset All" reseed —
+    /// both of which typically finish faster than the network fetches) is
     /// never lost. Each pass still honors the cache (and the per-provider failure backoff), so an early
     /// wake only hits the network for a provider whose snapshot has actually expired.
     ///

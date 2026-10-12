@@ -9,8 +9,8 @@ import Observation
 ///   Since the v2 settings migration converted every install to enabled-list mode, this branch is a
 ///   dormant read path kept for downgrade safety only.
 /// - **Enabled-list** (`openusage.enabledProviders.v1`): only the *enabled* IDs are persisted. Fresh
-///   installs are seeded into this mode (see `FirstRunSeeder`) with just the providers detected on the
-///   machine; existing installs were migrated into it (settings schema v2).
+///   installs start in this mode with nothing on (see `FirstRunSeeder`) until the welcome screen turns
+///   on the user's picks; existing installs were migrated into it (settings schema v2).
 ///
 /// When the enabled-list key exists it wins; the legacy key is ignored.
 ///
@@ -96,8 +96,8 @@ final class ProviderEnablementStore {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
-    /// Switches the store into enabled-list mode with exactly `ids` on. Used by `FirstRunSeeder` on
-    /// fresh installs only — first synchronously with the fallback set, then again with the detected
+    /// Switches the store into enabled-list mode with exactly `ids` on. Used by `FirstRunSeeder`: a
+    /// fresh install starts with none on, and Reset All snaps to the fallback set, then the detected
     /// set. Fires `onProviderEnabled` for each newly-on provider and posts the change notification, so
     /// the refresh loop fetches them promptly.
     /// Records `ids` as seen and returns the ones that were new. Pure bookkeeping: no enablement

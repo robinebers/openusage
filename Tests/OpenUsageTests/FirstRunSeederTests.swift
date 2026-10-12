@@ -1,61 +1,40 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the fresh-install seeding flow: only fresh installs are seeded (existing installs keep the
-/// legacy all-on default untouched), the fallback set lands synchronously, the detected set replaces it
-/// once the local credential probe finishes, and a user's toggle during the probe wins over detection.
+/// Covers fresh-install seeding (nothing on until the welcome screen; existing installs keep the legacy
+/// all-on default untouched) and the Customize "Reset All" reseed: the fallback set lands synchronously,
+/// the detected set replaces it once the local credential probe finishes, and a user's toggle during the
+/// probe wins over detection.
 @MainActor
 final class FirstRunSeederTests: XCTestCase {
-    func testFreshInstallSeedsFallbackSynchronouslyThenDetectedSet() async {
-        let enablement = ProviderEnablementStore(defaults: makeDefaults("detect"))
-        let onboarding = OnboardingStore(defaults: makeDefaults("detect-onboarding"))
-        let providers = [
-            stub("claude", hasCredentials: true),
-            stub("codex", hasCredentials: false),
-            stub("cursor", hasCredentials: false),
-            stub("grok", hasCredentials: true)
-        ]
+    func testFreshInstallStartsWithNothingOnAndProbesNothing() {
+        let enablement = ProviderEnablementStore(defaults: makeDefaults("fresh"))
+        let onboarding = OnboardingStore(defaults: makeDefaults("fresh-onboarding"))
+        let providers = ["claude", "codex", "cursor", "grok"].map { stub($0, hasCredentials: true) }
 
-        let task = FirstRunSeeder.seedIfNeeded(
+        FirstRunSeeder.seedIfNeeded(
             isFreshInstall: true, providers: providers,
             enablement: enablement, onboarding: onboarding
         )
 
-        // Before the probe finishes: the fallback set, synchronously — never a flash of all providers.
-        XCTAssertEqual(enablement.enabledIDs, ["claude", "codex", "cursor"])
+        // A probe can read the Keychain, so nothing is probed before the user picks on the welcome screen.
+        XCTAssertEqual(enablement.enabledIDs, [])
+        XCTAssertEqual(providers.map(\.probeCount), [0, 0, 0, 0])
         XCTAssertTrue(onboarding.isCustomizeHintPending)
         // Every provider shipping today is baselined as "seen", so `NewProviderSeeder` only ever
         // probes providers added in a later release.
         XCTAssertEqual(enablement.knownIDs, ["claude", "codex", "cursor", "grok"])
-
-        await task?.value
-        XCTAssertEqual(enablement.enabledIDs, ["claude", "grok"])
     }
 
-    func testNothingDetectedKeepsFallback() async {
-        let enablement = ProviderEnablementStore(defaults: makeDefaults("none"))
-        let onboarding = OnboardingStore(defaults: makeDefaults("none-onboarding"))
-        let providers = ["claude", "codex", "cursor", "grok"].map { stub($0, hasCredentials: false) }
-
-        let task = FirstRunSeeder.seedIfNeeded(
-            isFreshInstall: true, providers: providers,
-            enablement: enablement, onboarding: onboarding
-        )
-        await task?.value
-
-        XCTAssertEqual(enablement.enabledIDs, ["claude", "codex", "cursor"])
-    }
-
-    func testExistingInstallIsNeverSeeded() async {
+    func testExistingInstallIsNeverSeeded() {
         let enablement = ProviderEnablementStore(defaults: makeDefaults("existing"))
         let onboarding = OnboardingStore(defaults: makeDefaults("existing-onboarding"))
 
-        let task = FirstRunSeeder.seedIfNeeded(
+        FirstRunSeeder.seedIfNeeded(
             isFreshInstall: false, providers: [stub("claude", hasCredentials: true)],
             enablement: enablement, onboarding: onboarding
         )
 
-        XCTAssertNil(task)
         XCTAssertNil(enablement.enabledIDs, "an existing install keeps legacy all-on semantics")
         XCTAssertTrue(enablement.isEnabled("grok"))
         XCTAssertFalse(onboarding.isCustomizeHintPending, "existing installs never see the hint card")
@@ -69,30 +48,12 @@ final class FirstRunSeederTests: XCTestCase {
         enablement.seedEnabledProviders(["grok"])
         let onboarding = OnboardingStore(defaults: makeDefaults("idempotent-onboarding"))
 
-        let task = FirstRunSeeder.seedIfNeeded(
+        FirstRunSeeder.seedIfNeeded(
             isFreshInstall: true, providers: [stub("claude", hasCredentials: true)],
             enablement: enablement, onboarding: onboarding
         )
 
-        XCTAssertNil(task)
         XCTAssertEqual(enablement.enabledIDs, ["grok"])
-    }
-
-    func testUserToggleDuringDetectionWins() async {
-        let enablement = ProviderEnablementStore(defaults: makeDefaults("toggle-wins"))
-        let onboarding = OnboardingStore(defaults: makeDefaults("toggle-wins-onboarding"))
-        let providers = [stub("claude", hasCredentials: true), stub("codex", hasCredentials: false),
-                         stub("cursor", hasCredentials: false), stub("devin", hasCredentials: true)]
-
-        let task = FirstRunSeeder.seedIfNeeded(
-            isFreshInstall: true, providers: providers,
-            enablement: enablement, onboarding: onboarding
-        )
-        // The user flips a toggle while the probe is still running: their arrangement must survive.
-        enablement.setEnabled(false, for: "codex")
-        await task?.value
-
-        XCTAssertEqual(enablement.enabledIDs, ["claude", "cursor"])
     }
 
     // MARK: - Reset All reseed
@@ -193,6 +154,7 @@ private final class CredentialStubProvider: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor] = []
     private let hasCredentials: @MainActor () async -> Bool
+    private(set) var probeCount = 0
 
     init(id: String, hasCredentials: Bool) {
         self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
@@ -208,7 +170,10 @@ private final class CredentialStubProvider: ProviderRuntime {
         ProviderSnapshot.make(provider: provider, plan: nil, lines: [], refreshedAt: Date())
     }
 
-    func hasLocalCredentials() async -> Bool { await hasCredentials() }
+    func hasLocalCredentials() async -> Bool {
+        probeCount += 1
+        return await hasCredentials()
+    }
 }
 
 /// Suspends each arriver until `expected` arrivals are in flight, then resumes them all with `true`.

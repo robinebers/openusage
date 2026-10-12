@@ -219,6 +219,22 @@ final class KeychainAccessorTests: XCTestCase {
         }
     }
 
+    func testHeldPopupsOnlyStopReadsThatCouldAsk() throws {
+        let inProcess = StubItemAccessor(data: Data("in-process".utf8))
+        let securityTool = StubItemAccessor(data: Data("security".utf8))
+        let accessor = SecurityKeychainAccessor(itemAccessor: inProcess, securityTool: securityTool)
+        KeychainAccessGuard.holdPopups()
+        defer { KeychainAccessGuard.allowPopups() }
+
+        XCTAssertThrowsError(try accessor.readGenericPassword(service: "Codex Auth"))
+        XCTAssertEqual(inProcess.requests, [], "a held read must not reach the Keychain, which could show a popup")
+        XCTAssertEqual(try accessor.readGenericPassword(service: "Claude Code-credentials"), "security")
+        XCTAssertEqual(KeychainAccessGuard.denials(), [], "a held read is not a Deny")
+
+        KeychainAccessGuard.allowPopups()
+        XCTAssertEqual(try accessor.readGenericPassword(service: "Codex Auth"), "in-process")
+    }
+
     func testSecurityToolLoginIsSavedThroughTheSecurityTool() throws {
         let inProcess = StubItemAccessor()
         let securityTool = StubItemAccessor(lookupAccount: "cursor-user")
