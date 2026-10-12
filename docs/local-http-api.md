@@ -103,6 +103,9 @@ For bounded progress resources, `unit` follows the provider's live metric format
 with the anchored reset instant after the first model call starts the rolling window, even while `used`
 is still 0 because OpenCode reports whole percentages.
 
+Monetary value resources preserve their reported currency. DeepSeek's `balance`, `paid`, and `granted`
+resources use `usd` or `cny`, matching the selected balance; no currency conversion is applied.
+
 ### Public resources
 
 | Provider | Resource keys |
@@ -112,6 +115,7 @@ is still 0 because OpenCode reports whole percentages.
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `orgCredits`, `orgSpend`, `chat`, `completions` |
+| DeepSeek | `balance`, `paid`, `granted` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly` |

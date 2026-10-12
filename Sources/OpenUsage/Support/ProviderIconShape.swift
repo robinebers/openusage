@@ -99,6 +99,7 @@ enum ProviderMarks {
         case "claude": return "sparkle"
         case "codex": return "circle.hexagongrid"
         case "cursor": return "cube"
+        case "deepseek": return "water.waves"
         case "grok": return "bolt.fill"
         case "ollama": return "cloud"
         case "opencode": return "chevron.left.forwardslash.chevron.right"

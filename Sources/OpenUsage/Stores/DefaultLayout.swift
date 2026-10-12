@@ -36,6 +36,8 @@ enum DefaultLayout {
         "copilot.premium", "copilot.extra", "copilot.orgCredits", "copilot.orgSpend",
         "copilot.chat", "copilot.completions",
 
+        "deepseek.balance", "deepseek.paid", "deepseek.granted",
+
         "devin.daily", "devin.weekly", "devin.extra",
 
         "grok.weekly", "grok.trend",
@@ -112,6 +114,8 @@ enum DefaultLayout {
         // caret. Chat/Completions carry real counts on free only — on paid they're unlimited
         // (suppressed), so they read "No data" there.
         "copilot.orgCredits", "copilot.orgSpend", "copilot.chat", "copilot.completions",
+        // DeepSeek: Balance stays above the fold; the paid/granted breakdown sits below the caret.
+        "deepseek.paid", "deepseek.granted",
         "devin.extra",
         "grok.payAsYouGo", "grok.today", "grok.yesterday", "grok.last30",
         // Ollama: the plan meters stay above the fold; purchased credits sit below the caret.

@@ -27,6 +27,7 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 - **[Codex](docs/providers/codex.md)** — session, weekly, credits, local daily spend
 - **[Copilot](docs/providers/copilot.md)** — AI credits, extra usage, organization billing, chat and completions
 - **[Cursor](docs/providers/cursor.md)** — credits, total usage, Grok Bot, Cursor Models, Other Models, requests, on-demand, per-day spend
+- **[DeepSeek](docs/providers/deepseek.md)** — API credit balance with paid and granted breakdown (API key)
 - **[Devin](docs/providers/devin.md)** — weekly and daily quota, extra usage balance
 - **[Grok](docs/providers/grok.md)** — weekly shared pool, pay-as-you-go, local daily spend
 - **[Ollama](docs/providers/ollama.md)** — Ollama Cloud monthly credits (or session and weekly limits on legacy plans), purchased credits
@@ -34,7 +35,7 @@ Either way, the app updates itself in place via signed, notarized [Sparkle](docs
 - **[OpenRouter](docs/providers/openrouter.md)** — credit balance, daily/weekly/monthly spend (API key)
 - **[Z.ai](docs/providers/zai.md)** — session, weekly, web-search quotas (GLM Coding Plan, API key)
 
-Most providers read the credentials already on your machine (keychain, auth files, app state) — no extra login. OpenRouter and Z.ai are the exceptions: they have no local credential to reuse, so you supply an API key (see [OpenRouter setup](docs/providers/openrouter.md) or [Z.ai setup](docs/providers/zai.md)). Credentials are used only for the corresponding provider requests. OpenUsage's separate anonymous summaries and public pricing downloads are documented under [Privacy & usage data](docs/privacy.md).
+Most providers read the credentials already on your machine (keychain, auth files, app state) — no extra login. DeepSeek, OpenRouter, and Z.ai use an API key supplied through Customize or the environment (see [DeepSeek setup](docs/providers/deepseek.md), [OpenRouter setup](docs/providers/openrouter.md), or [Z.ai setup](docs/providers/zai.md)). Credentials are used only for the corresponding provider requests. OpenUsage's separate anonymous summaries and public pricing downloads are documented under [Privacy & usage data](docs/privacy.md).
 
 ## Features
 

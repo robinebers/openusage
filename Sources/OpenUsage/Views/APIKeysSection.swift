@@ -28,7 +28,7 @@ struct APIKeysSection: View {
     @State private var revealedKey: String?
     @State private var actionError: String?
 
-    private static let inputPlaceholder = "sk-or-v1-…"
+    private static let inputPlaceholder = "API key"
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {

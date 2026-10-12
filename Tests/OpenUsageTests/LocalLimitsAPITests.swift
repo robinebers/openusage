@@ -209,6 +209,7 @@ final class LocalLimitsAPITests: XCTestCase {
             "cursor": ["totalUsage", "grokBot", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "nonGeminiSession", "nonGeminiWeekly"],
             "copilot": ["premiumCredits", "extraUsage", "orgCredits", "orgSpend", "chat", "completions"],
+            "deepseek": ["balance", "paid", "granted"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
@@ -218,6 +219,29 @@ final class LocalLimitsAPITests: XCTestCase {
         ]
 
         XCTAssertEqual(actual, expected)
+    }
+
+    @MainActor
+    func testDeepSeekExportsRawBalancesInReportedCurrency() throws {
+        let runtime = DeepSeekProvider()
+        for currency in ["USD", "CNY"] {
+            let body = try JSONSerialization.data(withJSONObject: [
+                "is_available": true,
+                "balance_infos": [["currency": currency, "total_balance": "8.76",
+                                   "topped_up_balance": "7.50", "granted_balance": "1.26"]]
+            ])
+            let balance = try DeepSeekUsageMapper.balance(from: body)
+            let snapshot = ProviderSnapshot.make(provider: runtime.provider, plan: nil,
+                                                 lines: balance.lines, refreshedAt: fetchedAt)
+            for (key, expected) in [("balance", 8.76), ("paid", 7.50), ("granted", 1.26)] {
+                let resource = try limitResource(key, snapshot: snapshot, descriptors: runtime.widgetDescriptors)
+                XCTAssertEqual(resource["unit"] as? String, currency.lowercased())
+                XCTAssertEqual(resource["available"] as? Double, expected)
+                XCTAssertEqual(resource["kind"] as? String, "balance")
+                XCTAssertNil(resource["limit"])
+                XCTAssertNil(resource["resetsAt"])
+            }
+        }
     }
 
     private func makeState(snapshot: ProviderSnapshot, descriptors: [WidgetDescriptor]) -> LocalUsageAPI.State {

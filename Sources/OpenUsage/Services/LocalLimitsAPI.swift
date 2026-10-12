@@ -82,7 +82,7 @@ enum LocalLimitsAPI {
 
     private struct WireResource: Encodable {
         let kind: LimitResourceDescriptor.Kind
-        let unit: String
+        var unit: String
         var used: Double?
         var available: Double?
         var limit: Double?
@@ -118,6 +118,9 @@ enum LocalLimitsAPI {
                 guard let metric = values.first(where: { value in
                     value.kind == expectedKind && (expectedLabel == nil || value.label == expectedLabel)
                 }) else { return nil }
+                if metric.kind == .dollars, let currency = metric.currencyCode {
+                    unit = currency.lowercased()
+                }
                 if resource.kind == .balance {
                     available = metric.number
                 } else {
@@ -131,7 +134,8 @@ enum LocalLimitsAPI {
             }
         }
 
-        /// A descriptor names the stable resource and supplies a fallback unit for value rows. Progress
+        /// A descriptor names the stable resource and supplies a fallback unit for value rows. Monetary
+        /// values can override it with their reported currency. Progress
         /// rows carry their actual runtime unit, which can vary by plan (for example Cursor Total Usage
         /// is percent on individual plans and requests on request-based Enterprise plans).
         private static func progressUnit(_ line: MetricLine) -> String? {

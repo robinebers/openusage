@@ -6,6 +6,6 @@ import Foundation
 /// `MetricLine` (see `MetricValue`).
 enum MetricKind: String, Hashable, Sendable, Codable {
     case percent      // used is 0...100
-    case dollars      // used is an amount in USD
+    case dollars      // money; USD by default, or MetricValue.currencyCode for unbounded values
     case count        // used is an absolute count (with an optional suffix)
 }

@@ -235,7 +235,7 @@ struct WidgetData: Hashable {
         // A `.values` row's primary reading is its first selected value; meters fall through to the
         // bounded/`used` formatting.
         if let first = selectedValues.first {
-            return (valuePrefix ?? "") + MetricFormatter.number(first.number, kind: first.kind, style: .row)
+            return (valuePrefix ?? "") + MetricFormatter.number(for: first, style: .row)
         }
         return (valuePrefix ?? "") + format(displayedValue)
     }
@@ -328,7 +328,7 @@ struct WidgetData: Hashable {
             if selected.count == 1 {
                 let value = selected[0]
                 if value.kind == .dollars, let word = unboundedValueWord {
-                    return "\(MetricFormatter.number(value.number, kind: .dollars, style: .row)) \(word)"
+                    return "\(MetricFormatter.number(for: value, style: .row)) \(word)"
                 }
                 return MetricFormatter.string(for: value, style: .row)
             }

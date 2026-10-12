@@ -38,6 +38,7 @@ of the number, not by the provider:
   dollars *and* tokens, Codex credits carry dollars *and* a count. The widget picks which to show
   (cost-only, tokens-only, or both) via its descriptor, and formatting happens at the display edge, so the
   menu bar never re-parses a string. Prefer this for numbers.
+  For non-USD money, set the value's `currencyCode` so the UI preserves the reported currency.
 - **`.badge`** — a short status pill, like `Disabled` or a pay-as-you-go cap. Use it for state rather than
   a fillable number.
 - **`.chart`** — dated numeric points for a compact usage-trend row.
