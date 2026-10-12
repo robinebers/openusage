@@ -28,6 +28,23 @@ final class SecurityToolItemAccessorTests: XCTestCase {
         XCTAssertEqual(runner.calls.first?.arguments, ["add-generic-password", "-U", "-a", "cursor-user", "-s", "cursor-access-token", "-w", "new"])
     }
 
+    func testSavingANewLoginWithoutAnAccountStillPassesOne() {
+        let runner = RecordingProcessRunner(ProcessResult(exitCode: 0, stdout: "", stderr: ""))
+        let accessor = SecurityToolItemAccessor(processRunner: runner)
+
+        _ = accessor.addGenericPasswordData(service: "cursor-access-token", account: nil, data: Data("new".utf8))
+        _ = accessor.readGenericPasswordData(service: "cursor-access-token", account: nil)
+
+        XCTAssertEqual(
+            runner.calls.map(\.arguments),
+            [
+                ["add-generic-password", "-U", "-a", "", "-s", "cursor-access-token", "-w", "new"],
+                ["find-generic-password", "-s", "cursor-access-token", "-w"],
+            ],
+            "security refuses to save without -a, while a read without one finds the login under any account"
+        )
+    }
+
     func testExitCodesMapToKeychainStatuses() {
         let cases: [(exitCode: Int32, status: OSStatus)] = [
             (44, errSecItemNotFound),

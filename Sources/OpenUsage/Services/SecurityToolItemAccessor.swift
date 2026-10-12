@@ -35,10 +35,11 @@ struct SecurityToolItemAccessor: SecurityItemAccessing {
         SystemSecurityItemAccessor().firstGenericPasswordAccount(service: service)
     }
 
-    /// `-U` updates the matching item in place, or adds it when none exists.
+    /// `-U` updates the matching item in place, or adds it when none exists. `security` refuses to
+    /// save without `-a`, so a login without an account is saved under an empty one.
     func updateGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
         let value = String(decoding: data, as: UTF8.self)
-        return run(["add-generic-password", "-U"] + accountArguments(account) + ["-s", service, "-w", value], service: service).status
+        return run(["add-generic-password", "-U", "-a", account ?? "", "-s", service, "-w", value], service: service).status
     }
 
     func addGenericPasswordData(service: String, account: String?, data: Data) -> OSStatus {
