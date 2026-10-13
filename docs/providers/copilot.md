@@ -18,7 +18,7 @@ Credits and Extra Usage are Always Visible by default; Org Credits, Org Spend, C
 Since June 2026 GitHub Copilot bills all plans by **AI credits**, so what each account shows differs by plan:
 
 - **Paid plans** meter the credit pool — so you see Credits (and Extra Usage if you've turned on additional spend). Chat and completions are unlimited on paid plans, so those rows read "No data".
-- **Free plans** have no credits, so Credits reads "No data"; instead you see your fixed Chat and Completions counts under the caret.
+- **Free plans** have no credits, so Credits reads "No data"; instead you see your fixed Chat and Completions counts when you expand the card.
 - **Org-managed seats (Copilot Business / Enterprise assigned by an organization)** return no per-seat percent quota. If the response's `premium_interactions` bucket carries a real `credits_used` count, OpenUsage shows it as **Credits** — a plain count, not a percentage, since this bucket's `entitlement` is 0 (no allotment to divide by). This is your *own* consumption and needs no special access. OpenUsage also looks the usage up in the organization's billing: it lists your organizations, finds the one whose billing reports Copilot AI-credit usage, and shows **Org Credits** (credits the whole org used this month) and **Org Spend** (dollars billed beyond the included pool). Two caveats there:
   - The Org Credits/Org Spend numbers are **organization-wide**, not your personal share — GitHub doesn't expose per-seat usage through that API.
   - Reading an org's billing requires you to be an **org owner or billing manager**. Regular members don't get Org Credits/Org Spend, but still see their own Credits count when the response carries one; if it doesn't, the meters read "No data".

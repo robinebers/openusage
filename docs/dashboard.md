@@ -10,11 +10,11 @@ When no provider is on, the dashboard shows **Choose Providers**, which opens Cu
 
 Updates never change the providers you already have on or off — but when an update ships a provider you've never seen, a local check runs once for just that provider and turns it on only if you actually have the tool. See [Which Providers Are On](provider-enablement.md) for the full lifecycle.
 
-Each provider card leads with its **Always Visible** metrics. Any metrics you've moved below the **On Demand** line are tucked away behind the in-card caret — click it to reveal them below the caret, click again to collapse. Open cards stay open across popover closes and app restarts. A provider with neither On Demand metrics nor quick links shows no caret.
+Each provider card leads with its **Always Visible** metrics. When a card is collapsed, On Demand metrics and quick links are hidden behind the in-card caret at the bottom. Click it to expand: a thin line marks the boundary after Always Visible, followed by the On Demand rows and quick links, with the caret at the bottom of the card. Click the caret again to collapse. Open cards stay open across popover closes and app restarts. A provider with neither On Demand metrics nor quick links shows no line or caret.
 
-When you expand a card, the tucked-away metrics open below the caret as a single-column list, so each detail row keeps the full card width.
+When you expand a card, the tucked-away metrics open below the line as a single-column list, so each detail row keeps the full card width.
 
-A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. Buttons lay out up to three across, wrapping to a second row when there are more.
+A provider card can also show **quick-link buttons** pinned at the bottom of its expanded section — Status, Console, Dashboard, and the like — that open the provider's own pages in your default browser. They're part of the expander, so collapsing the caret hides them along with the tucked-away metrics. The caret sits below the links. Buttons lay out up to three across, wrapping to a second row when there are more.
 
 ## Total Spend
 

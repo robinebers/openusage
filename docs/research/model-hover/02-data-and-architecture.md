@@ -190,7 +190,7 @@ Metric identity:
 Layout defaults:
 
 - `DefaultLayout.metricIDs` enables spend rows for Claude, Codex, Cursor, and Grok.
-- `DefaultLayout.expandedMetricIDs` places those spend rows below the provider caret by default.
+- `DefaultLayout.expandedMetricIDs` places those spend rows in On Demand by default.
 - `DefaultLayout.pinnedMetricIDs` does not pin these rows by default.
 
 Snapshot to view:

@@ -21,3 +21,32 @@ struct DashboardMetricCard<Rows: View>: View {
         .cardSurface()
     }
 }
+
+struct DashboardMetricCardSeparator: View {
+    var body: some View {
+        Divider()
+            .padding(.horizontal, 14)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+    }
+}
+
+struct DashboardMetricCardCaret: View {
+    let isExpanded: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, height: 14)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded ? "Show less" : "Show more")
+    }
+}

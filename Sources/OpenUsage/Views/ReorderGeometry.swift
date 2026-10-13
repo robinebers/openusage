@@ -2,7 +2,15 @@ import SwiftUI
 
 struct ReorderLift {
     enum Payload {
-        case dashboardProvider(provider: Provider, plan: String?, rows: [WidgetData])
+        case dashboardProvider(
+            provider: Provider,
+            plan: String?,
+            rows: [WidgetData],
+            dividerIndex: Int?,
+            links: [ProviderLink],
+            showsCaret: Bool,
+            isExpanded: Bool
+        )
         case dashboardMetric(data: WidgetData)
         case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
         case customizeMetric(title: String)
@@ -61,8 +69,16 @@ struct ReorderLiftPreview: View {
     @ViewBuilder
     private var preview: some View {
         switch lift.payload {
-        case .dashboardProvider(let provider, let plan, let rows):
-            dashboardProviderPreview(provider: provider, plan: plan, rows: rows)
+        case .dashboardProvider(let provider, let plan, let rows, let dividerIndex, let links, let showsCaret, let isExpanded):
+            dashboardProviderPreview(
+                provider: provider,
+                plan: plan,
+                rows: rows,
+                dividerIndex: dividerIndex,
+                links: links,
+                showsCaret: showsCaret,
+                isExpanded: isExpanded
+            )
         case .dashboardMetric(let data):
             dashboardMetricPreview(data)
         case .customizeProviderRow(let provider, let isEnabled, let metricCount):
@@ -72,7 +88,15 @@ struct ReorderLiftPreview: View {
         }
     }
 
-    private func dashboardProviderPreview(provider: Provider, plan: String?, rows: [WidgetData]) -> some View {
+    private func dashboardProviderPreview(
+        provider: Provider,
+        plan: String?,
+        rows: [WidgetData],
+        dividerIndex: Int?,
+        links: [ProviderLink],
+        showsCaret: Bool,
+        isExpanded: Bool
+    ) -> some View {
         // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `container`):
         // header over the shared metric card, at the density's header→card spacing.
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
@@ -80,8 +104,20 @@ struct ReorderLiftPreview: View {
                 .padding(.horizontal, 8)
 
             DashboardMetricCard {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                    if dividerIndex == index {
+                        DashboardMetricCardSeparator()
+                    }
                     WidgetRowView(data: row)
+                }
+                if dividerIndex == rows.count {
+                    DashboardMetricCardSeparator()
+                }
+                if isExpanded, !links.isEmpty {
+                    ProviderLinksView(links: links)
+                }
+                if showsCaret {
+                    DashboardMetricCardCaret(isExpanded: isExpanded, action: {})
                 }
             }
         }
