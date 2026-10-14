@@ -9,11 +9,11 @@ the same account and organization through both Claude Code and Claude Desktop st
 
 | Metric | Meaning |
 |---|---|
-| Session | 5-hour rolling window usage |
-| Weekly | 7-day window usage |
-| Fable | Separate weekly Fable limit (model-scoped window from the `limits` array) |
-| Sonnet | Separate weekly Sonnet limit (plan-dependent) |
-| Extra Usage | Extra-usage credits spent against your monthly cap |
+| Session | 5-hour rolling window usage (consumer plans only) |
+| Weekly | 7-day window usage (consumer plans only) |
+| Fable | Separate weekly Fable limit (model-scoped window from the `limits` array; consumer plans only) |
+| Sonnet | Separate weekly Sonnet limit (plan-dependent; consumer plans only) |
+| Extra Usage / Spend | Extra-usage credits spent against your monthly cap; shown as **Spend** on enterprise plans |
 | Rate Limit Resets | One-off usage-limit resets Anthropic grants (e.g. a model-launch reset for Pro and Max), shown as a count (e.g. `1 available`); hover the value for a timeline of when each must be used by |
 | Today / Yesterday / Last 30 Days | Local spend, as cost, tokens, or both (see below) |
 
@@ -22,6 +22,13 @@ enable it in Customize. Rate Limit Resets is on but tucked behind the caret. Whe
 The plan comes from Anthropic's live account profile, so an upgrade (say, Max 5x to Max 20x) shows up on
 the next refresh without signing in to Claude Code again. If the profile can't be read, the badge falls
 back to the plan saved with your login.
+
+**Enterprise plans:** Session, Weekly, Fable, and Sonnet are not available on enterprise accounts —
+those rows are hidden rather than shown as "No data". The **Spend** row shows your monthly billing
+total; when Anthropic reports a spending limit it appears as a bounded meter, otherwise the spend
+is shown as an unbounded amount, including a zero total at the start of a billing period. The live
+account profile determines whether billing is shown as Spend, even if your saved login still names
+an older consumer plan.
 
 ## Rate limit resets
 

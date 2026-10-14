@@ -29,7 +29,7 @@ actor ClaudeLogUsageScanner {
     private let organizationID: String?
     private let accountID: String?
     private let additionalConfigDirectories: [String]
-    private let allowsUnattributedSessions: Bool
+    nonisolated let allowsUnattributedSessions: Bool
     /// The identity Claude Code is signed in to right now, re-read every scan. The card matching it
     /// also owns the default home's sessions that record no account, which is how plain terminal
     /// sessions look; Desktop-indexed sessions stay excluded.

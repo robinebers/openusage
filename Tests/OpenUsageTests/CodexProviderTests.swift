@@ -416,7 +416,7 @@ final class CodexUsageMapperTests: XCTestCase {
                 now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
             )
 
-            guard case .values(_, let values, _, let expiriesAt, _, _) = mapped.lines.first else {
+            guard case .values(_, let values, _, let expiriesAt, _, _, _) = mapped.lines.first else {
                 return XCTFail("expected reset credits for status \(status ?? "omitted")")
             }
             XCTAssertEqual(values, [MetricValue(number: 2, kind: .count, label: "available")])
@@ -437,7 +437,7 @@ final class CodexUsageMapperTests: XCTestCase {
             let mapped = try CodexUsageMapper.mapUsageResponse(
                 usage, resetCredits: entry.response, now: Date(timeIntervalSince1970: 1_800_000_000)
             )
-            guard case .values(_, let values, _, let expiriesAt, _, _) = mapped.lines.first else {
+            guard case .values(_, let values, _, let expiriesAt, _, _, _) = mapped.lines.first else {
                 return XCTFail("expected reset credits when dedicated response is \(entry.name)")
             }
             XCTAssertEqual(values, [MetricValue(number: 3, kind: .count, label: "available")], entry.name)
@@ -458,14 +458,14 @@ final class CodexUsageMapperTests: XCTestCase {
     }
 
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, resetsAt: Date?, periodDurationMs: Int?)? {
-        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _) = lines.first(where: { $0.label == label }) else {
+        guard case .progress(_, let used, let limit, _, let resetsAt, let periodDurationMs, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return (used, limit, resetsAt, periodDurationMs)
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values
@@ -531,7 +531,7 @@ final class CodexProviderTests: XCTestCase {
         XCTAssertNil(snapshot.errorCategory)
         XCTAssertNotNil(snapshot.warning)
         XCTAssertNil(snapshot.usageHistory)
-        guard case .progress(_, let used, let limit, _, _, _, _) = snapshot.line(label: "Weekly") else {
+        guard case .progress(_, let used, let limit, _, _, _, _, _) = snapshot.line(label: "Weekly") else {
             return XCTFail("Live weekly quota was lost while local history was pending")
         }
         XCTAssertEqual(used, 58)
@@ -645,7 +645,7 @@ final class CodexProviderTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else {
+        guard case .values(_, let values, _, _, _, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return values

@@ -12,7 +12,10 @@ enum ClaudeUsageMapper {
     static let sessionPeriodMs = MetricPeriod.sessionMs
     static let weeklyPeriodMs = MetricPeriod.weekMs
 
-    static func mapUsageResponse(_ response: HTTPResponse, credentials: ClaudeOAuth, now: Date = Date()) throws -> ClaudeMappedUsage {
+    static func mapUsageResponse(
+        _ response: HTTPResponse, credentials: ClaudeOAuth,
+        profile: ClaudeAccountProfile? = nil, now: Date = Date()
+    ) throws -> ClaudeMappedUsage {
         try ProviderAuthRetry.requireSuccess(
             response,
             authExpired: ClaudeAuthError.tokenExpired,
@@ -24,14 +27,19 @@ enum ClaudeUsageMapper {
         }
 
         var lines: [MetricLine] = []
-        appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
-        appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
-        appendExtraUsage(body["extra_usage"], to: &lines)
+        let subscriptionType = liveSubscriptionType(profile: profile) ?? credentials.subscriptionType
+        let isEnterprise = subscriptionType?.lowercased() == "enterprise"
+        if !isEnterprise {
+            appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
+            appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
+            appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
+            appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
+        }
+        appendExtraUsage(body["extra_usage"], isEnterprise: isEnterprise, to: &lines)
 
         return ClaudeMappedUsage(
-            plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
+            plan: profile.flatMap { formatLivePlan(profile: $0, credentials: credentials) }
+                ?? formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
             lines: lines
         )
     }
@@ -53,7 +61,7 @@ enum ClaudeUsageMapper {
     /// A Rate Limit Resets line held between fetches, minus every reset whose deadline has passed. Other
     /// lines pass through unchanged.
     static func droppingElapsedResetGrants(_ line: MetricLine, now: Date) -> MetricLine {
-        guard case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown) = line,
+        guard case .values(let label, let values, let colorHex, let expiriesAt, let unknownModels, let breakdown, _) = line,
               expiriesAt.contains(where: { $0 <= now })
         else { return line }
         let elapsed = expiriesAt.filter { $0 <= now }.count
@@ -153,13 +161,16 @@ enum ClaudeUsageMapper {
     /// the caller keeps the stored plan.
     static func formatLivePlan(profile: ClaudeAccountProfile, credentials: ClaudeOAuth) -> String? {
         guard let organization = profile.organization else { return nil }
-        let subscriptionType = organization.organizationType.map { type in
-            type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type
-        }
         return formatPlan(
-            subscriptionType: subscriptionType ?? credentials.subscriptionType,
+            subscriptionType: liveSubscriptionType(profile: profile) ?? credentials.subscriptionType,
             rateLimitTier: organization.rateLimitTier ?? credentials.rateLimitTier
         )
+    }
+
+    private static func liveSubscriptionType(profile: ClaudeAccountProfile?) -> String? {
+        profile?.organization?.organizationType.map { type in
+            type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type
+        }
     }
 
     private static func appendUsageWindow(_ value: Any?, label: String, periodDurationMs: Int, to lines: inout [MetricLine]) {
@@ -204,7 +215,7 @@ enum ClaudeUsageMapper {
         }
     }
 
-    private static func appendExtraUsage(_ value: Any?, to lines: inout [MetricLine]) {
+    private static func appendExtraUsage(_ value: Any?, isEnterprise: Bool = false, to lines: inout [MetricLine]) {
         guard let object = value as? [String: Any],
               object["is_enabled"] as? Bool == true,
               let usedCents = ProviderParse.number(object["used_credits"])
@@ -214,16 +225,25 @@ enum ClaudeUsageMapper {
 
         let used = ProviderParse.centsToDollars(usedCents)
         if let limitCents = ProviderParse.number(object["monthly_limit"]), limitCents > 0 {
+            // Enterprise accounts have no token-window limits; extra_usage tracks their entire monthly
+            // spend. Override the descriptor's static "Extra Usage" title with "Spend" so enterprise
+            // users see an accurate label rather than a consumer add-on name.
             lines.append(.progress(
                 label: "Extra usage spent",
                 used: used,
                 limit: ProviderParse.centsToDollars(limitCents),
-                format: .dollars
+                format: .dollars,
+                titleOverride: isEnterprise ? "Spend" : nil
             ))
-        } else if used > 0 {
-            // No monthly cap: an unbounded spend, carried raw so it formats through `MetricFormatter`
-            // (compact like the spend tiles, e.g. "$1.2K spent") instead of a baked full-currency string.
-            lines.append(.values(label: "Extra usage spent", values: [MetricValue(number: used, kind: .dollars)]))
+        } else if used > 0 || (isEnterprise && used == 0) {
+            // No monthly cap: carry the spend unbounded so it formats through `MetricFormatter`
+            // (compact like the spend tiles, e.g. "$1.2K spent") without manufacturing a false limit.
+            // Enterprise accounts use titleOverride so the row shows "Spend" instead of "Extra Usage".
+            lines.append(.values(
+                label: "Extra usage spent",
+                values: [MetricValue(number: used, kind: .dollars)],
+                titleOverride: isEnterprise ? "Spend" : nil
+            ))
         }
     }
 

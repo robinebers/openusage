@@ -632,6 +632,39 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(reloaded.alwaysShowPacing)
     }
 
+    func testProgressTitleOverrideFlowsThroughResolveToWidgetData() async {
+        // The mapper may carry `titleOverride` on a `.progress` line so the dashboard shows a
+        // different title than the descriptor's static one (e.g. "Spend" instead of "Extra Usage"
+        // for enterprise accounts). Assert the full resolve path: WidgetDataStore.resolve must
+        // apply the override so WidgetRowView gets the correct label.
+        let provider = Provider(id: "claude", displayName: "Claude", icon: .providerMark("claude"))
+        let descriptor = WidgetDescriptor.boundedDollars(
+            id: "claude.extra", provider: provider, title: "Extra Usage",
+            metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
+        )
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.progress(label: "Extra usage spent", used: 42, limit: 100,
+                                  format: .dollars, titleOverride: "Spend")]
+            )
+        )
+        let defaults = makeUserDefaults("title-override-resolve")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+            defaults: defaults
+        )
+        await store.refreshAll()
+
+        XCTAssertEqual(store.data(for: descriptor).title, "Spend",
+                       "titleOverride on the progress line must replace the descriptor's static title")
+    }
+
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

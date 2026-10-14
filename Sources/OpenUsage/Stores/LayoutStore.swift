@@ -48,6 +48,8 @@ final class LayoutStore {
     /// provider + metric order above, so pins follow the same sequence shown in Customize. Capped via
     /// `canPin` to at most `maxPinsPerProvider` per provider (the strip stacks a provider's values in pairs).
     private(set) var pinnedMetricIDs: Set<String>
+    /// Bound after the data store is assembled. Unavailable rows release their pin slots.
+    var isMetricHidden: @MainActor (String) -> Bool = { _ in false }
 
     /// Descriptor ids that sit below the per-provider "Shown on expand" divider: the dashboard hides
     /// them behind a caret until the user taps it, and Customize lists them under the divider.
@@ -266,7 +268,7 @@ final class LayoutStore {
     func isPinned(_ descriptorID: String) -> Bool { pinnedMetricIDs.contains(descriptorID) }
 
     func pinnedCount(forProvider providerID: String) -> Int {
-        pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
+        pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID && !isMetricHidden($0) }
     }
 
     /// Whether `descriptorID` can be newly pinned without breaking a cap. Already-pinned ids return
@@ -329,8 +331,14 @@ final class LayoutStore {
     func setPinned(_ pinned: Bool, for descriptorID: String) {
         recordingUndoStep {
             if pinned {
-                guard canPin(descriptorID), registry.descriptor(id: descriptorID) != nil else { return }
-                guard pinnedMetricIDs.insert(descriptorID).inserted else { return }
+                guard !isPinned(descriptorID), canPin(descriptorID),
+                      let descriptor = registry.descriptor(id: descriptorID) else { return }
+                // A new star replaces this account's unavailable pins. Keeping them would exceed
+                // the rendering cap if their data later returned (e.g. after a plan change).
+                pinnedMetricIDs.subtract(pinnedMetricIDs.filter {
+                    registry.descriptor(id: $0)?.providerID == descriptor.providerID && isMetricHidden($0)
+                })
+                pinnedMetricIDs.insert(descriptorID)
             } else {
                 guard pinnedMetricIDs.remove(descriptorID) != nil else { return }
             }

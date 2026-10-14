@@ -170,7 +170,9 @@ struct WidgetGroupedListView: View {
     private func resolvedRows(_ widgets: [PlacedWidget]) -> [ResolvedRow] {
         widgets.compactMap { widget -> ResolvedRow? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return ResolvedRow(widget: widget, descriptor: descriptor, data: dataStore.data(for: descriptor))
+            let data = dataStore.data(for: descriptor)
+            guard !data.isHidden else { return nil }
+            return ResolvedRow(widget: widget, descriptor: descriptor, data: data)
         }
     }
 
@@ -338,7 +340,9 @@ struct WidgetGroupedListView: View {
         let isExpanded = layout.isProviderExpanded(group.provider.id)
         let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
             guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return dataStore.data(for: descriptor)
+            let data = dataStore.data(for: descriptor)
+            guard !data.isHidden else { return nil }
+            return data
         }
         let expandedRows = isExpanded
             ? group.expandedWidgets.compactMap { widget -> WidgetData? in

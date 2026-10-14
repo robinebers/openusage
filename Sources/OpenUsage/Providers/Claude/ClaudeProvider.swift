@@ -48,8 +48,9 @@ final class ClaudeProvider: ProviderRuntime {
     /// that already ran, so multi-account cards make no extra request at all.
     private struct LivePlan {
         var accessTokenFingerprint: Data
-        /// `nil` when the lookup failed or the profile carried no organization; the stored plan is shown.
-        var plan: String?
+        /// Also supplies the current account type to usage mapping; login metadata can be stale.
+        /// `nil` when the lookup failed; missing organization fields use the stored login.
+        var profile: ClaudeAccountProfile?
     }
     private var livePlan: LivePlan?
 
@@ -74,13 +75,17 @@ final class ClaudeProvider: ProviderRuntime {
     var widgetDescriptors: [WidgetDescriptor] {
         [
             .percent(id: "\(provider.id).session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
-                .exportingLimit("session", unit: "percent"),
+                .exportingLimit("session", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
-                .exportingLimit("weekly", unit: "percent"),
+                .exportingLimit("weekly", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).fable", provider: provider, title: "Fable")
-                .exportingLimit("fable", unit: "percent"),
+                .exportingLimit("fable", unit: "percent")
+                .hidingWhenNoData(),
             .percent(id: "\(provider.id).sonnet", provider: provider, title: "Sonnet")
-                .exportingLimit("sonnet", unit: "percent"),
+                .exportingLimit("sonnet", unit: "percent")
+                .hidingWhenNoData(),
             .boundedDollars(id: "\(provider.id).extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100, valueWord: "spent")
                 .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
             // Anthropic's one-off usage-limit reset grants (`cedar_ember`), shown read-only in the same
@@ -425,17 +430,20 @@ final class ClaudeProvider: ProviderRuntime {
             return rateLimitedSnapshot(credentials: working.oauth, retryAfterSeconds: retryAfterSeconds)
         }
 
-        var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: working.oauth, now: now())
+        // A profile failure is a label problem only after usage has proved the token is valid.
+        try ProviderAuthRetry.requireSuccess(
+            response, authExpired: ClaudeAuthError.tokenExpired,
+            requestFailed: { ClaudeUsageError.requestFailed($0) }
+        )
+        let profile = await resolveLiveProfile(credentials: working.oauth)
+        var mapped = try ClaudeUsageMapper.mapUsageResponse(
+            response, credentials: working.oauth, profile: profile, now: now()
+        )
         if let resetGrants = try await resetGrantsLine(
             credentials: working.oauth, expectedGeneration: expectedGeneration,
             forceDesktopFallback: forceDesktopGeneration
         ) {
             mapped.lines.append(resetGrants)
-        }
-        // Only after the usage call succeeded: the token is known-good, so a profile failure here is a
-        // label problem, never an auth signal, and it must not take the bars down with it.
-        if let plan = await resolveLivePlan(credentials: working.oauth) {
-            mapped.plan = plan
         }
         try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopGeneration)
         lastGoodUsage = mapped
@@ -490,7 +498,7 @@ final class ClaudeProvider: ProviderRuntime {
         let lines = snapshot.lines.compactMap { line -> MetricLine? in
             guard ClaudeUsageMapper.liveLimitLabels.contains(line.label) else { return nil }
             switch line {
-            case .progress(_, _, _, _, let resetsAt?, _, _) where resetsAt <= now:
+            case .progress(_, _, _, _, let resetsAt?, _, _, _) where resetsAt <= now:
                 return nil
             default:
                 return ClaudeUsageMapper.droppingElapsedResetGrants(line, now: now)
@@ -508,10 +516,10 @@ final class ClaudeProvider: ProviderRuntime {
         )
     }
 
-    /// Live plan for the given login, fetching the profile at most once per access token.
-    private func resolveLivePlan(credentials: ClaudeOAuth) async -> String? {
+    /// Live plan and account type, fetching the profile at most once per access token.
+    private func resolveLiveProfile(credentials: ClaudeOAuth) async -> ClaudeAccountProfile? {
         if let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) {
-            return livePlan.plan
+            return livePlan.profile
         }
         let profile: ClaudeAccountProfile
         do {
@@ -523,10 +531,11 @@ final class ClaudeProvider: ProviderRuntime {
             // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again.
             guard !Task.isCancelled else { return nil }
             AppLog.warn(LogTag.plugin("claude"), "live plan lookup failed; showing the stored plan until the token rotates: \(error.localizedDescription)")
-            livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: nil)
+            livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), profile: nil)
             return nil
         }
-        return rememberLivePlan(from: profile, credentials: credentials)
+        rememberLivePlan(from: profile, credentials: credentials)
+        return profile
     }
 
     @discardableResult
@@ -535,16 +544,17 @@ final class ClaudeProvider: ProviderRuntime {
         if plan == nil {
             AppLog.info(LogTag.plugin("claude"), "live profile carries no organization plan; showing the stored plan")
         }
-        livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: plan)
+        livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), profile: profile)
         return plan
     }
 
     /// Cached live plan for the login, without making a request (the rate-limited paths use this).
     private func cachedLivePlan(for credentials: ClaudeOAuth) -> String? {
-        guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) else {
+        guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials),
+              let profile = livePlan.profile else {
             return nil
         }
-        return livePlan.plan
+        return ClaudeUsageMapper.formatLivePlan(profile: profile, credentials: credentials)
     }
 
     private static func accessTokenFingerprint(_ credentials: ClaudeOAuth) -> Data {
