@@ -452,17 +452,29 @@ enum CursorUsageMapper {
         )
     }
 
-    /// GetPlanInfo still reports "Pro" for some Enterprise/team seats. Prefer the billing
-    /// membership Cursor stores locally (or returns on usage-summary) when it names an org plan.
-    static func resolvedPlanName(planInfoName: String?, membershipType: String?) -> String? {
-        let membership = membershipType?
+    /// Membership values that identify an org-billed Cursor seat.
+    static let orgMembershipTypes: Set<String> = ["enterprise", "team"]
+
+    /// Plan name for request/Enterprise fallback routing. Org membership may promote the route,
+    /// but personal memberships must not fill an empty GetPlanInfo result and disable the
+    /// unknown-plan REST fallback.
+    static func routingPlanName(planInfoName: String?, membershipType: String?) -> String? {
+        let membership = normalizedMembership(membershipType)
+        if let membership, orgMembershipTypes.contains(membership) {
+            return membership
+        }
+        return planInfoName?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
             .nilIfEmpty
+    }
+
+    /// Badge / display plan. Prefer org billing membership over GetPlanInfo when it still says Pro.
+    static func resolvedPlanName(planInfoName: String?, membershipType: String?) -> String? {
+        let membership = normalizedMembership(membershipType)
         let planInfo = planInfoName?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
-        if let membership, Self.orgMembershipTypes.contains(membership) {
+        if let membership, orgMembershipTypes.contains(membership) {
             return membership
         }
         return planInfo ?? membership
@@ -472,7 +484,25 @@ enum CursorUsageMapper {
         planLabel(resolvedPlanName(planInfoName: planInfoName, membershipType: membershipType))
     }
 
-    private static let orgMembershipTypes: Set<String> = ["enterprise", "team", "business"]
+    /// Prefer a live org membership from usage-summary over a stale local personal membership.
+    static func preferredMembership(local: String?, summary: String?) -> String? {
+        let localMembership = normalizedMembership(local)
+        let summaryMembership = normalizedMembership(summary)
+        if let summaryMembership, orgMembershipTypes.contains(summaryMembership) {
+            return summaryMembership
+        }
+        if let localMembership, orgMembershipTypes.contains(localMembership) {
+            return localMembership
+        }
+        return localMembership ?? summaryMembership
+    }
+
+    private static func normalizedMembership(_ value: String?) -> String? {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .nilIfEmpty
+    }
 
     private static func planLabel(_ value: String?) -> String? {
         guard let value else { return nil }

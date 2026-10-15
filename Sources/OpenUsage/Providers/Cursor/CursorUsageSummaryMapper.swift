@@ -51,8 +51,15 @@ enum CursorUsageSummaryMapper {
             throw CursorUsageError.requestBasedUnavailable(unavailableMessage)
         }
 
+        let summaryMembership = summary?["membershipType"] as? String
         return CursorMappedUsage(
-            plan: planLabel(planName) ?? planLabel(summary?["membershipType"] as? String),
+            plan: CursorUsageMapper.resolvedPlanLabel(
+                planInfoName: planName,
+                membershipType: CursorUsageMapper.preferredMembership(
+                    local: nil,
+                    summary: summaryMembership
+                )
+            ) ?? planLabel(planName) ?? planLabel(summaryMembership),
             lines: lines
         )
     }

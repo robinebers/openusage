@@ -21,7 +21,7 @@ final class CursorAuthStoreTests: XCTestCase {
         XCTAssertEqual(state?.source, .keychain)
         XCTAssertEqual(state?.accessToken, keychainToken)
         XCTAssertEqual(state?.refreshToken, "keychain-refresh")
-        XCTAssertEqual(state?.membershipType, "free")
+        XCTAssertNil(state?.membershipType)
     }
 
     func testLoadsEnterpriseMembershipTypeFromSQLite() {
@@ -106,6 +106,18 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertEqual(
             CursorUsageMapper.resolvedPlanLabel(planInfoName: nil, membershipType: "enterprise"),
             "Enterprise"
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.routingPlanName(planInfoName: nil, membershipType: "pro"),
+            nil
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.routingPlanName(planInfoName: nil, membershipType: "enterprise"),
+            "enterprise"
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.preferredMembership(local: "pro", summary: "enterprise"),
+            "enterprise"
         )
     }
 
