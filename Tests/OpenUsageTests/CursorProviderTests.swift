@@ -21,6 +21,20 @@ final class CursorAuthStoreTests: XCTestCase {
         XCTAssertEqual(state?.source, .keychain)
         XCTAssertEqual(state?.accessToken, keychainToken)
         XCTAssertEqual(state?.refreshToken, "keychain-refresh")
+        XCTAssertEqual(state?.membershipType, "free")
+    }
+
+    func testLoadsEnterpriseMembershipTypeFromSQLite() {
+        let token = makeCursorJWT(sub: "google-oauth2|enterprise-user")
+        let store = CursorAuthStore(
+            sqlite: KeyValueSQLite(values: [
+                CursorAuthStore.accessTokenKey: token,
+                CursorAuthStore.membershipTypeKey: "Enterprise"
+            ]),
+            keychain: FakeKeychain()
+        )
+
+        XCTAssertEqual(store.loadAuthState()?.membershipType, "enterprise")
     }
 
     func testPersistsSQLiteAccessToken() throws {
@@ -74,6 +88,25 @@ final class CursorUsageMapperTests: XCTestCase {
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": true]))
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["usagePercent": -1]))
         XCTAssertNil(CursorUsageMapper.mapGrokBotUsage(["hasNonZeroIncludedLimit": true]))
+    }
+
+    func testResolvedPlanNamePrefersEnterpriseMembershipOverProPlanInfo() {
+        XCTAssertEqual(
+            CursorUsageMapper.resolvedPlanLabel(planInfoName: "Pro", membershipType: "enterprise"),
+            "Enterprise"
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.resolvedPlanLabel(planInfoName: "pro plan", membershipType: "team"),
+            "Team"
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.resolvedPlanLabel(planInfoName: "Ultra", membershipType: "pro"),
+            "Ultra"
+        )
+        XCTAssertEqual(
+            CursorUsageMapper.resolvedPlanLabel(planInfoName: nil, membershipType: "enterprise"),
+            "Enterprise"
+        )
     }
 
     func testMapsCreditsUsageBreakdownAndOnDemand() throws {

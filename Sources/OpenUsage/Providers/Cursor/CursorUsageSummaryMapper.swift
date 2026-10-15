@@ -159,6 +159,13 @@ enum CursorUsageSummaryMapper {
         _ = appendOnDemandBucket(team?["onDemand"], cycle: cycle, to: &lines)
     }
 
+    /// Primary `GetCurrentPeriodUsage` mapping can populate model pools while omitting on-demand.
+    /// Merge Extra Usage from usage-summary without replacing the live pool meters.
+    static func appendMissingOnDemand(from summary: [String: Any], to lines: inout [MetricLine]) {
+        guard !lines.contains(where: { $0.label == "On-demand" }) else { return }
+        appendOnDemand(summary, cycle: billingCycle(summary: summary, requestUsage: nil), to: &lines)
+    }
+
     /// Returns whether a usable row was emitted. An Enterprise response can include an individual
     /// placeholder bucket (`enabled: false` or a zero limit) alongside a valid team bucket, so merely
     /// finding the individual dictionary must not suppress the fallback.

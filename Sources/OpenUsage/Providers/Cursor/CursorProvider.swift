@@ -116,7 +116,11 @@ final class CursorProvider: ProviderRuntime {
         // The access token may have rotated during the usage fetch's refresh-and-retry; read the live one.
         let currentToken = authState.accessToken ?? accessToken
 
-        let (planName, planInfoUnavailable) = await fetchPlanName(accessToken: currentToken)
+        let (planInfoName, planInfoUnavailable) = await fetchPlanName(accessToken: currentToken)
+        let planName = CursorUsageMapper.resolvedPlanName(
+            planInfoName: planInfoName,
+            membershipType: authState.membershipType
+        )
         let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(
             usage: usage,
             planName: planName,
@@ -155,9 +159,49 @@ final class CursorProvider: ProviderRuntime {
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
         )
+        await enrichPrimaryUsageFromSummaryIfNeeded(
+            accessToken: currentToken,
+            usage: usage,
+            planInfoName: planInfoName,
+            membershipType: authState.membershipType,
+            mapped: &mapped
+        )
         await appendGrokBotUsage(to: &mapped.lines, accessToken: currentToken)
         let history = await appendSpendLines(to: &mapped.lines, accessToken: currentToken)
         return snapshot(mapped, usageHistory: history)
+    }
+
+    /// Model-pool Enterprise/team seats often keep a usable primary usage payload but omit on-demand
+    /// there. usage-summary still carries Extra Usage for those accounts.
+    private func enrichPrimaryUsageFromSummaryIfNeeded(
+        accessToken: String,
+        usage: [String: Any],
+        planInfoName: String?,
+        membershipType: String?,
+        mapped: inout CursorMappedUsage
+    ) async {
+        guard !mapped.lines.contains(where: { $0.label == "On-demand" }) else { return }
+        let facts = CursorPlanUsageFacts(usage: usage)
+        let localIsOrg = membershipType.map { ["enterprise", "team", "business"].contains($0) } ?? false
+        guard localIsOrg || facts.isTeamByShape || facts.hasModelPools else { return }
+
+        guard let summary = await fetchOptionalJSONObject(label: "usage-summary", request: {
+            try await self.usageClient.fetchUsageSummary(accessToken: accessToken)
+        }) else {
+            return
+        }
+        if !CursorUsageSummaryMapper.hasUsableSummaryPayload(summary) {
+            AppLog.warn(LogTag.plugin("cursor"), "optional usage-summary response contained no usable usage fields")
+            return
+        }
+        CursorUsageSummaryMapper.appendMissingOnDemand(from: summary, to: &mapped.lines)
+        let summaryMembership = (summary["membershipType"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        mapped.plan = CursorUsageMapper.resolvedPlanLabel(
+            planInfoName: planInfoName,
+            membershipType: membershipType ?? summaryMembership
+        ) ?? mapped.plan
     }
 
     /// Grok Bot uses the same Cursor account but keeps a separate weekly allowance. Missing access is
@@ -302,8 +346,12 @@ final class CursorProvider: ProviderRuntime {
         }) else {
             return nil
         }
+        // Enterprise seats often return a body without grant fields. That is not a schema error —
+        // only warn when Cursor claimed grants but the payload cannot be read.
         guard let hasCreditGrants = body["hasCreditGrants"] as? Bool else {
-            AppLog.warn(LogTag.plugin("cursor"), "optional credit-grants response contained invalid grant metadata")
+            if body["hasCreditGrants"] != nil {
+                AppLog.warn(LogTag.plugin("cursor"), "optional credit-grants response contained invalid grant metadata")
+            }
             return nil
         }
         if hasCreditGrants {

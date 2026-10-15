@@ -452,6 +452,28 @@ enum CursorUsageMapper {
         )
     }
 
+    /// GetPlanInfo still reports "Pro" for some Enterprise/team seats. Prefer the billing
+    /// membership Cursor stores locally (or returns on usage-summary) when it names an org plan.
+    static func resolvedPlanName(planInfoName: String?, membershipType: String?) -> String? {
+        let membership = membershipType?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .nilIfEmpty
+        let planInfo = planInfoName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+        if let membership, Self.orgMembershipTypes.contains(membership) {
+            return membership
+        }
+        return planInfo ?? membership
+    }
+
+    static func resolvedPlanLabel(planInfoName: String?, membershipType: String?) -> String? {
+        planLabel(resolvedPlanName(planInfoName: planInfoName, membershipType: membershipType))
+    }
+
+    private static let orgMembershipTypes: Set<String> = ["enterprise", "team", "business"]
+
     private static func planLabel(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

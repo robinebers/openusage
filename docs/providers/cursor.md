@@ -20,6 +20,13 @@ unavailable when Cursor supplies only the two pools. Older team accounts without
 keep their dollar meter, including accounts that return zero placeholders beside positive spend.
 
 When Cursor reports your plan name, OpenUsage shows it beside the provider name.
+Enterprise/team seats sometimes still return `GetPlanInfo.planName = Pro`; OpenUsage prefers the
+billing membership from Cursor's local state (`stripeMembershipType`) or `usage-summary` when that
+membership is `enterprise` / `team` / `business`.
+
+Enterprise/team seats that already return usable model-pool percentages from the primary usage API
+may still omit on-demand there. In that case OpenUsage merges Extra Usage from `usage-summary`
+without replacing the live pool meters.
 
 Grok Bot has its own usage allowance, separate from Cursor's normal billing-cycle meter. Its widget
 is enabled by default in Cursor's On Demand section. It uses your existing Cursor login, so signing
