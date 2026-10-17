@@ -176,6 +176,20 @@ final class AntigravityProviderTests: XCTestCase {
         XCTAssertEqual(AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(json.utf8)), "Pro")
     }
 
+    func testParseLoadCodeAssistPlanPrefersPaidTierID() {
+        // The id wins over a name that would format differently (or not at all).
+        let ultraLite = #"{"currentTier":{"id":"standard-tier","name":"Gemini Code Assist"},"paidTier":{"id":"g1-ultra-lite-tier","name":"Google AI Ultra"}}"#
+        XCTAssertEqual(AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(ultraLite.utf8)), "Ultra Lite")
+        let pro = #"{"paidTier":{"id":"g1-pro-tier"}}"#
+        XCTAssertEqual(AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(pro.utf8)), "Pro")
+        // An unknown id falls back to the name.
+        let unknown = #"{"paidTier":{"id":"g1-new-tier","name":"Google AI Plus"}}"#
+        XCTAssertEqual(AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(unknown.utf8)), "Plus")
+        // Without client metadata the response has only allowedTiers — no plan.
+        let allowedOnly = #"{"allowedTiers":[{"id":"standard-tier","name":"Gemini Code Assist"}]}"#
+        XCTAssertNil(AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(allowedOnly.utf8)))
+    }
+
     func testParseQuotaBuckets() {
         let json = """
         {"buckets":[{"modelId":"gemini-3-pro-preview","remainingFraction":0.5,"resetTime":"2026-06-27T04:44:01Z"},

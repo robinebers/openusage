@@ -290,12 +290,19 @@ final class AntigravityProvider: ProviderRuntime {
         // Authoritative first: the quota summary (merged pools + weekly windows). A parsed summary —
         // even one with zero usable buckets — is the answer and must never fall into the legacy chain
         // below, which fabricates "fully used" from missing quota info. A 404 (build without the RPC)
-        // reads as `.unavailable` and falls through.
-        switch await usageClient.cloudCode(path: AntigravityUsageClient.quotaSummaryPath, token: token, userAgent: "antigravity", body: [:]) {
+        // reads as `.unavailable` and falls through. Both hosts are asked and their buckets merged by id,
+        // because one host can omit a whole pool.
+        switch await usageClient.cloudCodeAllHosts(
+            path: AntigravityUsageClient.quotaSummaryPath,
+            token: token,
+            userAgent: "antigravity",
+            body: [:],
+            isComplete: AntigravityUsageMapper.isCompleteSummary
+        ) {
         case .authFailed:
             return .authFailed
-        case .ok(let data):
-            if let lines = AntigravityUsageMapper.parseQuotaSummary(data) {
+        case .ok(let bodies):
+            if let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) {
                 return .success(StrategyResult(plan: await loadPlan(token: token), lines: lines))
             }
             // 2xx but not a summary payload — the parser warned; fall to the legacy chain.
@@ -319,7 +326,7 @@ final class AntigravityProvider: ProviderRuntime {
         // Fallback: loadCodeAssist (plan + project) → retrieveUserQuota (Gemini-only buckets).
         var plan: String?
         var project: String?
-        switch await usageClient.cloudCode(path: AntigravityUsageClient.loadCodeAssistPath, token: token, userAgent: "agy", body: [:]) {
+        switch await usageClient.loadCodeAssist(token: token) {
         case .authFailed: return .authFailed
         case .ok(let data):
             plan = AntigravityUsageMapper.parseLoadCodeAssistPlan(data)
@@ -347,8 +354,14 @@ final class AntigravityProvider: ProviderRuntime {
     }
 
     private func loadPlan(token: String) async -> String? {
-        if case .ok(let data) = await usageClient.cloudCode(path: AntigravityUsageClient.loadCodeAssistPath, token: token, userAgent: "agy", body: [:]) {
-            return AntigravityUsageMapper.parseLoadCodeAssistPlan(data)
+        switch await usageClient.loadCodeAssist(token: token) {
+        case .ok(let data):
+            if let plan = AntigravityUsageMapper.parseLoadCodeAssistPlan(data) { return plan }
+            AppLog.warn(LogTag.plugin("antigravity"), "loadCodeAssist returned no plan (\(AntigravityUsageMapper.describeTiers(data)))")
+        case .authFailed:
+            AppLog.warn(LogTag.plugin("antigravity"), "loadCodeAssist rejected the token; plan unavailable")
+        case .unavailable:
+            AppLog.warn(LogTag.plugin("antigravity"), "loadCodeAssist unavailable on every host; plan unavailable")
         }
         return nil
     }

@@ -53,16 +53,26 @@ enum AntigravityUsageMapper {
     /// bucket with a missing/unusable `remainingFraction` drops its line (the row reads "No data")
     /// rather than fabricating 0% or 100%.
     static func parseQuotaSummary(_ data: Data) -> [MetricLine]? {
-        guard let envelope = try? JSONDecoder().decode(QuotaSummaryEnvelope.self, from: data),
-              let groups = envelope.response?.groups ?? envelope.groups
-        else {
-            // Callers only parse 2xx bodies, so an undecodable one is schema drift — say so loudly.
-            AppLog.warn(LogTag.plugin("antigravity"), "quota summary response has no decodable groups; treating as not-a-summary")
-            return nil
+        parseQuotaSummaries([data])
+    }
+
+    /// Several `RetrieveUserQuotaSummary` bodies (one per Cloud Code host) merged by bucket id: the
+    /// first usable bucket for each id wins. One host can omit a whole pool (seen 2026-10-17: the daily
+    /// host returned only the Claude group), so no single body is trusted to be complete. Nil only when
+    /// no body is a summary; otherwise the same rules as `parseQuotaSummary` apply.
+    static func parseQuotaSummaries(_ bodies: [Data]) -> [MetricLine]? {
+        let groupLists = bodies.compactMap { data -> [QuotaSummaryGroup]? in
+            guard let groups = summaryGroups(data) else {
+                // Callers only parse 2xx bodies, so an undecodable one is schema drift — say so loudly.
+                AppLog.warn(LogTag.plugin("antigravity"), "quota summary response has no decodable groups; treating as not-a-summary")
+                return nil
+            }
+            return groups
         }
+        guard !groupLists.isEmpty else { return nil }
 
         var pooled: [String: (fraction: Double, resetTime: Date?)] = [:]
-        for bucket in groups.filter({ $0.displayName != argonGroupName }).flatMap({ $0.buckets ?? [] }) {
+        for bucket in groupLists.joined().filter({ $0.displayName != argonGroupName }).flatMap({ $0.buckets ?? [] }) {
             guard let id = bucket.bucketId, summaryBuckets.contains(where: { $0.bucketID == id }) else {
                 AppLog.warn(LogTag.plugin("antigravity"), "quota summary: skipping unrecognized bucket id '\(bucket.bucketId ?? "<absent>")'")
                 continue
@@ -79,7 +89,8 @@ enum AntigravityUsageMapper {
             guard let entry = pooled[spec.bucketID] else { return nil }
             return line(pool: spec.label, fraction: entry.fraction, resetTime: entry.resetTime, periodMs: spec.periodMs)
         }
-        if let argon = argonWeeklyLine(groups) {
+        // Argon is judged per body: combining two hosts' Argon groups would read as an ambiguous bucket.
+        if let argon = groupLists.lazy.compactMap(argonWeeklyLine).first {
             let index = lines.firstIndex {
                 $0.label == AntigravityMetric.claudeLabel || $0.label == AntigravityMetric.claudeWeeklyLabel
             } ?? lines.endIndex
@@ -121,6 +132,24 @@ enum AntigravityUsageMapper {
             resetTime: bucket.resetTime.flatMap { OpenUsageISO8601.date(from: $0) },
             periodMs: MetricPeriod.weekMs
         )
+    }
+
+    /// Whether one summary body already has a usable fraction for all four shared-pool buckets, so no
+    /// other host's answer could add or change those meters under the first-wins merge. Argon is not
+    /// required: accounts without it never report it.
+    static func isCompleteSummary(_ data: Data) -> Bool {
+        guard let groups = summaryGroups(data) else { return false }
+        // Same group rule as the merge: a shared bucket id inside the Argon group never yields a meter.
+        let shared = groups.filter { $0.displayName != argonGroupName }
+        let usable = Set(shared.flatMap { $0.buckets ?? [] }.compactMap { bucket in
+            bucket.remainingFraction?.isFinite == true ? bucket.bucketId : nil
+        })
+        return summaryBuckets.allSatisfy { usable.contains($0.bucketID) }
+    }
+
+    private static func summaryGroups(_ data: Data) -> [QuotaSummaryGroup]? {
+        guard let envelope = try? JSONDecoder().decode(QuotaSummaryEnvelope.self, from: data) else { return nil }
+        return envelope.response?.groups ?? envelope.groups
     }
 
     // MARK: - Response parsing (legacy per-model endpoints)
@@ -181,10 +210,28 @@ enum AntigravityUsageMapper {
         }
     }
 
-    /// Cloud Code `loadCodeAssist` → plan name (paid tier preferred over current tier).
+    /// Google One subscription tiers by `paidTier.id`, which is stabler than the display name.
+    static let paidTierPlans = ["g1-pro-tier": "Pro", "g1-ultra-tier": "Ultra", "g1-ultra-lite-tier": "Ultra Lite"]
+
+    /// Cloud Code `loadCodeAssist` → plan name: a known `paidTier.id` first, then the paid tier's name,
+    /// then the current tier's name.
     static func parseLoadCodeAssistPlan(_ data: Data) -> String? {
         guard let envelope = try? JSONDecoder().decode(CCLoadEnvelope.self, from: data) else { return nil }
+        if let id = envelope.paidTier?.id, let plan = paidTierPlans[id] { return plan }
         return formatPlan(envelope.paidTier?.name ?? envelope.currentTier?.name)
+    }
+
+    /// Log-safe outline of a `loadCodeAssist` body — top-level keys and tier ids only (no project id) —
+    /// for diagnosing a response that yields no plan.
+    static func describeTiers(_ data: Data) -> String {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return "undecodable body" }
+        func id(_ tier: Any?) -> String { ((tier as? [String: Any])?["id"] as? String) ?? "<none>" }
+        let allowed = (object["allowedTiers"] as? [Any] ?? []).map(id)
+        let ineligible = (object["ineligibleTiers"] as? [[String: Any]] ?? []).map {
+            "\($0["tierId"] as? String ?? "<none>"):\($0["reasonCode"] as? String ?? "<none>")"
+        }
+        return "keys=\(object.keys.sorted()) currentTier=\(id(object["currentTier"])) paidTier=\(id(object["paidTier"])) "
+            + "allowedTiers=\(allowed) ineligibleTiers=\(ineligible)"
     }
 
     static func parseProject(_ data: Data) -> String? {
@@ -401,7 +448,10 @@ private struct CCLoadEnvelope: Decodable {
     let currentTier: Tier?
     let paidTier: Tier?
 
-    struct Tier: Decodable { let name: String? }
+    struct Tier: Decodable {
+        let id: String?
+        let name: String?
+    }
 }
 
 private struct CCQuotaEnvelope: Decodable {
