@@ -32,6 +32,19 @@ final class CodexLogUsageScannerTests: XCTestCase {
 
     // MARK: - Line parsing
 
+    func testMarkerTextInMessageIsSkippedAndNestedTokenCountIsFound() {
+        let lines = [
+            #"{"type":"event_msg","timestamp":"2026-05-12T08:00:00.000Z","message":"token_count"}"#,
+            #"{"type":"event_msg","timestamp":"2026-05-12T08:01:00.000Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"output_tokens":5}}}}"#
+        ].joined(separator: "\n")
+
+        let events = CodexLogUsageScanner.parseFile(Data(lines.utf8))
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].input, 10)
+        XCTAssertEqual(events[0].output, 5)
+    }
+
     func testLastTokenUsageWinsOverTotalsDelta() {
         let lines = [
             CodexLogFixture.turnContext(timestamp: "2026-05-12T08:00:00.000Z", model: "gpt-5.2"),

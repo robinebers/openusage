@@ -2,11 +2,12 @@ import Foundation
 
 /// Keeps rollout context alive across bounded JSONL batches without sharing it between files.
 struct CodexLogFileParser: Sendable {
-    private static let turnContextMarker = Data(#""type":"turn_context""#.utf8)
-    private static let tokenCountMarker = Data(#""type":"token_count""#.utf8)
-    private static let sessionMetaMarker = Data(#""type":"session_meta""#.utf8)
-    private static let taskStartedMarker = Data(#""type":"task_started""#.utf8)
-    private static let threadSettingsMarker = Data(#""type":"thread_settings_applied""#.utf8)
+    private static let typeMarker = Data(#""type":""#.utf8)
+    private static let turnContextToken = Data(#"turn_context""#.utf8)
+    private static let tokenCountToken = Data(#"token_count""#.utf8)
+    private static let sessionMetaToken = Data(#"session_meta""#.utf8)
+    private static let taskStartedToken = Data(#"task_started""#.utf8)
+    private static let threadSettingsToken = Data(#"thread_settings_applied""#.utf8)
 
     struct ParseState: Codable, Sendable, Equatable {
         var previousTotals: CodexLogUsageScanner.RawUsage?
@@ -27,12 +28,28 @@ struct CodexLogFileParser: Sendable {
         var events: [CodexLogUsageScanner.Event] = []
 
         for line in data.split(separator: UInt8(ascii: "\n")) {
-            let isTurnContext = line.range(of: Self.turnContextMarker) != nil
-            let isSessionMeta = !state.sawSessionMeta && line.range(of: Self.sessionMetaMarker) != nil
-            let isTaskStarted = state.replayGate != nil && line.range(of: Self.taskStartedMarker) != nil
-            let isThreadSettings = line.range(of: Self.threadSettingsMarker) != nil
+            var seesTurnContext = false
+            var seesTokenCount = false
+            var seesSessionMeta = false
+            var seesTaskStarted = false
+            var seesThreadSettings = false
+            var cursor = line.startIndex
+            while let found = line.range(of: Self.typeMarker, in: cursor..<line.endIndex) {
+                let value = line[found.upperBound...]
+                if value.starts(with: Self.turnContextToken) { seesTurnContext = true }
+                else if value.starts(with: Self.tokenCountToken) { seesTokenCount = true }
+                else if value.starts(with: Self.sessionMetaToken) { seesSessionMeta = true }
+                else if value.starts(with: Self.taskStartedToken) { seesTaskStarted = true }
+                else if value.starts(with: Self.threadSettingsToken) { seesThreadSettings = true }
+                cursor = found.upperBound
+            }
+
+            let isTurnContext = seesTurnContext
+            let isSessionMeta = !state.sawSessionMeta && seesSessionMeta
+            let isTaskStarted = state.replayGate != nil && seesTaskStarted
+            let isThreadSettings = seesThreadSettings
             guard isTurnContext || isSessionMeta || isTaskStarted || isThreadSettings
-                || line.range(of: Self.tokenCountMarker) != nil
+                || seesTokenCount
             else { continue }
             guard let object = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any] else { continue }
 
