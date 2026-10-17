@@ -135,7 +135,7 @@ final class AntigravityProvider: ProviderRuntime {
         ) {
             return result
         }
-        if let result = await probeLS(processName: "agy", markers: [], csrfFlag: "", portFlag: nil) {
+        if let result = await probeLS(processName: "agy", markers: [], csrfFlag: "--csrf_token", portFlag: nil) {
             return result
         }
         return try await probeCloudCode()
