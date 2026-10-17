@@ -22,7 +22,7 @@ keep their dollar meter, including accounts that return zero placeholders beside
 When Cursor reports your plan name, OpenUsage shows it beside the provider name.
 Enterprise/team seats sometimes still return `GetPlanInfo.planName = Pro`; OpenUsage prefers the
 billing membership from Cursor's local state (`stripeMembershipType`) or `usage-summary` when that
-membership is `enterprise` / `team`.
+membership is `enterprise` / `team` and GetPlanInfo is missing or still says Pro.
 
 Enterprise/team seats that already return usable model-pool percentages from the primary usage API
 may still omit on-demand there. In that case OpenUsage merges Extra Usage from `usage-summary`

@@ -159,9 +159,13 @@ final class CursorProvider: ProviderRuntime {
         let stripeBalanceCents = await fetchStripeBalanceCents(accessToken: currentToken)
         var mapped = try CursorUsageMapper.mapUsage(
             usage: usage,
-            planName: displayPlanName,
+            planName: planInfoName,
             creditGrants: creditGrants,
             stripeBalanceCents: stripeBalanceCents
+        )
+        mapped.plan = CursorUsageMapper.resolvedPlanLabel(
+            planInfoName: planInfoName,
+            membershipType: authState.membershipType
         )
         await enrichPrimaryUsageFromSummaryIfNeeded(
             accessToken: currentToken,

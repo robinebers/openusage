@@ -285,10 +285,10 @@ enum CursorUsageMapper {
 
         let normalizedPlan = planName?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
 
-        if facts.planUsageUnusable && normalizedPlan == "enterprise" {
+        if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan == "enterprise" {
             return (true, "Enterprise usage data unavailable. Try again later.")
         }
-        if facts.planUsageUnusable && normalizedPlan == "team" {
+        if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan == "team" {
             return (true, "Team request-based usage data unavailable. Try again later.")
         }
         if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan.isEmpty && planInfoUnavailable {
@@ -474,7 +474,8 @@ enum CursorUsageMapper {
         let planInfo = planInfoName?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty
-        if let membership, orgMembershipTypes.contains(membership) {
+        if let membership, orgMembershipTypes.contains(membership),
+           planInfo == nil || ["pro", "pro plan"].contains(planInfo?.lowercased() ?? "") {
             return membership
         }
         return planInfo ?? membership
