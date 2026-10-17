@@ -166,17 +166,7 @@ enum CursorUsageMapper {
                 ))
             }
         } else if isTeamAccount {
-            // Percent-only Team/Enterprise payloads used to fall through to REST; when primary
-            // keeps them (usable totalPercentUsed), render the percent bar instead of requiring dollars.
-            if let percent = facts.totalPercentUsed {
-                lines.append(.progress(
-                    label: "Total usage", used: percent, limit: 100, format: .percent,
-                    resetsAt: cycle.resetsAt, periodDurationMs: cycle.periodDurationMs
-                ))
-            } else {
-                guard let limitCents = facts.limit else {
-                    throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
-                }
+            if let limitCents = facts.limit {
                 lines.append(.progress(
                     label: "Total usage",
                     used: ProviderParse.centsToDollars(planUsedCents),
@@ -185,6 +175,13 @@ enum CursorUsageMapper {
                     resetsAt: cycle.resetsAt,
                     periodDurationMs: cycle.periodDurationMs
                 ))
+            } else if let percent = facts.totalPercentUsed {
+                lines.append(.progress(
+                    label: "Total usage", used: percent, limit: 100, format: .percent,
+                    resetsAt: cycle.resetsAt, periodDurationMs: cycle.periodDurationMs
+                ))
+            } else {
+                throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
             }
         } else {
             lines.append(.progress(

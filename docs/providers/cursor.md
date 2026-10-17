@@ -18,6 +18,7 @@ Teams seats with two usable model-pool percentages use those percentages instead
 included-dollar cap. Total Usage uses Cursor's structured total percentage when supplied; it is
 unavailable when Cursor supplies only the two pools. Older team accounts without usable pool data
 keep their dollar meter, including accounts that return zero placeholders beside positive spend.
+Without a dollar limit or usable model pools, Team/Enterprise accounts use the reported total percentage.
 
 When Cursor reports your plan name, OpenUsage shows it beside the provider name.
 Enterprise/team seats sometimes still return `GetPlanInfo.planName = Pro`; OpenUsage prefers the
