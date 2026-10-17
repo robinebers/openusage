@@ -3,6 +3,70 @@ import XCTest
 
 @MainActor
 final class WidgetDataStoreTests: XCTestCase {
+    func testRefreshAllPersistsAndPublishesAllProviderSnapshots() async {
+        let fixtures = ["alpha", "beta", "gamma"].map { makeRuntime($0) }
+        let ids = fixtures.map { $0.0.id }
+        let defaults = makeUserDefaults("refresh-all-persists")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: fixtures.map { $0.0 }, descriptors: []),
+            providers: fixtures.map { $0.1 },
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults
+        )
+
+        await store.refreshAll()
+
+        XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
+        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+            .loadSnapshots(providerIDs: ids)
+        XCTAssertEqual(Set(persisted.keys), Set(ids))
+    }
+
+    func testSingleProviderRefreshPersistsImmediately() async {
+        let fixture = makeRuntime("single")
+        let defaults = makeUserDefaults("single-refresh-persists")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [fixture.0], descriptors: []),
+            providers: [fixture.1],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults
+        )
+
+        await store.refresh(providerID: fixture.0.id, force: true)
+
+        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+            .loadSnapshots(providerIDs: [fixture.0.id])
+        XCTAssertNotNil(persisted[fixture.0.id])
+    }
+
+    func testFlushPendingSnapshotWorkPersistsDuringRefreshBatch() async {
+        let fast = makeRuntime("fast")
+        let slowProvider = Provider(id: "slow", displayName: "Slow", icon: .providerMark("codex"))
+        let slowSnapshot = ProviderSnapshot(providerID: slowProvider.id, displayName: slowProvider.displayName, lines: [])
+        let slow = SuspendedProviderRuntime(provider: slowProvider, snapshot: slowSnapshot)
+        let defaults = makeUserDefaults("flush-pending-snapshot-work")
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [fast.0, slowProvider], descriptors: []),
+            providers: [fast.1, slow],
+            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+            defaults: defaults
+        )
+        let refreshTask = Task { await store.refreshAll() }
+
+        for _ in 0..<1_000 where !slow.didStart { await Task.yield() }
+        for _ in 0..<1_000 where store.localSnapshots[fast.0.id] == nil { await Task.yield() }
+        XCTAssertTrue(slow.didStart)
+        XCTAssertNotNil(store.localSnapshots[fast.0.id])
+
+        store.flushPendingSnapshotWork()
+        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+            .loadSnapshots(providerIDs: [fast.0.id])
+        XCTAssertNotNil(persisted[fast.0.id])
+
+        slow.complete()
+        await refreshTask.value
+    }
+
     func testResolvesProgressSnapshotIntoWidgetData() async {
         let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
         let descriptor = WidgetDescriptor(
@@ -637,5 +701,47 @@ final class WidgetDataStoreTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
+    }
+
+    private func makeRuntime(_ id: String) -> (Provider, TestProviderRuntime) {
+        let provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark("codex"))
+        return (
+            provider,
+            TestProviderRuntime(
+                provider: provider,
+                descriptors: [],
+                snapshot: ProviderSnapshot(
+                    providerID: provider.id,
+                    displayName: provider.displayName,
+                    lines: [.progress(label: "Session", used: 1, limit: 100, format: .percent)]
+                )
+            )
+        )
+    }
+}
+
+@MainActor
+private final class SuspendedProviderRuntime: ProviderRuntime {
+    let provider: Provider
+    let widgetDescriptors: [WidgetDescriptor] = []
+    private let snapshot: ProviderSnapshot
+    private(set) var didStart = false
+    private var continuation: CheckedContinuation<ProviderSnapshot, Never>?
+
+    init(provider: Provider, snapshot: ProviderSnapshot) {
+        self.provider = provider
+        self.snapshot = snapshot
+    }
+
+    func refresh() async -> ProviderSnapshot {
+        didStart = true
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func complete() {
+        continuation?.resume(returning: snapshot)
+        continuation = nil
     }
 }

@@ -25,6 +25,7 @@ struct ProviderSnapshotCache {
     /// but never counts as fresh, forcing one refresh on the first post-launch pass. Lock-backed for the
     /// same reason as `memo`: the value-type cache shares it across copies and stays safe. See #697.
     private let sessionWrites = OSAllocatedUnfairLock<Set<String>>(initialState: [])
+    private let hasDeferredWrites = OSAllocatedUnfairLock<Bool>(initialState: false)
 
     private let userDefaults: UserDefaults
     private let storageKey: String
@@ -110,7 +111,7 @@ struct ProviderSnapshotCache {
 
     /// `producedByIdentityKey` is the account identity that produced this snapshot (the card's identity
     /// at write time); `nil` for providers without account identity, or when the identity is unresolved.
-    func store(_ snapshot: ProviderSnapshot, producedByIdentityKey: String? = nil) {
+    func store(_ snapshot: ProviderSnapshot, producedByIdentityKey: String? = nil, persist: Bool = true) {
         guard !snapshot.lines.contains(where: \.isError) else {
             AppLog.debug(.cache, "skip write \(snapshot.providerID) (error snapshot)")
             return
@@ -125,7 +126,21 @@ struct ProviderSnapshotCache {
         // prior stamp rather than keep it: the new snapshot is unattributable, and leaving the old
         // account's stamp would falsely bless it at the next launch's identity check.
         payload.producedByIdentityKeys[snapshot.providerID] = producedByIdentityKey
-        save(payload)
+        if persist {
+            save(payload)
+        } else {
+            let updated = payload
+            memo.withLock { $0 = updated }
+            hasDeferredWrites.withLock { $0 = true }
+        }
+    }
+
+    func persistPending() {
+        guard hasDeferredWrites.withLock({ pending in
+            defer { pending = false }
+            return pending
+        }) else { return }
+        save(loadPayload())
     }
 
     /// The account identity stamped when this provider's entry was stored, or `nil` when the entry is

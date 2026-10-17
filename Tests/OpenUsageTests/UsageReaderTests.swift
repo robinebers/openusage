@@ -70,6 +70,17 @@ final class UsageReaderTests: XCTestCase {
         ))
     }
 
+    func testRefreshAllPersistsSnapshotsBeforeOneShotReaderReturns() async throws {
+        let defaults = defaults()
+        defaults.set(["alpha", "beta"], forKey: "openusage.enabledProviders.v1")
+        let providers = [StubProvider(id: "alpha"), StubProvider(id: "beta")]
+
+        _ = try await UsageReader(userDefaults: defaults, providers: providers).read(force: true)
+
+        let persisted = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: ["alpha", "beta"])
+        XCTAssertEqual(Set(persisted.keys), Set(["alpha", "beta"]))
+    }
+
     func testStalePersistedSnapshotRefreshesBeforeReading() async throws {
         let defaults = defaults()
         let provider = StubProvider()

@@ -35,6 +35,24 @@ final class ProviderSnapshotCacheTests: XCTestCase {
                        .progress(label: "Session", used: 20, limit: 100, format: .percent))
     }
 
+    func testDeferredStorePersistsOnlyOnPersistPending() {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let now = Date()
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
+
+        cache.store(snapshot("alpha", used: 10, now: now), persist: false)
+        cache.store(snapshot("beta", used: 20, now: now), persist: false)
+
+        XCTAssertEqual(cache.loadSnapshots(providerIDs: ["alpha", "beta"]).count, 2)
+        let beforeFlush = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
+        XCTAssertTrue(beforeFlush.loadSnapshots(providerIDs: ["alpha", "beta"]).isEmpty)
+
+        cache.persistPending()
+        let afterFlush = ProviderSnapshotCache(userDefaults: defaults, storageKey: "k", ttl: 9_999, now: { now })
+        XCTAssertEqual(afterFlush.loadSnapshots(providerIDs: ["alpha", "beta"]).count, 2)
+    }
+
     /// #697 core guarantee: a snapshot persisted by a *previous* session and reloaded on launch must not
     /// satisfy the refresh gate, even when its `refreshedAt` is still well within TTL — otherwise the app
     /// would wait out the previous session's remaining interval before refetching. It must still *display*

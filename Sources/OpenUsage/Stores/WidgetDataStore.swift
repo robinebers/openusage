@@ -101,6 +101,9 @@ final class WidgetDataStore {
     /// Wired by `ICloudUsageSyncStore`; debounced there so a concurrent provider batch produces one file.
     @ObservationIgnored var onLocalHistoryChanged: (@MainActor () -> Void)?
     @ObservationIgnored private var peerHistoryDocuments: [UsageHistoryDocument] = []
+    @ObservationIgnored private var snapshotRebuildDeferrals = 0
+    @ObservationIgnored private var pendingSnapshotRebuild = false
+    @ObservationIgnored private var coalescedRebuildTask: Task<Void, Never>?
 
     /// Global meter style: whether every bounded tile (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
@@ -206,6 +209,7 @@ final class WidgetDataStore {
         let providerIDs = registry.providers.map(\.id).filter { isProviderEnabled($0) }
         let start = monotonicNow()
         AppLog.info(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
+        snapshotRebuildDeferrals += 1
         let tasks = providerIDs.map { providerID in
             Task { await self.refresh(providerID: providerID, force: force, notifyHistoryChange: false) }
         }
@@ -213,6 +217,12 @@ final class WidgetDataStore {
         outcomes.reserveCapacity(tasks.count)
         for task in tasks {
             outcomes.append(await task.value)
+        }
+        snapshotRebuildDeferrals -= 1
+        if snapshotRebuildDeferrals == 0 {
+            coalescedRebuildTask?.cancel()
+            coalescedRebuildTask = nil
+            flushPendingSnapshotWork()
         }
         // Stamp the end of the pass so the footer countdown targets the next scheduled refresh
         // (this time + one refresh interval), mirroring the periodic loop that sleeps one interval
@@ -304,7 +314,7 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "cache hit \(providerID)")
             if localSnapshots[providerID] != cached {
                 localSnapshots[providerID] = cached
-                rebuildRenderedSnapshots()
+                requestSnapshotRebuild()
             }
             return .cacheHit
         }
@@ -389,8 +399,12 @@ final class WidgetDataStore {
         localSnapshots[providerID] = snapshot
         // Stamp the write with the card's launch-resolved account identity; nil (no stamp) for
         // non-account providers and for cards whose identity didn't resolve this launch.
-        cache.store(snapshot, producedByIdentityKey: providerIdentityKeys[providerID])
-        rebuildRenderedSnapshots()
+        cache.store(
+            snapshot,
+            producedByIdentityKey: providerIdentityKeys[providerID],
+            persist: snapshotRebuildDeferrals == 0
+        )
+        requestSnapshotRebuild()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, nil, force)
@@ -483,6 +497,29 @@ final class WidgetDataStore {
             providers: providers,
             identities: identities.isEmpty ? nil : identities
         )
+    }
+
+    private func requestSnapshotRebuild() {
+        guard snapshotRebuildDeferrals > 0 else {
+            rebuildRenderedSnapshots()
+            return
+        }
+        pendingSnapshotRebuild = true
+        guard coalescedRebuildTask == nil else { return }
+        coalescedRebuildTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard let self, !Task.isCancelled else { return }
+            self.coalescedRebuildTask = nil
+            self.flushPendingSnapshotWork()
+        }
+    }
+
+    func flushPendingSnapshotWork() {
+        if pendingSnapshotRebuild {
+            pendingSnapshotRebuild = false
+            rebuildRenderedSnapshots()
+        }
+        cache.persistPending()
     }
 
     private func rebuildRenderedSnapshots() {
