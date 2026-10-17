@@ -5,6 +5,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let processStartedAt = ProcessInfo.processInfo.systemUptime
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
+    /// Widget clicks can arrive before startup or the welcome screen has finished. Queue them until
+    /// the AppKit-owned status item can validate and route each URL.
+    private var pendingOpenURLs: [URL] = []
     private var firstLaunchWindow: FirstLaunchWindowController?
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
@@ -122,17 +125,48 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         if container.enablement.enabledIDs?.isEmpty == true {
             container.onboarding.dismissCustomizeHint()
         }
-        startDashboard(container)
-        MenuBarPopover.showHandler?()
+        startDashboard(container, showsDashboard: true)
     }
 
-    private func startDashboard(_ container: AppContainer) {
+    private func startDashboard(_ container: AppContainer, showsDashboard: Bool = false) {
         container.startRefreshing()
-        statusItemController = StatusItemController(container: container, updater: updater)
+        let statusItemController = StatusItemController(container: container, updater: updater)
+        self.statusItemController = statusItemController
         let launchDurationMS = Int((ProcessInfo.processInfo.systemUptime - processStartedAt) * 1_000)
         AppLog.info(.lifecycle, "launch to status item ready: \(launchDurationMS) ms")
+        Self.openInitialDestination(
+            pendingURLs: pendingOpenURLs,
+            showsDashboard: showsDashboard,
+            openDashboard: { MenuBarPopover.showHandler?() },
+            openURL: statusItemController.openProviderDeepLink
+        )
+        pendingOpenURLs.removeAll()
         // Starts background update checks (release build only; dormant under preview/`swift run`).
         updater.start()
+    }
+
+    static func openInitialDestination(
+        pendingURLs: [URL],
+        showsDashboard: Bool,
+        openDashboard: () -> Void,
+        openURL: (URL) -> Void
+    ) {
+        // Show the welcome flow's default first, so a queued widget link keeps its destination.
+        if showsDashboard { openDashboard() }
+        for url in pendingURLs { openURL(url) }
+    }
+
+    /// Handles the channel-specific widget URL scheme. Parsing and known-provider validation live at
+    /// the controller boundary so queued URLs are never used as view identity before validation.
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        guard let statusItemController else {
+            pendingOpenURLs.append(contentsOf: urls)
+            firstLaunchWindow?.show()
+            return
+        }
+        for url in urls {
+            statusItemController.openProviderDeepLink(url)
+        }
     }
 
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -145,5 +179,44 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from being stranded across a clean quit.
     public func applicationWillTerminate(_ notification: Notification) {
         container?.telemetry.flush()
+    }
+}
+
+/// The deliberately small URL surface exposed by widget cards.
+enum ProviderDeepLink: Equatable, Sendable {
+    case provider(String)
+    case recovery
+
+    static func parse(
+        _ url: URL,
+        expectedScheme: String,
+        knownProviderIDs: Set<String>
+    ) -> ProviderDeepLink? {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let scheme = components.scheme?.lowercased(),
+              scheme == expectedScheme.lowercased(),
+              scheme == "openusage" || scheme == "openusage-dev",
+              components.host?.lowercased() == "provider",
+              components.user == nil,
+              components.password == nil,
+              components.port == nil,
+              components.query == nil,
+              components.fragment == nil else { return nil }
+
+        let pathComponents = components.path.split(separator: "/", omittingEmptySubsequences: true)
+        guard pathComponents.count <= 1 else { return nil }
+        guard let component = pathComponents.first else { return .recovery }
+        let providerID = String(component)
+        guard knownProviderIDs.contains(providerID) else { return .recovery }
+        return .provider(providerID)
+    }
+}
+
+enum ProviderDeepLinkDestination: Equatable, Sendable {
+    case dashboard
+    case customize
+
+    static func resolve(isEnabled: Bool, hasVisibleMetrics: Bool) -> Self {
+        isEnabled && hasVisibleMetrics ? .dashboard : .customize
     }
 }

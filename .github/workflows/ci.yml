@@ -30,3 +30,18 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      # The WidgetKit extension lives in its own Xcode project, so `swift build` never compiles it.
+      # Unsigned here; release builds sign it through script/build_widget_extension.sh.
+      - name: Build widget extension
+        run: >-
+          xcodebuild
+          -project OpenUsageWidgets.xcodeproj
+          -scheme OpenUsageWidgets
+          -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath .build/widgets
+          CODE_SIGNING_ALLOWED=NO
+          ARCHS='arm64 x86_64'
+          ONLY_ACTIVE_ARCH=NO
+          build

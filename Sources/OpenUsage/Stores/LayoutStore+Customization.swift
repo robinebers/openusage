@@ -20,6 +20,10 @@ extension LayoutStore {
         placed.contains { $0.descriptorID == descriptorID }
     }
 
+    func isMetricExpanded(_ descriptorID: String) -> Bool {
+        expandedMetricIDs.contains(descriptorID)
+    }
+
     /// Whether any enabled provider ships the local spend tiles — the capability gate for the
     /// Total Spend card. Keyed off the registry's descriptors, not off refreshed data, so the card
     /// can show its "No spend data" state on a fresh morning instead of vanishing.

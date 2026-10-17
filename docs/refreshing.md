@@ -35,6 +35,10 @@ refresh; the one-shot CLI drains pending writes before it exits.
 
 The append-only scanner is adapted from Runway (mstallone/runway, MIT).
 
+The macOS widget reads a separate display-only copy of these snapshots. OpenUsage updates that copy
+after snapshot, provider, layout, or display-setting changes; the widget never reads credentials or
+fetches providers itself. See [macOS widgets](macos-widgets.md).
+
 ## When a fetch fails
 
 A failed refresh **never wipes your data**: the last good values stay on screen, and a small warning triangle appears next to the provider's name — hover it for the error message (e.g. "Not logged in"). The error clears on the next successful refresh.
