@@ -166,17 +166,26 @@ enum CursorUsageMapper {
                 ))
             }
         } else if isTeamAccount {
-            guard let limitCents = facts.limit else {
-                throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
+            // Percent-only Team/Enterprise payloads used to fall through to REST; when primary
+            // keeps them (usable totalPercentUsed), render the percent bar instead of requiring dollars.
+            if let percent = facts.totalPercentUsed {
+                lines.append(.progress(
+                    label: "Total usage", used: percent, limit: 100, format: .percent,
+                    resetsAt: cycle.resetsAt, periodDurationMs: cycle.periodDurationMs
+                ))
+            } else {
+                guard let limitCents = facts.limit else {
+                    throw CursorUsageError.requestBasedUnavailable("Cursor request-based usage data unavailable. Try again later.")
+                }
+                lines.append(.progress(
+                    label: "Total usage",
+                    used: ProviderParse.centsToDollars(planUsedCents),
+                    limit: ProviderParse.centsToDollars(limitCents),
+                    format: .dollars,
+                    resetsAt: cycle.resetsAt,
+                    periodDurationMs: cycle.periodDurationMs
+                ))
             }
-            lines.append(.progress(
-                label: "Total usage",
-                used: ProviderParse.centsToDollars(planUsedCents),
-                limit: ProviderParse.centsToDollars(limitCents),
-                format: .dollars,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
         } else {
             lines.append(.progress(
                 label: "Total usage",
@@ -485,15 +494,16 @@ enum CursorUsageMapper {
         planLabel(resolvedPlanName(planInfoName: planInfoName, membershipType: membershipType))
     }
 
-    /// Prefer a live org membership from usage-summary over a stale local personal membership.
+    /// Prefer local org membership when present; otherwise take a live org membership from
+    /// usage-summary over a stale local personal membership.
     static func preferredMembership(local: String?, summary: String?) -> String? {
         let localMembership = normalizedMembership(local)
         let summaryMembership = normalizedMembership(summary)
-        if let summaryMembership, orgMembershipTypes.contains(summaryMembership) {
-            return summaryMembership
-        }
         if let localMembership, orgMembershipTypes.contains(localMembership) {
             return localMembership
+        }
+        if let summaryMembership, orgMembershipTypes.contains(summaryMembership) {
+            return summaryMembership
         }
         return localMembership ?? summaryMembership
     }

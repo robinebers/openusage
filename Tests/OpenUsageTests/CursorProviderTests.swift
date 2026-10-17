@@ -119,6 +119,10 @@ final class CursorUsageMapperTests: XCTestCase {
             CursorUsageMapper.preferredMembership(local: "pro", summary: "enterprise"),
             "enterprise"
         )
+        XCTAssertEqual(
+            CursorUsageMapper.preferredMembership(local: "enterprise", summary: "team"),
+            "enterprise"
+        )
     }
 
     func testOrgMembershipPreservesExplicitNonProPlanNames() {
@@ -136,7 +140,7 @@ final class CursorUsageMapperTests: XCTestCase {
         }
     }
 
-    func testOrgRoutingKeepsUsableTotalPercentWithoutLimitOrPools() {
+    func testOrgRoutingKeepsUsableTotalPercentWithoutLimitOrPools() throws {
         let usage: [String: Any] = [
             "enabled": true,
             "planUsage": ["totalPercentUsed": 20]
@@ -148,6 +152,20 @@ final class CursorUsageMapperTests: XCTestCase {
                 usage: usage, planName: route, planInfoUnavailable: false
             ).shouldFallback)
         }
+        // GetPlanInfo Team with percent-only planUsage must stay on primary without throwing.
+        XCTAssertFalse(CursorUsageMapper.shouldUseRequestBasedFallback(
+            usage: usage, planName: "Team", planInfoUnavailable: false
+        ).shouldFallback)
+        let mapped = try CursorUsageMapper.mapUsage(
+            usage: usage, planName: "Team", creditGrants: nil, stripeBalanceCents: 0
+        )
+        guard case .progress(_, let used, let limit, let format, _, _, _) =
+            mapped.lines.first(where: { $0.label == "Total usage" }) else {
+            return XCTFail("Missing percent total for Team percent-only payload")
+        }
+        XCTAssertEqual(used, 20)
+        XCTAssertEqual(limit, 100)
+        XCTAssertEqual(format, .percent)
     }
 
     func testMapsCreditsUsageBreakdownAndOnDemand() throws {
