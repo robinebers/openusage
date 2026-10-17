@@ -279,12 +279,12 @@ final class SpendTileMapperTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _, _) = line(lines, label) else { return nil }
+        guard case .values(_, let values, _, _, _, _, _) = line(lines, label) else { return nil }
         return values
     }
 
     private func modelBreakdown(_ lines: [MetricLine], _ label: String) -> ModelUsageBreakdown? {
-        guard case .values(_, _, _, _, _, let breakdown) = line(lines, label) else { return nil }
+        guard case .values(_, _, _, _, _, let breakdown, _) = line(lines, label) else { return nil }
         return breakdown
     }
 }

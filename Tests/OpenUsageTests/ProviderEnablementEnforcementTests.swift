@@ -181,7 +181,7 @@ final class ProviderEnablementEnforcementTests: XCTestCase {
     }
 
     private func spendTokens(_ snapshot: ProviderSnapshot?, label: String) throws -> Double {
-        guard case .values(_, let values, _, _, _, _) = try XCTUnwrap(snapshot?.line(label: label)) else {
+        guard case .values(_, let values, _, _, _, _, _) = try XCTUnwrap(snapshot?.line(label: label)) else {
             throw NSError(domain: "ProviderEnablementEnforcementTests", code: 1)
         }
         return try XCTUnwrap(values.first { $0.kind == .count }?.number)

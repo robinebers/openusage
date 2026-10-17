@@ -203,12 +203,12 @@ final class CursorSpendRangeTests: XCTestCase {
     }
 
     private func modelBreakdown(_ lines: [MetricLine], _ label: String) -> ModelUsageBreakdown? {
-        guard case .values(_, _, _, _, _, let breakdown) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, _, _, _, _, let breakdown, _) = lines.first(where: { $0.label == label }) else { return nil }
         return breakdown
     }
 
     private func unknown(_ lines: [MetricLine], _ label: String) -> [String]? {
-        guard case .values(_, _, _, _, let unknownModels, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, _, _, _, let unknownModels, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return unknownModels
     }
 
@@ -241,7 +241,7 @@ final class CursorSpendRangeTests: XCTestCase {
     }
 
     private func values(_ lines: [MetricLine], _ label: String) -> [MetricValue]? {
-        guard case .values(_, let values, _, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
+        guard case .values(_, let values, _, _, _, _, _) = lines.first(where: { $0.label == label }) else { return nil }
         return values
     }
 }

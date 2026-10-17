@@ -135,6 +135,14 @@ extension LayoutStore {
             + ordered.filter { expandedMetricIDs.contains($0) }
     }
 
+    /// Keep pin-cap decisions in sync with the same row visibility used by the dashboard.
+    func bindMetricVisibility(to dataStore: WidgetDataStore) {
+        isMetricHidden = { [weak dataStore, registry] id in
+            guard let descriptor = registry.descriptor(id: id) else { return false }
+            return dataStore?.data(for: descriptor).isHidden ?? false
+        }
+    }
+
     /// Pinned metrics grouped by provider, in the user's Customize order (provider order, then each
     /// provider's metric order). A temporarily disabled provider is excluded from the rendered groups
     /// but keeps its pins. Drives the menu-bar strip.

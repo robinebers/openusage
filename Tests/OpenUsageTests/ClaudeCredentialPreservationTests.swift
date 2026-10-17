@@ -93,7 +93,7 @@ final class ClaudeCredentialPreservationTests: XCTestCase {
 
         let snapshot = await provider.refresh()
 
-        guard case .progress(_, let used, _, _, _, _, _) = snapshot.line(label: "Session") else {
+        guard case .progress(_, let used, _, _, _, _, _, _) = snapshot.line(label: "Session") else {
             return XCTFail("Expected live usage after token rotation")
         }
         XCTAssertEqual(used, 25)

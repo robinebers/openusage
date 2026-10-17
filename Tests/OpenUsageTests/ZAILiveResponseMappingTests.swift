@@ -62,7 +62,7 @@ final class ZAILiveResponseMappingTests: XCTestCase {
     }
 
     private func progress(_ lines: [MetricLine], _ label: String) -> (used: Double, limit: Double, periodDurationMs: Int?)? {
-        guard case .progress(_, let used, let limit, _, _, let period, _) = lines.first(where: { $0.label == label }) else {
+        guard case .progress(_, let used, let limit, _, _, let period, _, _) = lines.first(where: { $0.label == label }) else {
             return nil
         }
         return (used, limit, period)

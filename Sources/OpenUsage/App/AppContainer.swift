@@ -95,6 +95,7 @@ final class AppContainer {
             notificationSettings: { notificationSettings },
             providerIdentityKeys: accountAssembly.identityKeysByCard
         )
+        layout.bindMetricVisibility(to: dataStore)
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
         // the enablement wake refreshes. `weak` breaks the cycle (dataStore already captures enablement).

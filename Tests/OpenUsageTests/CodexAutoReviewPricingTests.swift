@@ -246,7 +246,7 @@ final class CodexAutoReviewPricingTests: XCTestCase {
             scan.series, to: &lines, now: now, modelUsage: scan.modelUsage,
             modelSourceNote: "From Codex test logs"
         )
-        guard case .values(_, let values, _, _, let unknown, let breakdown) = lines.first(where: { $0.label == "Last 30 Days" }) else {
+        guard case .values(_, let values, _, _, let unknown, let breakdown, _) = lines.first(where: { $0.label == "Last 30 Days" }) else {
             return XCTFail("Expected a Last 30 Days spend row")
         }
         XCTAssertTrue(unknown.isEmpty)
@@ -277,7 +277,7 @@ final class CodexAutoReviewPricingTests: XCTestCase {
                 modelSourceNote: "From Codex test logs"
             )
             for label in ["Today", "Last 30 Days"] {
-                guard case .values(_, let values, _, _, let unknown, let breakdown) = lines.first(where: { $0.label == label }) else {
+                guard case .values(_, let values, _, _, let unknown, let breakdown, _) = lines.first(where: { $0.label == label }) else {
                     return XCTFail("Expected a \(label) spend row")
                 }
                 XCTAssertTrue(unknown.isEmpty)

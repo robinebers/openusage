@@ -9,17 +9,17 @@ final class AntigravityQuotaSummaryTests: XCTestCase {
     // MARK: - Helpers
 
     private func used(_ line: MetricLine?) -> Double? {
-        guard case .progress(_, let used, _, _, _, _, _)? = line else { return nil }
+        guard case .progress(_, let used, _, _, _, _, _, _)? = line else { return nil }
         return used
     }
 
     private func resetsAt(_ line: MetricLine?) -> Date? {
-        guard case .progress(_, _, _, _, let resetsAt, _, _)? = line else { return nil }
+        guard case .progress(_, _, _, _, let resetsAt, _, _, _)? = line else { return nil }
         return resetsAt
     }
 
     private func periodMs(_ line: MetricLine?) -> Int? {
-        guard case .progress(_, _, _, _, _, let periodMs, _)? = line else { return nil }
+        guard case .progress(_, _, _, _, _, let periodMs, _, _)? = line else { return nil }
         return periodMs
     }
 
