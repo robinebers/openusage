@@ -15,76 +15,48 @@ extension ClaudeProvider {
             return .failed
         }
 
-        let (candidates, initialGeneration) = await resetClaimCandidates()
-        guard !candidates.isEmpty else {
-            AppLog.error(tag, "reset claim: no usable Claude credentials")
+        // Only the login the grants were read with may claim. Grant ids are shared promos, so another
+        // login on this machine could hold the same id and would spend its own reset instead.
+        let load = await loadOffMainActor { [authStore] in authStore.loadCredentialSet() }
+        let checked = resetGrantsCheck?.credentialFingerprint
+        guard var state = load.candidates.first(where: {
+            $0.hasUsableAccessToken && Self.credentialFingerprint($0.oauth) == checked
+        }) else {
+            AppLog.error(tag, "reset claim: the login the grants were read with is no longer available")
+            return .noCredit
+        }
+        var generation = ClaudeCredentialGeneration(load.candidates)
+        guard await refreshIfNeeded(&state, generation: &generation) else { return .failed }
+        let accessToken = state.oauth.accessToken ?? ""
+        guard let organizationUUID = await claimOrganization(for: state.oauth, accessToken: accessToken) else {
             return .failed
         }
 
-        var generation = initialGeneration
-        var lastRejection: Int?
-        for initial in candidates {
-            var state = initial
-            guard await refreshIfNeeded(&state, generation: &generation) else { continue }
-            let accessToken = state.oauth.accessToken ?? ""
-
-            let organizationUUID: String
-            switch await claimOrganization(for: state.oauth, accessToken: accessToken) {
-            case .found(let uuid):
-                organizationUUID = uuid
-            case .rejected(let status):
-                lastRejection = status
-                continue
-            case .failed:
-                return .failed
-            }
-
-            let response: HTTPResponse
-            do {
-                response = try await usageClient.claimResetGrant(
-                    accessToken: accessToken, organizationUUID: organizationUUID,
-                    grantID: grantID, requestID: redeemRequestID, config: authStore.oauthConfig()
-                )
-            } catch {
-                AppLog.error(tag, "reset claim: request failed: \(error.localizedDescription)")
-                return .failed
-            }
-            // Safe to retry with the next login: the same request_id can't spend twice.
-            if response.statusCode == 401 || response.statusCode == 403 {
-                lastRejection = response.statusCode
-                continue
-            }
-            let outcome = Self.resetClaimOutcome(from: response)
-            let preview = LogRedaction.bodyPreview(String(decoding: response.body, as: UTF8.self), limit: 500)
-            if outcome == .success {
-                AppLog.info(tag, "reset claim: \(response.statusCode) \(preview)")
-            } else {
-                AppLog.error(tag, "reset claim: \(outcome) (\(response.statusCode)): \(preview)")
-            }
-            if outcome != .failed {
-                // Re-read grants on the next refresh instead of showing a spent reset for an hour.
-                resetGrantsCheck = nil
-            }
-            return outcome
+        let response: HTTPResponse
+        do {
+            response = try await usageClient.claimResetGrant(
+                accessToken: accessToken, organizationUUID: organizationUUID,
+                grantID: grantID, requestID: redeemRequestID, config: authStore.oauthConfig()
+            )
+        } catch {
+            AppLog.error(tag, "reset claim: request failed: \(error.localizedDescription)")
+            return .failed
         }
-        AppLog.error(tag, "reset claim: rejected for every credential (last: \(lastRejection.map(String.init) ?? "none"))")
-        return .failed
-    }
-
-    /// Usable logins, led by the one the grants were read with.
-    private func resetClaimCandidates() async -> ([ClaudeCredentialState], ClaudeCredentialGeneration) {
-        let load = await loadOffMainActor { [authStore] in authStore.loadCredentialSet() }
-        let usable = load.candidates.filter {
-            $0.hasUsableAccessToken && authStore.liveUsageAvailability($0) == .available
+        let outcome = Self.resetClaimOutcome(from: response)
+        let preview = LogRedaction.bodyPreview(String(decoding: response.body, as: UTF8.self), limit: 500)
+        if outcome == .success {
+            AppLog.info(tag, "reset claim: \(response.statusCode) \(preview)")
+        } else {
+            AppLog.error(tag, "reset claim: \(outcome) (\(response.statusCode)): \(preview)")
         }
-        let checked = resetGrantsCheck?.credentialFingerprint
-        let ordered = usable.filter { Self.credentialFingerprint($0.oauth) == checked }
-            + usable.filter { Self.credentialFingerprint($0.oauth) != checked }
-        return (ordered, ClaudeCredentialGeneration(load.candidates))
+        if outcome != .failed {
+            forgetUsageAfterResetClaim()
+        }
+        return outcome
     }
 
     /// Refreshes a token that's about to expire. Desktop and Swap tokens are renewed by their owners, so
-    /// they go out as they are. `false` means the refresh failed and this login is skipped.
+    /// they go out as they are. `false` means the refresh failed.
     private func refreshIfNeeded(
         _ state: inout ClaudeCredentialState, generation: inout ClaudeCredentialGeneration
     ) async -> Bool {
@@ -103,15 +75,9 @@ extension ClaudeProvider {
         }
     }
 
-    private enum OrganizationLookup {
-        case found(String)
-        case rejected(status: Int)
-        case failed
-    }
-
     /// The organization to claim against: cached from the profile request when this token already made
-    /// one, otherwise a fresh profile read.
-    private func claimOrganization(for oauth: ClaudeOAuth, accessToken: String) async -> OrganizationLookup {
+    /// one, otherwise a fresh profile read. `nil` (logged) when it can't be established.
+    private func claimOrganization(for oauth: ClaudeOAuth, accessToken: String) async -> String? {
         let tag = LogTag.plugin("claude")
         let uuid: String
         if let cached = cachedOrganizationUUID(for: oauth) {
@@ -119,24 +85,21 @@ extension ClaudeProvider {
         } else {
             do {
                 let response = try await usageClient.fetchProfile(accessToken: accessToken, config: authStore.oauthConfig())
-                if response.statusCode == 401 || response.statusCode == 403 {
-                    return .rejected(status: response.statusCode)
-                }
                 guard let organization = try ClaudeUsageClient.decodeProfile(response).organization?.uuid else {
                     AppLog.error(tag, "reset claim: profile carries no organization")
-                    return .failed
+                    return nil
                 }
                 uuid = organization
             } catch {
                 AppLog.error(tag, "reset claim: profile lookup failed: \(error.localizedDescription)")
-                return .failed
+                return nil
             }
         }
         guard UUID(uuidString: uuid) != nil else {
             AppLog.error(tag, "reset claim: refusing a malformed organization id")
-            return .failed
+            return nil
         }
-        return .found(uuid)
+        return uuid
     }
 
     /// Collapses a claim response to the popover's outcome. Request ids are fresh per confirm, so

@@ -594,6 +594,15 @@ final class ClaudeProvider: ProviderRuntime {
         rateLimitedUntil = nil
     }
 
+    /// A claim changed the limits, so drop everything that describes them: the grants check, the
+    /// last-good usage and any 429 cooldown. Otherwise the post-claim refresh could serve pre-claim
+    /// meters and the spent reset from cache.
+    func forgetUsageAfterResetClaim() {
+        resetGrantsCheck = nil
+        lastGoodUsage = nil
+        rateLimitedUntil = nil
+    }
+
     static func credentialFingerprint(_ credentials: ClaudeOAuth) -> Data {
         let access = Data((credentials.accessToken ?? "").utf8)
         let refresh = Data((credentials.refreshToken ?? "").utf8)

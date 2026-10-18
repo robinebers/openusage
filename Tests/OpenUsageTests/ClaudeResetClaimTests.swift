@@ -112,22 +112,39 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertFalse(service.isClaimable)
     }
 
-    func testAuthRejectionFallsBackWithTheSameRequestID() async throws {
+    func testAuthRejectionNeverFallsBackToAnotherLogin() async throws {
         let keychainCredentials = Self.fileCredentials.replacingOccurrences(of: "token-a", with: "token-k")
-        let http = makeHTTP(claim: { request in
-            request.headers["Authorization"] == "Bearer token-k"
-                ? HTTPResponse(statusCode: 401, headers: [:], body: Data())
-                : Self.json(#"{"result":"reset"}"#)
-        })
+        let http = makeHTTP(claim: { _ in HTTPResponse(statusCode: 401, headers: [:], body: Data()) })
         let provider = makeProvider(http: http, keychain: FakeKeychain(keychainCredentials))
         _ = await provider.refresh()
+        let grantsLogin = try XCTUnwrap(http.requests.last { $0.isClaudeResetGrantsCheck }?.headers["Authorization"])
 
         let outcome = await provider.claimResetGrant(redeemRequestID: Self.requestID)
 
-        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(outcome, .failed)
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
-        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-k", "Bearer token-a"])
-        XCTAssertEqual(try claims.map(requestID), [Self.requestID, Self.requestID])
+        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, [grantsLogin])
+    }
+
+    func testClaimLiftsTheRateLimitCooldown() async {
+        let usage = RateLimitSwitch()
+        let http = makeHTTP(rateLimited: usage, claim: { _ in Self.json(#"{"result":"reset"}"#) })
+        let provider = makeProvider(http: http)
+        _ = await provider.refresh()
+        usage.on = true
+        _ = await provider.refresh()
+        let beforeClaim = http.requests.count
+
+        let outcome = await provider.claimResetGrant(redeemRequestID: Self.requestID)
+        usage.on = false
+        _ = await provider.refresh()
+
+        XCTAssertEqual(outcome, .success)
+        let afterClaim = http.requests.dropFirst(beforeClaim)
+        XCTAssertTrue(
+            afterClaim.contains { $0.url.path == "/api/oauth/usage" && !$0.isClaudeResetGrantsCheck },
+            "the post-claim refresh must fetch live usage instead of serving the pre-claim cache"
+        )
     }
 
     func testNoClaimWithoutAClaimableGrant() async {
@@ -199,10 +216,13 @@ final class ClaudeResetClaimTests: XCTestCase {
 
     private func makeHTTP(
         grants: String = grantsBlock,
+        rateLimited: RateLimitSwitch = RateLimitSwitch(),
         claim: @escaping @Sendable (HTTPRequest) -> HTTPResponse
     ) -> RoutingHTTPClient {
         RoutingHTTPClient { request in
             switch request.url.path {
+            case "/api/oauth/usage" where rateLimited.on:
+                return HTTPResponse(statusCode: 429, headers: ["Retry-After": "3600"], body: Data())
             case "/api/oauth/usage":
                 return request.isClaudeResetGrantsCheck
                     ? Self.json(#"{"cedar_ember":\#(grants)}"#)
@@ -241,5 +261,15 @@ final class ClaudeResetClaimTests: XCTestCase {
 
     private nonisolated static func json(_ text: String) -> HTTPResponse {
         HTTPResponse(statusCode: 200, headers: [:], body: Data(text.utf8))
+    }
+}
+
+/// Makes the mock usage endpoint answer 429 while `on`.
+private final class RateLimitSwitch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    var on: Bool {
+        get { lock.withLock { value } }
+        set { lock.withLock { value = newValue } }
     }
 }
