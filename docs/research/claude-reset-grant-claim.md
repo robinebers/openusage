@@ -81,4 +81,14 @@ row doesn't show a spent reset for an hour.
 
    An unknown grant comes back as `result: "ineligible"`, not `unavailable`, and the response carries a
    `reset` boolean and echoes `grant_id`. Both map to "no longer available".
-3. First real claim: not captured yet. Record the logged response here once it lands.
+3. First real claim, made from the resets popover on 2026-10-18 with an anytime grant while not at a
+   limit. HTTP 200:
+
+   ```json
+   {"result":"reset","reason":null,"reset":true,"grant_id":"opus55-launch-promax-20260921","resets_left":0,
+    "cleared":["five_hour","seven_day","seven_day_overage_included"],
+    "weekly_resets_at":"2026-10-20T20:00:00+00:00","cooldown_until":"2026-10-18T11:56:45.910978+00:00"}
+   ```
+
+   A successful claim also starts a short `cooldown_until`, about two minutes here. `cooldown_until`
+   carries fractional seconds.
