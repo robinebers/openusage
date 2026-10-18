@@ -118,19 +118,42 @@ struct ClaudeUsageClient: Sendable {
 
     private func sendUsageRequest(url: URL, accessToken: String) async throws -> HTTPResponse {
         try await httpClient.send(
-            HTTPRequest(
-                method: "GET",
-                url: url,
-                headers: [
-                    "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "anthropic-beta": "oauth-2025-04-20",
-                    "User-Agent": "claude-cli/2.1.294 (external, cli)"
-                ],
-                timeout: 10
-            )
+            HTTPRequest(method: "GET", url: url, headers: Self.claudeCodeHeaders(accessToken), timeout: 10)
         )
+    }
+
+    /// `POST /api/organizations/{org}/reset_rate_limits`, the request Claude Code sends to spend one reset
+    /// grant. `request_id` makes a retry idempotent. See docs/research/claude-reset-grant-claim.md.
+    func claimResetGrant(
+        accessToken: String, organizationUUID: String, grantID: String, requestID: String, config: ClaudeOAuthConfig
+    ) async throws -> HTTPResponse {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "program": "cedar_ember", "grant_id": grantID, "request_id": requestID
+        ])
+        return try await httpClient.send(HTTPRequest(
+            method: "POST",
+            url: Self.resetClaimURL(config.usageURL, organizationUUID: organizationUUID),
+            headers: Self.claudeCodeHeaders(accessToken),
+            body: body,
+            timeout: 25
+        ))
+    }
+
+    static func resetClaimURL(_ usageURL: URL, organizationUUID: String) -> URL {
+        usageURL.deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("organizations")
+            .appendingPathComponent(organizationUUID)
+            .appendingPathComponent("reset_rate_limits")
+    }
+
+    private static func claudeCodeHeaders(_ accessToken: String) -> [String: String] {
+        [
+            "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "anthropic-beta": "oauth-2025-04-20",
+            "User-Agent": "claude-cli/2.1.294 (external, cli)"
+        ]
     }
 
     /// `GET /api/oauth/profile`. Transport failures surface as `connectionFailed`; the status code is the

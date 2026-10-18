@@ -50,6 +50,7 @@ final class ClaudeProvider: ProviderRuntime {
         var accessTokenFingerprint: Data
         /// `nil` when the lookup failed or the profile carried no organization; the stored plan is shown.
         var plan: String?
+        var organizationUUID: String?
     }
     private var livePlan: LivePlan?
 
@@ -535,8 +536,19 @@ final class ClaudeProvider: ProviderRuntime {
         if plan == nil {
             AppLog.info(LogTag.plugin("claude"), "live profile carries no organization plan; showing the stored plan")
         }
-        livePlan = LivePlan(accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: plan)
+        livePlan = LivePlan(
+            accessTokenFingerprint: Self.accessTokenFingerprint(credentials), plan: plan,
+            organizationUUID: profile.organization?.uuid
+        )
         return plan
+    }
+
+    /// The organization the profile reported for this access token, without making a request.
+    func cachedOrganizationUUID(for credentials: ClaudeOAuth) -> String? {
+        guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) else {
+            return nil
+        }
+        return livePlan.organizationUUID
     }
 
     /// Cached live plan for the login, without making a request (the rate-limited paths use this).
@@ -588,12 +600,12 @@ final class ClaudeProvider: ProviderRuntime {
         return Data(SHA256.hash(data: pair))
     }
 
-    private struct RefreshedAccess {
+    struct RefreshedAccess {
         var accessToken: String
         var persisted: Bool
     }
 
-    private func refreshAccessToken(
+    func refreshAccessToken(
         state: inout ClaudeCredentialState,
         refreshToken: String,
         expectedGeneration: ClaudeCredentialGeneration

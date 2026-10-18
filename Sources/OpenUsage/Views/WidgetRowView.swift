@@ -29,7 +29,7 @@ struct WidgetRowView: View {
     @State private var modelHover = HoverPopoverState()
     /// Backs the resets popover's claim flow; `nil` outside the live dashboard (previews, share
     /// renders), which renders the timeline read-only.
-    @Environment(\.codexResetClaim) private var codexResetClaim
+    @Environment(\.resetClaim) private var resetClaim
     /// Party easter egg: fill meter bars with the party gradient instead of the severity color. Off by
     /// default everywhere else.
     @Environment(\.popoverPartyMode) private var partyMode
@@ -374,14 +374,14 @@ struct WidgetRowView: View {
                         count: data.resetCreditCount, expiries: data.expiriesAt,
                         onHoverChange: { inside in modelHover.detailHover(inside) },
                         onPinChange: { pinned in modelHover.setPinned(pinned) },
-                        // Only Codex rows get a claim service (keyed by provider in the grouped list);
-                        // Claude's resets row and any render without one (previews, share renders) show
-                        // the read-only timeline.
-                        claim: codexResetClaim.map { service in
-                            { expiry, redeemRequestID in
+                        // Rows without a claimable service (previews, share renders, a Claude account
+                        // with no next grant) show the read-only timeline.
+                        claim: resetClaim.flatMap { service in
+                            service.isClaimable ? { expiry, redeemRequestID in
                                 await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
-                            }
-                        }
+                            } : nil
+                        },
+                        confirmDetail: resetClaim?.confirmDetail
                     )
                 }
             }

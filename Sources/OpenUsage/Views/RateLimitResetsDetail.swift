@@ -9,7 +9,7 @@ import SwiftUI
 /// calm, presented via `.popover` — but deliberately without their title header (an owner call: the
 /// timeline is self-explanatory and the header cost a full row of the small popover).
 ///
-/// When a `claim` closure is supplied (Codex only — Claude's row is read-only for now), each node also
+/// When a `claim` closure is supplied, each node also
 /// becomes claimable: hovering a node reveals a "Use" affordance, clicking it expands that node in place into an inline confirm, and
 /// confirming runs the claim and shows the outcome. `claim` is `nil` for any non-claimable row, which
 /// renders exactly the read-only timeline. Each credit's claim carries an idempotency key (a UUID minted
@@ -29,6 +29,8 @@ struct RateLimitResetsDetail: View {
     /// Claims the reset credit expiring at the given instant, using the given idempotency key (see the
     /// type doc). `nil` makes the timeline read-only (no "Use" affordance).
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
+    /// The confirm card's explanation line; `nil` keeps the generic one.
+    var confirmDetail: String?
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
@@ -297,7 +299,7 @@ struct RateLimitResetsDetail: View {
             Text("Use this reset?")
                 .font(.system(size: density.supportingPointSize, weight: .medium))
                 .foregroundStyle(.primary)
-            Text("Immediately reset your usage limits. This can't be undone.")
+            Text(confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -410,6 +412,12 @@ struct RateLimitResetsDetail: View {
         case .noCredit:
             claimedExpiries.insert(date)
             banner = .init(text: "That reset is no longer available", icon: "exclamationmark.triangle.fill", tint: .orange)
+        case .unconfirmed:
+            banner = .init(text: "Your reset may still be going through. Check again in a minute.", icon: "clock.fill", tint: .accentColor)
+        case .unavailableNow(let until):
+            let wait = until.flatMap { Formatters.whenLabel(at: $0, mode: .relative) }
+                .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? ""
+            banner = .init(text: "Resets can't be used right now.\(wait)", icon: "exclamationmark.triangle.fill", tint: .orange)
         case .failed:
             banner = .init(text: "Couldn't reset usage. Please try again.", icon: "xmark.circle.fill", tint: .red)
         }

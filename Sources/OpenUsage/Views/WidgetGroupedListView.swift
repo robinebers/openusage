@@ -22,7 +22,7 @@ struct WidgetGroupedListView: View {
     @State private var activeMetricID: String?
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
-    @Environment(\.codexResetClaims) private var codexResetClaims
+    @Environment(\.resetClaims) private var resetClaims
 
     var body: some View {
         // Provider-section spacing is noticeably wider than the in-card row rhythm (so groups
@@ -234,7 +234,7 @@ struct WidgetGroupedListView: View {
             onToggleMeterStyle: { dataStore.meterStyle.toggle() },
             condensedTop: condensedTop
         )
-            .environment(\.codexResetClaim, codexResetClaims[providerID])
+            .environment(\.resetClaim, resetClaims[providerID])
             .contentShape(Rectangle())
             .opacity(activeMetricID == descriptor.id ? 0 : 1)
             .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))
