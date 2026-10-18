@@ -39,7 +39,7 @@ final class ClaudeProvider: ProviderRuntime {
     private var pendingLaunchSnapshot: ProviderSnapshot?
     var resetGrantsCheck: ClaudeResetGrantsCheck?
     /// Bumped by each claim, so a grants read that started before it can't cache pre-claim grants.
-    var resetGrantsEpoch = 0
+    var resetClaimEpoch = 0
     /// The last claim whose answer never arrived, kept so a retry of that grant reuses its request id.
     var unsettledResetClaim: (grantID: String, requestID: String)?
 
@@ -364,6 +364,7 @@ final class ClaudeProvider: ProviderRuntime {
             AppLog.info(LogTag.plugin("claude"), "rate-limited (cooldown active, serving \(lastGoodUsage == nil ? "badge" : "last-good usage"))")
             return rateLimitedSnapshot(credentials: state.oauth, retryAfterSeconds: Int(until.timeIntervalSince(now()).rounded(.up)))
         }
+        let claimEpoch = resetClaimEpoch
 
         if authStore.needsRefresh(state.oauth),
            let refreshToken = state.oauth.refreshToken,
@@ -443,8 +444,12 @@ final class ClaudeProvider: ProviderRuntime {
             mapped.plan = plan
         }
         try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopGeneration)
-        lastGoodUsage = mapped
-        rateLimitedUntil = nil
+        // A claim that landed during this fetch makes these pre-claim meters; don't cache them over the
+        // post-claim refresh's.
+        if resetClaimEpoch == claimEpoch {
+            lastGoodUsage = mapped
+            rateLimitedUntil = nil
+        }
         pendingLaunchSnapshot = nil
         return mapped
     }
@@ -598,12 +603,17 @@ final class ClaudeProvider: ProviderRuntime {
         rateLimitedUntil = nil
     }
 
-    /// A claim changed the limits, so drop everything that describes them: the grants check, the
-    /// last-good usage and any 429 cooldown. Otherwise the post-claim refresh could serve pre-claim
-    /// meters and the spent reset from cache.
-    func forgetUsageAfterResetClaim() {
+    /// A claim changed which grants exist, so re-read them on the next refresh. Bumping the epoch stops
+    /// a read that started before the claim from caching its pre-claim answer.
+    func forgetGrantsAfterResetClaim() {
         resetGrantsCheck = nil
-        resetGrantsEpoch += 1
+        resetClaimEpoch += 1
+    }
+
+    /// A claim changed the limits too, so also drop the last-good usage and any 429 cooldown. Otherwise
+    /// the post-claim refresh could serve pre-claim meters from cache.
+    func forgetUsageAfterResetClaim() {
+        forgetGrantsAfterResetClaim()
         lastGoodUsage = nil
         rateLimitedUntil = nil
     }

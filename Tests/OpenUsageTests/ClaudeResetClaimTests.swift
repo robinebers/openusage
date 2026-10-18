@@ -195,6 +195,17 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertNotNil(provider.resetGrantsCheck)
     }
 
+    func testRefusedClaimKeepsTheCache() async {
+        let http = makeHTTP(claim: { _ in Self.json(#"{"result":"not_limited","reason":null}"#) })
+        let provider = makeProvider(http: http)
+        _ = await provider.refresh()
+
+        let outcome = await provider.claimResetGrant(redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .nothingToReset)
+        XCTAssertNotNil(provider.resetGrantsCheck?.status, "a refused claim changed nothing, so the hourly check stands")
+    }
+
     func testFailedClaimKeepsTheGrantsCheck() async {
         let http = makeHTTP(claim: { _ in HTTPResponse(statusCode: 500, headers: [:], body: Data("oops".utf8)) })
         let provider = makeProvider(http: http)

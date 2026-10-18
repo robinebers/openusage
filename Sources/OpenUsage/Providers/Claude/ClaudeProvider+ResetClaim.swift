@@ -57,8 +57,13 @@ extension ClaudeProvider {
         } else {
             AppLog.error(tag, "reset claim: \(outcome) (\(response.statusCode)): \(preview)")
         }
-        if outcome != .failed {
+        switch outcome {
+        case .success, .unconfirmed:
             forgetUsageAfterResetClaim()
+        case .noCredit:
+            forgetGrantsAfterResetClaim()
+        case .nothingToReset, .unavailableNow, .failed:
+            break
         }
         return outcome
     }
