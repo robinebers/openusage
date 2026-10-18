@@ -126,6 +126,28 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(claims.map { $0.headers["Authorization"] }, [grantsLogin])
     }
 
+    func testRetryAfterAnUnsettledClaimReusesItsRequestID() async throws {
+        let serverDown = RateLimitSwitch()
+        serverDown.on = true
+        let http = makeHTTP(claim: { _ in
+            serverDown.on
+                ? HTTPResponse(statusCode: 502, headers: [:], body: Data())
+                : Self.json(#"{"result":"already_used"}"#)
+        })
+        let provider = makeProvider(http: http)
+        _ = await provider.refresh()
+
+        let first = await provider.claimResetGrant(redeemRequestID: "first-confirm")
+        serverDown.on = false
+        let retry = await provider.claimResetGrant(redeemRequestID: "reopened-popover")
+
+        XCTAssertEqual(first, .failed)
+        XCTAssertEqual(retry, .success)
+        let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
+        XCTAssertEqual(try claims.map(requestID), ["first-confirm", "first-confirm"])
+        XCTAssertNil(provider.unsettledResetClaim)
+    }
+
     func testClaimLiftsTheRateLimitCooldown() async {
         let usage = RateLimitSwitch()
         let http = makeHTTP(rateLimited: usage, claim: { _ in Self.json(#"{"result":"reset"}"#) })

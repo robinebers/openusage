@@ -6,25 +6,29 @@ extension ClaudeProvider {
     /// logged and collapsed to an outcome. See docs/research/claude-reset-grant-claim.md.
     func claimResetGrant(redeemRequestID: String) async -> ResetClaimOutcome {
         let tag = LogTag.plugin("claude")
-        guard let grantID = resetGrantsCheck?.status?.claimableGrantID else {
+        // Read the grant and the login that saw it together, before any await: a refresh for another
+        // login could replace the check mid-claim and pair this grant with that login.
+        guard let check = resetGrantsCheck, let grantID = check.status?.claimableGrantID else {
             AppLog.warn(tag, "reset claim: no claimable grant in the last reset-grants check")
             return .noCredit
         }
-        guard Self.matches(grantID, Self.grantIDPattern), Self.matches(redeemRequestID, Self.requestIDPattern) else {
+        // A claim whose answer never arrived may have landed. Retrying it under its original request id
+        // lets Anthropic answer `already_used` instead of spending another reset from the same grant.
+        let requestID = unsettledResetClaim?.grantID == grantID
+            ? unsettledResetClaim?.requestID ?? redeemRequestID
+            : redeemRequestID
+        guard Self.matches(grantID, Self.grantIDPattern), Self.matches(requestID, Self.requestIDPattern) else {
             AppLog.error(tag, "reset claim: refusing a malformed grant id or request id")
             return .failed
         }
 
         // Only the login the grants were read with may claim. Grant ids are shared promos, so another
         // login on this machine could hold the same id and would spend its own reset instead.
-        let load = await loadOffMainActor { [authStore] in authStore.loadCredentialSet() }
-        let checked = resetGrantsCheck?.credentialFingerprint
-        guard var state = load.candidates.first(where: {
-            $0.hasUsableAccessToken && Self.credentialFingerprint($0.oauth) == checked
-        }) else {
+        guard let (found, load) = await resetClaimLogin(fingerprint: check.credentialFingerprint) else {
             AppLog.error(tag, "reset claim: the login the grants were read with is no longer available")
             return .noCredit
         }
+        var state = found
         var generation = ClaudeCredentialGeneration(load.candidates)
         guard await refreshIfNeeded(&state, generation: &generation) else { return .failed }
         let accessToken = state.oauth.accessToken ?? ""
@@ -36,12 +40,16 @@ extension ClaudeProvider {
         do {
             response = try await usageClient.claimResetGrant(
                 accessToken: accessToken, organizationUUID: organizationUUID,
-                grantID: grantID, requestID: redeemRequestID, config: authStore.oauthConfig()
+                grantID: grantID, requestID: requestID, config: authStore.oauthConfig()
             )
         } catch {
             AppLog.error(tag, "reset claim: request failed: \(error.localizedDescription)")
+            unsettledResetClaim = (grantID, requestID)
             return .failed
         }
+        // Only a server error or an unreadable answer leaves it unknown whether the reset was spent.
+        let unreadable = (200..<300).contains(response.statusCode) && ProviderParse.jsonObject(response.body)?["result"] == nil
+        unsettledResetClaim = response.statusCode >= 500 || unreadable ? (grantID, requestID) : nil
         let outcome = Self.resetClaimOutcome(from: response)
         let preview = LogRedaction.bodyPreview(String(decoding: response.body, as: UTF8.self), limit: 500)
         if outcome == .success {
@@ -53,6 +61,22 @@ extension ClaudeProvider {
             forgetUsageAfterResetClaim()
         }
         return outcome
+    }
+
+    /// The login with this fingerprint, plus the load it came from. Falls back to the Desktop-forced
+    /// load, because `refresh()` reads grants with the Desktop login when the CLI login is rejected.
+    private func resetClaimLogin(fingerprint: Data) async -> (ClaudeCredentialState, ClaudeCredentialLoad)? {
+        for forceDesktop in [false, true] {
+            let load = await loadOffMainActor { [authStore] in
+                authStore.loadCredentialSet(forceDesktopFallback: forceDesktop)
+            }
+            if let state = load.candidates.first(where: {
+                $0.hasUsableAccessToken && Self.credentialFingerprint($0.oauth) == fingerprint
+            }) {
+                return (state, load)
+            }
+        }
+        return nil
     }
 
     /// Refreshes a token that's about to expire. Desktop and Swap tokens are renewed by their owners, so

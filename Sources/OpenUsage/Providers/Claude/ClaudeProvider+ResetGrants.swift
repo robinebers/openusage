@@ -42,10 +42,11 @@ extension ClaudeProvider {
             throw error
         } catch {
             let held = previous?.status?.line(now: now)
-            // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again. Nor
-            // may a read that a claim overtook put the pre-claim status back.
-            guard !Task.isCancelled, resetGrantsEpoch == epoch else { return held }
+            // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again.
+            guard !Task.isCancelled else { return held }
             try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopFallback)
+            // Checked after the await: a claim during it must not get the pre-claim status put back.
+            guard resetGrantsEpoch == epoch else { return held }
             AppLog.warn(LogTag.plugin("claude"), "reset grants lookup failed; retrying in an hour: \(error.localizedDescription)")
             resetGrantsCheck = ClaudeResetGrantsCheck(
                 credentialFingerprint: fingerprint, checkedAt: now, status: previous?.status

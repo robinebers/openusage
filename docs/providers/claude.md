@@ -45,7 +45,7 @@ one of these:
 - **That reset is no longer available** — it was used elsewhere, expired, or isn't the next one; nothing was spent.
 - **Your reset may still be going through** — Anthropic took the request but couldn't confirm it yet. Check again in a minute.
 - **Resets can't be used right now** — a cooldown, a paused reset, or lower-priority mode is active.
-- **Couldn't reset usage** — a network or sign-in problem, or an answer OpenUsage doesn't recognize. Trying again is safe: each confirm carries one request id, so a retry can't spend a second reset.
+- **Couldn't reset usage** — a network or sign-in problem, or an answer OpenUsage doesn't recognize. Trying again is safe: if Anthropic's answer never arrived, the retry reuses the first attempt's request id (even after reopening the popover), so it can't spend a second reset.
 
 **Use** only appears when Anthropic says your account is eligible and names a next reset. You can
 also use a reset with `/rate-limit-options` in Claude Code.

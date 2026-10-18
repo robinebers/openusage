@@ -40,6 +40,8 @@ final class ClaudeProvider: ProviderRuntime {
     var resetGrantsCheck: ClaudeResetGrantsCheck?
     /// Bumped by each claim, so a grants read that started before it can't cache pre-claim grants.
     var resetGrantsEpoch = 0
+    /// The last claim whose answer never arrived, kept so a retry of that grant reuses its request id.
+    var unsettledResetClaim: (grantID: String, requestID: String)?
 
     /// The plan Anthropic's profile endpoint reports for the current access token. Claude Code stamps
     /// `subscriptionType` / `rateLimitTier` into the login at sign-in and never updates them (a token refresh
