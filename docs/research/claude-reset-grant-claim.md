@@ -71,7 +71,14 @@ row doesn't show a spent reset for an hour.
 
 1. Mocked tests: `Tests/OpenUsageTests/ClaudeResetClaimTests.swift`.
 2. Free live dry run, opt-in with `OPENUSAGE_LIVE_CLAUDE_CLAIM_DRYRUN=1`: sends the real request with
-   `grant_id: "openusage-dryrun-probe"`, which matches no grant. Expected: HTTP 200
-   `unavailable` / `unknown_grant`. This assumes the server validates `grant_id` before spending, which
-   no public source confirms.
+   `grant_id: "openusage-dryrun-probe"`, which matches no grant. Run live on 2026-10-18 against an
+   account holding one unspent grant. The server validated `grant_id` and spent nothing:
+
+   ```json
+   {"result":"ineligible","reason":"unknown_grant","reset":false,"grant_id":"openusage-dryrun-probe",
+    "resets_left":null,"cleared":[],"weekly_resets_at":null,"cooldown_until":null}
+   ```
+
+   An unknown grant comes back as `result: "ineligible"`, not `unavailable`, and the response carries a
+   `reset` boolean and echoes `grant_id`. Both map to "no longer available".
 3. First real claim: not captured yet. Record the logged response here once it lands.
