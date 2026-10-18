@@ -34,9 +34,12 @@ struct RateLimitResetsDetail: View {
 
     @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
 
-    /// Which credits this popover has already claimed (keyed by expiry instant, which is unique per
-    /// credit), so a claimed node drops out of the timeline immediately without waiting for a refresh.
+    /// Which credits this popover has already claimed (keyed by expiry instant), so a claimed node drops
+    /// out of the timeline when the post-claim refresh hasn't landed yet. Fresh `expiries` replace it.
     @State private var claimedExpiries: Set<Date> = []
+    /// Bumped whenever `expiries` changes, so a claim can tell whether the refresh already reconciled
+    /// the timeline (then the provider's list is the truth, e.g. Claude spending a different grant).
+    @State private var expiriesVersion = 0
     /// The node currently in its inline confirm step, or being claimed, keyed by expiry instant.
     @State private var confirmingExpiry: Date?
     @State private var claimingExpiry: Date?
@@ -108,6 +111,8 @@ struct RateLimitResetsDetail: View {
         // (and release the pin) rather than stranding a pinned popover whose active node no longer
         // exists. An in-flight claim is left alone: its outcome handler owns the state.
         .onChange(of: expiries) { _, newValue in
+            expiriesVersion += 1
+            claimedExpiries = []
             if let confirming = confirmingExpiry, !newValue.contains(confirming) {
                 cancelConfirm()
             }
@@ -390,27 +395,28 @@ struct RateLimitResetsDetail: View {
             confirmingExpiry = nil
             claimingExpiry = date
         }
+        let versionAtClaim = expiriesVersion
         Task {
             let outcome = await claim(date, redeemRequestID)
             withAnimation(Self.flowAnimation) {
                 claimingExpiry = nil
-                apply(outcome, for: date)
+                apply(outcome, for: date, refreshed: expiriesVersion != versionAtClaim)
             }
             onPinChange?(false)
         }
     }
 
-    private func apply(_ outcome: ResetClaimOutcome, for date: Date) {
+    private func apply(_ outcome: ResetClaimOutcome, for date: Date, refreshed: Bool) {
         switch outcome {
         case .success:
-            claimedExpiries.insert(date)
+            if !refreshed { claimedExpiries.insert(date) }
             nothingToReset = true
             banner = .init(text: "Reset claimed. Enjoy!", icon: "checkmark.circle.fill", tint: .green)
         case .nothingToReset:
             nothingToReset = true
             banner = .init(text: "Your usage doesn't need a reset yet", icon: "info.circle.fill", tint: .accentColor)
         case .noCredit:
-            claimedExpiries.insert(date)
+            if !refreshed { claimedExpiries.insert(date) }
             banner = .init(text: "That reset is no longer available", icon: "exclamationmark.triangle.fill", tint: .orange)
         case .unconfirmed:
             banner = .init(text: "Your reset may still be going through. Check again in a minute.", icon: "clock.fill", tint: .accentColor)

@@ -38,6 +38,8 @@ final class ClaudeProvider: ProviderRuntime {
     /// A successful live fetch discards it; only a login verified against the card's account consumes it.
     private var pendingLaunchSnapshot: ProviderSnapshot?
     var resetGrantsCheck: ClaudeResetGrantsCheck?
+    /// Bumped by each claim, so a grants read that started before it can't cache pre-claim grants.
+    var resetGrantsEpoch = 0
 
     /// The plan Anthropic's profile endpoint reports for the current access token. Claude Code stamps
     /// `subscriptionType` / `rateLimitTier` into the login at sign-in and never updates them (a token refresh
@@ -599,6 +601,7 @@ final class ClaudeProvider: ProviderRuntime {
     /// meters and the spent reset from cache.
     func forgetUsageAfterResetClaim() {
         resetGrantsCheck = nil
+        resetGrantsEpoch += 1
         lastGoodUsage = nil
         rateLimitedUntil = nil
     }
