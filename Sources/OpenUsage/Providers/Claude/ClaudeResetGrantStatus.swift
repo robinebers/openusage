@@ -8,17 +8,11 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         var resetsLeft: Int
         var endsAt: Date?
         var clears: [String]
-        var usableNow: Bool?
-        var paused: Bool
-        var useRequiresLimit: Bool?
     }
 
     var eligible: Bool
-    var ineligibleReason: String?
-    var atLimit: Bool
     var grants: [Grant]
     var nextGrantID: String?
-    var cooldownUntil: Date?
 
     /// `nil` for a missing or `null` block (plans outside the program) and for a block with a malformed
     /// grant: like Claude Code, a block we can't fully read is rejected rather than half-trusted.
@@ -37,20 +31,14 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
                 id: id,
                 resetsLeft: max(0, Int(left.rounded(.down))),
                 endsAt: ClaudeUsageMapper.resetDate(grant["ends_at"]),
-                clears: grant["clears"] as? [String] ?? [],
-                usableNow: grant["usable_now"] as? Bool,
-                paused: grant["paused"] as? Bool ?? false,
-                useRequiresLimit: grant["use_requires_limit"] as? Bool
+                clears: grant["clears"] as? [String] ?? []
             ))
         }
         let nextGrantID = (object["next_grant_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return ClaudeResetGrantStatus(
             eligible: object["eligible"] as? Bool == true,
-            ineligibleReason: object["ineligible_reason"] as? String,
-            atLimit: object["at_limit"] as? Bool == true,
             grants: grants,
-            nextGrantID: nextGrantID,
-            cooldownUntil: ClaudeUsageMapper.resetDate(object["cooldown_until"])
+            nextGrantID: nextGrantID
         )
     }
 

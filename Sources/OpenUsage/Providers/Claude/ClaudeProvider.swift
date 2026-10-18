@@ -511,8 +511,8 @@ final class ClaudeProvider: ProviderRuntime {
 
     /// Live plan for the given login, fetching the profile at most once per access token.
     private func resolveLivePlan(credentials: ClaudeOAuth) async -> String? {
-        if let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) {
-            return livePlan.plan
+        if let cached = livePlan(for: credentials) {
+            return cached.plan
         }
         let profile: ClaudeAccountProfile
         do {
@@ -545,18 +545,20 @@ final class ClaudeProvider: ProviderRuntime {
 
     /// The organization the profile reported for this access token, without making a request.
     func cachedOrganizationUUID(for credentials: ClaudeOAuth) -> String? {
-        guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) else {
-            return nil
-        }
-        return livePlan.organizationUUID
+        livePlan(for: credentials)?.organizationUUID
     }
 
     /// Cached live plan for the login, without making a request (the rate-limited paths use this).
     private func cachedLivePlan(for credentials: ClaudeOAuth) -> String? {
+        livePlan(for: credentials)?.plan
+    }
+
+    /// The profile answer cached for this exact access token.
+    private func livePlan(for credentials: ClaudeOAuth) -> LivePlan? {
         guard let livePlan, livePlan.accessTokenFingerprint == Self.accessTokenFingerprint(credentials) else {
             return nil
         }
-        return livePlan.plan
+        return livePlan
     }
 
     private static func accessTokenFingerprint(_ credentials: ClaudeOAuth) -> Data {

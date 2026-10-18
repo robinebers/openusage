@@ -1,11 +1,10 @@
 import Foundation
 
-/// The last reset-grants answer for one login. A failed attempt keeps the previous line and still counts
-/// as the hour's check, so an outage or 429 is retried an hour later rather than every refresh.
+/// The last reset-grants answer for one login. A failed attempt keeps the previous status and still
+/// counts as the hour's check, so an outage or 429 is retried an hour later rather than every refresh.
 struct ClaudeResetGrantsCheck {
     var credentialFingerprint: Data
     var checkedAt: Date
-    var line: MetricLine?
     var status: ClaudeResetGrantStatus?
 }
 
@@ -25,7 +24,7 @@ extension ClaudeProvider {
         let now = now()
         let previous = resetGrantsCheck?.credentialFingerprint == fingerprint ? resetGrantsCheck : nil
         if let previous, now.timeIntervalSince(previous.checkedAt) < Self.resetGrantsCheckInterval {
-            return previous.line.map { ClaudeUsageMapper.droppingElapsedResetGrants($0, now: now) }
+            return previous.status?.line(now: now)
         }
         do {
             let response = try await usageClient.fetchResetGrants(
@@ -33,21 +32,18 @@ extension ClaudeProvider {
             )
             try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopFallback)
             let status = try ClaudeUsageMapper.mapResetGrantStatus(response)
-            let line = status?.line(now: now)
-            resetGrantsCheck = ClaudeResetGrantsCheck(
-                credentialFingerprint: fingerprint, checkedAt: now, line: line, status: status
-            )
-            return line
+            resetGrantsCheck = ClaudeResetGrantsCheck(credentialFingerprint: fingerprint, checkedAt: now, status: status)
+            return status?.line(now: now)
         } catch let error as ClaudeAuthError where error == .credentialsChanged {
             throw error
         } catch {
-            let held = previous?.line.map { ClaudeUsageMapper.droppingElapsedResetGrants($0, now: now) }
+            let held = previous?.status?.line(now: now)
             // A cancelled refresh is not a verdict on the endpoint; let the next refresh try again.
             guard !Task.isCancelled else { return held }
             try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopFallback)
             AppLog.warn(LogTag.plugin("claude"), "reset grants lookup failed; retrying in an hour: \(error.localizedDescription)")
             resetGrantsCheck = ClaudeResetGrantsCheck(
-                credentialFingerprint: fingerprint, checkedAt: now, line: previous?.line, status: previous?.status
+                credentialFingerprint: fingerprint, checkedAt: now, status: previous?.status
             )
             return held
         }
