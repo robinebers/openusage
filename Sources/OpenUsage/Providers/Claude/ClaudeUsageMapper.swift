@@ -39,6 +39,10 @@ enum ClaudeUsageMapper {
     /// The Rate Limit Resets row from the reset-grants request; `nil` when the account is outside the
     /// program (no `cedar_ember` block).
     static func mapResetGrantsResponse(_ response: HTTPResponse, now: Date = Date()) throws -> MetricLine? {
+        try mapResetGrantStatus(response)?.line(now: now)
+    }
+
+    static func mapResetGrantStatus(_ response: HTTPResponse) throws -> ClaudeResetGrantStatus? {
         try ProviderAuthRetry.requireSuccess(
             response,
             authExpired: ClaudeAuthError.tokenExpired,
@@ -47,7 +51,7 @@ enum ClaudeUsageMapper {
         guard let body = ProviderParse.jsonObject(response.body) else {
             throw ClaudeUsageError.invalidResponse
         }
-        return resetGrantsLine(body["cedar_ember"], now: now)
+        return ClaudeResetGrantStatus.parse(body["cedar_ember"])
     }
 
     /// A Rate Limit Resets line held between fetches, minus every reset whose deadline has passed. Other
@@ -227,35 +231,7 @@ enum ClaudeUsageMapper {
         }
     }
 
-    /// Usage-limit reset grants from the `cedar_ember` block (e.g. a launch promo's "one usage-limit reset
-    /// for Pro and Max"), shown read-only like Codex's reset credits: the row reads "N available" and each
-    /// remaining reset's grant deadline (`ends_at`) rides along in `expiriesAt` for the resets popover. A
-    /// grant with several resets left contributes one expiry per reset. Grants already past their deadline
-    /// or with none left are skipped. An ineligible account (`eligible: false`) reads "0 available"; a
-    /// missing or `null` block (plans outside the program) emits no row. Paused grants still count — they
-    /// are owned, just not usable this instant.
-    private static func resetGrantsLine(_ value: Any?, now: Date) -> MetricLine? {
-        guard let object = value as? [String: Any] else { return nil }
-        var count = 0
-        var expiries: [Date] = []
-        if object["eligible"] as? Bool == true {
-            for case let grant as [String: Any] in object["grants"] as? [Any] ?? [] {
-                guard let left = ProviderParse.number(grant["resets_left"]), left >= 1 else { continue }
-                let resets = Int(left.rounded(.down))
-                let endsAt = resetDate(grant["ends_at"])
-                if let endsAt, endsAt <= now { continue }
-                count += resets
-                if let endsAt { expiries += Array(repeating: endsAt, count: resets) }
-            }
-        }
-        return .values(
-            label: "Rate Limit Resets",
-            values: [MetricValue(number: Double(count), kind: .count, label: "available")],
-            expiriesAt: expiries.sorted()
-        )
-    }
-
-    private static func resetDate(_ value: Any?) -> Date? {
+    static func resetDate(_ value: Any?) -> Date? {
         if let text = (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !text.isEmpty,
            let date = OpenUsageISO8601.date(from: text) {

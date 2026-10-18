@@ -6,6 +6,7 @@ struct ClaudeResetGrantsCheck {
     var credentialFingerprint: Data
     var checkedAt: Date
     var line: MetricLine?
+    var status: ClaudeResetGrantStatus?
 }
 
 extension ClaudeProvider {
@@ -31,8 +32,11 @@ extension ClaudeProvider {
                 accessToken: credentials.accessToken ?? "", config: authStore.oauthConfig()
             )
             try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopFallback)
-            let line = try ClaudeUsageMapper.mapResetGrantsResponse(response, now: now)
-            resetGrantsCheck = ClaudeResetGrantsCheck(credentialFingerprint: fingerprint, checkedAt: now, line: line)
+            let status = try ClaudeUsageMapper.mapResetGrantStatus(response)
+            let line = status?.line(now: now)
+            resetGrantsCheck = ClaudeResetGrantsCheck(
+                credentialFingerprint: fingerprint, checkedAt: now, line: line, status: status
+            )
             return line
         } catch let error as ClaudeAuthError where error == .credentialsChanged {
             throw error
@@ -42,7 +46,9 @@ extension ClaudeProvider {
             guard !Task.isCancelled else { return held }
             try await checkCredentialGeneration(expectedGeneration, forceDesktopFallback: forceDesktopFallback)
             AppLog.warn(LogTag.plugin("claude"), "reset grants lookup failed; retrying in an hour: \(error.localizedDescription)")
-            resetGrantsCheck = ClaudeResetGrantsCheck(credentialFingerprint: fingerprint, checkedAt: now, line: previous?.line)
+            resetGrantsCheck = ClaudeResetGrantsCheck(
+                credentialFingerprint: fingerprint, checkedAt: now, line: previous?.line, status: previous?.status
+            )
             return held
         }
     }
