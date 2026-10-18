@@ -47,9 +47,15 @@ extension ClaudeProvider {
             unsettledResetClaim = (grantID, requestID)
             return .failed
         }
-        // Only a server error or an unreadable answer leaves it unknown whether the reset was spent.
-        let unreadable = (200..<300).contains(response.statusCode) && ProviderParse.jsonObject(response.body)?["result"] == nil
-        unsettledResetClaim = response.statusCode >= 500 || unreadable ? (grantID, requestID) : nil
+        // Only a readable answer settles the request id. A server error or unreadable body leaves it
+        // unknown whether the reset was spent, and a 401/403/429 refused this attempt without saying
+        // whether an earlier one under the same id landed, so the id is kept for the next retry.
+        let settled = (200..<300).contains(response.statusCode) && ProviderParse.jsonObject(response.body)?["result"] != nil
+        if settled {
+            unsettledResetClaim = nil
+        } else if response.statusCode >= 500 || (200..<300).contains(response.statusCode) {
+            unsettledResetClaim = (grantID, requestID)
+        }
         let outcome = Self.resetClaimOutcome(from: response)
         let preview = LogRedaction.bodyPreview(String(decoding: response.body, as: UTF8.self), limit: 500)
         if outcome == .success {

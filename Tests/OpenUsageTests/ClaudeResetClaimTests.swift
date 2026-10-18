@@ -128,23 +128,28 @@ final class ClaudeResetClaimTests: XCTestCase {
 
     func testRetryAfterAnUnsettledClaimReusesItsRequestID() async throws {
         let serverDown = RateLimitSwitch()
+        let throttled = RateLimitSwitch()
         serverDown.on = true
         let http = makeHTTP(claim: { _ in
-            serverDown.on
-                ? HTTPResponse(statusCode: 502, headers: [:], body: Data())
-                : Self.json(#"{"result":"already_used"}"#)
+            if serverDown.on { return HTTPResponse(statusCode: 502, headers: [:], body: Data()) }
+            if throttled.on { return HTTPResponse(statusCode: 429, headers: [:], body: Data()) }
+            return Self.json(#"{"result":"already_used"}"#)
         })
         let provider = makeProvider(http: http)
         _ = await provider.refresh()
 
         let first = await provider.claimResetGrant(redeemRequestID: "first-confirm")
         serverDown.on = false
+        throttled.on = true
+        let refused = await provider.claimResetGrant(redeemRequestID: "second-confirm")
+        throttled.on = false
         let retry = await provider.claimResetGrant(redeemRequestID: "reopened-popover")
 
         XCTAssertEqual(first, .failed)
+        XCTAssertEqual(refused, .failed)
         XCTAssertEqual(retry, .success)
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
-        XCTAssertEqual(try claims.map(requestID), ["first-confirm", "first-confirm"])
+        XCTAssertEqual(try claims.map(requestID), ["first-confirm", "first-confirm", "first-confirm"])
         XCTAssertNil(provider.unsettledResetClaim)
     }
 
