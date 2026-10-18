@@ -31,10 +31,22 @@ The Rate Limit Resets row counts the resets you have left, with a colored dot fo
 (blue beyond a week, yellow within a week, red within 48 hours), and hovering the value opens the same
 timeline popover Codex uses. A reset whose grant has no deadline still counts, but has no date to show.
 Accounts outside the program read `0 available`; if Anthropic doesn't report the program at all for
-your plan, the row shows **No data**.
+your plan, or reports a reset OpenUsage can't read, the row shows **No data**.
 
-For now OpenUsage only shows your resets. To use one, run `/rate-limit-options` in Claude Code, or
-use it when Claude Code offers it at a usage limit.
+To use a reset, hover a node in the popover and click **Use**, then confirm. Anthropic decides which
+reset is spent (the next one it offers), and the confirm card says which limits it refills. Afterwards
+OpenUsage refreshes Claude right away so the meters and the count show the result. The popover reports
+one of these:
+
+- **Reset claimed** — your limits were refilled.
+- **Your usage doesn't need a reset yet** — Anthropic refused because you aren't limited; nothing was spent.
+- **That reset is no longer available** — it was used elsewhere, expired, or isn't the next one; nothing was spent.
+- **Your reset may still be going through** — Anthropic took the request but couldn't confirm it yet. Check again in a minute.
+- **Resets can't be used right now** — a cooldown, a paused reset, or lower-priority mode is active.
+- **Couldn't reset usage** — a network or sign-in problem, or an answer OpenUsage doesn't recognize. Trying again is safe: each confirm carries one request id, so a retry can't spend a second reset.
+
+**Use** only appears when Anthropic says your account is eligible and names a next reset. You can
+also use a reset with `/rate-limit-options` in Claude Code.
 
 ## Where credentials come from
 
@@ -148,6 +160,10 @@ login and shows the last answer in between; a failed check keeps the previous va
 hour later. Token refreshes keep that cached answer; switching accounts starts a separate check. If
 the login changes while a request is running, OpenUsage discards the old account's answer and reloads
 the current login before showing usage. Claude Code tokens refresh via `platform.claude.com/v1/oauth/token`; Claude Desktop tokens are read-only and must be renewed by Desktop itself. If a token is expired or revoked, OpenUsage retries with the next credential source before reporting an error.
+
+Using a reset sends `POST https://api.anthropic.com/api/organizations/{org}/reset_rate_limits` with the
+next grant's id and a request id, the same request Claude Code sends; see
+[the claim research](../research/claude-reset-grant-claim.md).
 
 The plan badge reads `GET https://api.anthropic.com/api/oauth/profile` (the organization's `rate_limit_tier`), because the plan Claude Code saves at sign-in never updates afterwards. To stay clear of Anthropic's rate limits, that lookup runs at most once per access token — after a usage fetch has succeeded — and cards bound to a specific account reuse the profile they already fetched to verify identity, so they make no extra request. Inference-only tokens skip it entirely.
 
