@@ -83,6 +83,9 @@ struct WidgetData: Hashable {
     /// descriptors and carried through `WidgetDataStore.resolve`, so the treatment is a descriptor
     /// opt-in rather than a hardcoded widget-ID list in the model. `nil` for every other row.
     var sessionStartSignal: SessionStartSignal?
+    /// Comparable completed-cycle remaining-at-this-slot values for the seasonal/blend forecast.
+    /// Empty until the local quota ring has ≥2 matching windows; `Pace.evaluate` then falls back to linear.
+    var paceRemainders: [Double] = []
 
     /// How a session-window meter tells a not-yet-started window from an in-flight one.
     enum SessionStartSignal: Hashable {
@@ -135,6 +138,12 @@ struct WidgetData: Hashable {
     var remainingFraction: Double {
         guard let limit, limit > 0 else { return 0 }
         return min(max((limit - used) / limit, 0), 1)
+    }
+
+    /// Elapsed share of the reset window, or `nil` when there is no window to measure.
+    func elapsedFraction(now: Date = Date()) -> Double? {
+        guard let ctx = paceContext else { return nil }
+        return now.timeIntervalSince(ctx.resetsAt.addingTimeInterval(-ctx.period)) / ctx.period
     }
 
     /// Severity bands for the meter fill color (see `MeterState.severity`).
@@ -505,27 +514,27 @@ extension WidgetData {
 
         if let ctx = paceContext,
            let result = Pace.evaluate(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
-                                      periodDuration: ctx.period, now: now) {
+                                      periodDuration: ctx.period, now: now,
+                                      remainders: paceRemainders) {
+            let elapsed = now.timeIntervalSince(ctx.resetsAt.addingTimeInterval(-ctx.period))
+            let identifiable = Pace.isIdentifiable(used: used, limit: ctx.limit, elapsed: elapsed,
+                                                   periodDuration: ctx.period)
             switch result.status {
             case .ahead:
                 return .healthy(projectedFraction: result.projectedUsage / ctx.limit)
             case .onTrack:
-                // A whole-percent 1% reading at the projection gate can land exactly on the limit.
-                // Keep the same near-empty safeguard as `.behind` so it never becomes a red alarm.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                // Amber/red wait until elapsed is identifiable (25% session / 40% week) and used ≥ 5%.
+                // Early bursts otherwise look like a blow-out. Healthy (ahead) still paints.
+                guard identifiable else { return absoluteLevelState(used: used, limit: limit) }
                 let projected = result.projectedUsage / ctx.limit
                 let spare = Int(((1 - projected) * 100).rounded())
                 guard spare >= 1 else { return .runningOut(eta: nil, projectedFraction: projected) }
                 return .closeToLimit(spare: "~\(spare)% spare", projectedFraction: projected)
             case .behind:
-                // Coarse whole-percent meters can read 1% used very early in a window; linear
-                // extrapolation then projects a bogus blow-out while the headline still shows ~99%
-                // left. When >95% of the quota clearly remains (used below
-                // 5%), distrust the projection entirely and use the absolute level bands instead — a
-                // calm bar with no projection copy, never a fabricated "~N% left at reset" cushion.
-                guard used / ctx.limit >= 0.05 else { return absoluteLevelState(used: used, limit: limit) }
+                guard identifiable else { return absoluteLevelState(used: used, limit: limit) }
                 let eta = Pace.secondsToRunOut(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
-                                               periodDuration: ctx.period, now: now)
+                                               periodDuration: ctx.period, now: now,
+                                               remainders: paceRemainders)
                     .flatMap { Formatters.deadlineLabel("Limit", at: now.addingTimeInterval($0),
                                                         mode: resetDisplayMode, now: now) }
                 return .runningOut(eta: eta, projectedFraction: result.projectedUsage / ctx.limit)

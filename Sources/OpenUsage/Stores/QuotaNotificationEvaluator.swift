@@ -42,12 +42,23 @@ final class QuotaNotificationEvaluator {
                 resetsAt: data.resetsAt,
                 previousReset: previous.resetsAt
             )
+            let elapsedFrac = data.elapsedFraction(now: now)
+            let identifiable: Bool? = {
+                guard let elapsedFrac, let limit = data.limit, let ms = data.periodDurationMs, ms > 0 else {
+                    return nil
+                }
+                let period = TimeInterval(ms) / 1000
+                return Pace.isIdentifiable(used: data.used, limit: limit,
+                                           elapsed: elapsedFrac * period, periodDuration: period)
+            }()
             let result = PaceNotificationLogic.transitions(
                 state: state,
                 fraction: data.remainingFraction,
                 resetsAt: data.resetsAt,
                 previous: previous,
-                toggles: toggles
+                toggles: toggles,
+                elapsedFraction: elapsedFrac,
+                identifiable: identifiable
             )
             if !result.fire.isEmpty || resetAdvanced || Self.isPositiveResetMovement(resetDelta) {
                 AppLog.debug(.notifications, "decision \(key): metric=\(data.title) state=\(Self.notificationStateDescription(state)) bucket=\(Self.bucketDescription(currentBucket)) previousBucket=\(Self.bucketDescription(previous.previousBucket)) remaining=\(Self.percentDescription(data.remainingFraction)) reset=\(Self.dateDescription(data.resetsAt)) previousReset=\(Self.dateDescription(previous.resetsAt)) resetDelta=\(Self.resetDeltaDescription(resetDelta)) resetReason=\(Self.resetReasonDescription(delta: resetDelta, advanced: resetAdvanced)) primed=\(previous.primed) wasUnderTen=\(previous.wasUnderTenPercent) firedBefore=\(Self.milestoneDescription(previous.firedMilestones)) fire=\(Self.milestoneDescription(result.fire)) newBucket=\(Self.bucketDescription(result.newState.previousBucket)) newFired=\(Self.milestoneDescription(result.newState.firedMilestones)) toggles=\(Self.toggleDescription(toggles))")

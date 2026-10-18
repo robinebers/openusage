@@ -61,6 +61,14 @@ to PostHog, a provider, or iCloud. Old source-file records are dropped as the sc
 identity caches that have not been used for 35 days are removed. OpenUsage's pricing engine runs after
 the cache is read, so its computed aggregates and totals are not persisted in this cache.
 
+Pace forecasts also keep a short local ring of this Mac's quota meter readings
+(`~/Library/Application Support/OpenUsage/quota-samples/`) so weekly and session projections can
+follow your usual remaining usage at this time of the cycle. Readings are coalesced to an hour
+(weekly) or ten minutes (session) and dropped after 35 days. When a weekly-scale window resets, OpenUsage
+also stores a local cycle rollup (plan, end %, log tokens/cost) so later we can see whether a plan's
+implied cap is shrinking. Those samples stay on this Mac; they are never sent to PostHog, a provider,
+or iCloud, and a plan-limit jump discards that meter's history.
+
 If you explicitly turn on [iCloud Sync](icloud-sync.md), OpenUsage writes normalized daily tokens,
 spend, and model totals to its private iCloud container so your own Macs can show one combined summary.
 Credentials, account limits, provider responses, and raw logs are never written there. This is separate

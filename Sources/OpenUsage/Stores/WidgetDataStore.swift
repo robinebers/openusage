@@ -38,6 +38,9 @@ final class WidgetDataStore {
     /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
     /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
     private let providerIdentityKeys: [String: String]
+    /// Mac-local quota-percent ring for seasonal/blend pace. Memory-only unless the composition root
+    /// injects a file-backed store. Never written into the iCloud spend document.
+    private let quotaSampleStore: QuotaSampleStore
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -146,7 +149,8 @@ final class WidgetDataStore {
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
-        providerIdentityKeys: [String: String] = [:]
+        providerIdentityKeys: [String: String] = [:],
+        quotaSampleStore: QuotaSampleStore = QuotaSampleStore(fileURL: nil)
     ) {
         precondition(slowProviderRefreshThreshold >= 0)
         precondition(providerRefreshTimeout > 0)
@@ -166,6 +170,7 @@ final class WidgetDataStore {
                 await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
         self.providerIdentityKeys = providerIdentityKeys
+        self.quotaSampleStore = quotaSampleStore
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
@@ -228,6 +233,7 @@ final class WidgetDataStore {
         // (this time + one refresh interval), mirroring the periodic loop that sleeps one interval
         // after each pass.
         lastRefreshAt = Date()
+        quotaSampleStore.flush()
         let durationMs = durationMilliseconds(since: start)
         // Count THIS batch's actual outcomes, not the long-lived `providerErrors` map (which persists
         // across passes, so reading it would miscount cache hits and stale earlier failures).
@@ -404,6 +410,8 @@ final class WidgetDataStore {
             producedByIdentityKey: providerIdentityKeys[providerID],
             persist: snapshotRebuildDeferrals == 0
         )
+        recordQuotaSamples(providerID: providerID, snapshot: snapshot)
+        if notifyHistoryChange { quotaSampleStore.flush() }
         requestSnapshotRebuild()
         if notifyHistoryChange { onLocalHistoryChanged?() }
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
@@ -610,7 +618,41 @@ final class WidgetDataStore {
         result.displayMode = meterStyle
         result.resetDisplayMode = resetDisplayMode
         result.alwaysShowPacing = alwaysShowPacing
+        if let resetsAt = result.resetsAt, let periodMs = result.periodDurationMs, periodMs > 0 {
+            let identity = providerIdentityKeys[descriptor.providerID] ?? descriptor.providerID
+            result.paceRemainders = quotaSampleStore.remainders(
+                identityKey: identity,
+                metricID: descriptor.id,
+                now: now(),
+                currentResetsAt: resetsAt,
+                currentPeriod: TimeInterval(periodMs) / 1000
+            )
+        }
         return result
+    }
+
+    private func recordQuotaSamples(providerID: String, snapshot: ProviderSnapshot) {
+        let identity = providerIdentityKeys[providerID] ?? providerID
+        let recordedAt = now()
+        for descriptor in registry.descriptors where descriptor.providerID == providerID {
+            guard let line = snapshot.line(label: descriptor.metricLabel),
+                  case .progress(_, let used, let limit, _, let resetsAt, let periodMs, _) = line,
+                  let resetsAt, let periodMs, periodMs > 0, limit > 0
+            else { continue }
+            quotaSampleStore.record(
+                identityKey: identity,
+                metricID: descriptor.id,
+                sample: QuotaSample(
+                    recordedAt: recordedAt,
+                    used: used,
+                    limit: limit,
+                    resetsAt: resetsAt,
+                    periodDuration: TimeInterval(periodMs) / 1000
+                ),
+                plan: snapshot.plan,
+                daily: snapshot.usageHistory?.series.daily ?? []
+            )
+        }
     }
 
     /// The plan label for a provider's latest snapshot. `nil` until a snapshot exists or when the

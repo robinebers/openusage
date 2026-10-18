@@ -169,9 +169,9 @@ final class PaceTests: XCTestCase {
     }
 
     func testRunsOutOnlyWhenBehindAndBeforeReset() {
-        let reset = resetsAt(elapsed: 0.33, period: week)
-        let eta = Pace.secondsToRunOut(used: 50, limit: 100, resetsAt: reset, periodDuration: week, now: now)
-        XCTAssertEqual(eta ?? 0, 0.33 * week, accuracy: week * 0.01)
+        let reset = resetsAt(elapsed: 0.5, period: week)
+        let eta = Pace.secondsToRunOut(used: 60, limit: 100, resetsAt: reset, periodDuration: week, now: now)
+        XCTAssertEqual(eta ?? 0, (1.0 / 3.0) * week, accuracy: week * 0.01)
         XCTAssertNil(Pace.secondsToRunOut(used: 30, limit: 100, resetsAt: reset, periodDuration: week, now: now))
     }
 
@@ -188,12 +188,57 @@ final class PaceTests: XCTestCase {
         XCTAssertEqual(pacedData(used: 1, elapsed: 0.01, period: session).meterState(now: now), .level(.normal))
     }
 
-    func testRunOutFlameShowsOnceFivePercentUsedDespiteHighRemaining() {
+    func testEarlyWindowDoesNotGoRedEvenAtFivePercentUsed() {
         let session: TimeInterval = 5 * 3600
-        let elapsed = 240 / session
+        let elapsed = 240 / session // four minutes — under the 25% identifiability gate
         let data = pacedData(used: 6, elapsed: elapsed, period: session)
-        guard case .runningOut = data.meterState(now: now) else {
-            return XCTFail("expected runningOut when burning fast with ≥5% used")
+        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+    }
+
+    func testLiveWeekly23PercentWithFiveDaysLeftIsNotRed() {
+        // Live 2026-09-01 snapshot: 23% used, 7d window, ~5d 11h remaining (22% elapsed).
+        // Linear projects ~106% and would flame; the 25% gate must keep this a level bar.
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let now = iso.date(from: "2026-09-01T11:26:57.144Z")!
+        let reset = iso.date(from: "2026-09-06T23:00:00.855Z")!
+        var data = WidgetData(title: "Weekly", icon: .providerMark("claude"), kind: .percent,
+                              used: 23, limit: 100)
+        data.resetsAt = reset
+        data.periodDurationMs = Int(week * 1000)
+        switch data.meterState(now: now) {
+        case .runningOut, .closeToLimit:
+            XCTFail("weekly 23% at 22% elapsed must not pace-red, got \(data.meterState(now: now))")
+        default:
+            break
+        }
+    }
+
+    func testWeeklyThirtyPercentElapsedStillGated() {
+        // 25% of a week is Tuesday; dogfood still false-red then. Weekly gate is 40%.
+        let data = pacedData(used: 23, elapsed: 0.30)
+        switch data.meterState(now: now) {
+        case .runningOut, .closeToLimit:
+            XCTFail("weekly 30% elapsed must stay gated, got \(data.meterState(now: now))")
+        default:
+            break
+        }
+    }
+
+    func testTwoPercentElapsedWeekWithRealUseIsNotPaceAmberOrRed() {
+        let data = pacedData(used: 6, elapsed: 0.02)
+        switch data.meterState(now: now) {
+        case .runningOut, .closeToLimit:
+            XCTFail("pace color must stay gated until 25% elapsed")
+        default:
+            break
+        }
+    }
+
+    func testMidWindowLinearBlowOutStillRed() {
+        // Half the week gone, 60% used → linear projects 120% → red (no history).
+        guard case .runningOut = pacedData(used: 60, elapsed: 0.5).meterState(now: now) else {
+            return XCTFail("expected runningOut once the window is identifiable")
         }
     }
 

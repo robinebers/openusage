@@ -32,7 +32,7 @@ final class MeterSeverityTests: XCTestCase {
 
     func testPaceVerdictOverridesAbsoluteUsageBands() {
         let cases: [(used: Double, elapsed: Double, severity: WidgetData.MeterSeverity)] = [
-            (66, 0.363, .critical),
+            (66, 0.45, .critical),
             (85, 0.96, .normal),
             (88, 0.9, .warning)
         ]
@@ -62,9 +62,10 @@ final class MeterSeverityTests: XCTestCase {
         XCTAssertEqual(dollars.meterState(now: now), .spent)
     }
 
-    func testEarlyInWindowUsesPaceVerdictNotAbsoluteBands() {
-        // Early in the window still projects pace — heavy usage at 2% elapsed is already behind.
-        XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.02)), .critical)
+    func testEarlyInWindowUsesAbsoluteBandsNotPaceVerdict() {
+        // Yellow/red pace waits until 25% elapsed. At 2% elapsed, 85% used is the 80% absolute
+        // warning band, not a pace-red blow-out.
+        XCTAssertEqual(severity(pacedData(used: 85, elapsed: 0.02)), .warning)
     }
 
     // MARK: Absolute fallback (no reset window to project against)

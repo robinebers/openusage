@@ -136,7 +136,12 @@ enum PaceNotificationLogic {
         fraction: Double,
         resetsAt: Date?,
         previous: NotificationState,
-        toggles: PaceNotificationToggles
+        toggles: PaceNotificationToggles,
+        /// Elapsed share of the reset window. Pace milestones (Cutting It Close / Will Run Out) stay
+        /// silent until this is at least `Pace.identifiableElapsedFraction` (session) / weekly fraction.
+        /// Almost Out ignores it. Prefer `identifiable` when the caller knows the period length.
+        elapsedFraction: Double? = nil,
+        identifiable: Bool? = nil
     ) -> Transition {
         var next = previous
 
@@ -179,7 +184,10 @@ enum PaceNotificationLogic {
         // in `.close` having been below it. "Will Run Out" fires when severity reaches `.runningOut`
         // having been below it. A jump straight from blue to red fires *Will Run Out only* — the metric
         // skipped yellow, so the user gets the single, more urgent alert, never both at once.
-        if currentBucket != .untracked {
+        let paceIdentifiable = identifiable
+            ?? elapsedFraction.map { $0 >= Pace.identifiableElapsedFraction }
+            ?? true
+        if currentBucket != .untracked, paceIdentifiable {
             let previousSeverity = severity(next.previousBucket)
             let currentSeverity = severity(currentBucket)
             var paceFired = false
@@ -251,7 +259,7 @@ enum PaceNotificationLogic {
 
     /// Reset timestamps can carry provider-side millisecond jitter. For notification dedupe, only a
     /// meaningful advance re-arms milestones; the UI can still display the exact provider timestamp.
-    static let resetWindowJitterTolerance: TimeInterval = 1
+    static let resetWindowJitterTolerance: TimeInterval = Pace.windowJitterTolerance
 
     static func resetWindowAdvanced(resetsAt: Date?, previousReset: Date?) -> Bool {
         guard let resetsAt else { return false }

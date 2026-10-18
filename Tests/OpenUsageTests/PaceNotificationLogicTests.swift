@@ -191,4 +191,35 @@ final class PaceNotificationLogicTests: XCTestCase {
         let refired = step(self.close, fraction: 0.20, from: state, toggles: on)
         XCTAssertTrue(refired.fire.contains(.healthyToClose))
     }
+
+    // MARK: - Early-window pace gate
+
+    func testEarlyElapsedRunningOutDoesNotFirePaceAlerts() {
+        let primed = step(healthy, fraction: 0.50).newState
+        let earlyRed = PaceNotificationLogic.transitions(
+            state: running, fraction: 0.50, resetsAt: reset,
+            previous: primed, toggles: .allOn, elapsedFraction: 0.10
+        )
+        XCTAssertFalse(earlyRed.fire.contains(.closeToRunningOut))
+        XCTAssertFalse(earlyRed.fire.contains(.healthyToClose))
+    }
+
+    func testEarlyElapsedStillFiresAlmostOut() {
+        let primed = step(healthy, fraction: 0.50).newState
+        let early = PaceNotificationLogic.transitions(
+            state: running, fraction: 0.05, resetsAt: reset,
+            previous: primed, toggles: .allOn, elapsedFraction: 0.10
+        )
+        XCTAssertTrue(early.fire.contains(.underTenPercent))
+        XCTAssertFalse(early.fire.contains(.closeToRunningOut))
+    }
+
+    func testIdentifiableElapsedStillFiresWillRunOut() {
+        let primed = step(healthy, fraction: 0.50).newState
+        let late = PaceNotificationLogic.transitions(
+            state: running, fraction: 0.50, resetsAt: reset,
+            previous: primed, toggles: .allOn, elapsedFraction: 0.50
+        )
+        XCTAssertEqual(late.fire, [.closeToRunningOut])
+    }
 }

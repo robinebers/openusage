@@ -696,6 +696,43 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(reloaded.alwaysShowPacing)
     }
 
+    func testSuccessfulRefreshAppendsQuotaSampleForBoundedMeter() async {
+        let provider = Provider(id: "ringtest", displayName: "Test", icon: .providerMark("claude"))
+        let descriptor = WidgetDescriptor(
+            id: "ringtest.weekly",
+            providerID: provider.id,
+            metricLabel: "Weekly",
+            sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        )
+        let resetsAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let runtime = TestProviderRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(
+                providerID: provider.id,
+                displayName: provider.displayName,
+                lines: [.progress(
+                    label: "Weekly", used: 41, limit: 100, format: .percent,
+                    resetsAt: resetsAt, periodDurationMs: 7 * 24 * 60 * 60 * 1000
+                )]
+            )
+        )
+        let ring = QuotaSampleStore(fileURL: nil)
+        let store = WidgetDataStore(
+            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
+            providers: [runtime],
+            defaults: makeUserDefaults("quota-ring-refresh"),
+            now: { Date(timeIntervalSince1970: 1_699_500_000) },
+            quotaSampleStore: ring
+        )
+        await store.refreshAll()
+        let samples = ring.samples(identityKey: "ringtest", metricID: "ringtest.weekly")
+        XCTAssertEqual(samples.count, 1)
+        XCTAssertEqual(samples.first?.used, 41)
+        XCTAssertEqual(samples.first?.limit, 100)
+        XCTAssertEqual(samples.first?.resetsAt, resetsAt)
+    }
+
     private func makeUserDefaults(_ name: String) -> UserDefaults {
         let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
