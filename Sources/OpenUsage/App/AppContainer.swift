@@ -45,6 +45,8 @@ final class AppContainer {
     let providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
+    /// Host-to-WidgetKit presentation bridge. Nil only when the current build has no App Group.
+    private let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     /// `nil` until `startRefreshing()`, which the welcome screen delays until the user has picked providers.
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
@@ -192,6 +194,15 @@ final class AppContainer {
                 errors: dataStore.providerErrors
             )
         })
+        let widgetBridgeCoordinator = WidgetBridgeCoordinator.makeDefault(
+            exporter: WidgetBridgeExporter(
+                layout: layout,
+                dataStore: dataStore,
+                enablement: enablement
+            )
+        )
+        self.widgetBridgeCoordinator = widgetBridgeCoordinator
+        widgetBridgeCoordinator?.start()
         localAPI.start()
         // Become the notification-center delegate so banners show while frontmost — a menu-bar accessory
         // effectively always is. Notification authorization is requested the first time a trigger is

@@ -5,9 +5,10 @@ A high-level map of how OpenUsage is put together, for people working on the cod
 
 ## The shape of the app
 
-OpenUsage is a SwiftPM package with a shared module and two thin executables — there is no Xcode project.
-The main executable is a menu-bar app: a SwiftUI interface hosted inside an AppKit status item and panel.
-The code is grouped by role:
+OpenUsage is a SwiftPM package with a shared module and two thin executables. The main executable is a
+menu-bar app: a SwiftUI interface hosted inside an AppKit status item and panel. A small standalone Xcode
+project builds the WidgetKit extension that the packaging scripts embed in the host app. The code is
+grouped by role:
 
 - `App/` — startup and the AppKit bridge (status item, panel, the app entry point).
 - `Models/` — the small value types the rest of the app speaks in (`MetricLine`, `WidgetData`, descriptors).
@@ -16,13 +17,15 @@ The code is grouped by role:
 - `Services/` — shared infrastructure (HTTP, the local API, process running).
 - `Support/` — small shared helpers (formatting, parsing, animations).
 - `Views/` — the SwiftUI screens (dashboard, customize, settings, menu-bar strip).
+- `Widgets/` — the host-side bridge to the read-only macOS WidgetKit extension.
 
 ## Composition root
 
 `AppContainer` is the one place that wires everything together. At launch it builds the list of
-providers, turns it into a `WidgetRegistry`, creates the stores, starts the periodic refresh loop, and
-starts the local HTTP API. Everything else receives what it needs from here rather than reaching for
-globals, which keeps the pieces testable in isolation.
+providers, turns it into a `WidgetRegistry`, creates the stores, and starts the widget bridge and local
+HTTP API. Periodic provider refresh starts when the dashboard is ready; on a first launch, the welcome
+screen handles provider selection first. Everything else receives what it needs from here rather than
+reaching for globals, which keeps the pieces testable in isolation.
 
 The `openusage` executable imports the same module. A normal invocation reads `ProviderSnapshotCache`
 and exits; `--force` constructs the canonical `ProviderCatalog` and calls `WidgetDataStore`'s forced
@@ -76,6 +79,18 @@ The UI reads from a few observable stores:
 Refresh runs on a timer in `AppContainer`; each pass respects the cache, so the network is only hit once a
 snapshot has actually expired.
 
+## WidgetKit bridge
+
+Provider authentication and refresh stay in the host process. A host-side exporter resolves the same
+ordered `WidgetData` used by the dashboard into a small, versioned document containing display-ready
+rows and no credentials or detailed errors. It atomically writes that document to an App Group file and
+asks WidgetKit to reload only when the semantic content changed.
+
+The host and sandboxed extension share the document's display-ready provider and metric types. The
+extension renders those records directly for one configured provider. It never imports provider
+runtimes, scans local logs, refreshes tokens, or calls provider APIs. If the host stops, the extension
+keeps the last good document and marks it outdated.
+
 Providers with spend tiles carry an explicit history scope beside their export descriptors. Machine-local
 sources can be summed across device files; account-wide sources such as Cursor cannot. `WidgetDataStore`
 re-renders only the spend rows from the union, leaving quota and error state local.
@@ -105,9 +120,10 @@ standard controls with the same behavior (the footer still pins, the buttons kee
 one of those version checks lives in a single file — `Support/LiquidGlassFallbacks.swift` — so the views
 stay free of `#available` checks.
 
-The release build (`script/release.sh`) ships a universal binary (arm64 + x86_64), so a single DMG runs
-natively on both Apple Silicon and Intel Macs. The dev build (`script/build_and_run.sh`) stays host-arch
-only — a universal dev build just doubles compile time on the maintainer's own machine for no benefit.
+The release build (`script/release.sh`) ships universal host, CLI, and widget binaries (arm64 + x86_64),
+so a single DMG runs natively on both Apple Silicon and Intel Macs. The dev build
+(`script/build_and_run.sh`) stays host-arch only. The extension is signed before the containing app; both
+carry the same channel-specific App Group entitlement.
 
 ## Local HTTP API
 

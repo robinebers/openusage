@@ -13,6 +13,7 @@ set -euo pipefail
 #   SPARKLE_PUBLIC_KEY    base64 EdDSA public key -> baked into Info.plist (SUPublicEDKey). generate_appcast
 #                         only signs the DMG if this matches the private key it signs with.
 #   OPENUSAGE_VERSION     human version, e.g. 0.7.0 (CFBundleShortVersionString)
+#   OPENUSAGE_TEAM_ID     Apple Developer team id (defaults to NOTARY_TEAM_ID when notarizing)
 # Optional env:
 #   OPENUSAGE_BUILD       CFBundleVersion (monotonic). Default: git commit count.
 #   FEED_URL              appcast URL baked into the app. Default: GitHub Pages project URL.
@@ -28,11 +29,16 @@ cd "$ROOT_DIR"
 : "${ICLOUD_PROVISIONING_PROFILE:?set ICLOUD_PROVISIONING_PROFILE to the iCloud provisioning profile path}"
 : "${SPARKLE_PUBLIC_KEY:?set SPARKLE_PUBLIC_KEY to your base64 EdDSA public key}"
 : "${OPENUSAGE_VERSION:?set OPENUSAGE_VERSION, e.g. 0.7.0}"
+OPENUSAGE_TEAM_ID="${OPENUSAGE_TEAM_ID:-${NOTARY_TEAM_ID:-}}"
+: "${OPENUSAGE_TEAM_ID:?set OPENUSAGE_TEAM_ID (or NOTARY_TEAM_ID) for WidgetKit App Groups}"
 
 APP_NAME="OpenUsage"
 BUNDLE_ID="com.robinebers.openusage"
 MIN_SYSTEM_VERSION="15.0"
 VERSION="$OPENUSAGE_VERSION"
+WIDGET_BUNDLE_ID="$BUNDLE_ID.widgets"
+OPENUSAGE_APP_GROUP="$OPENUSAGE_TEAM_ID.$BUNDLE_ID.shared"
+OPENUSAGE_URL_SCHEME="openusage"
 # CFBundleShortVersionString carries the full version, including any pre-release suffix (e.g.
 # "0.7.0-beta.1"). This is the human-readable string Sparkle shows in its update prompt and the app
 # shows in its footer/About, so they always match. Sparkle compares builds by CFBundleVersion (the
@@ -184,6 +190,15 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
   <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
   <key>SUEnableAutomaticChecks</key><true/>
   <key>SUScheduledCheckInterval</key><integer>3600</integer>
+  <key>OpenUsageAppGroupIdentifier</key><string>$OPENUSAGE_APP_GROUP</string>
+  <key>OpenUsageURLScheme</key><string>$OPENUSAGE_URL_SCHEME</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>$BUNDLE_ID.provider</string>
+      <key>CFBundleURLSchemes</key><array><string>$OPENUSAGE_URL_SCHEME</string></array>
+    </dict>
+  </array>
   <key>NSUbiquitousContainers</key>
   <dict>
     <key>iCloud.com.robinebers.openusage</key>
@@ -201,18 +216,51 @@ cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
 "$ROOT_DIR/script/render_icloud_entitlements.sh" \
   "$ENTITLEMENTS_TEMPLATE" "$ICLOUD_PROVISIONING_PROFILE" "$ENTITLEMENTS" \
   "iCloud.com.robinebers.openusage"
+/usr/libexec/PlistBuddy \
+  -c 'Add :com.apple.security.application-groups array' \
+  -c "Add :com.apple.security.application-groups:0 string $OPENUSAGE_APP_GROUP" \
+  "$ENTITLEMENTS"
+
+APP_BUNDLE="$APP_BUNDLE" \
+WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
+OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" \
+OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
+OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" \
+WIDGET_VERSION="$VERSION" \
+WIDGET_BUILD="$BUILD" \
+WIDGET_ARCHS="arm64 x86_64" \
+WIDGET_CONFIGURATION=Release \
+  "$ROOT_DIR/script/build_widget_extension.sh"
 
 # Embed + sign Sparkle (Developer ID, hardened runtime, secure timestamp).
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime --timestamp"
 codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$CLI_BINARY"
 
 echo "==> signing app (Developer ID, hardened runtime)"
-# Not --deep: the Sparkle framework is signed above and must keep that signature.
+WIDGET_ENTITLEMENTS="$DIST_DIR/OpenUsage.widget.entitlements.plist"
+cat >"$WIDGET_ENTITLEMENTS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>com.apple.security.app-sandbox</key><true/>
+  <key>com.apple.security.application-groups</key>
+  <array><string>$OPENUSAGE_APP_GROUP</string></array>
+</dict></plist>
+PLIST
+
+# Sign nested code explicitly, then seal the outer app. Do not use --deep for signing: it can replace
+# the extension/framework entitlements that WidgetKit and Sparkle require.
+codesign --force --options runtime --timestamp \
+  --sign "$CODESIGN_IDENTITY" \
+  --entitlements "$WIDGET_ENTITLEMENTS" \
+  "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex"
 codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" \
   --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "iCloud.com.robinebers.openusage" \
   || { echo "signed app is missing the production iCloud entitlement" >&2; exit 1; }
+codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "$OPENUSAGE_APP_GROUP" \
+  || { echo "signed app is missing the production App Group entitlement" >&2; exit 1; }
 
 # Notarize + staple the app itself (not just the DMG) so it launches cleanly even offline after a
 # Sparkle update extracts it from the disk image.
