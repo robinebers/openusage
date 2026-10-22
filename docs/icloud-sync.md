@@ -20,9 +20,13 @@ requires an account-aware sync file, Claude history without a known account is o
 file. Other providers continue syncing.
 
 Codex Swap cards combine history only when its account and workspace match. Older Codex history
-without that information is excluded from Swap cards. Codex installations without account cards
-keep their existing sync behavior. Each Mac counts a Codex folder's spending for the account signed
-in to that folder, so the same history never appears on two cards.
+without that information is excluded from Swap cards. Codex installations that never had account cards
+keep their existing sync behavior. Once no Codex login with a known account is left in an install
+that had account cards (every login gone, or one whose account this launch could not read), its
+remaining Codex card names no account and takes no Codex history from other Macs. Each Mac counts a Codex folder's spending for the account signed
+in to that folder, so the same history never appears on two cards. Accounts added inside OpenUsage
+match across Macs the same way, by account and workspace; their logins are never synced, so each
+Mac signs in on its own.
 
 OpenUsage combines the valid files in memory and rebuilds Today, Yesterday, Last 30 Days, Usage Trend,
 unknown-model warnings, and model breakdowns. The same combined spend rows feed the dashboard, Total

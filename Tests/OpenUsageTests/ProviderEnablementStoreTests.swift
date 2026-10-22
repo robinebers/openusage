@@ -37,6 +37,22 @@ final class ProviderEnablementStoreTests: XCTestCase {
         XCTAssertTrue(reenabled.isEnabled("codex"))
     }
 
+    func testEveryRealToggleMovesTheIDsRevision() {
+        // `NewProviderSeeder` compares an id's revision across its probe: only a change of state is
+        // a decision, so re-setting the same value must not move it.
+        let store = ProviderEnablementStore(defaults: makeDefaults("revision"))
+        store.seedEnabledProviders(["claude"])
+
+        XCTAssertNil(store.toggleRevisions["codex"])
+        store.setEnabled(true, for: "codex")
+        XCTAssertEqual(store.toggleRevisions["codex"], 1)
+        store.setEnabled(true, for: "codex")
+        XCTAssertEqual(store.toggleRevisions["codex"], 1, "a no-op toggle is not a decision")
+        store.setEnabled(false, for: "codex")
+        XCTAssertEqual(store.toggleRevisions["codex"], 2)
+        XCTAssertNil(store.toggleRevisions["claude"])
+    }
+
     // MARK: - Early-refresh signal
 
     func testRealChangePostsDidChangeNotification() {

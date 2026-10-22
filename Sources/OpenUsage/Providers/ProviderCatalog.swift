@@ -42,29 +42,7 @@ enum ProviderCatalog {
                 )
             }
         }
-        if codex.cards.isEmpty {
-            providers.append(CodexProvider(
-                authStore: CodexAuthStore(
-                    additionalAuthHomes: codex.plainAuthHomes,
-                    writableAuthHomes: Set(codex.plainWritableAuthHomes),
-                    piCredentialSources: codex.plainPiCredentialSources
-                ),
-                logUsageScanner: CodexLogUsageScanner(additionalHomes: codex.plainAuthHomes)
-            ))
-        } else {
-            providers += codex.cards.map { card in
-                CodexProvider(
-                    provider: CodexProvider.makeProvider(id: card.id, displayName: card.displayName),
-                    authStore: CodexAuthStore(
-                        expectedIdentity: card.identity,
-                        additionalAuthHomes: card.authHomes,
-                        writableAuthHomes: Set(card.writableAuthHomes),
-                        piCredentialSources: card.piCredentialSources
-                    ),
-                    historyScope: .account(card.identity, codex.historyHomes, claimsPiUsage: card.claimsPiUsage)
-                )
-            }
-        }
+        providers += makeCodexProviders(codex)
         providers += [
             CursorProvider(),
             AntigravityProvider(),
@@ -77,5 +55,46 @@ enum ProviderCatalog {
             ZAIProvider()
         ]
         return providers
+    }
+
+    /// The Codex family alone: the plain card, or one card per account. Also what the live reload
+    /// after a Codex account change rebuilds, leaving every other provider's runtime in place.
+    static func makeCodexProviders(_ codex: CodexAccountDiscovery) -> [ProviderRuntime] {
+        if codex.cards.isEmpty {
+            return [CodexProvider(
+                authStore: CodexAuthStore(
+                    additionalAuthHomes: codex.plainAuthHomes,
+                    writableAuthHomes: Set(codex.plainWritableAuthHomes),
+                    piCredentialSources: codex.plainPiCredentialSources
+                ),
+                logUsageScanner: CodexLogUsageScanner(additionalHomes: codex.plainAuthHomes)
+            )]
+        }
+        return codex.cards.map { card in
+            CodexProvider(
+                // One account left reads as plain "Codex" again, as a lone Claude card is "Claude";
+                // the card keeps its id, scope, and stamps.
+                provider: CodexProvider.makeProvider(
+                    id: card.id, displayName: codex.cards.count == 1 ? "Codex" : card.displayName
+                ),
+                authStore: CodexAuthStore(
+                    expectedIdentity: card.identity,
+                    additionalAuthHomes: card.authHomes,
+                    writableAuthHomes: Set(card.writableAuthHomes),
+                    piCredentialSources: card.piCredentialSources
+                ),
+                historyScope: .account(card.identity, codex.historyHomes, claimsPiUsage: card.claimsPiUsage),
+                hasManagedLogin: card.hasManagedLogin
+            )
+        }
+    }
+
+    /// `providers` with its Codex family swapped for `codex`, in the family's place (after the
+    /// Claude cards, before Cursor), so the canonical order survives a reload.
+    static func replacingCodexProviders(in providers: [ProviderRuntime], with codex: [ProviderRuntime]) -> [ProviderRuntime] {
+        let isCodex: (ProviderRuntime) -> Bool = { ProviderAccountID.family(of: $0.provider.id) == "codex" }
+        guard let first = providers.firstIndex(where: isCodex) else { return providers }
+        let rest = providers[first...].drop(while: isCodex)
+        return Array(providers[..<first]) + codex + Array(rest)
     }
 }

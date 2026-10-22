@@ -2,12 +2,14 @@ import Foundation
 import KeyboardShortcuts
 import Observation
 
-/// Composition root: owns the (constant) registry and the (mutable) stores, injected
-/// into the SwiftUI environment.
+/// Composition root: owns the registry (swapped only by `reloadCodexAccounts`) and the mutable
+/// stores, injected into the SwiftUI environment.
 @MainActor
 @Observable
 final class AppContainer {
-    let registry: WidgetRegistry
+    /// The installed provider set. Replaced in place by `reloadCodexAccounts`; `layout` and
+    /// `dataStore` hold the same registry and are updated with it.
+    private(set) var registry: WidgetRegistry
     let layout: LayoutStore
     let dataStore: WidgetDataStore
     /// Opt-in private iCloud document sync for additive machine-local daily history.
@@ -38,18 +40,22 @@ final class AppContainer {
     let onboarding: OnboardingStore
     /// Claims Codex reset credits and Claude reset grants from the resets popover (the app's only
     /// provider-API writes), keyed by provider id. Each service shares its card's credentials. The view
-    /// tree selects the matching service from `\.resetClaims` for each card's resets popover.
-    let resetClaims: [String: any ResetClaimService]
+    /// tree selects the matching service from `\.resetClaims` for each card's resets popover. The
+    /// Codex entries follow the live Codex cards.
+    private(set) var resetClaims: [String: any ResetClaimService]
+    /// Codex logins OpenUsage signs in itself (Customize → Codex → Codex Accounts). Each change
+    /// rebuilds the Codex cards in place through `reloadCodexAccounts`.
+    let codexAccounts: CodexManagedAccountService
     /// The provider runtimes, kept so on-demand credential detection (the welcome screen and the
     /// Customize "Reset All" reseed) can re-probe `hasLocalCredentials()` on every card.
-    let providers: [ProviderRuntime]
+    private(set) var providers: [ProviderRuntime]
     /// Read-only usage API on 127.0.0.1:6736 for other local apps (silently off when the port is taken).
     private let localAPI: LocalUsageServer
     /// `nil` until `startRefreshing()`, which the welcome screen delays until the user has picked providers.
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
-    /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch is
-    /// the first with a provider the install has never seen.
-    private let newProviderTask: Task<Void, Never>?
+    /// The new-provider credential-detection pass (see `NewProviderSeeder`); `nil` unless this launch
+    /// (or the latest Codex account reload) brought a provider the install has never seen.
+    @ObservationIgnored private var newProviderTask: Task<Void, Never>?
     /// Persists a fresh `ShellEnvironmentSnapshot` once the login-shell capture completes, so the next
     /// launch can read shell-exported facts (provider home overrides) even when its own capture is slow.
     private let shellEnvironmentSnapshotTask: Task<Void, Never>
@@ -77,14 +83,12 @@ final class AppContainer {
         let apiKeyProviders = providers.compactMap { $0 as? any APIKeyManaging }
         let enablement = ProviderEnablementStore()
         let notificationSettings = NotificationSettingsStore()
-        let accountDefaults: ([String]) -> [String] = { metricIDs in
-            DefaultLayout.expandingAccounts(metricIDs, providerIDs: registry.providers.map(\.id))
-        }
+        let layoutDefaults = Self.layoutDefaults(for: registry)
         let layout = LayoutStore(
             registry: registry,
-            defaultMetricIDs: accountDefaults(DefaultLayout.metricIDs),
-            defaultPinnedMetricIDs: accountDefaults(DefaultLayout.pinnedMetricIDs),
-            defaultExpandedMetricIDs: accountDefaults(DefaultLayout.expandedMetricIDs),
+            defaultMetricIDs: layoutDefaults.metricIDs,
+            defaultPinnedMetricIDs: layoutDefaults.pinnedMetricIDs,
+            defaultExpandedMetricIDs: layoutDefaults.expandedMetricIDs,
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
         )
         let dataStore = WidgetDataStore(
@@ -93,7 +97,8 @@ final class AppContainer {
             isProviderEnabled: { [enablement] in enablement.isEnabled($0) },
             orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
             notificationSettings: { notificationSettings },
-            providerIdentityKeys: accountAssembly.identityKeysByCard
+            providerIdentityKeys: accountAssembly.identityKeysByCard,
+            accountAwareFamilies: accountAssembly.codex.isAccountAware ? ["codex"] : []
         )
         let iCloudSync = ICloudUsageSyncStore(dataStore: dataStore)
         // Re-enabling a provider should fetch it promptly, so clear any leftover failure backoff before
@@ -132,17 +137,7 @@ final class AppContainer {
         // The resets popover's claim services, sharing each provider's credential loading and HTTP
         // client so the claim's auth can't drift from the provider's. A claim forces a refresh so the
         // meters and reset count reconcile before the popover shows its result.
-        var resetClaims: [String: any ResetClaimService] = [:]
-        for codex in providers.compactMap({ $0 as? CodexProvider }) {
-            let id = codex.provider.id
-            resetClaims[id] = CodexResetClaimService(
-                authStore: codex.authStore,
-                usageClient: codex.usageClient,
-                refreshAfterClaim: { [weak dataStore] in
-                    await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "codex")
-                }
-            )
-        }
+        var resetClaims = Self.codexResetClaims(providers: providers, dataStore: dataStore)
         for claude in providers.compactMap({ $0 as? ClaudeProvider }) {
             let id = claude.provider.id
             resetClaims[id] = ClaudeResetClaimService(provider: claude, refreshAfterClaim: { [weak dataStore] in
@@ -150,6 +145,11 @@ final class AppContainer {
             })
         }
         self.resetClaims = resetClaims
+        self.codexAccounts = CodexManagedAccountService(
+            store: CodexManagedAccountStore(),
+            externalIdentityKeys: accountAssembly.codex.externalIdentityKeys,
+            forgetSnapshots: { [weak dataStore] in dataStore?.forgetCachedSnapshots(providerIDs: $0) }
+        )
 
         // Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
         // Its state lives in a dedicated UserDefaults suite, kept separate from app settings so the user's
@@ -160,10 +160,12 @@ final class AppContainer {
         let telemetry = TelemetryRecorder(
             sink: PostHogTelemetrySink(enabled: telemetryStore.enabled),
             store: telemetryStore,
-            snapshot: { [registry, enablement, layout] in
+            snapshot: { [enablement, layout] in
                 // Report the *active* configuration: a metric whose provider is turned off is hidden
                 // from the dashboard and menu bar, so exclude it here too — keeping the metric arrays
-                // consistent with `enabledProviders` (which is also enablement-filtered).
+                // consistent with `enabledProviders` (which is also enablement-filtered). The registry
+                // is read through the layout store, which holds the live one.
+                let registry = layout.registry
                 let providerOn: (String) -> Bool = { metricID in
                     guard let providerID = registry.descriptor(id: metricID)?.providerID else { return false }
                     return enablement.isEnabled(providerID)
@@ -186,9 +188,9 @@ final class AppContainer {
         self.localAPI = LocalUsageServer(state: { [layout, enablement, dataStore] in
             LocalUsageAPI.State(
                 enabledOrderedIDs: layout.orderedProviderIDs().filter { enablement.isEnabled($0) },
-                knownIDs: Set(registry.providers.map(\.id)),
+                knownIDs: Set(layout.registry.providers.map(\.id)),
                 snapshots: dataStore.snapshots,
-                limitDescriptors: registry.limitDescriptorsByProvider,
+                limitDescriptors: layout.registry.limitDescriptorsByProvider,
                 errors: dataStore.providerErrors
             )
         })
@@ -197,6 +199,84 @@ final class AppContainer {
         // effectively always is. Notification authorization is requested the first time a trigger is
         // turned on in Settings, not at launch — triggers default off. No-op under tests.
         AppNotifications.shared.registerAsDelegate()
+        codexAccounts.onAccountsChanged = { [weak self] in await self?.reloadCodexAccounts() }
+    }
+
+    /// Rebuilds the Codex cards after a login was added, renewed, or removed in Customize: the
+    /// account pass runs again for Codex only, the family's runtimes are swapped in place, the
+    /// layout, data store, reset claims, and enablement take the new set — what a relaunch did
+    /// before, without the relaunch — and the cards on show start fetching. Returns once the cards
+    /// are rebuilt, not once they are fetched. A launch whose login shell was unreadable has no
+    /// Codex cards to rebuild (Add is refused there); its reload is skipped so the launch state
+    /// stays intact.
+    func reloadCodexAccounts() async {
+        let assembly = await ProviderAccountAssembly.make(waitsForLoginShell: true, families: ["codex"])
+        guard assembly.readFamilies.contains("codex") else {
+            AppLog.warn(.config, "codex account reload skipped: the login shell is still unreadable this launch")
+            return
+        }
+        let providers = ProviderCatalog.replacingCodexProviders(
+            in: providers, with: ProviderCatalog.makeCodexProviders(assembly.codex)
+        )
+        let registry = WidgetRegistry.from(providers)
+        var identityKeys = dataStore.providerIdentityKeys.filter { ProviderAccountID.family(of: $0.key) != "codex" }
+        identityKeys.merge(assembly.identityKeysByCard) { _, new in new }
+        var accountAwareFamilies = dataStore.accountAwareFamilies.subtracting(["codex"])
+        if assembly.codex.isAccountAware { accountAwareFamilies.insert("codex") }
+
+        layout.replaceRegistry(registry, defaults: Self.layoutDefaults(for: registry))
+        dataStore.replaceProviders(
+            providers, registry: registry,
+            providerIdentityKeys: identityKeys, accountAwareFamilies: accountAwareFamilies
+        )
+        resetClaims = resetClaims.filter { ProviderAccountID.family(of: $0.key) != "codex" }
+            .merging(Self.codexResetClaims(providers: providers, dataStore: dataStore)) { _, new in new }
+        self.providers = providers
+        self.registry = registry
+        codexAccounts.updateExternalLogins(assembly.codex.externalIdentityKeys)
+        // A Customize detail left open on a card that is gone would show nothing: back to the list.
+        if let open = layout.customizeProviderID, registry.provider(id: open) == nil {
+            layout.customizeProviderID = nil
+        }
+        // A card the install has never seen is enabled the way a launch enables it: only once its
+        // credentials are found, and never when the user turned the family off.
+        if let task = NewProviderSeeder.reconcileIfNeeded(providers: providers, enablement: enablement) {
+            newProviderTask = task
+        }
+        let codexIDs = registry.providers.map(\.id).filter { ProviderAccountID.family(of: $0) == "codex" }
+        AppLog.info(.config, "codex cards rebuilt: \(codexIDs)")
+        // Cards already on show fetch now rather than at the next pass, independently of each other;
+        // the rebuild itself is complete, so the section does not wait for the network.
+        dataStore.refreshRebuilt(providerIDs: codexIDs.filter { enablement.isEnabled($0) })
+    }
+
+    /// Account cards inherit their family's defaults (`DefaultLayout.expandingAccounts`), so the
+    /// defaults are a function of the installed registry and recomputed with it.
+    private static func layoutDefaults(for registry: WidgetRegistry) -> LayoutDefaultSet {
+        let providerIDs = registry.providers.map(\.id)
+        return LayoutDefaultSet(
+            metricIDs: DefaultLayout.expandingAccounts(DefaultLayout.metricIDs, providerIDs: providerIDs),
+            migrationBaselineMetricIDs: DefaultLayout.migrationBaselineMetricIDs,
+            pinnedMetricIDs: DefaultLayout.expandingAccounts(DefaultLayout.pinnedMetricIDs, providerIDs: providerIDs),
+            expandedMetricIDs: DefaultLayout.expandingAccounts(DefaultLayout.expandedMetricIDs, providerIDs: providerIDs)
+        )
+    }
+
+    private static func codexResetClaims(
+        providers: [ProviderRuntime], dataStore: WidgetDataStore
+    ) -> [String: any ResetClaimService] {
+        var claims: [String: any ResetClaimService] = [:]
+        for codex in providers.compactMap({ $0 as? CodexProvider }) {
+            let id = codex.provider.id
+            claims[id] = CodexResetClaimService(
+                authStore: codex.authStore,
+                usageClient: codex.usageClient,
+                refreshAfterClaim: { [weak dataStore] in
+                    await ResetClaimRefresh.run(dataStore: dataStore, providerID: id, tag: "codex")
+                }
+            )
+        }
+        return claims
     }
 
     deinit {

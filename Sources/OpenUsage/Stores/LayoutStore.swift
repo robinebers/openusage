@@ -102,11 +102,12 @@ final class LayoutStore {
         didSet { persistence.saveMenuBarStyle(menuBarStyle) }
     }
 
-    let registry: WidgetRegistry
+    /// The installed provider set. Replaced in place by `replaceRegistry` when a Codex account is
+    /// added or removed; every lookup below reads it live.
+    private(set) var registry: WidgetRegistry
     private let persistence: LayoutPersistence
-    private let defaultMetricIDs: [String]
-    private let defaultPinnedMetricIDs: [String]
-    private let defaultExpandedMetricIDs: [String]
+    /// The owner-approved defaults for the current registry (account cards included).
+    private var defaultSet: LayoutDefaultSet
     var defaultExpandedOnEnableIDs: Set<String>
     let isProviderEnabled: @MainActor (String) -> Bool
 
@@ -123,21 +124,16 @@ final class LayoutStore {
         self.registry = registry
         let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
         self.persistence = persistence
-        self.defaultMetricIDs = defaultMetricIDs
-        self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
-        self.defaultExpandedMetricIDs = defaultExpandedMetricIDs
+        let defaultSet = LayoutDefaultSet(
+            metricIDs: defaultMetricIDs,
+            migrationBaselineMetricIDs: migrationBaselineMetricIDs,
+            pinnedMetricIDs: defaultPinnedMetricIDs,
+            expandedMetricIDs: defaultExpandedMetricIDs
+        )
+        self.defaultSet = defaultSet
         self.isProviderEnabled = isProviderEnabled
 
-        let initial = LayoutBootstrap.load(
-            registry: registry,
-            persistence: persistence,
-            defaults: LayoutDefaultSet(
-                metricIDs: defaultMetricIDs,
-                migrationBaselineMetricIDs: migrationBaselineMetricIDs,
-                pinnedMetricIDs: defaultPinnedMetricIDs,
-                expandedMetricIDs: defaultExpandedMetricIDs
-            )
-        )
+        let initial = LayoutBootstrap.load(registry: registry, persistence: persistence, defaults: defaultSet)
         placed = initial.placed
         providerOrder = initial.providerOrder
         metricOrderByProvider = initial.metricOrderByProvider
@@ -147,6 +143,37 @@ final class LayoutStore {
         defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
         menuBarStyle = initial.menuBarStyle
 
+        if initial.shouldPersistExpandOnEnable { persistExpandOnEnable() }
+        if initial.shouldPersistExpanded { persistExpanded() }
+        if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
+        syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
+    }
+
+    /// Swaps the provider set in place — the live reload after a Codex account change. Every live
+    /// choice is persisted first, then the layout reloads through the launch path, so a card that
+    /// just appeared gets its family's default metrics, pins, and caret placement exactly as it
+    /// would at the next launch, and a card that is gone takes its widgets and pins with it. Undo
+    /// starts fresh, as at a launch: its snapshots name widgets of the old set.
+    func replaceRegistry(_ registry: WidgetRegistry, defaults: LayoutDefaultSet) {
+        cancelDrag()
+        undoHistory.clear()
+        persist()
+        persistProviderOrder()
+        persistMetricOrder()
+        persistPins()
+        persistExpanded()
+        persistExpandOnEnable()
+        persistExpandedProviders()
+        self.registry = registry
+        defaultSet = defaults
+        let initial = LayoutBootstrap.load(registry: registry, persistence: persistence, defaults: defaults)
+        placed = initial.placed
+        providerOrder = initial.providerOrder
+        metricOrderByProvider = initial.metricOrderByProvider
+        pinnedMetricIDs = initial.pinnedMetricIDs
+        expandedMetricIDs = initial.expandedMetricIDs
+        expandedProviderIDs = initial.expandedProviderIDs
+        defaultExpandedOnEnableIDs = initial.defaultExpandedOnEnableIDs
         if initial.shouldPersistExpandOnEnable { persistExpandOnEnable() }
         if initial.shouldPersistExpanded { persistExpanded() }
         if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
@@ -380,22 +407,22 @@ final class LayoutStore {
         // Reset is its own deliberate action, not an undoable layout edit; the recorded snapshots
         // describe the pre-reset layout, so the undo stack is dropped wholesale here.
         undoHistory.clear()
-        placed = defaultMetricIDs
+        placed = defaultSet.metricIDs
             .filter { registry.descriptor(id: $0) != nil }
             .map { PlacedWidget(descriptorID: $0) }
         providerOrder = registry.providers.map(\.id)
         persistProviderOrder()
         metricOrderByProvider = LayoutOrdering.defaultMetricOrder(registry: registry)
         persistMetricOrder()
-        pinnedMetricIDs = Set(defaultPinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        pinnedMetricIDs = Set(defaultSet.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         persistPins()
-        expandedMetricIDs = Set(defaultExpandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
+        expandedMetricIDs = Set(defaultSet.expandedMetricIDs.filter { registry.descriptor(id: $0) != nil })
         defaultExpandedOnEnableIDs = []
         persistExpanded()
         persistExpandOnEnable()
         expandedProviderIDs = []
         persistExpandedProviders()
-        persistSeededDefaults(Set(LayoutOrdering.knownMetricIDs(defaultMetricIDs, registry: registry)))
+        persistSeededDefaults(Set(LayoutOrdering.knownMetricIDs(defaultSet.metricIDs, registry: registry)))
         persist()
     }
 
@@ -421,7 +448,7 @@ final class LayoutStore {
         // providers' widgets keep their identity and position; `syncPlacedOrder` re-sorts the whole
         // list by provider + metric order at the end.
         placed = placed.filter { !owned.contains($0.descriptorID) }
-            + defaults(defaultMetricIDs).map { PlacedWidget(descriptorID: $0) }
+            + defaults(defaultSet.metricIDs).map { PlacedWidget(descriptorID: $0) }
 
         // Metric order back to registry order for this provider only.
         metricOrderByProvider[providerID] = registry.descriptors(for: providerID).map(\.id)
@@ -430,11 +457,11 @@ final class LayoutStore {
         // Pins, expanded membership, and the default-expanded-on-enable carry: swap this provider's
         // entries for its defaults, leaving the rest of each set intact.
         pinnedMetricIDs.subtract(owned)
-        pinnedMetricIDs.formUnion(defaults(defaultPinnedMetricIDs))
+        pinnedMetricIDs.formUnion(defaults(defaultSet.pinnedMetricIDs))
         persistPins()
 
         expandedMetricIDs.subtract(owned)
-        expandedMetricIDs.formUnion(defaults(defaultExpandedMetricIDs))
+        expandedMetricIDs.formUnion(defaults(defaultSet.expandedMetricIDs))
         defaultExpandedOnEnableIDs.subtract(owned)
         persistExpanded()
         persistExpandOnEnable()

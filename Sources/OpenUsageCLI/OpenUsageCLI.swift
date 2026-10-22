@@ -21,7 +21,7 @@ struct OpenUsageCLI {
             guard let defaults = UserDefaults(suiteName: app.bundleIdentifier) else {
                 throw CLIError.appDefaultsUnavailable
             }
-            let result = try await UsageReader(userDefaults: defaults).read(
+            let result = try await UsageReader(userDefaults: defaults, appBundleIdentifier: app.bundleIdentifier).read(
                 providerID: arguments.providerID,
                 force: arguments.force
             )

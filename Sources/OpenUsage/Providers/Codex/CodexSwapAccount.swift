@@ -23,6 +23,19 @@ struct CodexAccountIdentity: Equatable, Hashable, Sendable {
         self.email = email
     }
 
+    /// The inverse of `key`: a stored `workspace|email` pair. Anything else is not an identity.
+    init?(key: String) {
+        let parts = key.split(separator: "|", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        self.init(accountID: String(parts[0]), email: String(parts[1]))
+    }
+
+    /// "Workspace 454ffe36": the workspace id's first eight characters, the only name a workspace
+    /// has when its tokens carry no title.
+    var workspaceLabel: String {
+        accountID.isEmpty ? "Workspace Unknown" : "Workspace \(accountID.prefix(8))"
+    }
+
     init?(auth: CodexAuth) {
         let idPayload = auth.tokens?.idToken.flatMap(ProviderParse.jwtPayload)
         let accessPayload = auth.tokens?.accessToken.flatMap(ProviderParse.jwtPayload)
@@ -52,9 +65,11 @@ struct CodexSwapAccount: Equatable, Sendable {
     let plan: String?
     let shareHistory: Bool
 
+    /// An alias keeps xswap's own "alias (email)" shape; without one the email names the account,
+    /// as every other Codex card. The assembly adds the workspace when two cards share an email.
     var displayName: String {
-        let label = alias ?? "Workspace \(identity.accountID.prefix(8))"
-        return "Codex: \(label) (\(identity.email ?? identity.accountID))"
+        if let alias { return "Codex: \(alias) (\(identity.email ?? identity.accountID))" }
+        return "Codex: \(identity.email ?? identity.workspaceLabel)"
     }
 
     static func discover(

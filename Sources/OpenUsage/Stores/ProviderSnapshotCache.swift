@@ -135,6 +135,32 @@ struct ProviderSnapshotCache {
         }
     }
 
+    /// Renames a stored entry in place (a Codex card renamed by an account change). Only the name
+    /// changes: the producer stamp, `refreshedAt`, and the session-write mark stay what they were, so
+    /// an entry painted from a previous session still owes this session its first fetch.
+    func rename(providerID: String, to displayName: String) {
+        var payload = loadPayload()
+        guard let snapshot = payload.snapshots[providerID], snapshot.displayName != displayName else { return }
+        payload.snapshots[providerID] = snapshot.renamed(displayName)
+        save(payload)
+    }
+
+    /// Drops the stored snapshots (and account stamps) of `providerIDs` from memory and disk. Used when
+    /// a login added in OpenUsage is removed: the next launch may render a plain, identity-less card
+    /// under the same id, and the legacy adoption path would otherwise paint the removed account's
+    /// numbers on it.
+    func forget(providerIDs: [String]) {
+        guard !providerIDs.isEmpty else { return }
+        var payload = loadPayload()
+        for providerID in providerIDs {
+            payload.snapshots.removeValue(forKey: providerID)
+            payload.producedByIdentityKeys.removeValue(forKey: providerID)
+        }
+        sessionWrites.withLock { $0.subtract(providerIDs) }
+        AppLog.info(.cache, "forgot snapshots for \(providerIDs.joined(separator: ", "))")
+        save(payload)
+    }
+
     func persistPending() {
         guard hasDeferredWrites.withLock({ pending in
             defer { pending = false }
@@ -155,8 +181,9 @@ struct ProviderSnapshotCache {
     /// account. Every read path must treat such an entry as absent — the launch paint filter
     /// (`WidgetDataStore.init`), the refresh cache-hit gate (`WidgetDataStore.refresh`), and the
     /// one-shot CLI's persisted-freshness reads (`UsageReader`) — or a swap at the same home would
-    /// serve the previous account's data. `false` when the identity is unresolved (`nil`): an
-    /// unverifiable entry keeps painting exactly as it did before account stamps existed.
+    /// serve the previous account's data. `false` when the identity is unresolved (`nil`): such an
+    /// entry is unverifiable, and the callers decide (`WidgetDataStore.hasStaleAccountCache` drops
+    /// it in account-card mode; legacy installs keep painting it).
     func hasStaleAccountStamp(providerID: String, currentIdentityKey: String?) -> Bool {
         guard let currentIdentityKey else { return false }
         let payload = loadPayload()

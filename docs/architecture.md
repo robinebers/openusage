@@ -22,7 +22,11 @@ The code is grouped by role:
 `AppContainer` is the one place that wires everything together. At launch it builds the list of
 providers, turns it into a `WidgetRegistry`, creates the stores, starts the periodic refresh loop, and
 starts the local HTTP API. Everything else receives what it needs from here rather than reaching for
-globals, which keeps the pieces testable in isolation.
+globals, which keeps the pieces testable in isolation. The provider set changes in one place only:
+a Codex account added or removed in Customize makes the container run the Codex half of the
+account pass again and swap that family's runtimes in place (`reloadCodexAccounts`); the layout
+store, the data store, the reset-claim services, and new-provider enablement take the new set the
+same way a launch would.
 
 The `openusage` executable imports the same module. A normal invocation reads `ProviderSnapshotCache`
 and exits; `--force` constructs the canonical `ProviderCatalog` and calls `WidgetDataStore`'s forced

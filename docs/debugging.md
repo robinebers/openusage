@@ -60,10 +60,13 @@ account reconciliation stays on the main actor. Adapted from Runway (mstallone/r
 - `accounts: codex default identity unresolved — …` — a login exists but its account can't be named
   with certainty this launch (an auth file without an account id, or a keychain credential whose
   secret we don't read at launch). The card works as before; it just can't participate in
-  account-aware features yet.
+  account-aware features yet. In an install that has had Codex account cards, such a card also
+  starts without its cached values, refreshes on every pass (the `openusage` command included),
+  and shows no history synced from other Macs until a launch can read its account.
 - `stale account cache discarded for claude` — the account at the default home changed between
   launches, so the previous account's cached snapshot was dropped instead of painting under the new
-  login.
+  login. For Codex in an install that has had account cards, the same line also appears when the
+  card can't name its account this launch (see the previous entry).
 - `account identity read skipped for claude, codex: login shell cold and no shell-environment
   snapshot exists yet` — a first launch raced a slow login shell, so the named families were left
   unread this launch; every later launch has a persisted snapshot to fall back on.

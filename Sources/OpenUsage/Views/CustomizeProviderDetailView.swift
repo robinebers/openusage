@@ -34,6 +34,7 @@ struct CustomizeProviderDetailView: View {
                     APIKeysSection(provider: keyProvider)
                 }
                 if ProviderAccountID.family(of: providerID) == "codex" {
+                    CodexAccountsSection()
                     CodexPricingSection(providerIDs: container.registry.providers
                         .map(\.id)
                         .filter { ProviderAccountID.family(of: $0) == "codex" })

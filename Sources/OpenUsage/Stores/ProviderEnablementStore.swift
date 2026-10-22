@@ -53,6 +53,10 @@ final class ProviderEnablementStore {
     /// Every provider ID this install has ever seen (see the type comment). Seeded by the v2 settings
     /// migration or `FirstRunSeeder`, then grown by `registerKnownProviders`.
     private(set) var knownIDs: Set<String>
+    /// How many times each id's on/off state changed through `setEnabled` this session. In memory
+    /// only: `NewProviderSeeder` reads an id's count before its credential probe and leaves the id
+    /// alone when the count moved while the probe ran — the user decided, whichever way.
+    private(set) var toggleRevisions: [String: Int] = [:]
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -89,6 +93,7 @@ final class ProviderEnablementStore {
             guard disabledIDs != before else { return }
             defaults.set(Array(disabledIDs), forKey: Self.disabledStorageKey)
         }
+        toggleRevisions[id, default: 0] += 1
         // Clear the backoff BEFORE the wake notification, so the refresh it triggers actually probes the
         // just-enabled provider instead of skipping it as recently-failed.
         if enabled { onProviderEnabled?(id) }

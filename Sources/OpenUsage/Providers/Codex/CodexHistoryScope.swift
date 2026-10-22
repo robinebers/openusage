@@ -31,7 +31,8 @@ struct CodexHistoryHomes: Equatable, Sendable {
     let homes: [String]
     /// The home whose login Codex may keep in the Keychain instead of `auth.json`.
     let defaultHome: String
-    /// xswap account homes apart from its main home, keyed to the account xswap registered there.
+    /// Homes whose own login may be missing, keyed to the account known to own them: xswap account
+    /// homes apart from its main home, and the private folders of accounts added in OpenUsage.
     let registeredOwners: [String: CodexAccountIdentity]
 
     /// Re-read on every scan so a switch takes effect without a relaunch. Each home's login is read

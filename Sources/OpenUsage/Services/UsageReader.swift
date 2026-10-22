@@ -25,15 +25,25 @@ public enum UsageReaderError: LocalizedError, Sendable {
 public struct UsageReader {
     private let defaults: UserDefaults
     private let providersOverride: [ProviderRuntime]?
+    /// Where the app whose settings these are keeps its managed Codex logins. The bundled CLI helper
+    /// has no bundle identifier of its own, so it names the app's instead of deriving one.
+    private let managedCodexRoot: URL
+    /// Tests inject the account-aware families alongside their stub providers; the real reader
+    /// derives them from the account assembly.
+    private let accountAwareFamiliesOverride: Set<String>?
 
-    public init(userDefaults: UserDefaults) {
+    public init(userDefaults: UserDefaults, appBundleIdentifier: String? = Bundle.main.bundleIdentifier) {
         self.defaults = userDefaults
         self.providersOverride = nil
+        self.managedCodexRoot = CodexManagedAccountStore.managedRoot(bundleIdentifier: appBundleIdentifier)
+        self.accountAwareFamiliesOverride = nil
     }
 
-    init(userDefaults: UserDefaults, providers: [ProviderRuntime]) {
+    init(userDefaults: UserDefaults, providers: [ProviderRuntime], accountAwareFamilies: Set<String>? = nil) {
         self.defaults = userDefaults
         self.providersOverride = providers
+        self.managedCodexRoot = CodexManagedAccountStore.managedRoot()
+        self.accountAwareFamiliesOverride = accountAwareFamilies
     }
 
     public func read(providerID requestedProviderID: String? = nil, force: Bool = false) async throws -> UsageReadResult {
@@ -53,7 +63,9 @@ public struct UsageReader {
             }.value
         }
         let accountAssembly = providersOverride == nil
-            ? await ProviderAccountAssembly.make(defaults: defaults, waitsForLoginShell: false)
+            ? await ProviderAccountAssembly.make(
+                defaults: defaults, waitsForLoginShell: false, managedCodexRoot: managedCodexRoot
+            )
             : ProviderAccountAssembly(identityKeysByCard: [:])
         let providers = providersOverride ?? ProviderCatalog.make(
             defaults: defaults,
@@ -83,9 +95,14 @@ public struct UsageReader {
         let allProviderIDs = registry.providers.map(\.id)
         // The same account guard the app applies at launch: an entry that provably belongs to another
         // account (swap since it was written) is never served, and its provider counts as needing a
-        // refresh even while the stale entry is TTL-fresh.
+        // refresh even while the stale entry is TTL-fresh. Same for an account-aware Codex card that
+        // names no account: whatever sits under its id may come from an account that is gone.
+        let accountAwareFamilies = accountAwareFamiliesOverride ?? (accountAssembly.codex.isAccountAware ? ["codex"] : [])
         let staleAccountStampIDs = Set(allProviderIDs.filter {
-            cache.hasStaleAccountStamp(providerID: $0, currentIdentityKey: accountAssembly.identityKeysByCard[$0])
+            WidgetDataStore.hasStaleAccountCache(
+                for: $0, cache: cache, identityKeys: accountAssembly.identityKeysByCard,
+                accountAwareFamilies: accountAwareFamilies
+            )
         })
         let cachedSnapshots = cache.loadSnapshots(providerIDs: allProviderIDs)
             .filter { providerID, _ in !staleAccountStampIDs.contains(providerID) }
@@ -112,7 +129,8 @@ public struct UsageReader {
                 isProviderEnabled: includesProvider,
                 // The CLI shares the app's snapshot cache, so its writes must carry the same account
                 // stamp — an unstamped claude/codex entry would be discarded at the app's next launch.
-                providerIdentityKeys: accountAssembly.identityKeysByCard
+                providerIdentityKeys: accountAssembly.identityKeysByCard,
+                accountAwareFamilies: accountAwareFamilies
             )
             if let matchedIDs {
                 for providerID in orderedIDs.filter(matchedIDs.contains) {

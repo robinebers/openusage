@@ -23,12 +23,20 @@ struct ProviderAccountAssembly {
     let identityKeysByCard: [String: String]
     var claudeCards: [ClaudeAccountCard] = []
     var codex = CodexAccountDiscovery()
+    /// The families this pass actually read. A family left out (not requested, or its home facts
+    /// unreadable this launch) has no cards here, which must not be mistaken for "no accounts".
+    var readFamilies: Set<String> = []
     var codexCards: [CodexAccountCard] { codex.cards }
 
     /// `waitsForLoginShell`: true for the menu-bar app (a Finder/Dock launch inherits no shell
     /// exports, so the pass leans on the login-shell layers), false for the one-shot CLI (a terminal
-    /// launch's process environment already carries the user's exports).
-    static func make(defaults: UserDefaults = .standard, waitsForLoginShell: Bool) async -> ProviderAccountAssembly {
+    /// launch's process environment already carries the user's exports). `families` narrows the
+    /// pass: the live reload after a Codex account change reads only Codex.
+    static func make(
+        defaults: UserDefaults = .standard, waitsForLoginShell: Bool,
+        managedCodexRoot: URL = CodexManagedAccountStore.managedRoot(),
+        families requested: Set<String> = ProviderAccountID.families
+    ) async -> ProviderAccountAssembly {
         // The identity read needs the login shell's exports (CLAUDE_CONFIG_DIR/CODEX_HOME name the
         // default homes), and it reads them through the very same reader the provider auth stores
         // use — `ProcessEnvironmentReader`, which pins identity-relevant keys to the persisted
@@ -43,13 +51,13 @@ struct ProviderAccountAssembly {
             || LoginShellEnvironment.shared.capturedSuccessfully
             || ShellEnvironmentSnapshotStore.launchSnapshot != nil
         let families = shellFactsReadable
-            ? ProviderAccountID.families
-            : ProviderAccountID.families.filter { family in
+            ? requested
+            : requested.filter { family in
                 guard let key = Self.homeOverrideKeys[family] else { return false }
                 return ProcessInfo.processInfo.environment[key]?.nilIfEmpty != nil
             }
-        if families.count < ProviderAccountID.families.count {
-            AppLog.info(.config, "account identity read skipped for \(ProviderAccountID.families.subtracting(families).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
+        if families.count < requested.count {
+            AppLog.info(.config, "account identity read skipped for \(requested.subtracting(families).sorted().joined(separator: ", ")): login shell cold and no shell-environment snapshot exists yet")
         }
         let assemblyStartedAt = ProcessInfo.processInfo.systemUptime
         let assembly = await make(
@@ -57,7 +65,8 @@ struct ProviderAccountAssembly {
                 environment: ProcessEnvironmentReader(blocksOnShellCapture: false)
             ),
             accountsStore: ProviderAccountsStore(defaults: defaults),
-            families: families
+            families: families,
+            managedCodexLogins: CodexManagedAccountStore(defaults: defaults, root: managedCodexRoot).logins
         )
         let assemblyDurationMS = Int((ProcessInfo.processInfo.systemUptime - assemblyStartedAt) * 1_000)
         AppLog.info(.config, "account assembly duration: \(assemblyDurationMS) ms")
@@ -80,6 +89,7 @@ struct ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         families: Set<String> = ProviderAccountID.families,
+        managedCodexLogins: [CodexManagedLogin] = [],
         listCodexHomeDirectories: @escaping @Sendable (String) -> [String] = CodexHomeScanner.listSubdirectories,
         desktop: ClaudeDesktopAuthStore? = nil,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String] = { root in
@@ -99,6 +109,7 @@ struct ProviderAccountAssembly {
             observer: observer,
             accountsStore: accountsStore,
             families: families,
+            managedCodexLogins: managedCodexLogins,
             listCodexHomeDirectories: listCodexHomeDirectories,
             desktop: desktop,
             listDesktopOrganizationDirectories: listDesktopOrganizationDirectories
@@ -114,6 +125,7 @@ struct ProviderAccountAssembly {
         let codex = readout.codex.map {
             makeCodexCards(readout: $0, accountsStore: accountsStore)
         } ?? CodexAccountDiscovery()
+        let readFamilies = Set([readout.claude == nil ? nil : "claude", readout.codex == nil ? nil : "codex"].compactMap { $0 })
         let codexCards = codex.cards
         var identityKeys = Dictionary(uniqueKeysWithValues: codexCards.map { ($0.id, $0.identity.key) })
         var observations: [ProviderAccountsStore.Observation] = []
@@ -145,7 +157,7 @@ struct ProviderAccountAssembly {
 
         guard let claudeReadout = readout.claude else {
             accountsStore.reconcile(with: observations)
-            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
+            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex, readFamilies: readFamilies)
         }
 
         let swapAccounts = claudeReadout.swapAccounts
@@ -167,7 +179,7 @@ struct ProviderAccountAssembly {
 
         if let claudeIdentity = identityKeys["claude"], !claudeIdentity.contains("|"), swapAccounts.isEmpty {
             accountsStore.reconcile(with: observations)
-            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex)
+            return ProviderAccountAssembly(identityKeysByCard: identityKeys, codex: codex, readFamilies: readFamilies)
         }
 
         let desktopOrganizations = claudeReadout.desktopOrganizations
@@ -264,7 +276,9 @@ struct ProviderAccountAssembly {
         for index in cards.indices {
             cards[index].additionalLogDirectories = swapAccounts.map(\.sessionDirectory)
         }
-        return ProviderAccountAssembly(identityKeysByCard: identityKeys, claudeCards: cards, codex: codex)
+        return ProviderAccountAssembly(
+            identityKeysByCard: identityKeys, claudeCards: cards, codex: codex, readFamilies: readFamilies
+        )
     }
 
     private static func organizationLabel(_ value: String?) -> String? {

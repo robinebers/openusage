@@ -6,7 +6,8 @@ import Foundation
 /// registry against the store's known-provider set: anything never seen before gets the same local-only
 /// `hasLocalCredentials()` probe as first-run detection, and is enabled on a hit. Providers the install
 /// has already seen are never touched, so a user's choice to keep one off is never overridden, and a new
-/// account of a provider the install already has follows that provider's on/off choice.
+/// account of a provider the install already has follows that provider's on/off choice. The probe can
+/// wait on a Keychain prompt; a toggle the user makes meanwhile wins, whichever way it went.
 ///
 /// One-shot semantics: new IDs are marked known synchronously, before the probe. A new provider without
 /// credentials stays off and is never probed again — enabling it later is the user's call.
@@ -33,7 +34,7 @@ enum NewProviderSeeder {
         }
 
         let knownFamilies = Set(enablement.knownIDs.map(ProviderAccountID.family(of:)))
-        let enabledFamilies = Set((enablement.enabledIDs ?? []).map(ProviderAccountID.family(of:)))
+        let enabledFamilies = Self.enabledFamilies(enablement, installed: currentIDs)
         let newIDs = enablement.registerKnownProviders(currentIDs)
         let probedIDs = newIDs.filter { id in
             let family = ProviderAccountID.family(of: id)
@@ -41,18 +42,32 @@ enum NewProviderSeeder {
         }
         guard !probedIDs.isEmpty else { return nil }
         AppLog.info(.config, "new providers since last run: \(probedIDs.sorted()); probing local credentials")
+        // The probe can wait on a Keychain prompt. A card the user toggled meanwhile — on, or on and
+        // off again — keeps their choice: its revision moved, so the loop below leaves it alone.
+        let revisions = enablement.toggleRevisions
 
         return Task {
             // Same concurrent local-only probe as first-run detection and the Reset All reseed.
             let newProviders = providers.filter { probedIDs.contains($0.provider.id) }
             let detected = await FirstRunSeeder.detectLocalProviders(newProviders)
+            // Read again, not reused: the user may have turned the family's last card off while the
+            // probe ran, and the family rule holds at the moment a card is turned on.
+            let enabledFamilies = Self.enabledFamilies(enablement, installed: currentIDs)
             for id in detected.sorted() {
-                // The probe takes a moment; if the user already turned the provider on themselves,
-                // leave their toggle alone (setEnabled would be a no-op anyway).
-                guard !enablement.isEnabled(id) else { continue }
+                let family = ProviderAccountID.family(of: id)
+                guard !knownFamilies.contains(family) || enabledFamilies.contains(family),
+                      enablement.toggleRevisions[id] == revisions[id]
+                else { continue }
                 AppLog.info(.config, "new provider \(id): credentials detected, enabling")
                 enablement.setEnabled(true, for: id)
             }
         }
+    }
+
+    /// The families with an installed card on. Only installed cards count: the enabled id of a Codex
+    /// account removed in Customize must not keep the family "on" after the user turned every
+    /// remaining card off.
+    private static func enabledFamilies(_ enablement: ProviderEnablementStore, installed: Set<String>) -> Set<String> {
+        Set((enablement.enabledIDs ?? []).filter { installed.contains($0) }.map(ProviderAccountID.family(of:)))
     }
 }

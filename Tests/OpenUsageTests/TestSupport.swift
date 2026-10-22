@@ -412,6 +412,7 @@ extension CodexProvider {
         usageClient: CodexUsageClient = CodexUsageClient(),
         logUsageScanner: CodexLogUsageScanner = CodexLogFixture.scanner(home: nil),
         historyScope: CodexHistoryScope = .allHomes,
+        hasManagedLogin: Bool = false,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { TestPricing.bundled }
     ) -> CodexProvider {
@@ -419,7 +420,7 @@ extension CodexProvider {
             localHistoryWait: localHistoryWait, provider: provider, authStore: authStore, usageClient: usageClient,
             logUsageScanner: logUsageScanner, piUsageScanner: CodexLogFixture.noPi(),
             openCodeUsageScanner: OpenCodeCodexUsageScanner(databasePaths: { [] }), historyScope: historyScope,
-            now: now, pricing: pricing
+            hasManagedLogin: hasManagedLogin, now: now, pricing: pricing
         )
     }
 }

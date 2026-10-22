@@ -11,6 +11,8 @@ final class CodexProvider: ProviderRuntime {
 
     let provider: Provider
     let historyScope: CodexHistoryScope
+    /// An account card whose login OpenUsage made itself (see `CodexAccountCard.hasManagedLogin`).
+    let hasManagedLogin: Bool
 
     private let localHistory = CodexHistoryRefresh<CodexLocalHistory>()
     let localHistoryWait: Duration
@@ -33,6 +35,7 @@ final class CodexProvider: ProviderRuntime {
         piUsageScanner: PiUsageScanner = .shared,
         openCodeUsageScanner: OpenCodeCodexUsageScanner = OpenCodeCodexUsageScanner(),
         historyScope: CodexHistoryScope = .allHomes,
+        hasManagedLogin: Bool = false,
         now: @escaping @Sendable () -> Date = Date.init,
         pricing: @escaping @Sendable () async -> ModelPricing = { await ModelPricingStore.shared.current() },
         fallbackModel: @escaping @MainActor () -> String? = { CodexFallbackModelSetting.current() }
@@ -40,6 +43,7 @@ final class CodexProvider: ProviderRuntime {
         self.localHistoryWait = localHistoryWait
         self.provider = provider
         self.historyScope = historyScope
+        self.hasManagedLogin = hasManagedLogin
         self.authStore = authStore
         self.usageClient = usageClient
         self.logUsageScanner = logUsageScanner

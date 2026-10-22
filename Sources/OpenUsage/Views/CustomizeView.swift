@@ -12,6 +12,7 @@ import SwiftUI
 /// reset and the Esc handler drive the same state.
 struct CustomizeView: View {
     @Environment(LayoutStore.self) private var layout
+    @Environment(AppContainer.self) private var container
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
@@ -36,6 +37,15 @@ struct CustomizeView: View {
         }
         .animation(Motion.spring, value: layout.customizationNotice)
         .animation(Motion.spring, value: layout.customizationNoticeTrigger)
+        // A Codex account change confirms through the same pill wherever Customize is showing, and a
+        // success that landed while Customize was closed shows on its next opening (`initial`).
+        // Observed here, not in the Codex Accounts section: removing the open card pops that
+        // section before its result arrives.
+        .onChange(of: container.codexAccounts.phase, initial: true) { _, phase in
+            guard case .succeeded(let message) = phase else { return }
+            layout.presentCustomizationNotice(message)
+            container.codexAccounts.dismissMessage()
+        }
     }
 
     private var customizationNoticePill: some View {

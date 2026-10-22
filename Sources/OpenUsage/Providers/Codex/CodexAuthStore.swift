@@ -171,7 +171,9 @@ struct CodexAuthStore: Sendable {
     }
 
     /// Writes `state` back to its source. With `replacing`, a file is written only while it still holds
-    /// exactly that credential, so a login Codex rotated moments earlier is never overwritten.
+    /// exactly that credential, so a login Codex rotated moments earlier is never overwritten. A file
+    /// is replaced in place, never recreated with its folder: a managed home the user removed while
+    /// the token was rotating stays removed, and the write fails instead.
     func save(_ state: CodexAuthState, replacing onDisk: CodexAuthState? = nil) throws {
         guard !state.readOnly else { throw CodexAuthError.tokenConflict }
         let encoder = JSONEncoder()
@@ -183,8 +185,14 @@ struct CodexAuthStore: Sendable {
 
         switch state.source {
         case .file(let path):
-            if let onDisk, loadAuth(at: path) != onDisk { throw CodexAuthError.tokenConflict }
-            try files.writeText(path, text)
+            // The check and the write hold the home's lock together, so a rotation that compared the
+            // file moments ago cannot land on top of a login that replaced it in between (Sign In
+            // Again, an Add of an account already managed, or the same rotation in the `openusage`
+            // CLI): it sees the new login and backs off with `tokenConflict` instead.
+            try files.withExclusiveAccess(toDirectoryOf: path) {
+                if let onDisk, loadAuth(at: path) != onDisk { throw CodexAuthError.tokenConflict }
+                try files.replaceText(path, text)
+            }
         case .keychain(let account):
             try keychain.writeGenericPassword(service: Self.keychainService, account: account, value: text)
         case .pi:

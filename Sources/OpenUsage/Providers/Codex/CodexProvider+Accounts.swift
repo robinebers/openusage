@@ -35,13 +35,20 @@ extension CodexProvider {
             if !changed { break }
             AppLog.info(LogTag.auth("codex"), "login changed during usage refresh; discarding the stale result")
         }
-        return ProviderSnapshot.error(provider: provider, error: CodexAccountLoginError())
+        return ProviderSnapshot.error(provider: provider, error: CodexAccountLoginError(managed: hasManagedLogin))
     }
 }
 
-private struct CodexAccountLoginError: LocalizedError, CategorizedError {
+/// Points at the place that renews this card's login. A renewal under Codex Accounts rebuilds the
+/// card with the renewed home and fetches it; a login made in Codex, xswap, or pi lands in a home
+/// the card already reads, so a refresh is enough.
+struct CodexAccountLoginError: LocalizedError, CategorizedError {
+    let managed: Bool
+
     var errorCategory: ErrorCategory { .authExpired }
     var errorDescription: String? {
-        "No valid login for this Codex account. Sign in with Codex, xswap, or pi, then refresh."
+        managed
+            ? "No valid login for this Codex account. Use Sign In Again under Customize → Codex → Codex Accounts."
+            : "No valid login for this Codex account. Sign in again with Codex, xswap, or pi, then refresh."
     }
 }

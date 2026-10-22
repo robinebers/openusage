@@ -12,8 +12,9 @@ struct StalenessHint: Equatable {
 @MainActor
 @Observable
 final class WidgetDataStore {
-    private let registry: WidgetRegistry
-    private let providersByID: [String: ProviderRuntime]
+    /// The installed provider set; swapped in place by `replaceProviders` after a Codex account change.
+    private var registry: WidgetRegistry
+    private var providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
     /// Whether a provider is currently enabled. Injected so the store consults the single
@@ -33,11 +34,15 @@ final class WidgetDataStore {
     /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
     /// notifications entirely (tests and previews that don't wire it).
     private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
-    /// Card id → the account identity currently signed in there, resolved once at launch by
-    /// `ProviderAccountAssembly`. Drives the snapshot cache's account stamp: writes record the
-    /// producer, and launch loads only paint an entry whose stamp matches. A card absent here has an
-    /// unresolved identity this launch (or isn't account-aware) — its cache behaves as it always did.
-    private let providerIdentityKeys: [String: String]
+    /// Card id → the account identity currently signed in there, resolved at launch by
+    /// `ProviderAccountAssembly` (and again for Codex on a live reload). Drives the snapshot
+    /// cache's account stamp: writes record the producer, and launch loads only paint an entry
+    /// whose stamp matches. A card absent here has an unresolved identity this launch (or isn't
+    /// account-aware): its cache behaves as it always did, except in a family running in
+    /// account-card mode, where `hasStaleAccountCache` drops it.
+    private(set) var providerIdentityKeys: [String: String]
+    /// Families in account-card mode (see `UsageHistoryAggregator.merged`).
+    private(set) var accountAwareFamilies: Set<String>
     /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
     /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
     /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
@@ -88,6 +93,9 @@ final class WidgetDataStore {
     /// Per-provider earliest next-probe time after a failure (see `failureRetryBackoff`). Not part of
     /// observable UI state, so it's excluded from `@Observable` tracking.
     @ObservationIgnored private var failureRetryAfter: [String: Date] = [:]
+    /// The fetch that currently owns each in-flight id. A runtime replacement hands the id to a new
+    /// fetch; the old one, on return, must neither publish nor clear the new fetch's entry.
+    @ObservationIgnored private var inFlightTokens: [String: UUID] = [:]
 
     /// Owns the quota pace-notification subsystem (dedup state, fire/deliver decision, trace). This store
     /// just gathers each pass's enabled bounded metrics and delegates.
@@ -146,7 +154,8 @@ final class WidgetDataStore {
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
-        providerIdentityKeys: [String: String] = [:]
+        providerIdentityKeys: [String: String] = [:],
+        accountAwareFamilies: Set<String> = []
     ) {
         precondition(slowProviderRefreshThreshold >= 0)
         precondition(providerRefreshTimeout > 0)
@@ -166,6 +175,7 @@ final class WidgetDataStore {
                 await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
             }
         self.providerIdentityKeys = providerIdentityKeys
+        self.accountAwareFamilies = accountAwareFamilies
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.alwaysShowPacing = defaults.bool(forKey: Self.alwaysShowPacingKey)
@@ -178,24 +188,131 @@ final class WidgetDataStore {
         // card id still matches, so without this check the previous account's limits and plan would
         // paint under the new account until the first successful refresh. A card whose current
         // identity is unresolved (logged out, keyring-mode Codex) can't be verified either way — it
-        // keeps its cache, exactly as before the guard existed. Non-account providers are unaffected.
-        let loaded = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
-            .filter { cardID, _ in
-                guard cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: providerIdentityKeys[cardID]) else {
-                    return true
-                }
-                AppLog.info(.cache, "stale account cache discarded for \(cardID)")
-                return false
-            }
+        // keeps its cache as before the guard existed, except in a family running in account-card
+        // mode, where an identity-less card (the fallback after the last login went away, or a login
+        // whose account this launch could not read) cannot tell its own cache from a removed
+        // account's, so any entry under its id counts as stale (see `hasStaleAccountCache`).
+        // Non-account providers are unaffected.
+        let loaded = Self.paintableSnapshots(
+            for: registry.providers.map(\.id), cache: cache,
+            identityKeys: providerIdentityKeys, accountAwareFamilies: accountAwareFamilies
+        )
         self.localSnapshots = loaded
         self.snapshots = loaded
-        // Only a snapshot the card's current account provably produced may seed a provider's fallback.
-        for (cardID, snapshot) in loaded {
+        adoptLaunchSnapshots(loaded)
+    }
+
+    /// The cached entries of `providerIDs` that may paint: every one but a stale account entry.
+    private static func paintableSnapshots(
+        for providerIDs: [String], cache: ProviderSnapshotCache,
+        identityKeys: [String: String], accountAwareFamilies: Set<String>
+    ) -> [String: ProviderSnapshot] {
+        cache.loadSnapshots(providerIDs: providerIDs).filter { cardID, _ in
+            guard hasStaleAccountCache(
+                for: cardID, cache: cache, identityKeys: identityKeys, accountAwareFamilies: accountAwareFamilies
+            ) else {
+                return true
+            }
+            AppLog.info(.cache, "stale account cache discarded for \(cardID)")
+            return false
+        }
+    }
+
+    /// Only a snapshot the card's current account provably produced may seed a provider's fallback.
+    private func adoptLaunchSnapshots(_ snapshots: [String: ProviderSnapshot]) {
+        for (cardID, snapshot) in snapshots {
             guard let identity = providerIdentityKeys[cardID],
                   cache.producedByIdentityKey(providerID: cardID) == identity
             else { continue }
             providersByID[cardID]?.adoptLaunchSnapshot(snapshot)
         }
+    }
+
+    /// Swaps the provider set in place — the live reload after a Codex account change. A card
+    /// that is gone, or that kept its id but changed hands (the bare `codex` card after the last
+    /// Remove, or an identity-less fallback that now names an account), takes its rendered
+    /// snapshot, error, and backoff with it; a card that just appeared or changed hands paints from
+    /// its own cache under the same account guard a launch applies. A fetch still running on a
+    /// replaced runtime loses its id — the rebuilt card fetches at once — and publishes nothing
+    /// when it returns (see `refresh`). A retained snapshot follows its card's current name, on
+    /// disk too, since the local API and the CLI serialize the snapshot's name. The merged history
+    /// is rebuilt and re-exported for the new card set.
+    func replaceProviders(
+        _ providers: [ProviderRuntime], registry: WidgetRegistry,
+        providerIdentityKeys: [String: String], accountAwareFamilies: Set<String>
+    ) {
+        let previousIDs = Set(self.registry.providers.map(\.id))
+        let currentIDs = Set(registry.providers.map(\.id))
+        let previousProviders = providersByID
+        let previousIdentityKeys = self.providerIdentityKeys
+        self.registry = registry
+        providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
+        self.providerIdentityKeys = providerIdentityKeys
+        self.accountAwareFamilies = accountAwareFamilies
+        let changedHands = currentIDs.intersection(previousIDs)
+            .filter { previousIdentityKeys[$0] != providerIdentityKeys[$0] }
+        for id in previousIDs.subtracting(currentIDs).union(changedHands) {
+            localSnapshots[id] = nil
+            providerErrors[id] = nil
+            failureRetryAfter[id] = nil
+        }
+        // A fetch still running on a runtime that is gone — replaced, or removed with its card — no
+        // longer owns its id or the shared spinner; the rebuilt card can be fetched at once, and the
+        // footer's Refresh stays usable while the old fetch runs out.
+        for id in previousIDs.union(currentIDs)
+        where (previousProviders[id] as AnyObject?) !== (providersByID[id] as AnyObject?) {
+            inFlightTokens[id] = nil
+            refreshingProviderIDs.remove(id)
+        }
+        let painted = Self.paintableSnapshots(
+            for: currentIDs.subtracting(previousIDs).union(changedHands).sorted(), cache: cache,
+            identityKeys: providerIdentityKeys, accountAwareFamilies: accountAwareFamilies
+        )
+        localSnapshots.merge(painted) { _, new in new }
+        adoptLaunchSnapshots(painted)
+        // Only the name changes, in memory and on disk: a rename is not a fetch, so it must not make
+        // a launch-painted entry count as written this session (see `ProviderSnapshotCache.rename`).
+        for (id, snapshot) in localSnapshots {
+            guard let name = registry.provider(id: id)?.displayName, name != snapshot.displayName else { continue }
+            localSnapshots[id] = snapshot.renamed(name)
+            cache.rename(providerID: id, to: name)
+        }
+        rebuildRenderedSnapshots()
+        onLocalHistoryChanged?()
+    }
+
+    /// Fetches the rebuilt Codex cards now, each in its own task so a slow card never holds the
+    /// others, and for real: a renewed login must be tried even while the snapshot from before the
+    /// renewal is cache-fresh, or a cache hit would keep showing the old login's error. Returns as
+    /// soon as the fetches are started; each card shows its own refresh, and a card the seeder is
+    /// still probing is fetched by the enablement wake once it turns on.
+    func refreshRebuilt(providerIDs: [String]) {
+        for providerID in providerIDs {
+            clearFailureBackoff(for: providerID)
+            Task { await self.refresh(providerID: providerID, force: true) }
+        }
+    }
+
+    /// The account-swap guard, plus one rule for families in account-card mode: a card there that
+    /// names no account (the fallback after the last login went away, or a login whose account this
+    /// launch could not read) cannot tell its own cache from a removed account's, so any cached
+    /// entry under its id counts as stale — including one a concurrent `openusage`
+    /// invocation wrote back from its own older in-memory copy after the app had evicted it.
+    static func hasStaleAccountCache(
+        for cardID: String, cache: ProviderSnapshotCache, identityKeys: [String: String],
+        accountAwareFamilies: Set<String>
+    ) -> Bool {
+        if identityKeys[cardID] == nil, accountAwareFamilies.contains(ProviderAccountID.family(of: cardID)) {
+            return !cache.loadSnapshots(providerIDs: [cardID]).isEmpty
+        }
+        return cache.hasStaleAccountStamp(providerID: cardID, currentIdentityKey: identityKeys[cardID])
+    }
+
+    /// Drops the persisted and memoized cache entries of `providerIDs` through the live cache, so a
+    /// later write by any other provider cannot persist the memo's copy back. Rendered snapshots
+    /// stay on screen until `replaceProviders` removes the card.
+    func forgetCachedSnapshots(providerIDs: [String]) {
+        cache.forget(providerIDs: providerIDs)
     }
 
     /// Refresh every enabled provider, concurrently — one slow provider never delays the rest.
@@ -304,9 +421,8 @@ final class WidgetDataStore {
         // A TTL-fresh entry that provably belongs to another account (swap since it was written) must
         // not short-circuit the refresh — under persisted freshness (the one-shot CLI) it would copy
         // the previous account's snapshot back in. Treat it as a miss so the fetch overwrites it.
-        let staleAccountStamp = cache.hasStaleAccountStamp(
-            providerID: providerID,
-            currentIdentityKey: providerIdentityKeys[providerID]
+        let staleAccountStamp = Self.hasStaleAccountCache(
+            for: providerID, cache: cache, identityKeys: providerIdentityKeys, accountAwareFamilies: accountAwareFamilies
         )
         if !force, !staleAccountStamp, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
@@ -330,20 +446,37 @@ final class WidgetDataStore {
         guard let provider = providersByID[providerID] else { return .skipped }
         // Skip if an in-flight refresh already owns this provider (e.g. the background timer racing the
         // first popover open), so we never fire duplicate network calls for the same provider.
-        guard !refreshingProviderIDs.contains(providerID) else {
+        guard inFlightTokens[providerID] == nil else {
             AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
             return .skipped
         }
+        let token = UUID()
+        inFlightTokens[providerID] = token
         refreshingProviderIDs.insert(providerID)
-        defer { refreshingProviderIDs.remove(providerID) }
+        // Only this fetch's own entry is cleared: after a runtime replacement the id belongs to a
+        // newer fetch (see `replaceProviders`), which must keep its in-flight guard and spinner.
+        defer {
+            if inFlightTokens[providerID] == token {
+                inFlightTokens[providerID] = nil
+                refreshingProviderIDs.remove(providerID)
+            }
+        }
         let start = monotonicNow()
         // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
         // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
-        guard var snapshot = await ProviderRefreshDeadline.snapshot(
+        let fetched = await ProviderRefreshDeadline.snapshot(
             from: provider,
             force: force,
             timeout: providerRefreshTimeout
-        ) else {
+        )
+        // The provider set was replaced while this fetch ran (a Codex account change): the result,
+        // or the timeout, belongs to a runtime that is gone, or to the old scope of a card that was
+        // rebuilt. Publish nothing under its id.
+        guard providersByID[providerID] === provider else {
+            AppLog.info(.refresh, "\(providerID) refreshed on a replaced runtime; dropping the result")
+            return .skipped
+        }
+        guard var snapshot = fetched else {
             providerErrors[providerID] = "Refresh timed out after \(Int(providerRefreshTimeout))s"
             failureRetryAfter[providerID] = now().addingTimeInterval(Self.failureRetryBackoff)
             AppLog.warn(.refresh, "\(providerID) timed out after \(Int(providerRefreshTimeout))s")
@@ -538,6 +671,7 @@ final class WidgetDataStore {
             peerDocuments: peerHistoryDocuments,
             descriptors: enabledDescriptors,
             providerIdentityKeys: providerIdentityKeys,
+            accountAwareFamilies: accountAwareFamilies,
             now: renderDate
         )
         var rendered = localSnapshots

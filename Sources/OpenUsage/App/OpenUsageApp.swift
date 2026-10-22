@@ -144,6 +144,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     /// is off (we emit our own daily rollups), so it won't auto-flush on termination — this explicit
     /// flush keeps low-frequency events from being stranded across a clean quit.
     public func applicationWillTerminate(_ notification: Notification) {
+        // A Codex sign-in still waiting on the browser must not outlive the app: it would finish
+        // later and drop a live credential into a folder no record points at.
+        CodexLoginProcesses.terminateAll()
         container?.dataStore.flushPendingSnapshotWork()
         container?.telemetry.flush()
     }

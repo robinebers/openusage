@@ -54,6 +54,22 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertTrue(result.warnings.isEmpty)
     }
 
+    func testAccountAwareCodexWithoutALoginNeverServesACachedSnapshot() async throws {
+        let defaults = defaults()
+        let provider = StubProvider(id: "codex")
+        // Written back without an account stamp by an older in-memory copy after the app evicted it.
+        ProviderSnapshotCache(userDefaults: defaults).store(await provider.refresh(), producedByIdentityKey: nil)
+        provider.refreshCount = 0
+
+        let legacy = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "codex")
+        XCTAssertEqual(provider.refreshCount, 0, "a legacy install keeps serving its cache")
+        XCTAssertTrue(legacy.warnings.isEmpty)
+
+        _ = try await UsageReader(userDefaults: defaults, providers: [provider], accountAwareFamilies: ["codex"])
+            .read(providerID: "codex")
+        XCTAssertEqual(provider.refreshCount, 1, "an account-aware install with no login must refresh instead")
+    }
+
     func testForceUsesSharedProviderAndStoresResult() async throws {
         let defaults = defaults()
         let provider = StubProvider()

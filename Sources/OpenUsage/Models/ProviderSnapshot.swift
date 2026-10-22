@@ -44,6 +44,14 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines.first { $0.label == label }
     }
 
+    /// The same snapshot under its card's current name (a Codex card renamed by an account change).
+    func renamed(_ displayName: String) -> ProviderSnapshot {
+        ProviderSnapshot(
+            providerID: providerID, displayName: displayName, plan: plan, lines: lines,
+            refreshedAt: refreshedAt, usageHistory: usageHistory, warning: warning, errorCategory: errorCategory
+        )
+    }
+
     /// The success-path counterpart to `error(provider:message:)`: derives `providerID`/`displayName`
     /// from the provider so every runtime builds its snapshot the same way (`refreshedAt` is required
     /// so each call passes its own `now()`).

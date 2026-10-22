@@ -18,6 +18,9 @@ struct ProviderAccountDiscoveryReadout: Sendable {
         let keychainIdentity: CodexAccountIdentity?
         let configuredHomes: Set<String>
         let codexHome: String?
+        /// Logins OpenUsage signed in itself (see `CodexManagedAccountStore`), whether or not their
+        /// home currently holds a usable token.
+        let managedLogins: [CodexManagedLogin]
         let buildsCards: Bool
         let outcome: DefaultAccountObserver.Outcome
     }
@@ -37,6 +40,7 @@ extension ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         accountsStore: ProviderAccountsStore,
         families: Set<String>,
+        managedCodexLogins: [CodexManagedLogin],
         listCodexHomeDirectories: @escaping @Sendable (String) -> [String],
         desktop: ClaudeDesktopAuthStore?,
         listDesktopOrganizationDirectories: @escaping @Sendable (URL) -> [String]
@@ -57,6 +61,7 @@ extension ProviderAccountAssembly {
                 observer: observer,
                 enabled: families.contains("codex"),
                 hasEstablishedAccounts: hasEstablishedCodexAccounts,
+                managedLogins: managedCodexLogins,
                 listDirectories: listCodexHomeDirectories
             )
         }.value
@@ -106,6 +111,7 @@ extension ProviderAccountAssembly {
         observer: DefaultAccountObserver,
         enabled: Bool,
         hasEstablishedAccounts: Bool,
+        managedLogins: [CodexManagedLogin],
         listDirectories: @escaping @Sendable (String) -> [String]
     ) -> ProviderAccountDiscoveryReadout.Codex? {
         guard enabled else { return nil }
@@ -116,12 +122,14 @@ extension ProviderAccountAssembly {
         let managedHomes = Set(CodexSwapAccount.managedHomes(
             environment: observer.environment, files: observer.files, home: homeDirectory
         ).map { CodexHomeScanner.canonicalHome($0, homeDirectory: homeDirectory) })
+        // Homes OpenUsage signed in itself join the scan like any other independent home: a token
+        // there names its account, rotates in place, and counts that home's own session logs.
         let homeLogins = CodexHomeScanner(
             environment: observer.environment,
             files: observer.files,
             homeDirectory: observer.homeDirectory,
             listDirectories: listDirectories
-        ).scan(additionalHomes: swaps.map(\.mainHome)).logins
+        ).scan(additionalHomes: swaps.map(\.mainHome) + managedLogins.map(\.home)).logins
         let canonicalHomesByPath: [String: String] = Dictionary(uniqueKeysWithValues: homeLogins.map {
             login -> (String, String) in
             (login.home, CodexHomeScanner.canonicalHome(login.home, homeDirectory: homeDirectory))
@@ -143,15 +151,22 @@ extension ProviderAccountAssembly {
         let piIdentities = piScan.logins.map(\.identity)
         let swapIdentities = swaps.map(\.identity)
         let keychainIdentities = [keychainIdentity].compactMap { $0 }
-        let knownIdentities = Set(homeIdentities + piIdentities + swapIdentities + keychainIdentities)
+        // A managed login whose token is gone still names its account, so its card stays reachable
+        // for Sign In Again instead of vanishing.
+        let managedIdentities = managedLogins.compactMap(\.identity)
+        let knownIdentities = Set(homeIdentities + piIdentities + swapIdentities + keychainIdentities + managedIdentities)
+        // A login OpenUsage made itself is always an account card, even when it is the only login:
+        // the plain card would run it unscoped (no identity stamp on its cache or synced history,
+        // every home's spend counted as its own).
         let buildsCards = !swaps.isEmpty || hasEstablishedAccounts || knownIdentities.count > 1
+            || !managedIdentities.isEmpty
         let outcome = observer.observeCodex()
         return ProviderAccountDiscoveryReadout.Codex(
             homeDirectory: homeDirectory, swaps: swaps, managedHomes: managedHomes,
             homeLogins: homeLogins, canonicalHomesByPath: canonicalHomesByPath,
             piScan: piScan, keychainIdentity: keychainIdentity,
             configuredHomes: configuredHomes, codexHome: auth.codexHome(),
-            buildsCards: buildsCards, outcome: outcome
+            managedLogins: managedLogins, buildsCards: buildsCards, outcome: outcome
         )
     }
 

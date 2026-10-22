@@ -60,18 +60,7 @@ final class StatusItemController: NSObject {
         }
 
         let hosting = NSHostingController(
-            rootView: AnyView(
-                DashboardView()
-                    // Own the preference outside `DashboardView` so the view can read the resolved
-                    // value while deciding whether to mount its two-page transition structure.
-                    .reduceAnimationsWhenRequested()
-                    .environment(container)
-                    .environment(container.layout)
-                    .environment(container.dataStore)
-                    .environment(container.transparency)
-                    .environment(updater)
-                    .environment(\.resetClaims, container.resetClaims)
-            )
+            rootView: AnyView(PopoverRootView(container: container, updater: updater))
         )
         // The host view fills the panel. SwiftUI measures each screen and drives the panel height;
         // content scrolls only when that height reaches the available-screen limit.
@@ -366,4 +355,25 @@ final class StatusItemController: NSObject {
         panel.makeFirstResponder(nil)
     }
 
+}
+
+/// The popover's SwiftUI root. A view rather than a one-off modifier chain so the reset-claim
+/// services are read in a body: they follow the live Codex cards, and a plain hosting root would
+/// keep the set captured when the panel was built.
+private struct PopoverRootView: View {
+    let container: AppContainer
+    let updater: UpdaterController
+
+    var body: some View {
+        DashboardView()
+            // Own the preference outside `DashboardView` so the view can read the resolved
+            // value while deciding whether to mount its two-page transition structure.
+            .reduceAnimationsWhenRequested()
+            .environment(container)
+            .environment(container.layout)
+            .environment(container.dataStore)
+            .environment(container.transparency)
+            .environment(updater)
+            .environment(\.resetClaims, container.resetClaims)
+    }
 }

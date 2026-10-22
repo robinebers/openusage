@@ -37,9 +37,10 @@ The Keychain fallback selects the Codex CLI item for `$CODEX_HOME` (or `~/.codex
 ### Codex Swap accounts
 
 OpenUsage shows accounts saved by [Codex Swap (`xswap`)](https://github.com/maddada/codex-swap).
-Each account and workspace gets its own card, labeled with its alias and email. Cards and pins stay
-with the same account when you switch the default login. Restart OpenUsage after adding, removing,
-or renaming an account. Custom locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
+Each account and workspace gets its own card, labeled with its alias and email (with just the email
+when it has no alias); a lone card is simply **Codex**. Cards and pins stay with the same account
+when you switch the default login. Restart OpenUsage after adding, removing, or renaming an
+account. Custom locations set with `XSWAP_HOME` or `XDG_DATA_HOME` are supported.
 Upgrading from a version without Swap support refreshes saved shell settings before account discovery.
 
 - Matching file, Keychain, and Swap logins share a card. If one expires, OpenUsage tries another
@@ -56,7 +57,8 @@ OpenUsage also finds signed-in accounts in `CODEX_HOME`, `~/.codex`, `~/.config/
 `~/.codex-*` folders, sibling `~/.config/codex-*` folders, and pi's `auth.json` (`openai-codex`,
 `openai-codex-2`, …). Logins are matched by ChatGPT workspace and email, so two users in the same
 workspace remain separate cards, and the same account signed in through several homes and pi shares
-one card, named by its xswap alias, then its pi label, then its workspace and email. A login held only
+one card, named by its xswap alias, then its pi label, then its email (with the workspace added
+only when two cards share an email); a lone card is simply **Codex**. A login held only
 in the Keychain counts as an account too. A single account keeps the plain Codex card, which still
 uses a login found only in a sibling home or in pi, and counts that home's session logs in its
 spend tiles. Restart OpenUsage after adding or removing a login.
@@ -69,6 +71,60 @@ xswap slot that names no account. Every source is re-read on each refresh, a log
 changed mid-refresh is left untouched (a renewed token that could not be saved still serves that
 refresh), and each card tries every matching login. If a read-only login has expired, use that
 account once in xswap or pi so the tool renews its own token, then refresh OpenUsage.
+
+### Accounts added in OpenUsage
+
+You can also sign a ChatGPT account into OpenUsage directly, without changing the account your
+Codex CLI uses. Open **Customize → Codex → Codex Accounts** and click **Add Account…**. OpenUsage
+runs the Codex CLI's own sign-in against a private folder it owns (under
+`~/Library/Application Support/OpenUsage/codex-accounts/`), so the browser flow, tokens, and
+renewals are the same as a normal `codex login` — just kept apart from `~/.codex`. The Codex CLI
+must be installed.
+
+- Finish the sign-in in the browser that opens; meanwhile the Add row shows the progress, with
+  **Open Sign-In Page** if no browser opened and **Copy Link** to paste the link into a private
+  window or another browser. **Cancel** stops the sign-in and leaves everything as it was.
+- A new account gets its own card with its own Session, Weekly, and reset credits. If the browser
+  signs in as an account OpenUsage already shows from `~/.codex`, xswap, or pi, the sign-in is
+  rejected with a hint (sign out of ChatGPT in the browser, or use a private window) so no duplicate
+  is created. Later, an external login for an account you added here attaches to that same card.
+- The dashboard follows right away: after a sign-in or a removal OpenUsage rebuilds its Codex
+  cards in place (the section shows **Updating the Codex cards…** for a moment, then confirms with
+  the usual Customize notice), so the new card, the menu bar, the local HTTP API, and `openusage`
+  all show the change without a relaunch. A card keeps its place, stars, and history through
+  every change; a new card starts with the Codex defaults and is turned on as soon as OpenUsage
+  finds its login.
+- **Sign In Again** renews an account whose login expired or was revoked. The browser session must
+  belong to that same account; a different account is rejected and the old login is kept. An
+  account whose login lapsed keeps its card (showing the sign-in error) so this button stays
+  reachable.
+- **Remove** deletes the private folder — including any sessions Codex ran there — and forgets the
+  login. Logins in Codex, xswap, or pi are never touched. If that account had no other login, its
+  card disappears right away, and once a single account is left its card reads plain **Codex**
+  again.
+- Adding an account that is already listed replaces that entry's login rather than adding a
+  duplicate.
+- The new private folder starts empty, so a brand-new account's spend tiles only fill as Codex runs
+  with `CODEX_HOME` pointed at that folder. An account that is also signed in elsewhere keeps
+  counting all of its sources on the one merged card, as described below. Signing in never moves
+  existing history between accounts.
+- If you turned Codex off on the welcome screen or in Customize, a newly added account stays off
+  too; turn it on in Customize.
+- Your browser decides which ChatGPT account signs in. To add a second account, sign out of
+  ChatGPT in the browser first, or use a different browser profile.
+- Quitting OpenUsage during a sign-in stops it; a folder left behind by a quit or a crash is cleaned
+  up at the next launch. If that cleanup fails (a folder OpenUsage can no longer read or delete), the
+  Codex Accounts section says so at launch instead of leaving the folder behind quietly.
+- Should the saved list of accounts ever become unreadable (or name a folder outside OpenUsage's own
+  accounts folder), OpenUsage leaves every folder in place
+  and pauses Add, Sign In Again, and Remove until it is repaired (the log says why); the accounts
+  added in OpenUsage stay off the dashboard until then, and the Codex Accounts section shows the
+  error right at launch.
+- On a launch where OpenUsage could not read your other Codex logins (it reads your shell settings
+  first, and waits up to five seconds for them), **Add Account** asks you to relaunch, because it
+  could not tell a new account from one you already have. If that message keeps coming back after
+  a relaunch, your shell profile takes longer than that to load (or fails), and until it loads in
+  time OpenUsage can neither check your other Codex logins nor add an account.
 
 ### Whose spending goes on which card
 
@@ -83,8 +139,9 @@ spending goes to the account signed in to that home right now.
   of keeping its own. Those sessions live in one place, so they count once, for the main home's account.
   Share history is not fully supported: after `xswap switch`, the old account's card can keep showing
   the spending it had before the switch, so the same spend appears on two cards.
-- A home whose login names no account counts for the account xswap registered there, or for the
-  Keychain login in the main home. Without either, it counts for no card.
+- A home whose login names no account counts for the account xswap registered there, for the
+  account an OpenUsage-added folder was signed in as, or for the Keychain login in the main home.
+  Without any of these, it counts for no card.
 - pi spending goes to the account in pi's `openai-codex` login; after changing that login, restart
   OpenUsage. OpenCode spending goes to the account signed in to the main home.
 
@@ -109,6 +166,8 @@ For supported GPT-5.4, GPT-5.5, GPT-5.6, and GPT-6 models, requests above 272k i
 - **"Not logged in"** — run `codex` and sign in, then refresh.
 - **A Codex Swap account needs login**: run `xswap login <account>` for the named account, then refresh.
 - **A pi-only account needs login**: use that account in pi to renew its token, then refresh OpenUsage.
+- **An account added in OpenUsage needs login**: open **Customize → Codex → Codex Accounts** and use **Sign In Again** for that account; its card updates on its own.
+- **"Codex CLI not found" when adding an account**: install the Codex CLI (`npm i -g @openai/codex` or Homebrew) so it is on your shell's `PATH`, then try again.
 - **API-key-only setups** can't read subscription usage — sign in with your ChatGPT account instead.
 - **Spend tiles show "No data"** — OpenUsage found no qualifying Codex usage in Codex, pi, or OpenCode logs from the last 30 days. If your Codex home lives somewhere custom, set `CODEX_HOME` so both the Codex CLI and OpenUsage look in the same place.
 - **OpenCode usage is missing** — OpenCode must currently have an `openai` OAuth credential in

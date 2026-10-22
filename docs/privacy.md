@@ -45,6 +45,15 @@ your macOS account (owner read and write only). Antigravity's short-lived refres
 to the current Keychain login using a one-way fingerprint; the refresh credential itself is not copied.
 The cache is never used after logout, an account change, or while Keychain access is unavailable.
 
+Codex accounts you add inside OpenUsage are the one case where OpenUsage holds a login of its own: the
+Codex CLI writes that account's `auth.json` into a private folder under
+`~/Library/Application Support/OpenUsage/codex-accounts/`, readable only by your macOS account, and
+OpenUsage keeps a small list of those folders with each account's workspace id and email in its
+settings. The folder and the list stay on this Mac: the login is used only for that account's own
+usage requests, and **Remove** deletes the folder. If you turn on iCloud sync, the account's
+workspace id and email travel with its aggregated history like every other Codex card's — never
+its tokens or the folder's contents.
+
 Claude Desktop access is strictly read-only. OpenUsage may ask macOS for permission to use the
 `Claude Safe Storage` Keychain item so it can decrypt Desktop's current access token. It never uses
 Desktop's rotating refresh token and never modifies Desktop's config, cookies, or Keychain data.

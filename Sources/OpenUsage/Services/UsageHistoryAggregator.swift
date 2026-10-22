@@ -8,6 +8,10 @@ enum UsageHistoryAggregator {
         peerDocuments: [UsageHistoryDocument],
         descriptors: [String: UsageHistoryDescriptor],
         providerIdentityKeys: [String: String] = [:],
+        /// Families running in account-card mode. Their bare card never takes a peer's unattributed
+        /// history: when that card names no account (no login left, or one this launch could not
+        /// identify), the peer's bare entry could belong to any account.
+        accountAwareFamilies: Set<String> = [],
         now: Date = Date()
     ) -> [String: ProviderUsageHistory] {
         var inputs: [String: [ProviderUsageHistory]] = [:]
@@ -31,7 +35,8 @@ enum UsageHistoryAggregator {
                         allowsUnattributedHistory: localClaudeCards.count <= 1
                     )
                 } else if ProviderAccountID.family(of: providerID) == "codex",
-                          providerIdentityKeys[providerID]?.contains("|") == true || providerID.contains("@") {
+                          providerIdentityKeys[providerID]?.contains("|") == true || providerID.contains("@")
+                              || accountAwareFamilies.contains("codex") {
                     peer = accountHistory(
                         in: document, family: "codex", identity: providerIdentityKeys[providerID],
                         allowsUnattributedHistory: false

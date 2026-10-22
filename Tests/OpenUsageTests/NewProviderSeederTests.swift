@@ -75,6 +75,36 @@ final class NewProviderSeederTests: XCTestCase {
         XCTAssertEqual(codexAccount.probeCount, 0)
     }
 
+    func testTheEnabledIDOfARemovedCardDoesNotKeepItsFamilyOn() async {
+        // Two Codex accounts were on; one was removed in Customize (its enabled id lingers), then
+        // the user turned the remaining card off. A new account must stay off: no installed Codex
+        // card is on, whatever the lingering id says.
+        let enablement = seededStore(
+            "removed-card", enabled: ["claude", "codex@removed"], known: ["claude", "codex", "codex@removed"]
+        )
+        let newcomer = probe("codex@brandnew", hasCredentials: true)
+
+        let task = NewProviderSeeder.reconcileIfNeeded(
+            providers: [probe("claude", hasCredentials: true), probe("codex", hasCredentials: true), newcomer],
+            enablement: enablement
+        )
+        await task?.value
+
+        XCTAssertFalse(enablement.isEnabled("codex@brandnew"))
+        XCTAssertEqual(newcomer.probeCount, 0)
+        XCTAssertTrue(enablement.knownIDs.contains("codex@brandnew"))
+
+        // Control: with an installed Codex card on, the newcomer joins as before.
+        let joining = seededStore("installed-on", enabled: ["claude", "codex"], known: ["claude", "codex"])
+        let joiner = probe("codex@brandnew", hasCredentials: true)
+        let joinTask = NewProviderSeeder.reconcileIfNeeded(
+            providers: [probe("claude", hasCredentials: true), probe("codex", hasCredentials: true), joiner],
+            enablement: joining
+        )
+        await joinTask?.value
+        XCTAssertTrue(joining.isEnabled("codex@brandnew"))
+    }
+
     func testLegacyModeStoreIsUntouched() {
         // Legacy disabled-list installs get new providers on by default already; the seeder must not
         // switch their mode or write anything.
@@ -121,7 +151,60 @@ final class NewProviderSeederTests: XCTestCase {
         XCTAssertEqual(enableCallbacks, ["windsurf"], "the seeder must not fire a second enable")
     }
 
+    func testAFamilyTurnedOffDuringTheProbeKeepsItsNewCardsOff() async {
+        // A live rebuild found two new Codex cards: B, whose file login is checked at once, and C, a
+        // Keychain login whose check can wait on a prompt. While it waits, the user turns the
+        // family's only card off. Neither newcomer may come on: the family is off now, whatever it
+        // was when the probe began.
+        let enablement = seededStore("family-off", enabled: ["claude", "codex@a"], known: ["claude", "codex", "codex@a"])
+        let c = probe("codex@c", hasCredentials: true)
+        c.holds = true
+
+        let task = NewProviderSeeder.reconcileIfNeeded(providers: codexFamily(newcomer: c), enablement: enablement)
+        for _ in 0..<1_000 where c.probeCount == 0 { await Task.yield() }
+        XCTAssertEqual(c.probeCount, 1)
+        enablement.setEnabled(false, for: "codex@a")
+        c.release()
+        await task?.value
+
+        XCTAssertEqual(enablement.enabledIDs, ["claude"])
+
+        // Control: with nothing toggled during the probe, both newcomers join.
+        let joining = seededStore("family-on", enabled: ["claude", "codex@a"], known: ["claude", "codex", "codex@a"])
+        let joinTask = NewProviderSeeder.reconcileIfNeeded(
+            providers: codexFamily(newcomer: probe("codex@c", hasCredentials: true)), enablement: joining
+        )
+        await joinTask?.value
+        XCTAssertEqual(joining.enabledIDs, ["claude", "codex@a", "codex@b", "codex@c"])
+    }
+
+    func testACardTurnedOnAndOffDuringTheProbeStaysOff() async {
+        // The user turns the new card B on, then off again, while C's check still waits. B keeps the
+        // user's last word; C, which nobody touched, joins its family as usual.
+        let enablement = seededStore("on-off", enabled: ["claude", "codex@a"], known: ["claude", "codex", "codex@a"])
+        let c = probe("codex@c", hasCredentials: true)
+        c.holds = true
+
+        let task = NewProviderSeeder.reconcileIfNeeded(providers: codexFamily(newcomer: c), enablement: enablement)
+        for _ in 0..<1_000 where c.probeCount == 0 { await Task.yield() }
+        enablement.setEnabled(true, for: "codex@b")
+        enablement.setEnabled(false, for: "codex@b")
+        c.release()
+        await task?.value
+
+        XCTAssertEqual(enablement.enabledIDs, ["claude", "codex@a", "codex@c"])
+    }
+
     // MARK: - Helpers
+
+    /// Claude and a Codex family: the known cards `codex` (off) and `codex@a` (on), the newcomer
+    /// `codex@b` with a login on file, and the newcomer `c`.
+    private func codexFamily(newcomer c: ProbeCountingProvider) -> [ProbeCountingProvider] {
+        [
+            probe("claude", hasCredentials: true), probe("codex", hasCredentials: true),
+            probe("codex@a", hasCredentials: true), probe("codex@b", hasCredentials: true), c,
+        ]
+    }
 
     private func seededStore(_ name: String, enabled: Set<String>, known: Set<String>) -> ProviderEnablementStore {
         let store = ProviderEnablementStore(defaults: makeDefaults(name))
@@ -148,6 +231,9 @@ private final class ProbeCountingProvider: ProviderRuntime {
     let widgetDescriptors: [WidgetDescriptor] = []
     private let hasCredentials: Bool
     private(set) var probeCount = 0
+    /// When set, the probe parks until `release()`, the way a Keychain prompt holds a check.
+    var holds = false
+    private var continuation: CheckedContinuation<Void, Never>?
 
     init(id: String, hasCredentials: Bool) {
         self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
@@ -160,6 +246,12 @@ private final class ProbeCountingProvider: ProviderRuntime {
 
     func hasLocalCredentials() async -> Bool {
         probeCount += 1
+        if holds { await withCheckedContinuation { continuation = $0 } }
         return hasCredentials
+    }
+
+    func release() {
+        continuation?.resume()
+        continuation = nil
     }
 }
