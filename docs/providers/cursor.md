@@ -37,6 +37,8 @@ into the Grok CLI is not required.
 
 Just be signed into the Cursor app. OpenUsage reads Cursor's local state database (and its keychain entries) for the session tokens; refreshed tokens are persisted back. Nothing extra to install or configure.
 
+Cursor 3.27 and later seals the editor login in that database (`cursor-safe-storage`). OpenUsage opens the seal with the Cursor Safe Storage password already in your keychain. macOS may ask the first time. If you deny it, OpenUsage does not ask again until a manual refresh, and it uses the Cursor CLI login when that one is present. A refreshed editor token is written back sealed. The Safe Storage item itself is left unchanged.
+
 ## Spend history
 
 Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage history—the same data shown on Cursor's Usage page. OpenUsage keeps each day on your Mac, separately for each Cursor account, and re-checks today and yesterday on every refresh. It fills in missing older days in the background within 20 seconds per refresh. A failed or short download never erases stored days. The chart appears once all 30 days are stored; heavy accounts may take a couple of refreshes the first time.
@@ -44,6 +46,7 @@ Today, Yesterday, Last 30 Days, and Usage Trend come from Cursor's usage history
 ## Troubleshooting
 
 - **"Not logged in" / token errors** — open Cursor and make sure you're signed in, then refresh.
+- **Keychain prompt for "Cursor Safe Storage"** — allow it so the sealed editor login can be read. Denying it leaves the card on the CLI login, or on "Not logged in" when there is no CLI login either. Refresh asks again after a denial.
 - **Some metrics missing** — Cursor omits fields depending on plan type; missing metrics simply show "No data".
 - **Optional lookup failed** — Grok Bot, plan, credit-grant, prepaid-balance, and request-fallback failures stay nonfatal when primary usage is available. OpenUsage records fixed, credential-free reasons in the diagnostic log.
 

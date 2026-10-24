@@ -41,21 +41,28 @@ struct CursorAuthStore: Sendable {
 
     var sqlite: SQLiteAccessing
     var keychain: KeychainAccessing
+    var safeStorageKey: any CursorSafeStorageKeyReading
     var now: @Sendable () -> Date
 
     init(
         sqlite: SQLiteAccessing = SQLiteCLIAccessor(),
         keychain: KeychainAccessing = SecurityKeychainAccessor(),
+        safeStorageKey: any CursorSafeStorageKeyReading = CursorSafeStorageKeyReader(),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.sqlite = sqlite
         self.keychain = keychain
+        self.safeStorageKey = safeStorageKey
         self.now = now
     }
 
     func loadAuthState() -> CursorAuthState? {
-        let sqliteAccessToken = readStateValue(Self.accessTokenKey)
-        let sqliteRefreshToken = readStateValue(Self.refreshTokenKey)
+        let editorTokens = usableEditorTokens(
+            access: readStateValue(Self.accessTokenKey),
+            refresh: readStateValue(Self.refreshTokenKey)
+        )
+        let sqliteAccessToken = editorTokens.access
+        let sqliteRefreshToken = editorTokens.refresh
         let sqliteMembershipType = readStateValue(Self.membershipTypeKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -115,10 +122,50 @@ struct CursorAuthStore: Sendable {
     func saveAccessToken(_ accessToken: String, source: CursorAuthState.Source) throws {
         switch source {
         case .sqlite:
-            try writeStateValue(Self.accessTokenKey, accessToken)
+            if let existing = readStateValue(Self.accessTokenKey), CursorSealedToken.isSealed(existing) {
+                guard let password = try safeStorageKey.readPassword() else {
+                    throw CursorSealedTokenError.missingKey
+                }
+                try writeStateValue(Self.accessTokenKey, CursorSealedToken.seal(token: accessToken, password: password))
+            } else {
+                try writeStateValue(Self.accessTokenKey, accessToken)
+            }
         case .keychain:
             try keychain.writeGenericPassword(service: Self.keychainAccessTokenService, value: accessToken)
         }
+    }
+
+    /// Plaintext JWTs pass through. Sealed cells are opened with the safeStorage
+    /// password, once for the pair. A cell that cannot be opened becomes nil so
+    /// it is never sent to Cursor as a refresh token (`shouldLogout`), and the
+    /// CLI keychain login can still be used.
+    private func usableEditorTokens(access: String?, refresh: String?) -> (access: String?, refresh: String?) {
+        let needsKey = [access, refresh].compactMap { $0 }.contains(where: CursorSealedToken.isSealed)
+        guard needsKey else { return (access, refresh) }
+
+        let password: String?
+        do {
+            password = try safeStorageKey.readPassword()
+        } catch {
+            AppLog.warn(LogTag.auth("cursor"), "Cursor Safe Storage key could not be read")
+            password = nil
+        }
+        func open(_ stored: String?) -> String? {
+            guard let stored else { return nil }
+            guard CursorSealedToken.isSealed(stored) else { return stored }
+            guard let password else { return nil }
+            return CursorSealedToken.open(stored: stored, password: password)
+        }
+        let opened = (open(access), open(refresh))
+        let failed = (access.map(CursorSealedToken.isSealed) == true && opened.0 == nil)
+            || (refresh.map(CursorSealedToken.isSealed) == true && opened.1 == nil)
+        if failed {
+            let reason = password == nil
+                ? "Cursor login is sealed and the Safe Storage key is unavailable"
+                : "Cursor login is sealed and the Safe Storage key could not open it"
+            AppLog.warn(LogTag.auth("cursor"), reason)
+        }
+        return opened
     }
 
     private func readStateValue(_ key: String) -> String? {
