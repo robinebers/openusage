@@ -38,8 +38,6 @@ struct ClaudeAccountProfile: Decodable, Hashable, Sendable {
 }
 
 struct ClaudeUsageClient: Sendable {
-    private static let scopes = "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
-
     var httpClient: HTTPClient
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
@@ -51,7 +49,7 @@ struct ClaudeUsageClient: Sendable {
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
             "client_id": config.clientID,
-            "scope": Self.scopes
+            "scope": ClaudeLogin.scopes
         ]
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         return try await httpClient.send(

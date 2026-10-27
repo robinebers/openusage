@@ -17,6 +17,26 @@ report stays hidden.
 | OpenRouter | Management API key | Balance, Today, This Week, This Month |
 | Z.ai | API key | Session, Weekly, Web Searches |
 
+## What you grant
+
+Each OAuth sign-in asks the provider for the least the card's reads need, and a refresh never asks for
+more than the sign-in did. The token sits in the app's Keychain, so what it can do is what you grant
+here.
+
+| Provider | Scopes requested | Why |
+|---|---|---|
+| Claude | `user:profile` | `/api/oauth/usage` and `/api/oauth/profile` require it and nothing else. The token cannot run inference, create API keys, or reach Claude Code sessions, MCP servers, or uploads. |
+| Codex | `openid profile email offline_access` | Plain OpenID Connect: the email names the account and `offline_access` is the refresh token. The usage endpoint reads the account id from the token itself. |
+| Cursor | none (Cursor's own sign-in, no scopes) | Cursor's login returns a dashboard session; there is no scope to narrow. |
+| Antigravity | `cloud-platform`, `userinfo.email` | Cloud Code's quota API is a Google Cloud API and takes `cloud-platform`; the email names the account. Every Cloud Code client, Gemini CLI included, asks for `cloud-platform`; none is known to work without it. The Antigravity app also asks for `userinfo.profile`, `cclog`, and `experimentsandconfigs`; the card never uses them. |
+| Copilot | `read:user` | `/copilot_internal/user` takes a plain user token; `read:user` is the narrowest grant that still names the account. |
+| Grok | `openid profile email offline_access grok-cli:access api:access` | The set the Grok CLI itself requests. The settings and billing reads go through the Grok CLI proxy, which every known client reaches with this set; xAI publishes no narrower set for this client, so the card asks for the same. |
+
+A narrower grant applies the next time you add an account. An account you added before keeps its
+token and keeps working; remove it and add it again if you want the smaller grant now. Claude is the
+exception: its refresh asks for `user:profile` only, so a refreshed Claude access token carries only
+that whatever the original sign-in granted.
+
 ## Claude
 
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows

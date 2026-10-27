@@ -4,7 +4,10 @@ struct ClaudeLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl")!, encoding: .utf8)!
     static let authorizeURL = URL(string: "https://claude.ai/oauth/authorize")!
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
-    static let scopes = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
+    /// `/api/oauth/usage` and `/api/oauth/profile` gate on `user:profile` and nothing else (Anthropic answers
+    /// a token without it with "OAuth token does not meet scope requirement user:profile"). The refresh
+    /// grant sends the same string, so a refreshed token never carries more than the sign-in granted.
+    static let scopes = "user:profile"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
@@ -58,6 +61,9 @@ struct CodexLogin: ProviderLogin {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     static let authorizeURL = URL(string: "https://auth.openai.com/oauth/authorize")!
     static let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
+    /// Plain OIDC: `openid` + `email` name the account, `offline_access` is the refresh token. The usage
+    /// endpoint reads the account id from the access token itself, so no API scope is requested.
+    static let scopes = "openid profile email offline_access"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
@@ -87,7 +93,7 @@ struct CodexLogin: ProviderLogin {
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "client_id", value: Self.clientID),
             URLQueryItem(name: "redirect_uri", value: server.redirectURI),
-            URLQueryItem(name: "scope", value: "openid profile email offline_access"),
+            URLQueryItem(name: "scope", value: Self.scopes),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "state", value: state),
@@ -164,6 +170,10 @@ struct AntigravityLogin: ProviderLogin {
     /// the client), and the refresh-token grant requires it, so committing it is an accepted trade-off.
     static let clientID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
     static let clientSecret = "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"
+    /// Cloud Code (`loadCodeAssist`, `retrieveUserQuotaSummary`) is a Google Cloud API and takes
+    /// `cloud-platform`; `userinfo.email` names the account. The Antigravity app also asks for
+    /// `userinfo.profile`, `cclog`, and `experimentsandconfigs`, which the quota reads never use.
+    static let scopes = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
@@ -174,7 +184,7 @@ struct AntigravityLogin: ProviderLogin {
             URLQueryItem(name: "client_id", value: Self.clientID),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "redirect_uri", value: server.redirectURI),
-            URLQueryItem(name: "scope", value: "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/cclog https://www.googleapis.com/auth/experimentsandconfigs"),
+            URLQueryItem(name: "scope", value: Self.scopes),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "state", value: pkce.verifier),

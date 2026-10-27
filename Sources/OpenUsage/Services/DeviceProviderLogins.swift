@@ -2,13 +2,16 @@ import Foundation
 
 struct CopilotLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "SXYxLmI1MDdhMDhjODdlY2ZlOTg=")!, encoding: .utf8)!
+    /// `/copilot_internal/user` accepts a plain user token; `read:user` is the narrowest scope the device
+    /// flow grants that still names the account through `/user`.
+    static let scopes = "read:user"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let startURL = URL(string: "https://github.com/login/device/code")!
         let startResponse = try await LoginHTTP.postForm(startURL, fields: [
             "client_id": Self.clientID,
-            "scope": "read:user"
+            "scope": Self.scopes
         ], using: http, headers: ["User-Agent": "OpenUsage"])
         let device = try LoginHTTP.decode(GitHubDeviceCode.self, from: startResponse)
         guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
