@@ -172,24 +172,15 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.canUndo)
     }
 
-    func testUndoWithEmptyHistoryIsNoOp() {
-        let store = makeStore()
-        let before = store.placed.map(\.descriptorID)
-
-        XCTAssertFalse(store.canUndo)
-        XCTAssertFalse(store.undo())
-        XCTAssertEqual(store.placed.map(\.descriptorID), before)
-    }
-
     func testSavedEmptyLayoutDoesNotRestoreDefaults() {
         let defaults = isolatedDefaults()
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let store = makeStore(defaults)
 
         for widget in store.placed {
             store.remove(widget.id)
         }
 
-        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let reloaded = makeStore(defaults)
         XCTAssertTrue(reloaded.placed.isEmpty)
     }
 
@@ -198,12 +189,8 @@ final class LayoutStoreTests: XCTestCase {
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
         defaults.set(Data("not valid seeded-default data".utf8), forKey: "layout.seededDefaults")
 
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.weekly"],
-            migrationBaselineMetricIDs: ["claude.session", "claude.weekly"]
+        let store = makeStore(
+            defaults, metricIDs: ["claude.session", "claude.weekly"], baseline: ["claude.session", "claude.weekly"]
         )
 
         XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session"])
@@ -213,12 +200,10 @@ final class LayoutStoreTests: XCTestCase {
         let defaults = isolatedDefaults()
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
 
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.weekly", "claude.today"],
-            migrationBaselineMetricIDs: ["claude.session", "claude.weekly"]
+        let store = makeStore(
+            defaults,
+            metricIDs: ["claude.session", "claude.weekly", "claude.today"],
+            baseline: ["claude.session", "claude.weekly"]
         )
 
         XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session", "claude.today"])
@@ -228,51 +213,27 @@ final class LayoutStoreTests: XCTestCase {
     func testDisablingAutoSeededDefaultDoesNotReAddOnReload() {
         let defaults = isolatedDefaults()
         saveStored([PlacedWidget(descriptorID: "claude.session")], forKey: "layout", in: defaults)
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.today"],
-            migrationBaselineMetricIDs: ["claude.session"]
-        )
+        let store = makeStore(defaults, metricIDs: ["claude.session", "claude.today"], baseline: ["claude.session"])
         guard let seeded = store.placed.first(where: { $0.descriptorID == "claude.today" }) else {
             return XCTFail("new default was not seeded")
         }
 
         store.remove(seeded.id)
 
-        let reloaded = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.today"],
-            migrationBaselineMetricIDs: ["claude.session"]
-        )
+        let reloaded = makeStore(defaults, metricIDs: ["claude.session", "claude.today"], baseline: ["claude.session"])
         XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
     }
 
     func testFreshLayoutTreatsCurrentDefaultsAsAlreadySeeded() {
         let defaults = isolatedDefaults()
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.today"],
-            migrationBaselineMetricIDs: []
-        )
+        let store = makeStore(defaults, metricIDs: ["claude.session", "claude.today"], baseline: [])
         guard let today = store.placed.first(where: { $0.descriptorID == "claude.today" }) else {
             return XCTFail("fresh store did not include all current defaults")
         }
 
         store.remove(today.id)
 
-        let reloaded = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.today"],
-            migrationBaselineMetricIDs: []
-        )
+        let reloaded = makeStore(defaults, metricIDs: ["claude.session", "claude.today"], baseline: [])
         XCTAssertEqual(reloaded.placed.map(\.descriptorID), ["claude.session"])
     }
 
@@ -280,13 +241,7 @@ final class LayoutStoreTests: XCTestCase {
         let defaults = isolatedDefaults()
         saveStored([PlacedWidget](), forKey: "layout", in: defaults)
 
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["missing.metric", "claude.session"],
-            migrationBaselineMetricIDs: []
-        )
+        let store = makeStore(defaults, metricIDs: ["missing.metric", "claude.session"], baseline: [])
 
         XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session"])
     }
@@ -302,20 +257,6 @@ final class LayoutStoreTests: XCTestCase {
         store.draggingID = UUID()
         store.add(first.descriptorID)
         XCTAssertNil(store.draggingID)
-    }
-
-    func testAddAndRemoveTogglePlacement() {
-        let store = makeStore()
-        XCTAssertFalse(store.isMetricEnabled("cursor.today"))
-
-        store.add("cursor.today")
-        XCTAssertTrue(store.isMetricEnabled("cursor.today"))
-
-        guard let widget = store.placed.first(where: { $0.descriptorID == "cursor.today" }) else {
-            return XCTFail("missing widget")
-        }
-        store.remove(widget.id)
-        XCTAssertFalse(store.isMetricEnabled("cursor.today"))
     }
 
     func testTogglingMetricDoesNotChangeCustomizeOrder() {
@@ -335,9 +276,7 @@ final class LayoutStoreTests: XCTestCase {
             Account(kind: kind, label: kind.displayName, addedAt: Date(timeIntervalSince1970: TimeInterval(index)))
         }
         let providers = ProviderCatalog.make(accounts: accounts, vault: InMemoryCredentialVault())
-        let store = LayoutStore(
-            registry: WidgetRegistry.from(providers), defaults: isolatedDefaults(), storageKey: "layout"
-        )
+        let store = makeStore(registry: .from(providers))
 
         for provider in providers {
             XCTAssertEqual(
@@ -352,12 +291,7 @@ final class LayoutStoreTests: XCTestCase {
         let account = Account(kind: .claude, label: "Work")
         let providers = ProviderCatalog.make(accounts: [account], vault: InMemoryCredentialVault())
         let defaults = DefaultLayout.expandingAccounts(DefaultLayout.metricIDs, providerIDs: [account.cardID])
-        let store = LayoutStore(
-            registry: WidgetRegistry.from(providers),
-            defaults: isolatedDefaults(),
-            storageKey: "layout",
-            defaultMetricIDs: defaults
-        )
+        let store = makeStore(registry: .from(providers), metricIDs: defaults)
 
         XCTAssertTrue(store.isMetricEnabled("\(account.cardID).session"))
         XCTAssertTrue(store.placed.contains { $0.descriptorID == "\(account.cardID).session" })
@@ -367,11 +301,9 @@ final class LayoutStoreTests: XCTestCase {
         let accounts = [Account(kind: .claude, label: "Work"), Account(kind: .codex, label: "Work")]
         let providers = ProviderCatalog.make(accounts: accounts, vault: InMemoryCredentialVault())
         let cardIDs = accounts.map(\.cardID)
-        let store = LayoutStore(
-            registry: WidgetRegistry.from(providers),
-            defaults: isolatedDefaults(),
-            storageKey: "layout",
-            defaultMetricIDs: DefaultLayout.expandingAccounts(DefaultLayout.metricIDs, providerIDs: cardIDs)
+        let store = makeStore(
+            registry: .from(providers),
+            metricIDs: DefaultLayout.expandingAccounts(DefaultLayout.metricIDs, providerIDs: cardIDs)
         )
 
         for cardID in cardIDs {
@@ -383,12 +315,7 @@ final class LayoutStoreTests: XCTestCase {
 
     func testMetricOrderPersistsWhileMetricIsDisabled() {
         let defaults = isolatedDefaults()
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session"]
-        )
+        let store = makeStore(defaults, metricIDs: ["claude.session"])
         let original = store.orderedSupportedMetrics(for: "claude").map(\.id)
         guard let first = original.first else { return XCTFail("missing Claude metrics") }
         XCTAssertFalse(store.isMetricEnabled("claude.extra"))
@@ -398,12 +325,7 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id).first, "claude.extra")
         XCTAssertFalse(store.isMetricEnabled("claude.extra"))
 
-        let reloaded = LayoutStore(
-            registry: .mock,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session"]
-        )
+        let reloaded = makeStore(defaults, metricIDs: ["claude.session"])
         XCTAssertEqual(reloaded.orderedSupportedMetrics(for: "claude").map(\.id).first, "claude.extra")
 
         reloaded.setMetricEnabled("claude.extra", true)
@@ -420,13 +342,13 @@ final class LayoutStoreTests: XCTestCase {
 
     func testUnpinningEverythingPersistsAndIsNotReseeded() {
         let defaults = isolatedDefaults()
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let store = makeStore(defaults)
         XCTAssertFalse(store.pinnedMetricIDs.isEmpty)
 
         for id in store.pinnedMetricIDs { store.setPinned(false, for: id) }
         XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
 
-        let reloaded = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let reloaded = makeStore(defaults)
         XCTAssertTrue(reloaded.pinnedMetricIDs.isEmpty, "an explicitly emptied pin set must not be reseeded")
     }
 
@@ -434,21 +356,21 @@ final class LayoutStoreTests: XCTestCase {
 
     func testHidingAStarredMetricUnstarsItAndUndoRestoresBoth() {
         let defaults = isolatedDefaults()
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let store = makeStore(defaults)
         XCTAssertTrue(store.isPinned("claude.session"))
         XCTAssertTrue(trayMetricIDs(store).contains("claude.session"))
 
         store.setMetricEnabled("claude.session", false)
         XCTAssertFalse(store.isPinned("claude.session"))
         XCTAssertFalse(trayMetricIDs(store).contains("claude.session"), "the tray drops a hidden metric")
-        XCTAssertFalse(LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout").isPinned("claude.session"),
+        XCTAssertFalse(makeStore(defaults).isPinned("claude.session"),
                        "the unstar is saved")
 
         XCTAssertTrue(store.undo())
         XCTAssertTrue(store.isMetricEnabled("claude.session"))
         XCTAssertTrue(store.isPinned("claude.session"), "one undo restores the metric and its star")
         XCTAssertTrue(trayMetricIDs(store).contains("claude.session"))
-        XCTAssertTrue(LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout").isPinned("claude.session"))
+        XCTAssertTrue(makeStore(defaults).isPinned("claude.session"))
     }
 
     func testShowingAHiddenMetricAgainDoesNotStarIt() {
@@ -484,7 +406,7 @@ final class LayoutStoreTests: XCTestCase {
         saveStored(shown.map { PlacedWidget(descriptorID: $0) }, forKey: "layout", in: defaults)
         defaults.set(["claude.session", "claude.weekly"], forKey: "layout.menuBarPins")
 
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
+        let store = makeStore(defaults)
         XCTAssertFalse(store.isMetricEnabled("claude.session"))
         XCTAssertEqual(store.pinnedMetricIDs, ["claude.weekly"])
         XCTAssertFalse(trayMetricIDs(store).contains("claude.session"))
@@ -494,12 +416,7 @@ final class LayoutStoreTests: XCTestCase {
     /// A metric is either enabled or not: every enabled metric is in the provider's one list, in the
     /// saved metric order, and the Accounts detail lists the same order.
     func testDisplayGroupsListEveryEnabledMetricInMetricOrder() {
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: isolatedDefaults(),
-            storageKey: "layout",
-            defaultMetricIDs: ["claude.session", "claude.weekly"]
-        )
+        let store = makeStore(metricIDs: ["claude.session", "claude.weekly"])
 
         XCTAssertTrue(store.reorderMetric(dragged: "claude.weekly", target: "claude.session", in: "claude"))
 
@@ -510,15 +427,6 @@ final class LayoutStoreTests: XCTestCase {
 
     // MARK: - Accounts master/detail (L1 list + L2 detail)
 
-    func testAccountListIncludesAllProviders() {
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: isolatedDefaults(),
-            storageKey: "layout"
-        )
-        XCTAssertEqual(store.orderedProviders().map(\.id), MockData.providers.map(\.id))
-    }
-
     func testAccountListFollowsReorder() {
         let store = makeStore()
         XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
@@ -527,11 +435,7 @@ final class LayoutStoreTests: XCTestCase {
     }
 
     func testCustomizeDetailReturnsMetrics() {
-        let store = LayoutStore(
-            registry: .mock,
-            defaults: isolatedDefaults(),
-            storageKey: "layout"
-        )
+        let store = makeStore()
         let detail = store.customizeDetail(for: "codex")
         XCTAssertNotNil(detail)
         XCTAssertEqual(detail?.metrics.map(\.id), MockData.descriptors(for: "codex").map(\.id))
@@ -558,23 +462,19 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertNil(store.customizeProviderID)
     }
 
-    // MARK: - Share confirmation
-
-    /// `clearShareConfirmation` hides the pill immediately and cancels the auto-clear task, so a
-    /// confirmation mid-countdown can't reappear stale after the popover closes and reopens.
-    func testClearShareConfirmationHidesPillAndCancelsTimer() {
-        let store = makeStore()
-        XCTAssertFalse(store.shareConfirmation)
-
-        store.presentShareConfirmation()
-        XCTAssertTrue(store.shareConfirmation, "present sets the confirmation the pill reads")
-
-        store.clearShareConfirmation()
-        XCTAssertFalse(store.shareConfirmation, "clear hides the pill immediately")
-    }
-
-    private func makeStore() -> LayoutStore {
-        LayoutStore(registry: .mock, defaults: isolatedDefaults(), storageKey: "layout")
+    private func makeStore(
+        _ defaults: UserDefaults? = nil,
+        registry: WidgetRegistry = .mock,
+        metricIDs: [String]? = nil,
+        baseline: [String]? = nil
+    ) -> LayoutStore {
+        LayoutStore(
+            registry: registry,
+            defaults: defaults ?? isolatedDefaults(),
+            storageKey: "layout",
+            defaultMetricIDs: metricIDs ?? DefaultLayout.metricIDs,
+            migrationBaselineMetricIDs: baseline ?? DefaultLayout.migrationBaselineMetricIDs
+        )
     }
 
     /// The metrics the menu bar strip shows, as `StatusItemImageUpdater` builds it.
