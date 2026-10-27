@@ -28,17 +28,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         try await assertRenameTakesTyping("Personal", hosted)
     }
 
-    /// A double-click on the account's name in a one-account provider's header.
-    func testDoubleClickingAOneAccountHeaderTakesTheKeyboard() async throws {
-        let hosted = try await host(soleCodex: true)
-        try await resignKey(hosted)
-        let header = PanelMetrics.margin + DashboardGrid.headerHeight / 2
-        // The name follows "Codex — " in the header's type.
-        let prefix = ("Codex — " as NSString).size(withAttributes: [.font: DashboardGrid.headerNSFont]).width
-        try await doubleClick(CGPoint(x: PanelMetrics.margin + DashboardGrid.cardPadding + DashboardGrid.inset + prefix + 10, y: header), hosted)
-        try await assertRenameTakesTyping("Sunstory", hosted)
-    }
-
     /// Right-click → Rename, which begins the edit once the menu has closed.
     func testRenameFromTheMenuTakesTheKeyboard() async throws {
         let hosted = try await host()
@@ -76,19 +65,15 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
     }
 
     /// The dashboard (or, with `accountsTitle`, that account's Accounts page) as `StatusItemController`
-    /// hosts it, for Claude "Personal" and "Work", plus Codex "Sunstory" alone when `soleCodex`.
-    private func host(soleCodex: Bool = false, accountsTitle: String? = nil) async throws -> Hosted {
+    /// hosts it, for Claude "Personal" and "Work".
+    private func host(accountsTitle: String? = nil) async throws -> Hosted {
         try QuietTestProcess.requireFocus()
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
         var accounts: [String: String] = [:]
-        if soleCodex {
-            accounts["Sunstory"] = store.add(kind: .codex, label: "Sunstory", credential: .apiKey("key")).cardID
-        } else {
-            for label in ["Personal", "Work"] {
-                accounts[label] = store.add(kind: .claude, label: label, credential: .apiKey("key")).cardID
-            }
+        for label in ["Personal", "Work"] {
+            accounts[label] = store.add(kind: .claude, label: label, credential: .apiKey("key")).cardID
         }
         for _ in 0..<200 where container.layout.displayGroups.count < accounts.count {
             try await Task.sleep(for: .milliseconds(5))

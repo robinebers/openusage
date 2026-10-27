@@ -77,7 +77,9 @@ script/test_quiet.sh [--filter <Suite>]
 
 `script/test_quiet.sh` is the only way to run the tests on a Mac someone is using: the suite hosts real
 windows, and the script runs it niced, keeps it from taking the keyboard or the screen, and fails the
-run if a test process ever came to the front.
+run if a test process ever came to the front. The rename-focus tests need a key window, so they skip
+unless `OPENUSAGE_FOCUS_TESTS=1`; run them with `swift test --filter InlineRenameFocusTests` on a Mac
+nobody is typing on after every change to a header or to renaming, or they rot unseen.
 
 There is no hot reload. The app is a long-lived menu-bar process, so **every code change requires a
 full rebuild and restart of the running app** to take effect. The development bundle identifier is
