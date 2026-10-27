@@ -3,16 +3,16 @@ import SwiftUI
 
 /// The dashboard display: one provider after another (`DashboardFamily`), each a header above a card
 /// of its accounts, every account one row per metric that has data, fed by the same `WidgetDataStore`
-/// the menu bar uses. Every row shows its label, bar, value and reset at rest and reacts to nothing
-/// under the pointer; only the Limit Resets row's count opens the resets timeline after a dwell. A click
-/// on a value flips every row between used and left, a click on a reset between countdown and exact
-/// time. A double-click on an account's name, in the header or on its caption, renames it, the same as
-/// the menu's Rename.
+/// the menu bar uses. Every row shows its label, bar, value and reset at rest and draws the same under
+/// the pointer; resting it on the bar, the value or the reset opens a tooltip with the figure the row
+/// doesn't show, and on the Limit Resets row's count the resets timeline after a dwell. A click on a
+/// value flips every row between used and left, a click on a reset between countdown and exact time.
+/// A double-click on an account's name on its caption renames it, the same as the menu's Rename.
 ///
-/// Right-click a provider's header or card, an account, or a metric row for its menu (`DashboardMenus`);
-/// a one-account provider's menu holds the account's commands too. Share Screenshot there is the one
-/// way to copy a picture: the provider's with all its accounts, or one account's. Everything reorders by dragging: a
-/// provider by its header, an account by its caption within its card, a metric row within its account.
+/// Right-click a provider's header or card, an account's caption, or a metric row for its menu
+/// (`DashboardMenus`). Share Screenshot there is the one way to copy a picture: the provider's with all
+/// its accounts, or one account's. Everything reorders by dragging: a provider by its header, an account
+/// by its caption within its card, a metric row within its account.
 struct WidgetGroupedListView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
@@ -32,7 +32,7 @@ struct WidgetGroupedListView: View {
         VStack(alignment: .leading, spacing: DashboardGrid.sectionSpacing) {
             ForEach(families) { family in
                 section(family)
-                    .contextMenu { DashboardMenu(sections: familyMenu(family), perform: perform) }
+                    .contextMenu { DashboardMenu(sections: DashboardMenus.provider(family), perform: perform) }
                     .opacity(activeFamilyID == Self.familyFrameID(family.id) ? 0 : 1)
                     .reorderFrame(id: Self.familyFrameID(family.id), in: .named(reorderSpaceName))
             }
@@ -71,41 +71,32 @@ struct WidgetGroupedListView: View {
     private func section(_ family: DashboardFamily) -> some View {
         DashboardProviderSection(
             family: family,
-            plans: plans(for: family),
-            status: family.soleAccount.map { status(for: $0.id) } ?? AccountStatus(),
             handle: { AnyView($0.highPriorityGesture(familyDragGesture(for: family))) }
-        ) { account, captioned in
-            accountSection(account, in: family, captioned: captioned)
+        ) { account in
+            accountSection(account, in: family)
         }
         .contentShape(Rectangle())
     }
 
-    /// An account with its menu and drag. In a one-account card the header names the account, the
-    /// provider's menu stands in for its menu and there is no other account to reorder, so its rows
-    /// stand alone; in a card of several, each account is captioned over its rows.
-    @ViewBuilder
-    private func accountSection(_ account: DashboardAccount, in family: DashboardFamily, captioned: Bool) -> some View {
-        if !captioned {
+    /// An account: its caption over its rows, with the account's menu and the caption's drag.
+    private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
+                .highPriorityGesture(accountDragGesture(for: account, in: family))
             rows(of: account)
-        } else {
-            VStack(alignment: .leading, spacing: 0) {
-                DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
-                    .highPriorityGesture(accountDragGesture(for: account, in: family))
-                rows(of: account)
-            }
-            .contextMenu {
-                DashboardMenu(
-                    sections: DashboardMenus.account(
-                        account,
-                        status: statusReason(for: account.id),
-                        hasHiddenMetrics: !hiddenMetricIDs(for: account.id).isEmpty
-                    ),
-                    perform: perform
-                )
-            }
-            .opacity(activeAccountID == account.id ? 0 : 1)
-            .reorderFrame(id: account.id, in: .named(reorderSpaceName))
         }
+        .contextMenu {
+            DashboardMenu(
+                sections: DashboardMenus.account(
+                    account,
+                    status: statusReason(for: account.id),
+                    hasHiddenMetrics: !hiddenMetricIDs(for: account.id).isEmpty
+                ),
+                perform: perform
+            )
+        }
+        .opacity(activeAccountID == account.id ? 0 : 1)
+        .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
 
     /// The account's rows, one under the other with nothing between, each with its right-click menu
@@ -130,16 +121,6 @@ struct WidgetGroupedListView: View {
                     .reorderFrame(id: line.id, in: .named(reorderSpaceName))
             }
         }
-    }
-
-    /// A one-account provider's menu merges the account's commands into the provider's.
-    private func familyMenu(_ family: DashboardFamily) -> DashboardMenus.Sections {
-        guard let account = family.soleAccount else { return DashboardMenus.provider(family) }
-        return DashboardMenus.soleAccount(
-            account,
-            status: statusReason(for: account.id),
-            hasHiddenMetrics: !hiddenMetricIDs(for: account.id).isEmpty
-        )
     }
 
     /// Why the account shows a warning or stale icon.
@@ -251,8 +232,8 @@ struct WidgetGroupedListView: View {
             lift: $reorderLift,
             makeLift: { value in
                 let plans = plans(for: family)
-                let preview = DashboardProviderSection(family: family, plans: plans) { account, captioned in
-                    DashboardAccountRows(account: account, plan: plans[account.id], captioned: captioned)
+                let preview = DashboardProviderSection(family: family) { account in
+                    DashboardAccountRows(account: account, plan: plans[account.id])
                 }
                 return ReorderLift.make(id: frameID, payload: .view(AnyView(preview)), value: value, frames: frameStore.frames)
             },

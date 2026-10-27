@@ -25,25 +25,20 @@ final class DashboardFamilyTests: XCTestCase {
         XCTAssertEqual(families[0].accounts.map { $0.lines.map(\.id) }, [["session", "fable"], ["fable"]])
     }
 
-    func testTheImageLeavesAnAccountsEmailOut() {
+    func testEachCaptionNamesItsAccountAndTheImageLeavesEmailsOut() {
         func family(_ accounts: [Provider]) -> DashboardFamily {
             DashboardFamily(id: "codex", provider: accounts[0], accounts: accounts.map { DashboardAccount(provider: $0, lines: []) })
         }
         func codex(_ label: String?) -> Provider {
             Provider(id: "codex@\(label ?? "plain")", displayName: "Codex", icon: "codex", accountLabel: label)
         }
-        // One account: the header names it, by its email when it has no name of its own, and by the
-        // provider's name when it is named like its provider.
-        XCTAssertEqual(family([codex("Sunstory")]).soleAccount?.name, "Sunstory")
-        XCTAssertEqual(family([codex("sam@hey.com")]).soleAccount?.name, "sam@hey.com")
-        XCTAssertEqual(family([codex("Codex")]).soleAccount?.name, "Codex")
-        XCTAssertEqual(family([codex(nil)]).soleAccount?.name, "Codex")
-        // Several accounts: the provider alone; each account's name goes on its caption.
-        XCTAssertNil(family([codex("Sunstory"), codex("sam@hey.com")]).soleAccount)
-        XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).accounts.map(\.name), ["Sunstory", "sam@hey.com"])
-        // The copied image keeps a custom name and drops an email, in the header and on captions.
-        XCTAssertEqual(family([codex("Sunstory")]).hidingEmails.soleAccount?.name, "Sunstory")
-        XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.soleAccount?.name, "Codex")
+        // A caption names its account by its name, by its email when it has no name of its own, and by
+        // the provider's name when it has none at all; one account or several alike.
+        XCTAssertEqual(family([codex("Sunstory")]).accounts.map(\.name), ["Sunstory"])
+        XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com"), codex("Codex"), codex(nil)]).accounts.map(\.name),
+                       ["Sunstory", "sam@hey.com", "Codex", "Codex"])
+        // The copied image keeps a custom name and drops an email.
+        XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Codex"])
         XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Sunstory", "Codex"])
     }
 

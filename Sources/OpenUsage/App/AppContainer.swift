@@ -11,7 +11,6 @@ final class AppContainer {
     let notificationSettings: NotificationSettingsStore
     let layout: LayoutStore
     let dataStore: WidgetDataStore
-    let transparency: PopoverTransparencyStore
     let renaming: AccountRenameStore
     /// Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
     /// Exposed so Settings can toggle extra analytics and termination can flush queued events.
@@ -50,7 +49,6 @@ final class AppContainer {
         self.notificationSettings = notificationSettings
         self.layout = layout
         self.dataStore = dataStore
-        self.transparency = PopoverTransparencyStore()
         self.renaming = AccountRenameStore(accounts: accounts)
         // Ids are kind-scoped (`Account.kindScopedID`), so the events name providers, never accounts.
         let telemetry = TelemetryRecorder(

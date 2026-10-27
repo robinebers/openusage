@@ -1,28 +1,21 @@
 import SwiftUI
 
-/// One provider on the dashboard: its header above its card. One rule for every card: a provider with
-/// one account puts that account on the header — the provider's logo, its name, its status glyph, and
-/// its plan right-aligned where the rows' reset column ends — and its rows alone in the card; a provider
-/// with several accounts puts its logo and its own name on the header and each account inside the card
-/// as a caption, name and plan, over its rows. The logo says which provider it is, so the header never
-/// spells "Provider — name". Static but for the status glyph's tooltip: the dashboard adds menus and
-/// drags around it, and the share image draws it as it is.
+/// One provider on the dashboard: its header above its card. Every card is drawn the same way, however
+/// many accounts it holds: the header is the provider's logo and name, and each account in the card is
+/// captioned with its name, status glyph and plan over its rows. Static but for the captions' status
+/// tooltips: the dashboard adds menus and drags around it, and the share image draws it as it is.
 struct DashboardProviderSection<Account: View>: View {
     let family: DashboardFamily
-    /// The plan of an account, by its id.
-    var plans: [String: String] = [:]
-    /// The sole account's status glyph, shown in the header after its name.
-    var status: AccountStatus = AccountStatus()
     /// Wraps the header, so the dashboard can attach the provider's drag gesture to it.
     var handle: (AnyView) -> AnyView = { $0 }
-    /// An account's block in the card: with its caption when `captioned`, or its rows alone.
-    @ViewBuilder var account: (DashboardAccount, _ captioned: Bool) -> Account
+    /// An account's block in the card: its caption over its rows.
+    @ViewBuilder var account: (DashboardAccount) -> Account
 
     var body: some View {
         VStack(alignment: .leading, spacing: DashboardGrid.headerGap) {
             handle(AnyView(header))
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
-                ForEach(family.accounts) { account($0, family.soleAccount == nil) }
+                ForEach(family.accounts) { account($0) }
             }
             .padding(DashboardGrid.cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -31,49 +24,23 @@ struct DashboardProviderSection<Account: View>: View {
     }
 
     var header: DashboardProviderHeader {
-        DashboardProviderHeader(
-            provider: family.provider,
-            account: family.soleAccount,
-            plan: family.soleAccount.flatMap { plans[$0.id] },
-            status: status
-        )
+        DashboardProviderHeader(provider: family.provider)
     }
 }
 
-/// The line above a provider's card: the logo where the rows' labels start, 8 pt to the sole account's
-/// name or the provider's over several accounts, and the plan right-aligned where the reset column
-/// ends, all centred on the line, nothing cut.
+/// The line above a provider's card: the logo where the rows' labels start, then 8 pt to the provider's
+/// name, centred on the line.
 struct DashboardProviderHeader: View {
     let provider: Provider
-    /// The sole account the header names, or `nil` for the provider over several accounts.
-    var account: DashboardAccount?
-    var plan: String?
-    var status = AccountStatus()
-
-    @Environment(\.popoverPartyMode) private var partyMode
 
     var body: some View {
         HStack(spacing: 0) {
             ProviderIcon(id: provider.icon, inset: 0.04)
-                .partyPulse(partyMode)
                 .frame(width: DashboardGrid.iconSize, height: DashboardGrid.iconSize)
                 .padding(.trailing, DashboardGrid.columnGap)
-            if let account {
-                AccountName(account: account, font: DashboardGrid.headerFont)
-            } else {
-                Text(provider.displayName)
-                    .font(DashboardGrid.headerFont)
-                    .lineLimit(1)
-            }
-            status.glyph.padding(.leading, Theme.Spacing.s)
-            Spacer(minLength: DashboardGrid.columnGap)
-            if let plan {
-                Text(plan)
-                    .font(DashboardGrid.planFont)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
+            Text(provider.displayName)
+                .font(DashboardGrid.headerFont)
+                .lineLimit(1)
         }
         .padding(.horizontal, DashboardGrid.cardPadding + DashboardGrid.inset)
         .frame(height: DashboardGrid.headerHeight)
@@ -82,7 +49,7 @@ struct DashboardProviderHeader: View {
     }
 }
 
-/// An account's caption inside a card with several accounts: its name in Subheadline semibold at the
+/// An account's caption inside its provider's card: its name in Subheadline semibold at the
 /// left and its plan as plain Subheadline at the right, both secondary — never a badge. The name
 /// truncates (an email keeps its domain) and the plan never does.
 struct DashboardAccountCaption: View {
@@ -111,7 +78,7 @@ struct DashboardAccountCaption: View {
     }
 }
 
-/// An account's name on the dashboard, in its provider's header or on its caption. A double-click opens
+/// An account's name on its caption. A double-click opens
 /// the inline rename in its place, the same as the right-click Rename.
 struct AccountName: View {
     let account: DashboardAccount
@@ -164,18 +131,14 @@ struct AccountStatus {
     }
 }
 
-/// An account's caption over its rows, at rest, or its rows alone when it is the card's sole account
-/// and the header names it: what the share image and the drag previews draw.
+/// An account's caption over its rows, at rest: what the share image and the drag previews draw.
 struct DashboardAccountRows: View {
     let account: DashboardAccount
     var plan: String?
-    var captioned = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if captioned {
-                DashboardAccountCaption(account: account, plan: plan)
-            }
+            DashboardAccountCaption(account: account, plan: plan)
             ForEach(account.lines) { line in
                 DashboardMetricRow(model: line.data.dashboardRow())
             }

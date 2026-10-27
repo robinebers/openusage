@@ -7,9 +7,8 @@ import SwiftUI
 ///
 /// The capsule is a `.buttonStyle(.plain)` `Menu` with one `interactiveGlass(in: Capsule())` treatment
 /// behind it — the system `.buttonStyle(.glass)` renders flat on a `Menu` (its own button chrome wins),
-/// so the treatment goes on the container. The secret-code party adds an adaptive frosted base beneath
-/// the glass for contrast; macOS 15 uses that frosted capsule as its fallback. The menu renders in its
-/// own `NSMenu`-backed window, which the panel's outside-click policy keeps the popover open for.
+/// so the treatment goes on the container; macOS 15 draws a frosted capsule instead. The menu renders
+/// in its own `NSMenu`-backed window, which the panel's outside-click policy keeps the popover open for.
 ///
 /// Only the dashboard shows this; the Accounts and Settings screens carry their own top-leading back
 /// button (`PopoverTopBar`) to return home — the macOS-native place for it — so the footer control
@@ -22,7 +21,6 @@ import SwiftUI
 /// unowned elsewhere, so it rides its menu item directly.
 struct HeaderView: View {
     @Environment(LayoutStore.self) private var layout
-    @Environment(PopoverTransparencyStore.self) private var transparency
     /// The screen this footer belongs to — each page carries its own — so the control shows on the
     /// dashboard and slides away with it.
     let screen: PopoverScreen
@@ -40,10 +38,7 @@ struct HeaderView: View {
         if screen == .dashboard {
             optionsButton
                 .fixedSize()
-                .interactiveGlass(
-                    in: Capsule(),
-                    reinforced: transparency.partyActive
-                )
+                .interactiveGlass(in: Capsule())
         }
     }
 

@@ -5,7 +5,7 @@ import XCTest
 
 /// Every metric title and plan a provider can produce renders at full size in the panel: every title
 /// fits the 86 pt label column and no plan truncates. Plans are the providers' official names, never
-/// shortened to fit. Robin's own accounts are measured on the header in `DashboardHeaderFitTests`.
+/// shortened to fit. Robin's own accounts are measured on their captions in `DashboardHeaderFitTests`.
 @MainActor
 final class DashboardLabelFitTests: XCTestCase {
     /// A provider's card: the panel minus its margin on each side.
@@ -32,15 +32,15 @@ final class DashboardLabelFitTests: XCTestCase {
         XCTAssertEqual(antigravity.widgetDescriptors.map(\.sample.title), ["Gemini 5h", "Gemini", "Argon", "Claude 5h", "Claude"])
     }
 
-    /// Each plan a mapper can name fits in its header beside the provider's own name, which is what an
-    /// account nobody renamed is called.
-    func testEveryPlanFitsInItsHeader() throws {
+    /// Each plan a mapper can name fits on its caption inside the card beside the provider's own name,
+    /// which is what an account nobody renamed is called, with room for the warning glyph.
+    func testEveryPlanFitsOnItsCaption() throws {
         for (kind, plans) in try plansByProvider() {
             XCTAssertFalse(plans.isEmpty, kind.displayName)
             let account = account(kind, kind.displayName)
             for plan in plans {
-                let header = DashboardProviderHeader(provider: account.provider, account: account, plan: plan)
-                XCTAssertLessThanOrEqual(idealWidth(header), cardWidth, "\(kind.displayName): \(plan)")
+                let caption = DashboardAccountCaption(account: account, plan: plan, status: AccountStatus(notice: "Refresh failed"))
+                XCTAssertLessThanOrEqual(idealWidth(caption), cardWidth - 2 * DashboardGrid.cardPadding, "\(kind.displayName): \(plan)")
             }
         }
     }

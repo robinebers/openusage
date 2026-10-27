@@ -102,7 +102,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
                 .environment(container)
                 .environment(container.layout)
                 .environment(container.dataStore)
-                .environment(container.transparency)
                 .environment(container.renaming)
                 .environment(UpdaterController())
                 .environment(\.colorScheme, .light)
@@ -115,7 +114,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         panel.appearance = NSAppearance(named: .aqua)
         panel.contentViewController = hosting
         panel.setFrame(frame, display: false)
-        container.transparency.setPopoverShown(true)
+        container.layout.popoverShown = true
         panel.makeKeyAndOrderFront(nil)
         addTeardownBlock { panel.close() }
         try await Task.sleep(for: .milliseconds(800))

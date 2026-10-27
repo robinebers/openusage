@@ -20,8 +20,9 @@ panel starts and ends at the same place. The bar fills with what is left (or wha
 Used setting); the value reads `52%`, `$12`, or `320`; the reset reads `1h 26m` or `6d 22h`, or
 `Wed 4 PM` under the exact-times setting, and `soon` once it is due. Click any bar row's value to flip
 every row between used and left, and any reset to flip between a countdown and the exact time;
-**Settings → Usage Display** holds the same two switches. Rows with a reset tick every 30 seconds, so
-countdowns stay live between refreshes.
+**Settings → Usage Display** holds the same two switches. Rest the pointer on a value to read the other
+side of it (`48% used` under `52%`), and on a reset to read the other format (the exact time under a
+countdown). Rows with a reset tick every 30 seconds, so countdowns stay live between refreshes.
 
 With a reset window, the bar's colour is where your pace lands at the reset: blue while you are on
 course to finish with at least 10% to spare, orange when you are on course to land inside the last 10%,
@@ -31,7 +32,9 @@ project from, so the bar stays blue. Without a window the colour follows how muc
 blue, orange once 75% is used, red once 90% is. The value takes the bar's colour once the bar is orange
 or red. Once a balance is spent, the bar stays red, with no flame. A session window with nothing spent
 in it yet shows a full bar and no reset. The colours come from the system palette, so they follow
-light, dark, and accessibility settings.
+light, dark, and accessibility settings. Rest the pointer on a bar to read where the pace lands:
+`~35% left at reset` on a blue bar, `~92% used at reset` on an orange one, `~12% over limit at reset`
+on a red one, `Limit reached` once spent; a bar coloured by how much is used says nothing.
 
 The same pace verdict drives the [notifications](settings.md).
 
@@ -41,9 +44,8 @@ such as `$12.40 left`. A metric the provider has not reported is hidden.
 ## Resets
 
 Claude and Codex accounts show a **Limit Resets** row with the number of available rate-limit resets
-while they have any. Rest the pointer on the count for a moment to see when each reset expires; it is
-the one thing on a row that responds to the pointer resting on it. To spend one, choose **Use** on it,
-then **Reset**.
+while they have any. Rest the pointer on the count for a moment to see when each reset expires. To spend
+one, choose **Use** on it, then **Reset**.
 
 A spinner after an account's name means it is refreshing. A warning icon means its last refresh failed,
 and a clock means its values are more than two refresh cycles old. Rest the pointer on the warning or

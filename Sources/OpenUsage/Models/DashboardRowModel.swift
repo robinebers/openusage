@@ -43,9 +43,30 @@ extension WidgetData {
     func compactResetText(now: Date = Date()) -> String? {
         guard hasData, let resetsAt, !isFreshSessionWindow(now: now) else { return nil }
         guard resetsAt.timeIntervalSince(now) > 0 else { return Formatters.imminent }
-        switch resetDisplayMode {
-        case .relative: return Formatters.compactDuration(resetsAt.timeIntervalSince(now))
-        case .absolute: return Formatters.compactClock(resetsAt, now: now)
+        return Self.resetReading(resetsAt, as: resetDisplayMode, now: now)
+    }
+
+    /// The reset's hover on the live dashboard: the other format, the clock time under a countdown and
+    /// the countdown under a clock time. `nil` when the row has no live reset, or the reset is due and
+    /// reads "soon" either way.
+    func resetTooltip(now: Date = Date()) -> String? {
+        guard hasData, let resetsAt, !isFreshSessionWindow(now: now), resetsAt.timeIntervalSince(now) > 0 else { return nil }
+        return Self.resetReading(resetsAt, as: resetDisplayMode == .relative ? .absolute : .relative, now: now)
+    }
+
+    private static func resetReading(_ resetsAt: Date, as mode: ResetDisplayMode, now: Date) -> String? {
+        switch mode {
+        case .relative: Formatters.compactDuration(resetsAt.timeIntervalSince(now))
+        case .absolute: Formatters.compactClock(resetsAt, now: now)
         }
+    }
+
+    /// The value's hover on the live dashboard: the other reading, what is used under Left and what is
+    /// left under Used ("36% used" beside "64%"). `nil` where the value isn't a Used/Left reading.
+    var meterStyleTooltip: String? {
+        guard hasMeterStyleToggle, let limit else { return nil }
+        let other = displayMode == .remaining ? used : max(0, limit - used)
+        let word = (displayMode == .remaining ? WidgetDisplayMode.used : .remaining).label.lowercased()
+        return "\(MetricFormatter.number(other, kind: kind, style: .row)) \(word)"
     }
 }

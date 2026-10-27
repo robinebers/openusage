@@ -40,6 +40,11 @@ final class LayoutStore {
         get { navigation.isAddingAccount }
         set { navigation.isAddingAccount = newValue }
     }
+    /// Whether the popover is on-screen, flipped by `StatusItemController` at its show/hide chokepoints.
+    var popoverShown: Bool {
+        get { navigation.popoverShown }
+        set { navigation.popoverShown = newValue }
+    }
     /// Placed widget being drag-reordered (transient). `PlacedWidget.id`, never persisted.
     var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the

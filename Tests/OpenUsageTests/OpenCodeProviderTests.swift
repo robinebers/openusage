@@ -22,7 +22,7 @@ final class OpenCodeProviderTests: XCTestCase {
 
     /// Robin's dashboard read "OpenCode — OpenCode Go": the account was signed in when the provider was
     /// named "OpenCode Go", and the sign-in default stuck as its name. It takes the provider's name on
-    /// load, so the header reads "OpenCode" alone; a name of its own stays.
+    /// load, so its caption reads "OpenCode" under the "OpenCode" header; a name of its own stays.
     func testAnAccountStillNamedByTheOldDefaultTakesTheNewOne() throws {
         let name = "OpenUsageLight.Accounts.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -36,8 +36,7 @@ final class OpenCodeProviderTests: XCTestCase {
         XCTAssertEqual(reloaded.accounts.map(\.label), ["OpenCode", "Go Work"], "the new name isn't saved")
 
         let provider = Provider(id: store.accounts[0].cardID, displayName: "OpenCode", icon: "opencode", accountLabel: store.accounts[0].label)
-        let family = DashboardFamily(id: "opencode", provider: provider, accounts: [DashboardAccount(provider: provider, lines: [])])
-        XCTAssertEqual(family.soleAccount?.name, "OpenCode", "the header would read \"\(provider.accountLabel ?? "")\"")
+        XCTAssertEqual(DashboardAccount(provider: provider, lines: []).name, "OpenCode", "the caption would read \"\(provider.accountLabel ?? "")\"")
     }
 
     func testRefreshTagsTheAccountWithTheGoPlan() async throws {

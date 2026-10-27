@@ -5,11 +5,14 @@ import SwiftUI
 /// colour once the bar is orange or red, the reset secondary. While the reading is projected to run
 /// out a red flame sits before the value, inside the value column; nothing otherwise, so the columns
 /// never move. A reading without a limit (a balance, a
-/// count, a status) has no bar: its figure takes the bar's place. Nothing on a row reacts to the
-/// pointer; a click on the value flips every row between used and left, a click on the reset between
-/// countdown and exact time, where the dashboard supplies `onToggleMeterStyle` and
-/// `onToggleResetDisplay`, and the dashboard wraps the Limit Resets row's figure in its hover through
-/// `figure`. A drag preview and the share image supply none of them, and draw the row inert.
+/// count, a status) has no bar: its figure takes the bar's place. A row under the pointer draws as it
+/// does at rest; a click on the value flips every row between used and left, a click on the reset
+/// between countdown and exact time, where the dashboard supplies `onToggleMeterStyle` and
+/// `onToggleResetDisplay`, and resting the pointer tells the one figure the row doesn't show, where the
+/// dashboard supplies the tooltips: on the bar where the pace lands at reset, on the value the other
+/// reading, on the reset the other format. The dashboard wraps the Limit Resets row's figure in its
+/// hover through `figure`. A drag preview and the share image supply none of them, and draw the row
+/// inert.
 struct DashboardMetricRow: View {
     let model: DashboardRowModel
     /// Flips the global Used/Left meter style. `nil` where the row is static or its value isn't a
@@ -18,6 +21,12 @@ struct DashboardMetricRow: View {
     /// Flips the global countdown/exact-time reset display. `nil` where the row is static: the reset is
     /// plain text.
     var onToggleResetDisplay: (() -> Void)?
+    /// The bar's hover, where the pace lands at reset (`WidgetData.paceTooltip`).
+    var paceTooltip: String?
+    /// The value's hover, the other reading (`WidgetData.meterStyleTooltip`).
+    var valueTooltip: String?
+    /// The reset's hover, the other format (`WidgetData.resetTooltip`).
+    var resetTooltip: String?
     /// Wraps a value row's figure, so the live dashboard can attach the resets hover to the figure alone.
     var figure: (AnyView) -> AnyView = { $0 }
 
@@ -33,6 +42,7 @@ struct DashboardMetricRow: View {
             switch model.mark {
             case .bar(let fill, let severity, let value, let reset, let flame):
                 UsageMeterBar(fill: fill, severity: severity)
+                    .hoverTooltip(paceTooltip)
                 HStack(spacing: Theme.Spacing.xxs) {
                     if flame {
                         Image(systemName: "flame.fill")
@@ -77,6 +87,7 @@ struct DashboardMetricRow: View {
         if let onToggleMeterStyle {
             Button(action: onToggleMeterStyle) { text }
                 .buttonStyle(.plain)
+                .hoverTooltip(valueTooltip)
         } else {
             text
         }
@@ -94,6 +105,7 @@ struct DashboardMetricRow: View {
         if reset != nil, let onToggleResetDisplay {
             Button(action: onToggleResetDisplay) { text }
                 .buttonStyle(.plain)
+                .hoverTooltip(resetTooltip)
         } else {
             text
         }

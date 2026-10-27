@@ -10,11 +10,6 @@ struct DashboardFamily: Identifiable {
     let provider: Provider
     var accounts: [DashboardAccount]
 
-    /// The card's account when it has exactly one. The header then names the account, with its plan,
-    /// and the card holds its rows alone; several accounts leave the header to the provider and are
-    /// each captioned in the card (`DashboardProviderSection`).
-    var soleAccount: DashboardAccount? { accounts.count == 1 ? accounts[0] : nil }
-
     /// The same family with every email address left out of its account names, for an image that
     /// leaves the panel: an account named by its email reads as its provider alone.
     var hidingEmails: DashboardFamily {

@@ -3,73 +3,52 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// Robin's own accounts at the 340 pt panel, as the dashboard hosts them: every sole account's name
-/// and plan sit whole on its header, with room for the status glyph, and nothing is ever truncated or
-/// shrunk; every caption in his Claude card fits inside the card. The header is hosted in a window at
-/// the card's width and its name and plan are measured in pixels against the same text drawn alone, so
-/// a truncated name, which draws narrower, fails here. Nothing measures to pick a layout: one rule
-/// decides every card, and this is the proof that the rule fits the panel.
+/// Robin's own accounts at the 340 pt panel, as the dashboard hosts them: every account's caption,
+/// name and plan, sits whole inside its card with room for the status glyph, and nothing is ever
+/// truncated or shrunk. The caption is hosted in a window at the card's inner width and its name and
+/// plan are measured in pixels against the same text drawn alone, so a truncated name, which draws
+/// narrower, fails here. Every card captions every account, so this is the proof the rule fits the panel.
 @MainActor
 final class DashboardHeaderFitTests: QuietWindowTestCase {
-    private let cardWidth = DashboardGrid.cardWidth
-    private let inset = DashboardGrid.cardPadding + DashboardGrid.inset
+    /// What a caption has to draw in: the card less its padding on each side.
+    private let width = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
 
-    /// Every one of Robin's one-account providers: the logo sits in its 16 pt box 12 pt in, the name 8 pt after it and
-    /// ends where the name alone would, the plan ends 12 pt before the card's edge as wide as the plan
-    /// alone, at least 8 pt between them, and the line still has room for the warning glyph after the
-    /// name.
-    func testRobinsSoleAccountsFitTheirHeadersWhole() async throws {
-        let headers: [(ProviderKind, String, String)] = [
+    /// Every one of Robin's accounts: the name starts at the caption's inset and ends where the name alone
+    /// would, the plan ends at the inset before the card's edge as wide as the plan alone, at least 8 pt
+    /// between them with nothing in between, the caption one Subheadline line, and the line still has
+    /// room for the warning glyph after the name.
+    func testRobinsCaptionsFitWhole() async throws {
+        let captions: [(ProviderKind, String, String)] = [
             (.grok, "rob@sunstory.com", "SuperGrok Heavy"), (.cursor, "rob@sunstory.com", "Ultra"),
             (.codex, "sam@hey.com", "Plus"), (.codex, "Sunstory", "Pro 200"), (.opencodeGo, "OpenCode", "Go"),
             (.claude, "Personal", "Max 20x"), (.ollama, "Ollama", "Free"), (.openrouter, "OpenRouter", "Pay-as-you-go"),
+            (.claude, "Attention Machine 1", "Team 5x"), (.claude, "Attention Machine 2", "Team 5x"),
         ]
-        let nameStart = inset + DashboardGrid.iconSize + DashboardGrid.columnGap
-        let planEnd = cardWidth - inset
-        for (kind, name, plan) in headers {
+        let inset = DashboardGrid.inset
+        let planEnd = width - inset
+        for (kind, name, plan) in captions {
             let label = "\(name) · \(plan)"
             let account = account(kind, name)
-            func section(status: AccountStatus) -> DashboardProviderSection<DashboardAccountRows> {
-                let family = DashboardFamily(id: kind.rawValue, provider: account.provider, accounts: [account])
-                return DashboardProviderSection(family: family, plans: [account.id: plan], status: status) { account, captioned in
-                    DashboardAccountRows(account: account, plan: plan, captioned: captioned)
-                }
-            }
 
-            let asked = NSHostingView(rootView: section(status: AccountStatus(notice: "Refresh failed")).header.fixedSize().environment(AccountRenameStore?.none)).fittingSize.width
-            XCTAssertLessThanOrEqual(asked, cardWidth, "\(label) asks \(asked) of \(cardWidth) pt")
+            let warned = DashboardAccountCaption(account: account, plan: plan, status: AccountStatus(notice: "Refresh failed"))
+            let asked = NSHostingView(rootView: warned.fixedSize().environment(AccountRenameStore?.none)).fittingSize.width
+            XCTAssertLessThanOrEqual(asked, width, "\(label) asks \(asked) of \(width) pt")
 
-            let nameAlone = try await Ink(Text(name).font(DashboardGrid.headerFont).fixedSize().padding(20), in: self)
-            let planAlone = try await Ink(Text(plan).font(DashboardGrid.planFont).fixedSize().padding(20), in: self)
+            let nameAlone = try await Ink(Text(name).font(DashboardGrid.captionFont).foregroundStyle(.secondary).fixedSize().padding(20), in: self)
+            let planAlone = try await Ink(Text(plan).font(DashboardGrid.planFont).foregroundStyle(.secondary).fixedSize().padding(20), in: self)
             let nameWidth = try XCTUnwrap(nameAlone.span()).width
             let planWidth = try XCTUnwrap(planAlone.span()).width
-            let header = try await Ink(section(status: AccountStatus()).header, in: self, width: cardWidth)
-            XCTAssertEqual(CGFloat(header.height) / header.scale, DashboardGrid.headerHeight, accuracy: 1, label)
+            let caption = try await Ink(DashboardAccountCaption(account: account, plan: plan), in: self, width: width)
+            XCTAssertEqual(CGFloat(caption.height) / caption.scale, DashboardGrid.captionHeight, accuracy: 1, label)
 
-            let logo = try XCTUnwrap(header.span(from: 0, to: nameStart - 1), "\(label): no logo drawn")
-            XCTAssertGreaterThanOrEqual(logo.first, inset - 0.5, "\(label): the logo starts before 12 pt in")
-            XCTAssertLessThanOrEqual(logo.last, inset + DashboardGrid.iconSize + 0.5, "\(label): the logo leaves its 16 pt box")
-            let title = try XCTUnwrap(header.span(from: nameStart - 1, to: nameStart + nameWidth + 4), "\(label): no name drawn")
-            XCTAssertEqual(title.first, nameStart, accuracy: 1.5, "\(label): the name doesn't start 8 pt after the logo")
-            XCTAssertEqual(title.last, nameStart + nameWidth, accuracy: 1.5, "\(label): the name is cut")
-            let drawnPlan = try XCTUnwrap(header.span(from: planEnd - planWidth - 2, to: planEnd + 2), "\(label): no plan drawn")
-            XCTAssertEqual(drawnPlan.last, planEnd, accuracy: 1.5, "\(label): the plan doesn't end 12 pt before the edge")
+            let title = try XCTUnwrap(caption.span(from: 0, to: inset + nameWidth + 4), "\(label): no name drawn")
+            XCTAssertEqual(title.first, inset, accuracy: 1.5, "\(label): the name doesn't start at the caption's inset")
+            XCTAssertEqual(title.last, inset + nameWidth, accuracy: 1.5, "\(label): the name is cut")
+            let drawnPlan = try XCTUnwrap(caption.span(from: planEnd - planWidth - 2, to: planEnd + 2), "\(label): no plan drawn")
+            XCTAssertEqual(drawnPlan.last, planEnd, accuracy: 1.5, "\(label): the plan doesn't end at the inset before the edge")
             XCTAssertEqual(drawnPlan.width, planWidth, accuracy: 1.5, "\(label): the plan is cut")
             XCTAssertLessThanOrEqual(title.last + DashboardGrid.columnGap, drawnPlan.first + 1, "\(label): the name runs into the plan")
-            XCTAssertNil(header.span(from: title.last + 1, to: drawnPlan.first - 1), "\(label): something sits between the name and the plan")
-        }
-    }
-
-    /// Robin's Claude card has three accounts: each caption, name and plan, fits inside the card.
-    func testRobinsCaptionsFitTheirCard() {
-        let captions: [(ProviderKind, String, String)] = [
-            (.claude, "Personal", "Max 20x"), (.claude, "Attention Machine 1", "Team 5x"),
-            (.claude, "Attention Machine 2", "Team 5x"),
-        ]
-        for (kind, name, plan) in captions {
-            let caption = DashboardAccountCaption(account: account(kind, name), plan: plan)
-            let asked = NSHostingView(rootView: caption.fixedSize().environment(AccountRenameStore?.none)).fittingSize.width
-            XCTAssertLessThanOrEqual(asked, cardWidth - 2 * DashboardGrid.cardPadding, "\(name) · \(plan) asks \(asked) pt")
+            XCTAssertNil(caption.span(from: title.last + 1, to: drawnPlan.first - 1), "\(label): something sits between the name and the plan")
         }
     }
 

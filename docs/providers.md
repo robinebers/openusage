@@ -63,8 +63,8 @@ the plan. Cursor stores the sign-in's expiry and renews it before then.
 ## Antigravity
 
 Sign in with Google in your browser. The card reads the Cloud Code quota API for the Gemini and Claude
-pools (5-hour and weekly windows) and the Argon weekly window, and shows the plan (Pro, Ultra,
-Ultra Lite).
+pools (5-hour and weekly windows) and the Argon weekly window, and shows the plan under the name
+Google sells it as (Google AI Pro, Google AI Ultra, Google AI Ultra Lite) or the tier's own name.
 
 ## Copilot
 

@@ -5,7 +5,7 @@ import XCTest
 
 /// The dashboard as the app hosts it — `WidgetGroupedListView` with its stores, in an `NSHostingView`
 /// inside a window — keeps the grid's heights: 20 pt per row, one Subheadline line per caption, one
-/// Headline line per header, and nothing between two rows of one account. The share image draws the static
+/// Headline line per header, a caption over every account, one or several, and nothing between two rows of one account. The share image draws the static
 /// `DashboardAccountRows`, so a height the live tree adds around a row shows only here.
 @MainActor
 final class DashboardLiveLayoutTests: QuietWindowTestCase {
@@ -82,7 +82,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
     func testLiveRowsCaptionsAndHeadersKeepTheGridsHeights() async throws {
         let (host, frames) = try await host()
         let grid = DashboardGrid.self
-        let codexCard = grid.headerHeight + grid.headerGap + 2 * grid.cardPadding + 3 * grid.rowHeight
+        let codexCard = grid.headerHeight + grid.headerGap + 2 * grid.cardPadding + grid.captionHeight + 3 * grid.rowHeight
         let claudeCard = grid.headerHeight + grid.headerGap + 2 * grid.cardPadding + 2 * (grid.captionHeight + 2 * grid.rowHeight) + grid.accountSpacing
 
         for id in ["codex.session", "codex.weekly", "codex.spark", "claude@1.session", "claude@1.weekly", "claude@2.session", "claude@2.weekly"] {
@@ -91,9 +91,10 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         for (above, below) in [("codex.session", "codex.weekly"), ("codex.weekly", "codex.spark"), ("claude@1.session", "claude@1.weekly")] {
             XCTAssertEqual(try frame(frames, below).minY - frame(frames, above).minY, grid.rowHeight, accuracy: 0.5, "something sits between \(above) and \(below)")
         }
-        XCTAssertEqual(try frame(frames, "family:codex").height, codexCard, accuracy: 0.5, "a header and a card of three rows")
+        XCTAssertEqual(try frame(frames, "family:codex").height, codexCard, accuracy: 0.5, "a header and a card of a caption over three rows")
         XCTAssertEqual(try frame(frames, "family:claude").height, claudeCard, accuracy: 0.5, "a header and two accounts, each a caption and two rows")
-        XCTAssertEqual(try frame(frames, "codex.session").minY - frame(frames, "family:codex").minY, grid.headerHeight + grid.headerGap + grid.cardPadding, accuracy: 0.5, "the header isn't one Headline line")
+        XCTAssertEqual(try frame(frames, "codex").minY - frame(frames, "family:codex").minY, grid.headerHeight + grid.headerGap + grid.cardPadding, accuracy: 0.5, "the header isn't one Headline line")
+        XCTAssertEqual(try frame(frames, "codex").height, grid.captionHeight + 3 * grid.rowHeight, accuracy: 0.5, "Codex's sole account isn't a caption over three rows")
         for account in ["claude@1", "claude@2"] {
             XCTAssertEqual(try frame(frames, account).height, grid.captionHeight + 2 * grid.rowHeight, accuracy: 0.5, "\(account) isn't a caption over two rows")
             XCTAssertEqual(try frame(frames, "\(account).session").minY - frame(frames, account).minY, grid.captionHeight, accuracy: 0.5, "\(account)'s caption isn't one Subheadline line")

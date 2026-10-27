@@ -10,9 +10,6 @@ struct UsageMeterBar: View {
     let fill: Double
     let severity: WidgetData.MeterSeverity
 
-    /// Party easter egg: fill the bar with the party gradient instead of the severity color.
-    @Environment(\.popoverPartyMode) private var partyMode
-
     static let height = DashboardGrid.barHeight
 
     var body: some View {
@@ -20,7 +17,7 @@ struct UsageMeterBar: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
                 Capsule()
-                    .fill(partyMode ? PartyMode.meterFill : AnyShapeStyle(Theme.severityColor(severity)))
+                    .fill(Theme.severityColor(severity))
                     .frame(width: fillWidth(track: proxy.size.width))
             }
         }

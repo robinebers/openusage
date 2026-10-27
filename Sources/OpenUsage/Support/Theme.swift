@@ -3,14 +3,12 @@ import AppKit
 
 /// Central palette + surface styles. Surfaces stay adaptive (light/dark).
 ///
-/// By default the popover is a solid, opaque panel; only the secret-code egg makes it translucent.
-/// Either way, Liquid Glass is reserved for the footer/top-bar
+/// The popover is a solid, opaque panel. Liquid Glass is reserved for the footer/top-bar
 /// chrome — the controls/navigation layer — and never the data cards: Apple's guidance is to keep
 /// Liquid Glass out of the content layer and back content with standard materials instead. The data
 /// region mirrors the macOS System Settings grouped look: a page "tray" with borderless grouped cards
 /// lifted off it by the system's own `.fill.quaternary` (no hand-tuned values), so it adapts to
-/// light/dark like every other Mac app. Under the egg the cards swap their opaque base for a frosted
-/// standard material so text stays legible (see `cardSurface`).
+/// light/dark like every other Mac app.
 enum Theme {
     /// Hierarchical secondary tint for the provider marks.
     static let iconGray = AnyShapeStyle(.secondary)
@@ -110,19 +108,11 @@ extension View {
 /// grouped box in both light and dark. The opaque base means a lifted drag preview stays solid while
 /// it floats; the page base under a live card is the same color as the tray behind it, so it's
 /// invisible there. Live cards and drag previews share the same surface.
-///
-/// Under the secret-code egg the opaque page base is dropped so the behind-window vibrancy backdrop
-/// shows through, while the system grouped fill stays so cards still read as grouped boxes over the
-/// desktop.
 private struct CardSurfaceModifier: ViewModifier {
-    @Environment(\.popoverPartyMode) private var party
-
     func body(content: Content) -> some View {
         content.background {
-            // The AppKit backdrop already applies the system blur. A stable translucent surface under the
-            // party keeps text legible without stacking another live material pass under every card.
             Theme.cardShape
-                .fill(party ? Theme.traySurface.opacity(0.55) : Theme.traySurface)
+                .fill(Theme.traySurface)
                 .overlay { Theme.cardShape.fill(Theme.cardFill) }
         }
     }

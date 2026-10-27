@@ -271,27 +271,47 @@ extension WidgetData {
     func meterState(now: Date = Date()) -> MeterState {
         guard hasData, let limit, limit > 0 else { return hasData ? .level(.normal) : .noData }
         if roundedAtDisplayPrecision(limit - used) <= 0 { return .spent }
-        // A session window nothing has been spent in has nothing to pace yet.
-        if isFreshSessionWindow(now: now) { return levelState(used: used, limit: limit) }
-
-        guard let ctx = paceContext,
-              let result = Pace.evaluate(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
-                                         periodDuration: ctx.period, now: now)
-        else { return levelState(used: used, limit: limit) }
-        // Coarse whole-percent meters can read 1% used very early in a window; linear extrapolation
-        // then projects a bogus blow-out while the value still shows ~99% left. When >95% of the
-        // quota clearly remains (used below 5%), distrust the projection entirely.
-        switch result.status {
+        guard let pace = pace(now: now) else { return levelState(used: used, limit: limit) }
+        switch pace.status {
         case .ahead:
             return .healthy
         case .onTrack:
-            guard used / ctx.limit >= 0.05 else { return levelState(used: used, limit: limit) }
-            let spare = Int(((1 - result.projectedUsage / ctx.limit) * 100).rounded())
+            let spare = Int(((1 - pace.projectedFraction) * 100).rounded())
             return spare >= 1 ? .closeToLimit : .runningOut
         case .behind:
-            guard used / ctx.limit >= 0.05 else { return levelState(used: used, limit: limit) }
             return .runningOut
         }
+    }
+
+    /// The bar's hover on the live dashboard: where the pace lands at reset, the one figure the row
+    /// doesn't show. Blue → the cushion ("~35% left at reset"); orange → the projected usage ("~92% used
+    /// at reset", "~100%" when it lands right at the limit); red → the overage ("~12% over limit at
+    /// reset"); "Limit reached" once spent. `nil` where there is no pace story: no data, or a level band.
+    func paceTooltip(now: Date = Date()) -> String? {
+        if meterState(now: now) == .spent { return "Limit reached" }
+        guard let pace = pace(now: now) else { return nil }
+        let percent = { (share: Double) in Int((share * 100).rounded()) }
+        switch pace.status {
+        case .ahead: return "~\(percent(1 - pace.projectedFraction))% left at reset"
+        case .onTrack: return "~\(percent(pace.projectedFraction))% used at reset"
+        // Floored to 1% so a bar projected even slightly over never reads "~0% over limit".
+        case .behind: return "~\(max(1, percent(pace.projectedFraction - 1)))% over limit at reset"
+        }
+    }
+
+    /// The live pace verdict and where it lands at reset as a share of the limit (1 is right at it), or
+    /// `nil` where there is no trustworthy projection: no reset window, a session window nothing has
+    /// been spent in, or so little used that a linear projection is noise. Coarse whole-percent meters
+    /// can read 1% used very early in a window, and linear extrapolation then projects a bogus blow-out
+    /// while the value still shows ~99% left: when >95% of the quota clearly remains (used below 5%),
+    /// only a comfortable projection is trusted.
+    private func pace(now: Date) -> (status: Pace.Status, projectedFraction: Double)? {
+        guard !isFreshSessionWindow(now: now), let ctx = paceContext,
+              let result = Pace.evaluate(used: used, limit: ctx.limit, resetsAt: ctx.resetsAt,
+                                         periodDuration: ctx.period, now: now)
+        else { return nil }
+        guard result.status == .ahead || used / ctx.limit >= 0.05 else { return nil }
+        return (result.status, result.projectedUsage / ctx.limit)
     }
 
     /// The colour band for the share used, where there is no trustworthy pace projection: orange at

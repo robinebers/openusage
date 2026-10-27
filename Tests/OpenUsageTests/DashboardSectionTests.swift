@@ -5,11 +5,12 @@ import XCTest
 
 /// The dashboard shows what it shows: nothing on a provider's header, a caption or a row opens on a
 /// click, no plan or name reacts to the pointer, and a row under the pointer draws exactly as it does
-/// at rest. Four things react: resting the pointer on the Limit
+/// at rest. Five things react: resting the pointer on the Limit
 /// Resets row's count opens the resets timeline after the hover dwell, resting it on the warning or
-/// clock after an account's name opens a tooltip with the reason, a click on a row's value or reset
-/// flips the display, and a double-click on an account's name renames it, on its caption or in a
-/// one-account provider's header. The header's logo is a picture and nothing else.
+/// clock after an account's name opens a tooltip with the reason, resting it on a row's bar, value or
+/// reset opens a tooltip with the figure the row doesn't show, a click on a row's value or reset
+/// flips the display, and a double-click on an account's name on its caption renames it. The header,
+/// the provider's logo and name, reacts to nothing, over one account as over several.
 /// Dragging still reorders: the header drags the provider, a caption drags its account, and a row
 /// drags itself.
 @MainActor
@@ -62,61 +63,86 @@ final class DashboardSectionTests: QuietWindowTestCase {
         DashboardAccount(provider: provider, lines: lines ?? self.lines)
     }
 
-    /// Resting the pointer on a metric row, on its label or on the caption's name opens nothing and
-    /// changes nothing on the panel: no highlight, no text swap, no height. Only the Limit Resets row's
-    /// count opens the resets timeline after the hover dwell, with no click, and the panel keeps its
-    /// height.
+    /// Resting the pointer on the caption's name or on a row's label opens nothing and changes nothing
+    /// on the panel: no highlight, no text swap, no height. A row's bar, value and reset each open a
+    /// tooltip with the one figure the row doesn't show (where the pace lands at reset, the other
+    /// reading, the other format), and the row under the pointer still draws as at rest. Only the Limit
+    /// Resets row's count opens the resets timeline after the hover dwell, with no click, and the panel
+    /// keeps its height.
     func testOnlyTheResetsCountOpensAPopoverAndEveryOtherRowDrawsAsAtRest() throws {
         let log = Log()
         let hosted = hostWithRenaming(log: log, lines: lines + [resets])
         let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
-        func popoverIsOpen() -> Bool { NSApp.windows.contains { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
+        func opened() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
         let height = hosted.host.fittingSize.height
         let atRest = try pixels(of: hosted.host)
         let resetsRowY = Self.firstRowY + 3 * DashboardGrid.rowHeight
         let figureX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.labelWidth + DashboardGrid.columnGap + 12
+        let trailing = hosted.host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset
 
         for (name, point) in [("the name", CGPoint(x: Self.nameX, y: Self.captionY)),
-                              ("a row", CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY)),
-                              ("a row's value", CGPoint(x: hosted.host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset - DashboardGrid.resetWidth - DashboardGrid.columnGap - 10, y: Self.firstRowY)),
+                              ("a row's label", CGPoint(x: Self.nameX, y: Self.firstRowY)),
                               ("the resets row's label", CGPoint(x: Self.nameX, y: resetsRowY))] {
             try hover(point, hosted.window, hosted.host)
-            XCTAssertFalse(popoverIsOpen(), "hovering \(name) opens something")
+            XCTAssertTrue(opened().isEmpty, "hovering \(name) opens something")
+            XCTAssertNil(HoverTooltips.visibleText, "hovering \(name) shows a tooltip")
             XCTAssertEqual(try pixels(of: hosted.host), atRest, "\(name) under the pointer draws differently from at rest")
+            try leave(hosted.window, hosted.host)
+        }
+
+        let session = lines[0].data
+        for (name, point, text) in [("the bar", CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY), session.paceTooltip()),
+                                    ("the value", CGPoint(x: trailing - DashboardGrid.resetWidth - DashboardGrid.columnGap - 10, y: Self.firstRowY), session.meterStyleTooltip),
+                                    ("the reset", CGPoint(x: trailing - 10, y: Self.firstRowY), session.resetTooltip())] {
+            try hover(point, hosted.window, hosted.host)
+            XCTAssertEqual(opened().count, 1, "hovering \(name) opens no tooltip")
+            XCTAssertEqual(HoverTooltips.visibleText, try XCTUnwrap(text), "the tooltip on \(name) reads something else")
+            XCTAssertEqual(try pixels(of: hosted.host), atRest, "\(name) under the pointer draws differently from at rest")
+            try leave(hosted.window, hosted.host)
+            XCTAssertTrue(opened().isEmpty, "the tooltip on \(name) stayed after the pointer left")
         }
 
         try hover(CGPoint(x: figureX, y: resetsRowY), hosted.window, hosted.host)
-        XCTAssertTrue(popoverIsOpen(), "hovering the resets count opens no popover")
+        XCTAssertFalse(opened().isEmpty, "hovering the resets count opens no popover")
         XCTAssertEqual(hosted.host.fittingSize.height, height, "the hover changed the height")
         XCTAssertEqual(log.accountDrags + log.metricDrags, 0)
         HoverPopoverState.dismissAll()
     }
 
-    /// The warning after the name of an account whose refresh failed explains itself: resting the pointer
-    /// on it opens a tooltip with the notice after the hover dwell, which goes once the pointer leaves.
-    /// The name and the logo before it open nothing.
+    /// The warning after the caption's name of an account whose refresh failed explains itself, in a
+    /// one-account card as in any other: resting the pointer on it opens a tooltip with the notice after
+    /// the hover dwell, which goes once the pointer leaves. The header's logo and name and the caption's
+    /// name open nothing.
     func testHoveringTheWarningShowsTheNoticeAndHoveringTheNameShowsNothing() throws {
         let notice = "Refresh failed: the token has expired."
         let (renaming, provider) = storedAccount(label: "Work")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
-        let section = DashboardProviderSection(family: family, status: AccountStatus(notice: notice)) { account, captioned in
-            DashboardAccountRows(account: account, captioned: captioned)
+        let section = DashboardProviderSection(family: family) { account in
+            VStack(alignment: .leading, spacing: 0) {
+                DashboardAccountCaption(account: account, plan: "Max 5x", status: AccountStatus(notice: notice))
+                ForEach(account.lines) { DashboardMetricRow(model: $0.data.dashboardRow()) }
+            }
         }
         let (window, host) = hostView(section, renaming: renaming)
         let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
         func opened() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
         let headerMid = DashboardGrid.headerHeight / 2
-        let nameEnd = Self.headerNameX - 10 + ("Work" as NSString).size(withAttributes: [.font: DashboardGrid.headerNSFont]).width
+        let captionFont = NSFont.systemFont(ofSize: DashboardGrid.planNSFont.pointSize, weight: .semibold)
+        let nameEnd = Self.nameX - 10 + ("Work" as NSString).size(withAttributes: [.font: captionFont]).width
 
         try hover(CGPoint(x: DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize / 2, y: headerMid), window, host)
         XCTAssertTrue(opened().isEmpty, "hovering the logo opens something")
         XCTAssertNil(HoverTooltips.visibleText)
 
         try hover(CGPoint(x: Self.headerNameX, y: headerMid), window, host)
-        XCTAssertTrue(opened().isEmpty, "hovering the name opens something")
+        XCTAssertTrue(opened().isEmpty, "hovering the provider's name opens something")
         XCTAssertNil(HoverTooltips.visibleText)
 
-        try hover(CGPoint(x: nameEnd + Theme.Spacing.s + 5, y: headerMid), window, host)
+        try hover(CGPoint(x: Self.nameX, y: Self.captionY), window, host)
+        XCTAssertTrue(opened().isEmpty, "hovering the account's name opens something")
+        XCTAssertNil(HoverTooltips.visibleText)
+
+        try hover(CGPoint(x: nameEnd + Theme.Spacing.s + 5, y: Self.captionY), window, host)
         let tooltip = try XCTUnwrap(opened().first, "hovering the warning opens no tooltip")
         XCTAssertEqual(opened().count, 1)
         XCTAssertFalse(tooltip.isKeyWindow, "the tooltip took the keyboard")
@@ -222,36 +248,46 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(log.accountDrags + log.metricDrags, 0)
     }
 
-    /// A one-account provider shows no caption: its header reads the account's name, "Work". A
-    /// double-click on the name there renames the account in place with the whole name selected; a
-    /// single click does nothing; the header drags the provider.
-    func testAOneAccountHeaderNamesTheAccountAndRenamesIt() throws {
+    /// Robin: "always show it as if they had multiple accounts". A provider with one account is drawn
+    /// like one with several: the header reads the provider, "Claude", and the account "Work" is
+    /// captioned over its rows. A double-click on the header's name renames nothing; on the caption's
+    /// name it renames the account with the whole name selected. The header drags the provider and the
+    /// caption the account.
+    func testAOneAccountCardIsCaptionedLikeAnyOther() throws {
         let log = Log()
         let (renaming, provider) = storedAccount(label: "Work")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
         let section = DashboardProviderSection(
-            family: family, plans: [provider.id: "Max 5x"],
+            family: family,
             handle: { AnyView($0.highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })) }
-        ) { account, captioned in
-            DashboardAccountRows(account: account, captioned: captioned)
+        ) { account in
+            VStack(alignment: .leading, spacing: 0) {
+                DashboardAccountCaption(account: account, plan: "Max 5x")
+                    .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.accountDrags += 1 })
+                ForEach(account.lines) { DashboardMetricRow(model: $0.data.dashboardRow()) }
+            }
         }
         let (window, host) = hostView(section, renaming: renaming)
 
         XCTAssertEqual(
             host.fittingSize.height,
-            DashboardGrid.headerHeight + DashboardGrid.headerGap + 2 * DashboardGrid.cardPadding + 3 * DashboardGrid.rowHeight,
+            DashboardGrid.headerHeight + DashboardGrid.headerGap + 2 * DashboardGrid.cardPadding + DashboardGrid.captionHeight + 3 * DashboardGrid.rowHeight,
             accuracy: 1,
-            "a header and a card of three rows, with no caption"
+            "a header and a card of a caption over three rows"
         )
 
         let headerMid = DashboardGrid.headerHeight / 2
-        let name = CGPoint(x: Self.headerNameX, y: headerMid)
+        doubleClick(CGPoint(x: Self.headerNameX, y: headerMid), window, host)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        XCTAssertNil(renaming.edit, "a double-click on the provider's name starts a rename")
+
+        let name = CGPoint(x: Self.nameX, y: Self.captionY)
         click(name, window, host)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
-        XCTAssertNil(renaming.edit, "a single click on the name starts a rename")
+        XCTAssertNil(renaming.edit, "a single click on the caption's name starts a rename")
 
         doubleClick(name, window, host)
-        XCTAssertEqual(renaming.edit?.providerID, provider.id, "a double-click on the header's name opens no rename")
+        XCTAssertEqual(renaming.edit?.providerID, provider.id, "a double-click on the caption's name opens no rename")
         XCTAssertEqual(renaming.draft, "Work")
         try assertWholeNameSelected("Work", in: window)
         renaming.cancel()
@@ -259,6 +295,8 @@ final class DashboardSectionTests: QuietWindowTestCase {
 
         drag(from: CGPoint(x: host.bounds.width / 2, y: headerMid), window, host)
         XCTAssertGreaterThan(log.headerDrags, 0, "the header doesn't drag the provider")
+        drag(from: CGPoint(x: host.bounds.width / 2, y: Self.captionY), window, host)
+        XCTAssertGreaterThan(log.accountDrags, 0, "the caption doesn't drag the account")
         XCTAssertNil(renaming.edit)
     }
 
@@ -316,7 +354,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
     private func hostWithRenaming(log: Log, lines: [DashboardLine]? = nil) -> Hosted {
         let (renaming, provider) = storedAccount(label: "Personal")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider, lines: lines), account(work)])
-        let view = DashboardProviderSection(family: family) { account, _ in
+        let view = DashboardProviderSection(family: family) { account in
             VStack(alignment: .leading, spacing: 0) {
                 DashboardAccountCaption(account: account, plan: "Max 5x")
                     .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.accountDrags += 1 })

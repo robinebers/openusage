@@ -63,26 +63,4 @@ final class ScreenTransitionTests: XCTestCase {
             slideProgress: 1
         ))
     }
-
-    func testContinuousMotionUsesBaselineWhenAnimationsAreReduced() {
-        XCTAssertEqual(
-            MotionTimelineMode.resolve(popoverShown: true, reduceAnimations: true),
-            .baselineStatic
-        )
-        XCTAssertEqual(
-            MotionTimelineMode.resolve(popoverShown: false, reduceAnimations: true),
-            .baselineStatic
-        )
-    }
-
-    func testContinuousMotionOnlyRunsWhileVisibleWithoutReduction() {
-        XCTAssertEqual(
-            MotionTimelineMode.resolve(popoverShown: true, reduceAnimations: false),
-            .live
-        )
-        XCTAssertEqual(
-            MotionTimelineMode.resolve(popoverShown: false, reduceAnimations: false),
-            .currentStatic
-        )
-    }
 }

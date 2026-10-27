@@ -29,6 +29,10 @@ final class DashboardMenusTests: XCTestCase {
     }
 
     func testTheProviderMenuRefreshesManagesSharesEveryAccountAndOpensTheLinks() {
+        let sole = DashboardMenus.provider(DashboardFamily(id: "claude", provider: claude, accounts: [account()]))
+        XCTAssertEqual(commands(sole), [[.refresh(["claude@1"])], [.manageAccounts], [.shareScreenshot(["claude@1"])], claudeLinks],
+                       "a one-account card's header has the provider's menu too")
+
         let other = Provider(id: "claude@2", displayName: "Claude", icon: "claude", accountLabel: "AM 1")
         let family = DashboardFamily(id: "claude", provider: claude, accounts: [account(), DashboardAccount(provider: other, lines: [])])
 
@@ -64,29 +68,6 @@ final class DashboardMenusTests: XCTestCase {
             [.shareScreenshot(["claude@1"])],
             [.showHiddenMetrics("claude@1")],
         ])
-    }
-
-    /// A provider with one account has no caption, so its menu carries the account's commands and the
-    /// provider's, with one Refresh.
-    func testAOneAccountCardsMenuMergesTheAccountAndProviderMenus() {
-        let menu = DashboardMenus.soleAccount(
-            account(),
-            status: "Couldn't refresh. Check your connection.",
-            hasHiddenMetrics: true
-        )
-
-        XCTAssertEqual(commands(menu), [
-            [nil],
-            [.refresh(["claude@1"])],
-            [.rename("claude@1"), .editAccount("claude@1"), .manageAccounts],
-            [.shareScreenshot(["claude@1"])],
-            [.showHiddenMetrics("claude@1")],
-            claudeLinks,
-        ])
-        XCTAssertEqual(
-            commands(DashboardMenus.soleAccount(account(), status: nil, hasHiddenMetrics: false)),
-            [[.refresh(["claude@1"])], [.rename("claude@1"), .editAccount("claude@1"), .manageAccounts], [.shareScreenshot(["claude@1"])], claudeLinks]
-        )
     }
 
     func testTheMetricMenuStarsAndHides() {

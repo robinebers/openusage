@@ -60,4 +60,21 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         guard let text = snapshot.errorMessage else { return XCTFail("Expected an error snapshot") }
         XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
     }
+
+    /// Robin: the plans read "Google AI Pro" and "Google AI Ultra", the names Google sells them as,
+    /// whether `loadCodeAssist` names the paid tier by id or buries the tier word in a longer name; a
+    /// tier Google names otherwise keeps its name.
+    func testPaidTiersReadAsGoogleSellsThem() {
+        func plan(id: String, name: String) -> String? {
+            AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(#"{"paidTier":{"id":"\#(id)","name":"\#(name)"}}"#.utf8))
+        }
+        XCTAssertEqual(plan(id: "g1-pro-tier", name: "fake"), "Google AI Pro")
+        XCTAssertEqual(plan(id: "g1-ultra-tier", name: "fake"), "Google AI Ultra")
+        XCTAssertEqual(plan(id: "g1-ultra-lite-tier", name: "fake"), "Google AI Ultra Lite")
+        XCTAssertEqual(plan(id: "unknown-tier", name: "Google AI Pro"), "Google AI Pro")
+        XCTAssertEqual(plan(id: "unknown-tier", name: "Gemini Code Assist in Google One AI Pro"), "Google AI Pro")
+        XCTAssertEqual(plan(id: "unknown-tier", name: "Google AI Ultra Lite"), "Google AI Ultra Lite")
+        XCTAssertEqual(plan(id: "free-tier", name: "Antigravity Starter Quota"), "Antigravity Starter Quota")
+        XCTAssertNil(plan(id: "unknown-tier", name: ""))
+    }
 }

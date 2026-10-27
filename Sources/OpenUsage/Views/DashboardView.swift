@@ -20,7 +20,6 @@ struct DashboardView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
-    @Environment(PopoverTransparencyStore.self) private var transparency
     @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var reorderLift: ReorderLift?
     /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
@@ -60,11 +59,9 @@ struct DashboardView: View {
             // content's height and this fill is a no-op; when content exceeds the screen cap the window
             // clamps and the scroll views inside take the overflow.
             .frame(maxHeight: .infinity, alignment: .top)
-            // Paint the page surface behind all content (and the footer). Opaque by default so the
-            // popover reads as one solid panel; under the egg it clears so the behind-window backdrop
-            // and party gradient show through. Outermost so the footer, header,
-            // and scroll content all sit on it; separation from the footer comes from the native soft
-            // scroll-edge fade (not a distinct bar).
+            // Paint the page surface behind all content (and the footer), opaque so the popover reads
+            // as one solid panel. Outermost so the footer, header, and scroll content all sit on it;
+            // separation from the footer comes from the native soft scroll-edge fade (not a distinct bar).
             .background(PopoverSurface())
             // Drive the host panel's height on SwiftUI's clock. At the body root, OUTSIDE `modeBody`'s
             // `.animation(nil, value: layout.screenSlideID)`, so the height rides the active spring (the
@@ -131,7 +128,7 @@ struct DashboardView: View {
             )
             // The controller already owns the exact show/hide moments. Reuse that signal here instead
             // of asking AppKit window notifications to rediscover the same state a second time.
-            .onChange(of: transparency.popoverShown) { _, shown in
+            .onChange(of: layout.popoverShown) { _, shown in
                 if shown {
                     // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
                     // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
@@ -213,22 +210,6 @@ struct DashboardView: View {
                     withAnimation(Motion.spring) { animatedHeight = target }
                 }
             }
-            // Watches for the secret transparency code while the panel is key and toggles the egg. A
-            // sibling of `PopoverKeyReader` that only observes (never consumes), so it can't disturb
-            // navigation or typing.
-            .background(TooMuchTransparencyKeyReader { transparency.toggleSecretCode() })
-            // The easter egg's visuals: the readable party (gradient backdrop + glowing rim, text crisp
-            // on frosted cards). Its `popoverPartyMode` flag reaches `modeBody`, the `PopoverSurface`
-            // background, and every card: it drives whether surfaces paint their opaque base or clear to
-            // the behind-window vibrancy backdrop. Controls stay clickable (overlays don't hit-test).
-            .tooMuchTransparency(active: transparency.partyActive)
-            // Gate the egg's animation loops on whether the popover is on-screen. Applied OUTSIDE
-            // `.tooMuchTransparency` so it reaches both the gradient/rim layers that modifier adds and
-            // the in-content `partyPulse`. Hidden → the loops unmount their `TimelineView` clocks, so a
-            // left-on egg spends no CPU; a fresh mount on reopen / in-place activation starts them at once.
-            // Sourced from the controller's show/hide chokepoints (`popoverShown`), not occlusion — a
-            // `.canJoinAllSpaces` panel is briefly occluded mid Space-switch while still on-screen.
-            .environment(\.popoverIsVisible, transparency.popoverShown)
     }
 
     private func resetTransientState() {
@@ -454,18 +435,7 @@ struct DashboardView: View {
 /// so glass stays chrome over solid content. Never hit-tests, so it can't steal clicks from the content
 /// above it.
 private struct PopoverSurface: View {
-    @Environment(\.popoverPartyMode) private var party
-
     var body: some View {
-        Group {
-            if party {
-                // Clear so what's behind the page shows through: the behind-window vibrancy backdrop,
-                // the blurred desktop tinted by the party gradient.
-                Color.clear
-            } else {
-                Theme.traySurface
-            }
-        }
-        .allowsHitTesting(false)
+        Theme.traySurface.allowsHitTesting(false)
     }
 }

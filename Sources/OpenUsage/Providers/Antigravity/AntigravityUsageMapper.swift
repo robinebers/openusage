@@ -121,8 +121,9 @@ enum AntigravityUsageMapper {
 
     // MARK: - Plan and project (`loadCodeAssist`)
 
-    /// Google One subscription tiers by `paidTier.id`, which is stabler than the display name.
-    static let paidTierPlans = ["g1-pro-tier": "Pro", "g1-ultra-tier": "Ultra", "g1-ultra-lite-tier": "Ultra Lite"]
+    /// Google One subscription tiers by `paidTier.id`, which is stabler than the display name, each under
+    /// the name Google sells it as.
+    static let paidTierPlans = ["g1-pro-tier": "Google AI Pro", "g1-ultra-tier": "Google AI Ultra", "g1-ultra-lite-tier": "Google AI Ultra Lite"]
 
     /// Cloud Code `loadCodeAssist` → plan name: a known `paidTier.id` first, then the paid tier's name,
     /// then the current tier's name.
@@ -151,16 +152,14 @@ enum AntigravityUsageMapper {
         )
     }
 
-    /// Normalize a raw plan/tier string to a short label: "Google AI Pro" (strip the prefix, keep the
-    /// tail); "Gemini Code Assist in Google One AI Pro" (pull the tier word). Any other name, such as the
-    /// free tier's "Antigravity Starter Quota", is Google's own and passes through.
+    /// Normalize a raw plan/tier string to the name Google sells the subscription as: "Google AI Pro",
+    /// "Google AI Ultra" or "Google AI Ultra Lite", whether the tier name says so itself or buries the
+    /// tier word ("Gemini Code Assist in Google One AI Pro"). Any other name, such as the free tier's
+    /// "Antigravity Starter Quota", is Google's own and passes through.
     static func formatPlan(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty else { return nil }
-        if let range = trimmed.range(of: "Google AI "), range.lowerBound == trimmed.startIndex {
-            return String(trimmed[range.upperBound...]).titleCased(separator: \.isWhitespace)
-        }
-        for keyword in ["Ultra", "Pro", "Free"] where trimmed.lowercased().contains(keyword.lowercased()) {
-            return keyword
+        for tier in ["Ultra Lite", "Ultra", "Pro"] where trimmed.lowercased().contains(tier.lowercased()) {
+            return "Google AI \(tier)"
         }
         return trimmed.titleCased(separator: \.isWhitespace)
     }

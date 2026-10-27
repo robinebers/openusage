@@ -27,7 +27,7 @@ extension EnvironmentValues {
 
 extension View {
     /// Applies macOS Reduce Motion at the popover root. The transaction catches explicit and implicit
-    /// SwiftUI animations; the environment value also reaches the time-driven easter-egg gate.
+    /// SwiftUI animations.
     func reduceAnimationsWhenRequested() -> some View {
         modifier(ReduceAnimationsModifier())
     }

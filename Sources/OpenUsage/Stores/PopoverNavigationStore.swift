@@ -63,4 +63,10 @@ final class PopoverNavigationStore {
     /// Whether the Add Account sheet is showing over the account list. The top bar's + opens it.
     /// Cleared when leaving Accounts, so it never reopens stale.
     var isAddingAccount = false
+    /// Whether the popover is on-screen. `StatusItemController` flips it at its show/hide chokepoints,
+    /// synchronously with `makeKeyAndOrderFront`/`orderOut`, and `DashboardView` re-seeds the panel
+    /// height on reopen from it. Deliberately not derived from occlusion or window key state: a
+    /// `.canJoinAllSpaces` panel is briefly fully occluded mid Space-switch while still following the
+    /// user on-screen. Never persisted.
+    var popoverShown = false
 }

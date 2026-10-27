@@ -4,7 +4,8 @@ import XCTest
 /// What a dashboard row shows, resolved from its reading for one instant: a bar in the severity's colour
 /// with its value and its reset beside it — always, at rest — or a value where the bar would be. The
 /// reset follows the clock setting; a window that has not started and a cap without a reset date leave
-/// the reset column empty, and a status badge shows its text where the bar would be.
+/// the reset column empty, and a status badge shows its text where the bar would be. The live row's
+/// three hovers each add the one figure the row doesn't show.
 final class DashboardRowModelTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let week: TimeInterval = 7 * 24 * 3600
@@ -91,5 +92,47 @@ final class DashboardRowModelTests: XCTestCase {
         var badge = WidgetData(title: "Status", icon: "grok", kind: .count, used: 0, limit: nil)
         badge.valueTextOverride = "Disabled"
         XCTAssertEqual(badge.dashboardRow(now: now).mark, .value("Disabled"))
+    }
+
+    /// The bar's hover is where the pace lands at reset: the cushion on a blue bar, the projected usage
+    /// on an orange one, the overage on a red one (never "~0% over"), "Limit reached" once spent, and
+    /// nothing where the colour is a level band rather than a projection.
+    func testTheBarsHoverIsTheProjectionAtReset() {
+        XCTAssertEqual(paced(used: 30).paceTooltip(now: now), "~40% left at reset")
+        XCTAssertEqual(paced(used: 46).paceTooltip(now: now), "~92% used at reset")
+        XCTAssertEqual(paced(used: 49.8).paceTooltip(now: now), "~100% used at reset")
+        XCTAssertEqual(paced(used: 60).paceTooltip(now: now), "~20% over limit at reset")
+        XCTAssertEqual(paced(used: 50.2).paceTooltip(now: now), "~1% over limit at reset")
+        XCTAssertEqual(paced(used: 100).paceTooltip(now: now), "Limit reached")
+        XCTAssertNil(paced(used: 4, elapsed: 0.02).paceTooltip(now: now), "a 4% reading early in the window is a level band, not a blow-out")
+        XCTAssertNil(WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: 80, limit: 100).paceTooltip(now: now), "no window, no projection")
+        var empty = paced(used: 30)
+        empty.hasData = false
+        XCTAssertNil(empty.paceTooltip(now: now))
+    }
+
+    /// The value's hover is the other reading and the reset's the other format; a badge, a reading
+    /// without a limit, a due reset and a window that has not started add nothing.
+    func testTheValuesHoverIsTheOtherReadingAndTheResetsTheOtherFormat() {
+        var data = paced(used: 30)
+        XCTAssertEqual(data.meterStyleTooltip, "30% used", "the value reads 70%")
+        data.displayMode = .used
+        XCTAssertEqual(data.meterStyleTooltip, "70% left", "the value reads 30%")
+        var badge = paced(used: 30)
+        badge.valueTextOverride = "Disabled"
+        XCTAssertNil(badge.meterStyleTooltip)
+        var credits = WidgetData(title: "Credits", icon: "codex", kind: .count, used: 452, limit: nil)
+        credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
+        XCTAssertNil(credits.meterStyleTooltip)
+
+        XCTAssertEqual(data.resetTooltip(now: now), Formatters.compactClock(data.resetsAt!, now: now), "the reset reads 3d 12h")
+        data.resetDisplayMode = .absolute
+        XCTAssertEqual(data.resetTooltip(now: now), "3d 12h")
+        data.resetsAt = now.addingTimeInterval(-1)
+        XCTAssertNil(data.resetTooltip(now: now), "a due reset reads soon either way")
+        var fresh = paced(used: 0, elapsed: 0.1, period: 5 * 3600, title: "Session")
+        fresh.sessionStartSignal = .zeroUsage
+        XCTAssertNil(fresh.resetTooltip(now: now))
+        XCTAssertNil(credits.resetTooltip(now: now))
     }
 }

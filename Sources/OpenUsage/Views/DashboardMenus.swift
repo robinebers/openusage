@@ -21,8 +21,7 @@ struct DashboardMenuItem: Equatable {
 }
 
 /// The dashboard's right-click menus, one per thing you can click: a provider's header or card, an
-/// account, and a metric row. A card with one account has no caption, so its menu merges the two
-/// (`soleAccount`). Each is a list of sections that render with dividers between them. Apart from the
+/// account's caption, and a metric row. Each is a list of sections that render with dividers between them. Apart from the
 /// Limit Resets row's popover, right-click is the only way to act on the dashboard, and Share Screenshot
 /// here the only way to copy a picture of it.
 enum DashboardMenus {
@@ -34,28 +33,6 @@ enum DashboardMenus {
             [DashboardMenuItem(title: "Manage Accounts…", command: .manageAccounts)],
             [DashboardMenuItem(title: "Share Screenshot", command: .shareScreenshot(family.accounts.map(\.id)))],
             links(family.provider),
-        ].filter { !$0.isEmpty }
-    }
-
-    /// The card menu of a provider with one account: the status line, then Refresh, then the commands
-    /// that edit the account and its provider's accounts, sharing, the view option, and the provider's
-    /// web pages last.
-    static func soleAccount(
-        _ account: DashboardAccount,
-        status: String?,
-        hasHiddenMetrics: Bool
-    ) -> Sections {
-        [
-            status.map { [DashboardMenuItem(title: $0)] } ?? [],
-            [DashboardMenuItem(title: "Refresh", command: .refresh([account.id]))],
-            [
-                DashboardMenuItem(title: "Rename", command: .rename(account.id)),
-                DashboardMenuItem(title: "Edit Account…", command: .editAccount(account.id)),
-                DashboardMenuItem(title: "Manage Accounts…", command: .manageAccounts),
-            ],
-            [DashboardMenuItem(title: "Share Screenshot", command: .shareScreenshot([account.id]))],
-            hasHiddenMetrics ? [DashboardMenuItem(title: "Show Hidden Metrics", command: .showHiddenMetrics(account.id))] : [],
-            links(account.provider),
         ].filter { !$0.isEmpty }
     }
 
