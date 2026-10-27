@@ -2,8 +2,8 @@ import Foundation
 
 struct CopilotLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "SXYxLmI1MDdhMDhjODdlY2ZlOTg=")!, encoding: .utf8)!
-    /// `/copilot_internal/user` accepts a plain user token; `read:user` is the narrowest scope the device
-    /// flow grants that still names the account through `/user`.
+    /// The scope Copilot's own sign-in asks for, known to read `/copilot_internal/user`. GitHub's `/user`
+    /// names the account with any token; whether the quota read works with no scope at all is unverified.
     static let scopes = "read:user"
     var http: any HTTPClient = URLSessionHTTPClient()
 

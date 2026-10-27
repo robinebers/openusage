@@ -2,17 +2,12 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// Pins what each OAuth sign-in asks a provider for, and that a refresh never asks for more than the
-/// sign-in did. A scope added here is a scope every user grants, so the strings are compared whole.
+/// A refresh never asks for more than the sign-in did: Claude's refresh sends the sign-in's own scope
+/// string, and the others send no `scope`, which OAuth reads as the granted set. `ProviderLoginTests`
+/// pins the scope string each sign-in sends.
 final class ProviderScopeTests: XCTestCase {
-    func testClaudeAsksForProfileOnly() {
-        XCTAssertEqual(ClaudeLogin.scopes, "user:profile")
-    }
-
     func testClaudeRefreshAsksForTheSignInScopes() async throws {
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new","expires_in":3600}"#.utf8))
-        }
+        let http = Self.tokenEndpoint()
         let config = ClaudeOAuthConfig(
             usageURL: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
             refreshURL: ClaudeLogin.tokenURL,
@@ -23,57 +18,38 @@ final class ProviderScopeTests: XCTestCase {
 
         let request = try XCTUnwrap(http.requests.first)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? [String: Any])
-        XCTAssertEqual(body["scope"] as? String, ClaudeLogin.scopes)
+        XCTAssertEqual(body["scope"] as? String, "user:profile")
         XCTAssertEqual(body["client_id"] as? String, ClaudeLogin.clientID)
     }
 
-    func testAntigravityAsksForCloudCodeAndEmailOnly() {
-        XCTAssertEqual(
-            AntigravityLogin.scopes,
-            "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email"
-        )
-    }
-
     func testAntigravityRefreshSendsNoScope() async throws {
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new","expires_in":3600}"#.utf8))
-        }
+        let http = Self.tokenEndpoint()
 
         _ = await AntigravityUsageClient(http: http).refreshGoogleToken("refresh")
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
     }
 
-    func testCodexAsksForPlainOIDC() {
-        XCTAssertEqual(CodexLogin.scopes, "openid profile email offline_access")
-    }
-
     func testCodexRefreshSendsNoScope() async throws {
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new","expires_in":3600}"#.utf8))
-        }
+        let http = Self.tokenEndpoint()
 
         _ = try await CodexUsageClient(http: http).refreshToken("refresh")
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
     }
 
-    func testCopilotAsksForReadUserOnly() {
-        XCTAssertEqual(CopilotLogin.scopes, "read:user")
-    }
-
-    func testGrokAsksForTheGrokCLIScopes() {
-        XCTAssertEqual(GrokLogin.scopes, "openid profile email offline_access grok-cli:access api:access")
-    }
-
     func testGrokRefreshSendsNoScope() async throws {
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new","expires_in":3600}"#.utf8))
-        }
+        let http = Self.tokenEndpoint()
 
         _ = try await GrokUsageClient(httpClient: http).refreshToken("refresh", clientID: GrokLogin.clientID)
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
+    }
+
+    private static func tokenEndpoint() -> RoutingHTTPClient {
+        RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new","expires_in":3600}"#.utf8))
+        }
     }
 
     private static func formFields(_ request: HTTPRequest) -> [String: String] {
