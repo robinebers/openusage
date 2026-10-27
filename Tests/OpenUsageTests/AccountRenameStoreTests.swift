@@ -121,10 +121,7 @@ final class AccountRenameStoreTests: XCTestCase {
     }
 
     private func makeStores() -> (AccountStore, AccountRenameStore) {
-        let name = "OpenUsage.AccountRename.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         return (accounts, AccountRenameStore(accounts: accounts))
     }

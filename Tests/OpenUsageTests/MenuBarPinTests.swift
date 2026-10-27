@@ -6,13 +6,13 @@ import XCTest
 @MainActor
 final class MenuBarPinTests: XCTestCase {
     func testNoPinsByDefault() {
-        let store = makeStore("default")
+        let store = makeStore()
         XCTAssertTrue(store.pinnedMetricIDs.isEmpty)
         XCTAssertTrue(store.pinnedGroups.isEmpty)
     }
 
     func testPinUnpinPersistsAcrossReload() {
-        let defaults = makeDefaults("persist")
+        let defaults = isolatedDefaults()
         let store = makeStore(defaults: defaults)
 
         store.setPinned(true, for: "a.m1")
@@ -27,7 +27,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testPerProviderCapBlocksThirdPinUntilSlotIsFreed() {
-        let store = makeStore("perProvider")
+        let store = makeStore()
         store.setPinned(true, for: "a.m1")
         store.setPinned(true, for: "a.m2")
 
@@ -44,7 +44,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testEachProviderCanPinUpToTwo() {
-        let store = makeStore("manyProviders")
+        let store = makeStore()
         for provider in ["a", "b"] {
             store.setPinned(true, for: "\(provider).m1")
             store.setPinned(true, for: "\(provider).m2")
@@ -54,7 +54,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testPinDenialReasonsAndFooterNotice() {
-        let store = makeStore("denial")
+        let store = makeStore()
         XCTAssertNil(store.pinDenialReason("a.m1"))
 
         store.setPinned(true, for: "a.m1")
@@ -74,7 +74,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testPinnedGroupsFollowCustomizeOrder() {
-        let store = makeStore("order")
+        let store = makeStore()
         // Pin out of order; expect provider order (a before b) and metric order (m1 before m2).
         store.setPinned(true, for: "b.m2")
         store.setPinned(true, for: "a.m2")
@@ -85,7 +85,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testAllProviderPinsAppearInGroups() {
-        let store = makeStore(defaults: makeDefaults("disabled"))
+        let store = makeStore(defaults: isolatedDefaults())
         store.setPinned(true, for: "a.m1")
         store.setPinned(true, for: "b.m1")
 
@@ -94,7 +94,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     func testInvalidPinnedIDsDroppedOnLoad() {
-        let defaults = makeDefaults("invalid")
+        let defaults = isolatedDefaults()
         defaults.set(["a.m1", "ghost.metric"], forKey: "layout.menuBarPins")
         let store = makeStore(defaults: defaults)
 
@@ -104,8 +104,8 @@ final class MenuBarPinTests: XCTestCase {
 
     // MARK: - Fixtures
 
-    private func makeStore(_ name: String) -> LayoutStore {
-        makeStore(defaults: makeDefaults(name))
+    private func makeStore() -> LayoutStore {
+        makeStore(defaults: isolatedDefaults())
     }
 
     /// Every metric starts shown, since only a shown metric can keep a star.
@@ -141,10 +141,4 @@ final class MenuBarPinTests: XCTestCase {
         )
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.MenuBarPin.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

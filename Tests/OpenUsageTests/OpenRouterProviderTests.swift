@@ -30,7 +30,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
         let registry = WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors)
 
-        let layout = LayoutStore(registry: registry, defaults: makeDefaults("FreshPins"), storageKey: "layout")
+        let layout = LayoutStore(registry: registry, defaults: isolatedDefaults(), storageKey: "layout")
 
         XCTAssertEqual(layout.pinnedMetricIDs, ["\(runtime.provider.id).balance"])
     }
@@ -39,7 +39,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
         let card = runtime.provider.id
         let registry = WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors)
-        let defaults = makeDefaults("Retired")
+        let defaults = isolatedDefaults()
         let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
         persistence.savePlaced(["credits", "balance", "today", "week", "month", "keyLimit"].map {
             PlacedWidget(descriptorID: "\(card).\($0)")
@@ -56,7 +56,7 @@ final class OpenRouterProviderTests: XCTestCase {
         ]))
 
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
-        let data = WidgetDataStore(registry: registry, providers: [runtime], cache: cache, defaults: defaults)
+        let data = WidgetDataStore.forTesting([runtime], registry: registry, cache: cache, defaults: defaults)
 
         XCTAssertEqual(layout.placed.map(\.descriptorID), ["balance", "today", "week", "month"].map { "\(card).\($0)" })
         XCTAssertEqual(layout.pinnedMetricIDs, ["\(card).balance"])
@@ -66,10 +66,4 @@ final class OpenRouterProviderTests: XCTestCase {
         }
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suite = "OpenUsageTests.OpenRouter.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
 }

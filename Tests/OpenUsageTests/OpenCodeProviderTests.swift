@@ -6,9 +6,7 @@ import XCTest
 @MainActor
 final class OpenCodeProviderTests: XCTestCase {
     func testAccountSavedUnderTheOldRawValueStillLoads() throws {
-        let name = "OpenUsage.Accounts.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
         let saved = #"[{"id":"8AD3B217-0000-4000-8000-000000000000","kind":"opencode","label":"Work","addedAt":0}]"#
         defaults.set(Data(saved.utf8), forKey: AccountStore.storageKey)
 
@@ -24,9 +22,7 @@ final class OpenCodeProviderTests: XCTestCase {
     /// named "OpenCode Go", and the sign-in default stuck as its name. It takes the provider's name on
     /// load, so its caption reads "OpenCode" under the "OpenCode" header; a name of its own stays.
     func testAnAccountStillNamedByTheOldDefaultTakesTheNewOne() throws {
-        let name = "OpenUsageLight.Accounts.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
         let saved = #"[{"id":"8AD3B217-0000-4000-8000-000000000000","kind":"opencode","label":"OpenCode Go","addedAt":0},{"id":"8AD3B217-0000-4000-8000-000000000001","kind":"opencode","label":"Go Work","addedAt":1}]"#
         defaults.set(Data(saved.utf8), forKey: AccountStore.storageKey)
 

@@ -8,9 +8,7 @@ import XCTest
 @MainActor
 final class AccountListEmptyStateTests: QuietWindowTestCase {
     func testAnEmptyListReadsNoAccountsUntilAnAccountIsAdded() async throws {
-        let suite = "OpenUsageTests.AccountListEmptyState.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let container = await AppContainer.forTesting(
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
             defaults: defaults

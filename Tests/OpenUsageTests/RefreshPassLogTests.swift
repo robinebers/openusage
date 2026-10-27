@@ -7,13 +7,9 @@ import XCTest
 @MainActor
 final class RefreshPassLogTests: XCTestCase {
     func testPassStartAndEndAreKeptOnDisk() async throws {
-        let suiteName = "OpenUsageTests.RefreshPassLog.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [], descriptors: []),
-            providers: [],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            [],
             defaults: defaults
         )
         let logStore = try OSLogStore(scope: .currentProcessIdentifier)

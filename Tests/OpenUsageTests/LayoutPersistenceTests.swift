@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class LayoutPersistenceTests: XCTestCase {
     func testLoadsEveryExistingKeyAndFormat() throws {
-        let defaults = makeDefaults("LoadsExistingKeys")
+        let defaults = isolatedDefaults()
         defaults.set(try JSONEncoder().encode([PlacedWidget(descriptorID: "claude.session")]), forKey: "layout")
         defaults.set(try JSONEncoder().encode(["cursor", "claude"]), forKey: "layout.providerOrder")
         defaults.set(
@@ -26,7 +26,7 @@ final class LayoutPersistenceTests: XCTestCase {
     }
 
     func testSavesEveryExistingKeyAndFormat() throws {
-        let defaults = makeDefaults("SavesExistingKeys")
+        let defaults = isolatedDefaults()
         let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
 
         persistence.savePlaced([PlacedWidget(descriptorID: "claude.session")])
@@ -50,10 +50,4 @@ final class LayoutPersistenceTests: XCTestCase {
         return try JSONDecoder().decode(type, from: data)
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suite = "OpenUsageTests.LayoutPersistence.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
 }

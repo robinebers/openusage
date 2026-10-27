@@ -9,9 +9,7 @@ import XCTest
 @MainActor
 final class AddAccountSheetTests: QuietWindowTestCase {
     func testCancelOnAProviderStepReturnsToTheListAndCancelOnTheListCloses() async throws {
-        let suite = "OpenUsageTests.AddAccountSheet.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         var opened: [URL] = []
         let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { opened.append($0) }) { _ in
@@ -48,9 +46,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
     }
 
     func testArrowKeysAndReturnChooseAProvider() async throws {
-        let suite = "OpenUsageTests.AddAccountSheet.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }) { _ in
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
@@ -78,9 +74,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
     /// sign-in's status is centred under the two buttons. OPENUSAGE_RENDER_DIR, when set, receives
     /// each render as a PNG.
     func testSignInStepsPutTheCloseButtonTopRightAndTheStatusCentredUnderTheButtons() async throws {
-        let suite = "OpenUsageTests.AddAccountSheet.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         let steps: [(name: String, provider: ProviderKind, prompt: LoginPrompt)] = [

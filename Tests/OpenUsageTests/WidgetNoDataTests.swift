@@ -30,7 +30,7 @@ final class WidgetNoDataTests: XCTestCase {
         let present = boundedPercent(provider, id: "test.present", metric: "Present", sampleUsed: 40)
         // Deliberately fake sample numbers we must never show once the account lacks this metric.
         let missing = boundedPercent(provider, id: "test.missing", metric: "Missing", sampleUsed: 99)
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [present, missing],
             snapshot: ProviderSnapshot(
@@ -39,13 +39,8 @@ final class WidgetNoDataTests: XCTestCase {
                 lines: [.progress(label: "Present", used: 40, limit: 100, format: .percent)]
             )
         )
-        let defaults = makeUserDefaults("missing-line")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [present, missing]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
         return (store, present, missing)
     }
@@ -70,10 +65,4 @@ final class WidgetNoDataTests: XCTestCase {
         )
     }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.NoData.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

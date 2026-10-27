@@ -18,7 +18,7 @@ final class RefreshSettingTests: XCTestCase {
 
     func testRelaunchWithinTheIntervalShowsTheSavedSnapshotWithoutRefetching() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("restart-within")
+        let suite = isolatedDefaults()
 
         // A prior session left a snapshot 4 minutes ago — inside the 5-minute interval.
         storeSnapshot(used: 20, age: 240, into: suite, now: now)
@@ -33,7 +33,7 @@ final class RefreshSettingTests: XCTestCase {
 
     func testRelaunchRefetchesASnapshotOlderThanTheInterval() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("restart-after")
+        let suite = isolatedDefaults()
         storeSnapshot(used: 20, age: 301, into: suite, now: now)
 
         let runtime = makeRuntime(used: 80)
@@ -49,13 +49,12 @@ final class RefreshSettingTests: XCTestCase {
 
     func testUpdateRefetchesEvenWithinIntervalButPaintsCachedValueFirst() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("update-within")
+        let suite = isolatedDefaults()
         storeSnapshot(used: 20, age: 240, into: suite, now: now, appVersion: "1.0.0")
 
         let runtime = makeRuntime(used: 80)
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
-            providers: [runtime],
+        let store = WidgetDataStore.forTesting(
+            [runtime],
             cache: ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", appVersion: "1.0.1", now: { now }),
             defaults: suite
         )
@@ -67,7 +66,7 @@ final class RefreshSettingTests: XCTestCase {
 
     func testWithinSessionPassServedFromCacheUntilInterval() async {
         var now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = makeDefaults("within-session")
+        let suite = isolatedDefaults()
 
         // One cache instance shared between the seeding write and the store models a single running
         // session: the snapshot was fetched 4 minutes ago *this* session, so it short-circuits the pass.
@@ -80,12 +79,7 @@ final class RefreshSettingTests: XCTestCase {
         ))
 
         let runtime = makeRuntime(used: 80)
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
-            providers: [runtime],
-            cache: cache,
-            defaults: suite
-        )
+        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: suite)
         await store.refreshAll()
 
         XCTAssertEqual(runtime.refreshCount, 0) // fetched this session, within interval => no refetch
@@ -110,7 +104,7 @@ final class RefreshSettingTests: XCTestCase {
         ))
     }
 
-    private func makeRuntime(used: Double) -> CountingProviderRuntime {
+    private func makeRuntime(used: Double) -> StubRuntime {
         let provider = Provider(id: "test", displayName: "Test", icon: "codex")
         let descriptor = WidgetDescriptor(
             id: "test.session",
@@ -118,7 +112,7 @@ final class RefreshSettingTests: XCTestCase {
             metricLabel: "Session",
             sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: used, limit: 100)
         )
-        return CountingProviderRuntime(
+        return StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -131,19 +125,12 @@ final class RefreshSettingTests: XCTestCase {
     }
 
     /// Builds a store backed by a cache at the default (fixed) refresh-interval TTL — the relaunch case.
-    private func makeStore(runtime: CountingProviderRuntime, suite: UserDefaults, now: Date) -> WidgetDataStore {
-        WidgetDataStore(
-            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
-            providers: [runtime],
+    private func makeStore(runtime: StubRuntime, suite: UserDefaults, now: Date) -> WidgetDataStore {
+        WidgetDataStore.forTesting(
+            [runtime],
             cache: ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", now: { now }),
             defaults: suite
         )
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.RefreshSetting.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

@@ -5,9 +5,7 @@ import XCTest
 @MainActor
 final class AccountChangeTests: XCTestCase {
     func testAccountChangesUpdateTheDashboardInPlace() async throws {
-        let suite = "AccountChangeTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults)
         let layout = container.layout

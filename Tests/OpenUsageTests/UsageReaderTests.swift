@@ -3,23 +3,6 @@ import XCTest
 
 @MainActor
 final class UsageReaderTests: XCTestCase {
-    private var suites: [String] = []
-
-    override func tearDown() {
-        for suite in suites {
-            UserDefaults(suiteName: suite)!.removePersistentDomain(forName: suite)
-        }
-        super.tearDown()
-    }
-
-    private func makeDefaults() -> UserDefaults {
-        let suite = "UsageReaderTests.\(UUID().uuidString)"
-        suites.append(suite)
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     private func cache(_ snapshot: ProviderSnapshot, in defaults: UserDefaults) {
         ProviderSnapshotCache(userDefaults: defaults).store(snapshot)
     }
@@ -38,7 +21,7 @@ final class UsageReaderTests: XCTestCase {
     }
 
     func testPrintsEveryCachedAccountFromTheAppDomain() throws {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let codex = store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
         let claude = store.add(kind: .claude, label: "Claude", credential: .apiKey("k"))
@@ -58,7 +41,7 @@ final class UsageReaderTests: XCTestCase {
     }
 
     func testProviderKindNamesEveryAccountOfThatKindAndCardIDNamesOne() throws {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let first = store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
         let second = store.add(kind: .codex, label: "Home", credential: .apiKey("k"))
@@ -75,7 +58,7 @@ final class UsageReaderTests: XCTestCase {
     }
 
     func testUnknownProviderThrowsEvenWhenNothingIsCached() {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
 
@@ -89,7 +72,7 @@ final class UsageReaderTests: XCTestCase {
     }
 
     func testNothingFetchedYetPrintsTheEmptyEnvelope() throws {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let empty = try UsageReader(userDefaults: defaults).read()
         XCTAssertFalse(empty.hasSnapshots)
         XCTAssertTrue(try providers(in: empty).isEmpty)

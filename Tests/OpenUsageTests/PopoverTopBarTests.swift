@@ -8,9 +8,7 @@ import XCTest
 @MainActor
 final class PopoverTopBarTests: QuietWindowTestCase {
     func testTheAccountsBarsTrailingButtonOpensAddAccount() async throws {
-        let suite = "OpenUsageTests.PopoverTopBar.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let container = await AppContainer.forTesting(
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
             defaults: defaults
@@ -58,9 +56,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     /// Read from the layer tree rather than pixels: the bar is Liquid Glass, and the images inside a
     /// glass effect are composited by the window server, so an offscreen capture never shows them.
     func testTheAccountPagesBarMirrorsTheProviderMarkIntoTheBackButtonsFootprint() async throws {
-        let suite = "OpenUsageTests.PopoverTopBar.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
         let id = store.add(kind: .claude, label: "Personal", credential: .apiKey("key")).cardID
@@ -122,9 +118,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     }
 
     func testLeavingAccountsDropsAnOpenAddAccountSheet() {
-        let suite = "OpenUsageTests.PopoverTopBar.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let layout = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
         layout.screen = .accounts
         layout.isAddingAccount = true

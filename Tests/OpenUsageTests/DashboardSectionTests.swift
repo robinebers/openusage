@@ -340,9 +340,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
 
     /// A Claude account saved under `label`, and a rename store that can edit it.
     private func storedAccount(label: String) -> (AccountRenameStore, Provider) {
-        let name = "OpenUsageTests.DashboardSection.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let stored = accounts.add(kind: .claude, label: label, credential: .apiKey("key"))
         let provider = Provider(id: stored.cardID, displayName: "Claude", icon: "claude", accountLabel: label)

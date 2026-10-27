@@ -43,7 +43,7 @@ final class WidgetPercentClampTests: XCTestCase {
             metricLabel: "Metric",
             sample: WidgetData(title: "Metric", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -52,16 +52,8 @@ final class WidgetPercentClampTests: XCTestCase {
                 lines: [.progress(label: "Metric", used: used, limit: 100, format: .percent)]
             )
         )
-        let suiteName = "OpenUsageTests.PercentClamp.\(suite).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: cache,
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
         return (store, descriptor)
     }

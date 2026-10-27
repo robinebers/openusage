@@ -4,7 +4,7 @@ import XCTest
 @MainActor
 final class AccountStoreTests: XCTestCase {
     func testAccountsOfSameKindPersistWithDistinctCardIDs() throws {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let first = AccountStore(defaults: defaults, vault: vault)
         let accountA = first.add(kind: .claude, label: "a@example.com", credential: .apiKey("first"))
@@ -19,7 +19,7 @@ final class AccountStoreTests: XCTestCase {
     }
 
     func testRemoveDeletesCredential() throws {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let store = AccountStore(defaults: defaults, vault: vault)
         let account = store.add(kind: .openrouter, label: "Primary", credential: .apiKey("key"))
@@ -31,7 +31,7 @@ final class AccountStoreTests: XCTestCase {
     }
 
     func testRenamePersists() {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let store = AccountStore(defaults: defaults, vault: vault)
         let account = store.add(kind: .codex, label: "Old", credential: .oauth(OAuthTokens(accessToken: "access")))
@@ -41,11 +41,4 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertEqual(AccountStore(defaults: defaults, vault: vault).accounts.first?.label, "New")
     }
 
-    private func makeDefaults() -> UserDefaults {
-        let name = "OpenUsage.Accounts.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        return defaults
-    }
 }

@@ -15,7 +15,7 @@ final class WidgetMeterStyleTests: XCTestCase {
 
         for item in cases {
             let (store, descriptor) = await makeRefreshedStore(
-                format: item.format, used: item.used, limit: item.limit, suite: item.name
+                format: item.format, used: item.used, limit: item.limit
             )
 
             let remaining = store.data(for: descriptor)
@@ -38,8 +38,7 @@ final class WidgetMeterStyleTests: XCTestCase {
             format: .percent,
             used: 80,
             limit: 100,
-            sampleDisplayMode: .used,
-            suite: "override"
+            sampleDisplayMode: .used
         )
 
         XCTAssertEqual(store.meterStyle, .remaining)
@@ -59,8 +58,7 @@ final class WidgetMeterStyleTests: XCTestCase {
             format: .percent,
             used: 80,
             limit: 100,
-            sampleDisplayMode: .used,
-            suite: "fallback"
+            sampleDisplayMode: .used
         )
 
         XCTAssertFalse(store.data(for: descriptor).hasData)
@@ -84,7 +82,7 @@ final class WidgetMeterStyleTests: XCTestCase {
                 limit: nil
             )
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -95,13 +93,7 @@ final class WidgetMeterStyleTests: XCTestCase {
                 ])]
             )
         )
-        let isolated = makeUserDefaults("unbounded")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: makeCache(isolated),
-            defaults: isolated
-        )
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
         await store.refreshAll()
 
         store.meterStyle = .remaining
@@ -117,15 +109,12 @@ final class WidgetMeterStyleTests: XCTestCase {
     }
 
     func testMeterStyleDefaultsToRemainingWithEmptySuite() {
-        let store = makeEmptyStore(makeUserDefaults("default"))
+        let store = makeEmptyStore(isolatedDefaults())
         XCTAssertEqual(store.meterStyle, .remaining)
     }
 
     func testMeterStylePersistsAcrossStoreInstances() {
-        let suiteName = "OpenUsageTests.MeterStyle.persist.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let defaults = isolatedDefaults()
 
         let store = makeEmptyStore(defaults)
         XCTAssertEqual(store.meterStyle, .remaining)
@@ -148,15 +137,13 @@ final class WidgetMeterStyleTests: XCTestCase {
         format: ProgressFormat,
         used: Double,
         limit: Double,
-        sampleDisplayMode: WidgetDisplayMode = .used,
-        suite: String
+        sampleDisplayMode: WidgetDisplayMode = .used
     ) async -> (WidgetDataStore, WidgetDescriptor) {
         let (store, descriptor) = makeStore(
             format: format,
             used: used,
             limit: limit,
-            sampleDisplayMode: sampleDisplayMode,
-            suite: suite
+            sampleDisplayMode: sampleDisplayMode
         )
         await store.refreshAll()
         return (store, descriptor)
@@ -166,8 +153,7 @@ final class WidgetMeterStyleTests: XCTestCase {
         format: ProgressFormat,
         used: Double,
         limit: Double,
-        sampleDisplayMode: WidgetDisplayMode = .used,
-        suite: String
+        sampleDisplayMode: WidgetDisplayMode = .used
     ) -> (WidgetDataStore, WidgetDescriptor) {
         let provider = Provider(id: "test", displayName: "Test", icon: "codex")
         let descriptor = WidgetDescriptor(
@@ -183,7 +169,7 @@ final class WidgetMeterStyleTests: XCTestCase {
                 displayMode: sampleDisplayMode
             )
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -192,33 +178,16 @@ final class WidgetMeterStyleTests: XCTestCase {
                 lines: [.progress(label: "Metric", used: used, limit: limit, format: format)]
             )
         )
-        let isolated = makeUserDefaults(suite)
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: makeCache(isolated),
-            defaults: isolated
-        )
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
         return (store, descriptor)
     }
 
     private func makeEmptyStore(_ defaults: UserDefaults) -> WidgetDataStore {
-        WidgetDataStore(
-            registry: WidgetRegistry(providers: [], descriptors: []),
-            providers: [],
-            cache: makeCache(defaults),
+        WidgetDataStore.forTesting(
+            [],
             defaults: defaults
         )
     }
 
-    private func makeCache(_ defaults: UserDefaults) -> ProviderSnapshotCache {
-        ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() })
-    }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.MeterStyle.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

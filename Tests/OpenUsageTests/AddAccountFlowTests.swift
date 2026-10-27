@@ -190,9 +190,7 @@ final class AddAccountFlowTests: XCTestCase {
     }
 
     private func makeStore(vault: InMemoryCredentialVault = InMemoryCredentialVault()) -> AccountStore {
-        let suite = "AddAccountFlowTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         return AccountStore(defaults: defaults, vault: vault)
     }
 

@@ -17,7 +17,7 @@ final class TelemetryRecorderTests: XCTestCase {
 
     func testRollOverEmitsCompleteDailyCounts() {
         let sink = FakeSink()
-        let store = makeStore("rollover")
+        let store = makeStore()
         var clock = day(25)
         let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
@@ -47,7 +47,7 @@ final class TelemetryRecorderTests: XCTestCase {
     func testDailyActiveEmitsOncePerDayRegardlessOfAnalyticsOptOut() {
         for analyticsEnabled in [true, false] {
             let sink = FakeSink()
-            let store = makeStore("daily-active-\(analyticsEnabled)")
+            let store = makeStore()
             var clock = day(25)
             let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
@@ -75,7 +75,7 @@ final class TelemetryRecorderTests: XCTestCase {
 
     func testTickFlushesStalePriorDayCounterEvenWithoutNewOutcomes() {
         let sink = FakeSink()
-        let store = makeStore("sweep")
+        let store = makeStore()
         var clock = day(25)
         let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
@@ -93,7 +93,7 @@ final class TelemetryRecorderTests: XCTestCase {
 
     func testAnalyticsOffDoesNotEmitProviderRefreshEvents() {
         let sink = FakeSink()
-        let store = makeStore("analytics-off-optional")
+        let store = makeStore()
         var clock = day(25)
         let recorder = TelemetryRecorder(sink: sink, store: store, snapshot: { self.snapshot }, now: { clock })
 
@@ -118,7 +118,7 @@ final class TelemetryRecorderTests: XCTestCase {
     }
 
     func testExistingAnalyticsOptOutIsNotFlippedOn() {
-        let defaults = makeDefaults("preserved-opt-out")
+        let defaults = isolatedDefaults()
         defaults.set(false, forKey: "enabled")
         let store = TelemetryStore(defaults: defaults)
         XCTAssertFalse(store.enabled, "stored analytics-off must survive a new store instance")
@@ -139,7 +139,7 @@ final class TelemetryRecorderTests: XCTestCase {
     }
 
     func testInstallIDIsStableAcrossStoreInstances() {
-        let defaults = makeDefaults("install-id")
+        let defaults = isolatedDefaults()
         let first = TelemetryStore(defaults: defaults).installID
         let second = TelemetryStore(defaults: defaults).installID
         XCTAssertFalse(first.isEmpty)
@@ -155,14 +155,8 @@ final class TelemetryRecorderTests: XCTestCase {
         return Calendar.current.date(from: c)!
     }
 
-    private func makeStore(_ name: String) -> TelemetryStore {
-        TelemetryStore(defaults: makeDefaults(name))
+    private func makeStore() -> TelemetryStore {
+        TelemetryStore(defaults: isolatedDefaults())
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.Telemetry.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

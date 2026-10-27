@@ -10,20 +10,15 @@ final class WidgetDataStorePlanTests: XCTestCase {
         let cases: [(name: String, plan: String?)] = [("plan", "Max 20x"), ("no-plan", nil)]
 
         for item in cases {
-            let runtime = TestProviderRuntime(
+            let runtime = StubRuntime(
                 provider: provider,
                 descriptors: [],
                 snapshot: ProviderSnapshot(
                     providerID: provider.id, displayName: provider.displayName, plan: item.plan, lines: []
                 )
             )
-            let defaults = makeDefaults(item.name)
-            let store = WidgetDataStore(
-                registry: WidgetRegistry(providers: [provider], descriptors: []),
-                providers: [runtime],
-                cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-                defaults: defaults
-            )
+            let defaults = isolatedDefaults()
+            let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
 
             XCTAssertNil(store.plan(for: provider.id))
             await store.refreshAll()
@@ -32,10 +27,4 @@ final class WidgetDataStorePlanTests: XCTestCase {
         }
     }
 
-    private func makeDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.Plan.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

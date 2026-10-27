@@ -134,7 +134,7 @@ final class RefreshBackoffTests: XCTestCase {
     private func assertNextAttempt(
         after wait: TimeInterval,
         store: WidgetDataStore,
-        runtime: SequenceProviderRuntime,
+        runtime: StubRuntime,
         clock: TestClock,
         force: Bool,
         file: StaticString = #filePath,
@@ -162,18 +162,14 @@ final class RefreshBackoffTests: XCTestCase {
         .error(provider: provider, error: ProviderError.rateLimited(retryAfter: retryAfter))
     }
 
-    private func makeRuntime(_ snapshots: [ProviderSnapshot]) -> SequenceProviderRuntime {
-        SequenceProviderRuntime(provider: provider, descriptors: [descriptor], snapshots: snapshots)
+    private func makeRuntime(_ snapshots: [ProviderSnapshot]) -> StubRuntime {
+        StubRuntime(provider: provider, descriptors: [descriptor], snapshots: snapshots)
     }
 
-    private func makeStore(_ runtime: SequenceProviderRuntime, clock: TestClock) -> WidgetDataStore {
-        let suiteName = "OpenUsageTests.RefreshBackoff.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: { clock.now }),
+    private func makeStore(_ runtime: StubRuntime, clock: TestClock) -> WidgetDataStore {
+        let defaults = isolatedDefaults()
+        return WidgetDataStore.forTesting(
+            [runtime],
             defaults: defaults,
             now: { clock.now }
         )

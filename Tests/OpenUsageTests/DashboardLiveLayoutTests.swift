@@ -27,9 +27,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
     /// Codex alone with three rows, then Claude with two accounts of two rows each, every row with a
     /// reset so it takes the live row's clock.
     private func host() async throws -> (host: NSView, frames: Frames) {
-        let suite = "OpenUsageTests.DashboardLiveLayout.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let registry = WidgetRegistry(
             providers: [codex, personal, work],
             descriptors: [
@@ -40,10 +38,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         )
         let container = await AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
-        let dataStore = WidgetDataStore(
-            registry: registry, providers: [],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"), defaults: defaults
-        )
+        let dataStore = WidgetDataStore.forTesting([], registry: registry, defaults: defaults)
         for provider in [codex, personal, work] {
             dataStore.snapshots[provider.id] = ProviderSnapshot(
                 providerID: provider.id, displayName: provider.displayName, plan: "Pro",

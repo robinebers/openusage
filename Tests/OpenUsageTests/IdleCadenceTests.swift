@@ -18,8 +18,8 @@ final class IdleCadenceTests: XCTestCase {
 
     func testOpeningThePopoverRefreshesOnlyAccountsOlderThanFiveMinutes() async {
         let clock = TestClock(start)
-        let stale = ClockRuntime(id: "stale", clock: clock)
-        let recent = ClockRuntime(id: "recent", clock: clock)
+        let stale = clockRuntime("stale", clock: clock)
+        let recent = clockRuntime("recent", clock: clock)
         let store = makeStore([stale, recent], clock: clock)
         await store.refreshAll()
 
@@ -35,7 +35,7 @@ final class IdleCadenceTests: XCTestCase {
     func testOpeningThePopoverRespectsABackoff() async {
         let clock = TestClock(start)
         let provider = Provider(id: "limited", displayName: "Limited", icon: "claude")
-        let limited = ClockRuntime(id: "limited", clock: clock, failure: .error(provider: provider, error: ProviderError.rateLimited(retryAfter: 3600)))
+        let limited = clockRuntime("limited", clock: clock, failure: .error(provider: provider, error: ProviderError.rateLimited(retryAfter: 3600)))
         let store = makeStore([limited], clock: clock)
         await store.refreshAll()
 
@@ -50,66 +50,41 @@ final class IdleCadenceTests: XCTestCase {
         XCTAssertEqual(RefreshSetting.expectedInterval(secondsSinceInput: 5 * 60), 15 * 60, "idle by the next pass")
 
         let clock = TestClock(start)
-        let runtime = ClockRuntime(id: "idle", clock: clock)
-        let suiteName = "OpenUsageTests.IdleCadence.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: { clock.now })
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
-            providers: [runtime],
-            cache: cache,
+        let runtime = clockRuntime("idle", clock: clock)
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            [runtime],
             defaults: defaults,
             now: { clock.now },
             expectedRefreshInterval: { RefreshSetting.idleInterval }
         )
         await store.refreshAll()
 
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: { clock.now })
         let saved = try XCTUnwrap(cache.loadSnapshots(providerIDs: ["idle"])["idle"])
         XCTAssertEqual(saved.nextRefreshAt, start.addingTimeInterval(15 * 60))
     }
 
     // MARK: - Helpers
 
-    private func makeStore(_ runtimes: [ClockRuntime], clock: TestClock) -> WidgetDataStore {
-        let suiteName = "OpenUsageTests.IdleCadence.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return WidgetDataStore(
-            registry: WidgetRegistry(providers: runtimes.map(\.provider), descriptors: runtimes.flatMap(\.widgetDescriptors)),
-            providers: runtimes,
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: { clock.now }),
-            defaults: defaults,
-            now: { clock.now }
-        )
+    private func makeStore(_ runtimes: [StubRuntime], clock: TestClock) -> WidgetDataStore {
+        let defaults = isolatedDefaults()
+        return WidgetDataStore.forTesting(runtimes, defaults: defaults, now: { clock.now })
     }
-}
 
-/// Answers each refresh with numbers fetched at the test clock's now, or with `failure`.
-@MainActor
-private final class ClockRuntime: ProviderRuntime {
-    let provider: Provider
-    let widgetDescriptors: [WidgetDescriptor]
-    private let clock: TestClock
-    private let failure: ProviderSnapshot?
-    private(set) var refreshCount = 0
-
-    init(id: String, clock: TestClock, failure: ProviderSnapshot? = nil) {
-        provider = Provider(id: id, displayName: id, icon: "codex")
-        widgetDescriptors = [WidgetDescriptor(
+    /// Answers each refresh with numbers fetched at the test clock's now, or with `failure`.
+    private func clockRuntime(_ id: String, clock: TestClock, failure: ProviderSnapshot? = nil) -> StubRuntime {
+        let provider = Provider(id: id, displayName: id, icon: "codex")
+        let descriptor = WidgetDescriptor(
             id: "\(id).weekly", providerID: id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: "codex", kind: .percent, used: 0, limit: 100)
-        )]
-        self.clock = clock
-        self.failure = failure
-    }
-
-    func refresh() async -> ProviderSnapshot {
-        refreshCount += 1
-        return failure ?? ProviderSnapshot(
-            providerID: provider.id, displayName: provider.displayName,
-            lines: [.progress(label: "Weekly quota", used: 12, limit: 100, format: .percent)],
-            refreshedAt: clock.now
         )
+        return StubRuntime(provider: provider, descriptors: [descriptor]) { _ in
+            failure ?? ProviderSnapshot(
+                providerID: provider.id, displayName: provider.displayName,
+                lines: [.progress(label: "Weekly quota", used: 12, limit: 100, format: .percent)],
+                refreshedAt: clock.now
+            )
+        }
     }
 }

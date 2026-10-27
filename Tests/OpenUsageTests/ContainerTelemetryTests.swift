@@ -8,9 +8,7 @@ import XCTest
 @MainActor
 final class ContainerTelemetryTests: XCTestCase {
     func testAccountChangesRecordThroughTheInjectedSinkAndStore() async throws {
-        let suite = "ContainerTelemetryTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let sink = RecordingTelemetrySink()
         let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults, telemetry: sink)

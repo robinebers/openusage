@@ -82,9 +82,7 @@ final class ResetClaimServiceTests: XCTestCase {
     }
 
     func testContainerServesTheCardsClaimAndForcesItsRefreshPastTheBackoff() async throws {
-        let suite = "ResetClaimServiceTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults)
         // An API-key credential fails a Codex refresh before any request, so nothing reaches the network.
@@ -156,15 +154,8 @@ final class ResetClaimServiceTests: XCTestCase {
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: "token")), for: account.id)
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-        let suiteName = "OpenUsageTests.ResetClaim.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let store = WidgetDataStore(
-            registry: WidgetRegistry.from([runtime]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.sample.showsResetExpiries })
         await store.refreshAll()
         XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "1 available")

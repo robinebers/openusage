@@ -88,10 +88,7 @@ final class ProviderOrderTests: XCTestCase {
     }
 
     private func makeApp() -> OrderingApp {
-        let name = "OpenUsage.ProviderOrder.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let defaults = isolatedDefaults()
         return OrderingApp(defaults: defaults)
     }
 }

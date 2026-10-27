@@ -1,4 +1,5 @@
 import Foundation
+import XCTest
 import os
 @testable import OpenUsage
 
@@ -59,37 +60,33 @@ final class TestSwitch<Value: Sendable>: @unchecked Sendable {
     }
 }
 
+/// A provider runtime that answers each refresh from a script: `answer` gets the refresh's ordinal, so a
+/// fixed snapshot, a sequence, a swap between refreshes and a clock-stamped answer are each one closure.
 @MainActor
-final class TestProviderRuntime: ProviderRuntime {
+final class StubRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
-    let snapshot: ProviderSnapshot
+    var answer: @MainActor (Int) -> ProviderSnapshot
+    private(set) var refreshCount = 0
 
-    init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
+    init(provider: Provider, descriptors: [WidgetDescriptor], answer: @escaping @MainActor (Int) -> ProviderSnapshot) {
         self.provider = provider
         self.widgetDescriptors = descriptors
-        self.snapshot = snapshot
+        self.answer = answer
     }
 
-    func refresh() async -> ProviderSnapshot { snapshot }
-}
+    convenience init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
+        self.init(provider: provider, descriptors: descriptors) { _ in snapshot }
+    }
 
-@MainActor
-final class CountingProviderRuntime: ProviderRuntime {
-    let provider: Provider
-    let widgetDescriptors: [WidgetDescriptor]
-    let snapshot: ProviderSnapshot
-    var refreshCount = 0
-
-    init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
-        self.provider = provider
-        self.widgetDescriptors = descriptors
-        self.snapshot = snapshot
+    /// Answers `snapshots` in order and repeats the last one.
+    convenience init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
+        self.init(provider: provider, descriptors: descriptors) { snapshots[min($0, snapshots.count - 1)] }
     }
 
     func refresh() async -> ProviderSnapshot {
-        refreshCount += 1
-        return snapshot
+        defer { refreshCount += 1 }
+        return answer(refreshCount)
     }
 }
 
@@ -111,26 +108,6 @@ final class HangingProviderRuntime: ProviderRuntime {
             wasCancelled = true
         }
         return ProviderSnapshot.error(provider: provider, message: "hung")
-    }
-}
-
-@MainActor
-final class SequenceProviderRuntime: ProviderRuntime {
-    let provider: Provider
-    let widgetDescriptors: [WidgetDescriptor]
-    private let snapshots: [ProviderSnapshot]
-    private(set) var refreshCount = 0
-
-    init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
-        self.provider = provider
-        self.widgetDescriptors = descriptors
-        self.snapshots = snapshots
-    }
-
-    func refresh() async -> ProviderSnapshot {
-        let snapshot = snapshots[min(refreshCount, snapshots.count - 1)]
-        refreshCount += 1
-        return snapshot
     }
 }
 
@@ -163,6 +140,36 @@ extension AppContainer {
     }
 }
 
+extension WidgetDataStore {
+    /// A store over `runtimes`, its registry built from them and its snapshot cache on the same defaults and
+    /// clock; pass `registry` or `cache` to shape either by hand.
+    static func forTesting(
+        _ runtimes: [ProviderRuntime],
+        registry: WidgetRegistry? = nil,
+        cache: ProviderSnapshotCache? = nil,
+        defaults: UserDefaults,
+        now: @escaping () -> Date = Date.init,
+        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
+        orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
+        notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
+        expectedRefreshInterval: @escaping () -> TimeInterval = { RefreshSetting.interval }
+    ) -> WidgetDataStore {
+        WidgetDataStore(
+            registry: registry ?? .from(runtimes),
+            providers: runtimes,
+            cache: cache ?? ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: now),
+            defaults: defaults,
+            orderedDescriptors: orderedDescriptors,
+            now: now,
+            providerRefreshTimeout: providerRefreshTimeout,
+            notificationSettings: notificationSettings,
+            postNotification: postNotification,
+            expectedRefreshInterval: expectedRefreshInterval
+        )
+    }
+}
+
 final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
     private let lock = NSLock()
     private var credentials: [UUID: AccountCredential] = [:]
@@ -190,5 +197,16 @@ final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         credentials.removeValue(forKey: id)
+    }
+}
+
+extension XCTestCase {
+    /// A UserDefaults on a suite of its own, empty now and removed again when the test ends.
+    func isolatedDefaults() -> UserDefaults {
+        let suite = "\(type(of: self)).\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        addTeardownBlock { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        return defaults
     }
 }

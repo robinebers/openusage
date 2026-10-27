@@ -27,7 +27,7 @@ final class DefaultStarsTests: XCTestCase {
     }
 
     func testPinsSavedUnderTheOldFamilyIDsDoNotStandInForAnAccountsOwn() {
-        let defaults = makeDefaults()
+        let defaults = isolatedDefaults()
         let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
         persistence.savePlaced([PlacedWidget(descriptorID: "claude.session"), PlacedWidget(descriptorID: "claude.weekly")])
         persistence.saveSeededDefaults(["claude.session", "claude.weekly"])
@@ -41,16 +41,9 @@ final class DefaultStarsTests: XCTestCase {
     }
 
     private func makeApp() -> StarsApp {
-        StarsApp(defaults: makeDefaults())
+        StarsApp(defaults: isolatedDefaults())
     }
 
-    private func makeDefaults() -> UserDefaults {
-        let name = "OpenUsage.DefaultStars.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
-        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
-        return defaults
-    }
 }
 
 /// The account and layout wiring `AppContainer` does, without the data store.

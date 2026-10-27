@@ -99,9 +99,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
     /// Motion is on whatever the Mac's Reduce Motion setting (the CI runner image turns it on), since
     /// the slide is what these tests watch.
     private func hostPopover() async throws -> Hosted {
-        let suite = "OpenUsageTests.ScreenSlide.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
         let id = store.add(kind: .claude, label: "Personal", credential: .apiKey("key")).cardID

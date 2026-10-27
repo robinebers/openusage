@@ -81,9 +81,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     /// On the dashboard, the button copies what the menu's Share Screenshot copies, through the same
     /// path: the provider's share card lands on the clipboard as a PNG and the Copied pill shows.
     func testTheDashboardsButtonCopiesTheShareCard() async throws {
-        let suite = "OpenUsageTests.CopyButton.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let descriptor = WidgetDescriptor(
             id: "claude@1.session", providerID: provider.id, metricLabel: "Session",
             sample: WidgetData(title: "Session", icon: "claude", kind: .percent, used: 0, limit: 100)
@@ -91,10 +89,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
         let container = await AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
-        let dataStore = WidgetDataStore(
-            registry: registry, providers: [],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"), defaults: defaults
-        )
+        let dataStore = WidgetDataStore.forTesting([], registry: registry, defaults: defaults)
         dataStore.snapshots[provider.id] = ProviderSnapshot(
             providerID: provider.id, displayName: provider.displayName, plan: "Max 5x",
             lines: [.progress(label: "Session", used: 30, limit: 100, format: .percent, resetsAt: Date().addingTimeInterval(3600), periodDurationMs: 5 * 3_600_000)]

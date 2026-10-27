@@ -79,9 +79,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
     /// hosts it, for Claude "Personal" and "Work", plus Codex "Sunstory" alone when `soleCodex`.
     private func host(soleCodex: Bool = false, accountsTitle: String? = nil) async throws -> Hosted {
         try QuietTestProcess.requireFocus()
-        let suite = "OpenUsageTests.InlineRenameFocus.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
         var accounts: [String: String] = [:]

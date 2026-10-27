@@ -46,14 +46,14 @@ final class ManualRefreshTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeStore(ids: [String], clock: TestClock) -> (WidgetDataStore, [CountingProviderRuntime]) {
+    private func makeStore(ids: [String], clock: TestClock) -> (WidgetDataStore, [StubRuntime]) {
         let runtimes = ids.map { id in
             let provider = Provider(id: id, displayName: id, icon: "codex")
             let descriptor = WidgetDescriptor(
                 id: "\(id).weekly", providerID: id, metricLabel: "Weekly quota",
                 sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
             )
-            return CountingProviderRuntime(
+            return StubRuntime(
                 provider: provider,
                 descriptors: [descriptor],
                 snapshot: ProviderSnapshot(
@@ -63,16 +63,8 @@ final class ManualRefreshTests: XCTestCase {
                 )
             )
         }
-        let suiteName = "OpenUsageTests.ManualRefresh.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: runtimes.map(\.provider), descriptors: runtimes.flatMap(\.widgetDescriptors)),
-            providers: runtimes,
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: { clock.now }),
-            defaults: defaults,
-            now: { clock.now }
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(runtimes, defaults: defaults, now: { clock.now })
         return (store, runtimes)
     }
 }

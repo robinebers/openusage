@@ -51,7 +51,7 @@ final class StalenessLabelTests: XCTestCase {
             id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        let runtime = CountingProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: .error(provider: provider, message: "Not logged in")
@@ -89,7 +89,7 @@ final class StalenessLabelTests: XCTestCase {
             id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        let runtime = TestProviderRuntime(provider: provider, descriptors: [descriptor],
+        let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
                                           snapshot: snapshot(refreshedAt: now))
         return makeStore(provider: provider, descriptor: descriptor, runtime: runtime)
     }
@@ -99,15 +99,7 @@ final class StalenessLabelTests: XCTestCase {
         descriptor: WidgetDescriptor,
         runtime: some ProviderRuntime
     ) -> WidgetDataStore {
-        let suiteName = "OpenUsageTests.Staleness.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { self.now }),
-            defaults: defaults,
-            now: { self.now }
-        )
+        let defaults = isolatedDefaults()
+        return WidgetDataStore.forTesting([runtime], defaults: defaults, now: { self.now })
     }
 }

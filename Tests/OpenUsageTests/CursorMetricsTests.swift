@@ -81,15 +81,8 @@ final class CursorMetricsTests: XCTestCase {
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-        let suite = "CursorMetricsTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
         var data: [String: WidgetData] = [:]

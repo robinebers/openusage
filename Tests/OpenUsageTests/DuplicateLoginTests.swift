@@ -80,9 +80,7 @@ final class DuplicateLoginTests: XCTestCase {
     }
 
     private func makeStore() -> AccountStore {
-        let suite = "DuplicateLoginTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let defaults = isolatedDefaults()
         return AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
     }
 

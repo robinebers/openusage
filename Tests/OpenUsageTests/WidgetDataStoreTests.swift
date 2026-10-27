@@ -6,11 +6,9 @@ final class WidgetDataStoreTests: XCTestCase {
     func testRefreshAllPersistsAndPublishesAllProviderSnapshots() async {
         let fixtures = ["alpha", "beta", "gamma"].map { makeRuntime($0) }
         let ids = fixtures.map { $0.0.id }
-        let defaults = makeUserDefaults("refresh-all-persists")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: fixtures.map { $0.0 }, descriptors: []),
-            providers: fixtures.map { $0.1 },
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            fixtures.map { $0.1 },
             defaults: defaults
         )
 
@@ -24,11 +22,9 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testSingleProviderRefreshPersistsImmediately() async {
         let fixture = makeRuntime("single")
-        let defaults = makeUserDefaults("single-refresh-persists")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [fixture.0], descriptors: []),
-            providers: [fixture.1],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            [fixture.1],
             defaults: defaults
         )
 
@@ -44,11 +40,9 @@ final class WidgetDataStoreTests: XCTestCase {
         let slowProvider = Provider(id: "slow", displayName: "Slow", icon: "codex")
         let slowSnapshot = ProviderSnapshot(providerID: slowProvider.id, displayName: slowProvider.displayName, lines: [])
         let slow = SuspendedProviderRuntime(provider: slowProvider, snapshot: slowSnapshot)
-        let defaults = makeUserDefaults("flush-pending-snapshot-work")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [fast.0, slowProvider], descriptors: []),
-            providers: [fast.1, slow],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            [fast.1, slow],
             defaults: defaults
         )
         let refreshTask = Task { await store.refreshAll() }
@@ -71,11 +65,9 @@ final class WidgetDataStoreTests: XCTestCase {
         let runtimes = providers.map {
             SuspendedProviderRuntime(provider: $0, snapshot: ProviderSnapshot(providerID: $0.id, displayName: $0.displayName, lines: []))
         }
-        let defaults = makeUserDefaults("refresh-several-accounts")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: providers, descriptors: []),
-            providers: runtimes,
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            runtimes,
             defaults: defaults
         )
 
@@ -99,7 +91,7 @@ final class WidgetDataStoreTests: XCTestCase {
             metricLabel: "Session",
             sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -115,13 +107,10 @@ final class WidgetDataStoreTests: XCTestCase {
                 )]
             )
         )
-        let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
         // Hermetic: pin the meter style and the snapshot cache via an isolated suite, so neither a persisted
         // `.used` nor a snapshot another test left in `.standard` can stand in for this refresh.
-        let defaults = makeUserDefaults("resolve-progress")
-        let store = WidgetDataStore(
-            registry: registry, providers: [runtime], cache: ProviderSnapshotCache(userDefaults: defaults), defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
 
         await store.refreshAll()
         let data = store.data(for: descriptor)
@@ -153,7 +142,7 @@ final class WidgetDataStoreTests: XCTestCase {
         let descriptor = WidgetDescriptor.values(
             id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -162,13 +151,8 @@ final class WidgetDataStoreTests: XCTestCase {
                 lines: [.values(label: "Credits", values: CodexUsageMapper.creditValues(remaining: 1000))]
             )
         )
-        let defaults = makeUserDefaults("codex-credits")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         store.meterStyle = .remaining
@@ -196,7 +180,7 @@ final class WidgetDataStoreTests: XCTestCase {
             metricLabel: "Rate Limit Resets",
             traySuffix: "resets"
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -206,13 +190,8 @@ final class WidgetDataStoreTests: XCTestCase {
                                 values: [MetricValue(number: 1, kind: .count, label: "available")])]
             )
         )
-        let defaults = makeUserDefaults("codex-resets")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
@@ -234,7 +213,7 @@ final class WidgetDataStoreTests: XCTestCase {
             traySuffix: "resets",
             showsResetExpiries: true
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -244,13 +223,8 @@ final class WidgetDataStoreTests: XCTestCase {
                                 values: [MetricValue(number: 0, kind: .count, label: "available")])]
             )
         )
-        let defaults = makeUserDefaults("codex-resets-empty")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
@@ -271,7 +245,7 @@ final class WidgetDataStoreTests: XCTestCase {
             limit: 500,
             periodDurationMs: CursorUsageMapper.billingPeriodMs
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [budget, requests],
             snapshot: ProviderSnapshot(
@@ -283,13 +257,8 @@ final class WidgetDataStoreTests: XCTestCase {
                 ]
             )
         )
-        let defaults = makeUserDefaults("cursor-tray-units")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [budget, requests]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         store.meterStyle = .used
@@ -309,7 +278,7 @@ final class WidgetDataStoreTests: XCTestCase {
             title: "Credits",
             valueWord: "left"
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -318,13 +287,8 @@ final class WidgetDataStoreTests: XCTestCase {
                 lines: [.values(label: "Credits", values: [MetricValue(number: 7_909.64, kind: .dollars)])]
             )
         )
-        let defaults = makeUserDefaults("cursor-credits-balance")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         store.meterStyle = .remaining
@@ -349,7 +313,7 @@ final class WidgetDataStoreTests: XCTestCase {
             id: "claude.extra", provider: provider, title: "Extra Usage",
             metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
         )
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -359,13 +323,8 @@ final class WidgetDataStoreTests: XCTestCase {
                                 values: [MetricValue(number: 1234.56, kind: .dollars)])]
             )
         )
-        let defaults = makeUserDefaults("claude-extra")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
-            defaults: defaults
-        )
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
@@ -394,7 +353,7 @@ final class WidgetDataStoreTests: XCTestCase {
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cache = ProviderSnapshotCache(
-            userDefaults: makeUserDefaults("fresh-cache"),
+            userDefaults: isolatedDefaults(),
             storageKey: "snapshots",
             ttl: 600,
             now: { now }
@@ -405,7 +364,7 @@ final class WidgetDataStoreTests: XCTestCase {
             lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
             refreshedAt: now.addingTimeInterval(-60)
         ))
-        let runtime = CountingProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -415,12 +374,7 @@ final class WidgetDataStoreTests: XCTestCase {
                 refreshedAt: now
             )
         )
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: cache,
-            defaults: makeUserDefaults("fresh-cache-meter")
-        )
+        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults())
 
         await store.refreshAll()
 
@@ -437,7 +391,7 @@ final class WidgetDataStoreTests: XCTestCase {
             sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let defaults = makeUserDefaults("expired-cache")
+        let defaults = isolatedDefaults()
         let cache = ProviderSnapshotCache(
             userDefaults: defaults,
             storageKey: "snapshots",
@@ -450,7 +404,7 @@ final class WidgetDataStoreTests: XCTestCase {
             lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
             refreshedAt: now.addingTimeInterval(-601)
         ))
-        let runtime = CountingProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -460,12 +414,7 @@ final class WidgetDataStoreTests: XCTestCase {
                 refreshedAt: now
             )
         )
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: cache,
-            defaults: makeUserDefaults("expired-cache-meter")
-        )
+        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults())
 
         await store.refreshAll()
 
@@ -473,18 +422,12 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).valueText, "20%")
     }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 
-    private func makeRuntime(_ id: String) -> (Provider, TestProviderRuntime) {
+    private func makeRuntime(_ id: String) -> (Provider, StubRuntime) {
         let provider = Provider(id: id, displayName: id.capitalized, icon: "codex")
         return (
             provider,
-            TestProviderRuntime(
+            StubRuntime(
                 provider: provider,
                 descriptors: [],
                 snapshot: ProviderSnapshot(

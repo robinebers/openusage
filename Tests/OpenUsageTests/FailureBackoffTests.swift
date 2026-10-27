@@ -58,7 +58,7 @@ final class FailureBackoffTests: XCTestCase {
             lines: [.progress(label: "Weekly quota", used: 12, limit: 100, format: .percent)],
             refreshedAt: Date(timeIntervalSince1970: 0)
         )
-        let runtime = SequenceProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshots: [.error(provider: provider, message: "Not logged in"), okSnapshot]
@@ -82,13 +82,13 @@ final class FailureBackoffTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeFailingRuntime() -> CountingProviderRuntime {
+    private func makeFailingRuntime() -> StubRuntime {
         let provider = Provider(id: "test", displayName: "Test", icon: "codex")
         let descriptor = WidgetDescriptor(
             id: "test.weekly", providerID: provider.id, metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
         )
-        return CountingProviderRuntime(
+        return StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: .error(provider: provider, message: "Not logged in")
@@ -108,7 +108,7 @@ final class FailureBackoffTests: XCTestCase {
         runtime: some ProviderRuntime,
         clock: @escaping () -> Date
     ) -> WidgetDataStore {
-        let suite = makeUserDefaults("backoff")
+        let suite = isolatedDefaults()
         return WidgetDataStore(
             registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
             providers: [runtime],
@@ -118,12 +118,6 @@ final class FailureBackoffTests: XCTestCase {
         )
     }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.Backoff.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }
 
-// SequenceProviderRuntime lives in TestSupport.swift.
+// StubRuntime lives in TestSupport.swift.

@@ -37,7 +37,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
     func testRefreshInsideTheDeadlineStillSucceeds() async {
         let (provider, descriptor) = makeProvider()
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -72,14 +72,8 @@ final class RefreshTimeoutTests: XCTestCase {
         runtime: ProviderRuntime,
         timeout: TimeInterval
     ) -> WidgetDataStore {
-        let defaults = makeUserDefaults("refresh-timeout")
-        return WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults),
-            defaults: defaults,
-            providerRefreshTimeout: timeout
-        )
+        let defaults = isolatedDefaults()
+        return WidgetDataStore.forTesting([runtime], defaults: defaults, providerRefreshTimeout: timeout)
     }
 
     private func waitUntil(_ condition: @MainActor () -> Bool) async -> Bool {
@@ -91,10 +85,4 @@ final class RefreshTimeoutTests: XCTestCase {
         return condition()
     }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

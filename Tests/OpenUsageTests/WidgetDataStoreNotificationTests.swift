@@ -18,26 +18,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         var posts: [(String, String, String, String)] = []
     }
 
-    /// A provider whose snapshot can be swapped between refreshes to simulate rising usage.
-    private final class MutableRuntime: ProviderRuntime {
-        let provider: Provider
-        let widgetDescriptors: [WidgetDescriptor]
-        var snapshot: ProviderSnapshot
-        init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
-            self.provider = provider
-            self.widgetDescriptors = descriptors
-            self.snapshot = snapshot
-        }
-        func refresh() async -> ProviderSnapshot { snapshot }
-    }
-
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suite = "WidgetDataStoreNotificationTests.\(name)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
     private static let provider = Provider(id: "test", displayName: "Test", icon: "cursor")
 
     private static func descriptor() -> WidgetDescriptor {
@@ -62,16 +42,13 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         used: Double,
         settings: NotificationSettingsStore,
         recorder: Recorder,
-        defaultsName: String,
         delivered: @escaping @MainActor () -> Bool = { true }
-    ) -> (WidgetDataStore, MutableRuntime, WidgetDescriptor) {
+    ) -> (WidgetDataStore, StubRuntime, WidgetDescriptor) {
         let descriptor = Self.descriptor()
-        let runtime = MutableRuntime(provider: Self.provider, descriptors: [descriptor], snapshot: snapshot(used: used))
-        let defaults = makeUserDefaults(defaultsName)
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: [Self.provider], descriptors: [descriptor]),
-            providers: [runtime],
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+        let runtime = StubRuntime(provider: Self.provider, descriptors: [descriptor], snapshot: snapshot(used: used))
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            [runtime],
             defaults: defaults,
             orderedDescriptors: { [descriptor] },
             notificationSettings: { settings },
@@ -92,12 +69,13 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     private func evaluate(
         _ store: WidgetDataStore,
-        runtime: MutableRuntime,
+        runtime: StubRuntime,
         used: Double? = nil,
         resetsAt: Date? = nil
     ) async {
         if let used {
-            runtime.snapshot = snapshot(used: used, resetsAt: resetsAt)
+            let next = snapshot(used: used, resetsAt: resetsAt)
+            runtime.answer = { _ in next }
         }
         await store.refreshAll(force: true)
         await store.evaluateNotifications(now: base)
@@ -106,7 +84,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     /// Two accounts of one provider name themselves in the subtitle ("Claude · Personal Session",
     /// "Claude · Work Session"), never "Claude Session" twice.
     func testTwoAccountsOfOneProviderNameThemselvesInTheSubtitle() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("two-accounts-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
         let providers = [("claude@aaaa", "Personal"), ("claude@bbbb", "Work")].map {
@@ -129,13 +107,11 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             )
         }
         let runtimes = zip(providers, descriptors).map {
-            MutableRuntime(provider: $0, descriptors: [$1], snapshot: snapshot($0, used: 80))
+            StubRuntime(provider: $0, descriptors: [$1], snapshot: snapshot($0, used: 80))
         }
-        let defaults = makeUserDefaults("two-accounts")
-        let store = WidgetDataStore(
-            registry: WidgetRegistry(providers: providers, descriptors: descriptors),
-            providers: runtimes,
-            cache: ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", ttl: 600, now: { Date() }),
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting(
+            runtimes,
             defaults: defaults,
             orderedDescriptors: { descriptors },
             notificationSettings: { settings },
@@ -148,7 +124,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await store.evaluateNotifications(now: base)
         XCTAssertTrue(recorder.posts.isEmpty, "healthy should not fire")
 
-        for (runtime, provider) in zip(runtimes, providers) { runtime.snapshot = snapshot(provider, used: 87) }
+        for (runtime, provider) in zip(runtimes, providers) {
+            let next = snapshot(provider, used: 87)
+            runtime.answer = { _ in next }
+        }
         await store.refreshAll(force: true)
         await store.evaluateNotifications(now: base)
 
@@ -156,11 +135,11 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testHealthyToCloseFiresOnceThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("h2c-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
         // 80% used at ~90% elapsed → projected ~89% → healthy.
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "h2c")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         XCTAssertTrue(recorder.posts.isEmpty, "healthy should not fire")
 
@@ -176,10 +155,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testCloseToRunningOutFiresThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("c2r-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 87, settings: settings, recorder: recorder, defaultsName: "c2r")
+        let (store, runtime, _) = makeStore(used: 87, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         XCTAssertTrue(recorder.posts.isEmpty, "first launch primes the baseline without firing")
 
@@ -191,10 +170,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testResetJitterDoesNotRefireRunningOutThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("jitter-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "jitter")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
 
         await evaluate(store, runtime: runtime, used: 95)
@@ -206,23 +185,23 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testAllTogglesOffSuppressesAllPosts() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("all-off-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         settings.underTenPercent = false
         settings.healthyToClose = false
         settings.closeToRunningOut = false
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "all-off")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.isEmpty)
     }
 
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("per-trigger-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         settings.healthyToClose = false   // turn off "Cutting It Close" only
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "per-trigger")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 87)
         XCTAssertFalse(recorder.posts.contains { $0.0 == "test.healthyToClose" })
@@ -237,10 +216,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         // here), so the old `< 0.10` check would NOT fire "Almost Out" despite only 5% remaining.
         // `remainingFraction` fires it regardless of the used/remaining display choice. Prime from
         // healthy first so the under-10% edge is a real transition, not a cold start.
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("used-mode-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
-        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder, defaultsName: "used-mode")
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         store.meterStyle = .used
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 95)
@@ -254,11 +233,11 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         // Regression: if delivery fails (not authorized, or scheduling errored), the milestone must not
         // be marked fired — the edge stays un-consumed so it re-fires on the next evaluation instead of
         // being lost for the rest of the reset window.
-        let settings = NotificationSettingsStore(defaults: makeUserDefaults("retry-settings"))
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
         allOn(settings)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
-                                            defaultsName: "retry", delivered: { false })
+                                            delivered: { false })
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 87)
         await evaluate(store, runtime: runtime)
