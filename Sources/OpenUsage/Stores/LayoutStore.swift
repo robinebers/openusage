@@ -45,8 +45,6 @@ final class LayoutStore {
         get { navigation.popoverShown }
         set { navigation.popoverShown = newValue }
     }
-    /// Placed widget being drag-reordered (transient). `PlacedWidget.id`, never persisted.
-    var draggingID: UUID?
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
     /// Accounts list, so the user can drag whole providers into the order they want.
     var providerOrder: [String] = []
@@ -131,7 +129,6 @@ final class LayoutStore {
     /// happens, so reloading from storage against the new registry keeps the user's arrangement, seeds
     /// defaults for a new account, and drops a removed account's metrics, pins, and order.
     func apply(registry: WidgetRegistry) {
-        cancelDrag()
         undoHistory.clear()
         self.registry = registry
         if let customizeProviderID, registry.provider(id: customizeProviderID) == nil {
@@ -229,7 +226,6 @@ final class LayoutStore {
 
     /// Restore every undoable field from a snapshot and persist the result. Called by `undo()`.
     private func restore(_ snapshot: LayoutSnapshot) {
-        cancelDrag()
         placed = snapshot.placed
         providerOrder = snapshot.providerOrder
         metricOrderByProvider = snapshot.metricOrderByProvider
@@ -336,7 +332,6 @@ final class LayoutStore {
     func add(_ descriptorID: String) {
         guard registry.descriptor(id: descriptorID) != nil else { return }
         guard !placed.contains(where: { $0.descriptorID == descriptorID }) else { return }
-        cancelDrag()
         placed.append(PlacedWidget(descriptorID: descriptorID))
         syncPlacedOrder()
     }
@@ -345,14 +340,9 @@ final class LayoutStore {
     /// doesn't put the star back.
     func remove(_ id: UUID) {
         guard let index = placed.firstIndex(where: { $0.id == id }) else { return }
-        cancelDrag()
         let descriptorID = placed.remove(at: index).descriptorID
         persist()
         if pinnedMetricIDs.remove(descriptorID) != nil { persistPins() }
-    }
-
-    func cancelDrag() {
-        draggingID = nil
     }
 
     func persist() {

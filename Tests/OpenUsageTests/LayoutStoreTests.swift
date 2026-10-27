@@ -3,16 +3,14 @@ import XCTest
 
 @MainActor
 final class LayoutStoreTests: XCTestCase {
-    func testRemoveClearsDragStateAndAllowsRepeatedRemoval() {
+    func testRemoveAllowsRepeatedRemoval() {
         let store = makeStore()
         let first = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[0])
         let second = PlacedWidget(id: UUID(), descriptorID: DefaultLayout.metricIDs[1])
         store.placed = [first, second]
-        store.draggingID = first.id
 
         store.remove(first.id)
 
-        XCTAssertNil(store.draggingID)
         XCTAssertEqual(store.placed, [second])
 
         store.remove(second.id)
@@ -244,19 +242,6 @@ final class LayoutStoreTests: XCTestCase {
         let store = makeStore(defaults, metricIDs: ["missing.metric", "claude.session"], baseline: [])
 
         XCTAssertEqual(store.placed.map(\.descriptorID), ["claude.session"])
-    }
-
-    func testAddAndRemoveCancelDragState() {
-        let store = makeStore()
-        let first = store.placed[0]
-
-        store.draggingID = first.id
-        store.remove(first.id)
-        XCTAssertNil(store.draggingID)
-
-        store.draggingID = UUID()
-        store.add(first.descriptorID)
-        XCTAssertNil(store.draggingID)
     }
 
     func testTogglingMetricDoesNotChangeCustomizeOrder() {

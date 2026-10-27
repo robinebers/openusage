@@ -151,7 +151,6 @@ struct DashboardView: View {
             // screen.
             .onChange(of: layout.screen) { _, screen in
                 reorderLift = nil
-                layout.cancelDrag()
                 if screen == .settings { hasVisitedSettings = true }
             }
             // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
@@ -231,7 +230,6 @@ struct DashboardView: View {
         container.renaming.commit()
         if layout.screen != .dashboard { layout.screen = .dashboard }
         reorderLift = nil
-        layout.cancelDrag()
         // A "Copied to clipboard" pill mid-countdown would otherwise reappear stale on the next open,
         // since the layout store survives the popover and only the timer clears it.
         layout.clearShareConfirmation()
