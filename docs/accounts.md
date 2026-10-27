@@ -1,7 +1,7 @@
 # Accounts
 
-The Accounts screen lists every account you have added. Open it from the panel's **Options** menu or
-press Return on the dashboard.
+The Accounts screen lists every account you have added, or reads **No Accounts** until you add one.
+Open it from the panel's **Options** menu or press Return on the dashboard.
 
 ## Add an account
 

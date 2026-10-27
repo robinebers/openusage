@@ -126,7 +126,10 @@ private struct HoverTooltipModifier: ViewModifier {
             // Descendants nest one level deeper, so a child target outranks this one when a hover sits
             // inside both.
             .environment(\.tooltipDepth, depth + 1)
-            .background { TooltipAnchorView(anchor: anchor) }
+            // The anchor exists only while there is something to anchor: a target with nothing to show
+            // mounts no AppKit view, so a static row costs nothing and an off-screen render has no
+            // placeholder to rasterize.
+            .background { if resolved != nil { TooltipAnchorView(anchor: anchor) } }
             .accessibilityHint(resolved ?? "")
             // Continuous (not plain `onHover`) so the presenter always has the live hover state; it
             // reads the cursor itself at show time, so the reported location is unused here.

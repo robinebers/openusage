@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// The Accounts list (L1): every account in the user's saved order, grouped in one card the way
-/// Settings groups its rows; the top bar's + opens the Add Account sheet. Click a row to open that
-/// account (L2); drag its grip to reorder the accounts, which reorders the dashboard too.
+/// Settings groups its rows, or "No Accounts" where the card would be; the top bar's + opens the Add
+/// Account sheet. Click a row to open that account (L2); drag its grip to reorder the accounts, which
+/// reorders the dashboard too.
 struct AccountListView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
@@ -15,12 +16,18 @@ struct AccountListView: View {
     var body: some View {
         @Bindable var layout = layout
         let providers = layout.orderedProviders()
-        VStack(spacing: 0) {
-            ForEach(providers) { provider in
-                accountRow(provider)
+        Group {
+            if providers.isEmpty {
+                ContentUnavailableView { Label("No Accounts", systemImage: "person.crop.circle") }
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(providers) { provider in
+                        accountRow(provider)
+                    }
+                }
+                .cardSurface()
             }
         }
-        .cardSurface()
         .animation(Motion.spring, value: providers.map(\.id))
         .sheet(isPresented: $layout.isAddingAccount) {
             AddAccountSheet(store: container.accounts)
