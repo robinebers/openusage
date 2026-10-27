@@ -24,12 +24,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         .environment(container)
         .environment(layout)
         .environment(container.renaming)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
-        host.layoutSubtreeIfNeeded()
+        let (window, host) = show(view, in: .titled)
         XCTAssertNil(window.attachedSheet)
 
         // The trailing button's center: a large circular glass button inset by the bar's padding.
@@ -73,11 +68,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
             .environment(container)
             .environment(layout)
             .environment(container.renaming)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
+        let host = show(view, in: .titled).host
         try await Task.sleep(for: .milliseconds(300))
         host.layoutSubtreeIfNeeded()
 

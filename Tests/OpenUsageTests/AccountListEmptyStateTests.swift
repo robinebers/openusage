@@ -32,21 +32,6 @@ final class AccountListEmptyStateTests: QuietWindowTestCase {
 
     /// `content` at the panel's width in an offscreen window, sized to what it asks for.
     private func host(_ content: some View) -> NSView {
-        let host = NSHostingView(rootView: content.frame(width: PanelMetrics.width).environment(\.colorScheme, .light))
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
-        host.layoutSubtreeIfNeeded()
-        return host
-    }
-
-    /// The host's pixels as drawn now.
-    private func pixels(of host: NSView) throws -> Data {
-        host.layoutSubtreeIfNeeded()
-        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: rep)
-        return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        show(content.frame(width: PanelMetrics.width).environment(\.colorScheme, .light), in: .titled).host
     }
 }

@@ -16,11 +16,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
         }
         let presentation = SheetPresentation()
-        let host = NSHostingView(rootView: SheetHost(presentation: presentation, flow: flow))
-        host.frame = NSRect(x: 0, y: 0, width: 400, height: 500)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
+        let window = show(SheetHost(presentation: presentation, flow: flow), in: .titled, size: CGSize(width: 400, height: 500)).window
         let sheet = try await waitForSheet(on: window)
 
         flow.choose(.codex)
@@ -52,11 +48,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
         }
         let presentation = SheetPresentation()
-        let host = NSHostingView(rootView: SheetHost(presentation: presentation, flow: flow))
-        host.frame = NSRect(x: 0, y: 0, width: 400, height: 700)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
+        let window = show(SheetHost(presentation: presentation, flow: flow), in: .titled, size: CGSize(width: 400, height: 700)).window
         addTeardownBlock { flow.cancel() }
         let sheet = try await waitForSheet(on: window)
 
@@ -88,12 +80,9 @@ final class AddAccountSheetTests: QuietWindowTestCase {
                 addTeardownBlock { flow.cancel() }
                 flow.choose(step.provider)
                 try await waitUntil { flow.prompt != nil }
-                let host = NSHostingView(rootView: AddAccountSheet(flow: flow).background(Color(nsColor: .windowBackgroundColor)))
-                host.frame = NSRect(origin: .zero, size: host.fittingSize)
-                let window = QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
-                window.appearance = NSAppearance(named: appearance)
-                window.contentView = host
-                QuietTestProcess.show(window, in: self)
+                let host = show(
+                    AddAccountSheet(flow: flow).background(Color(nsColor: .windowBackgroundColor)), in: .titled, appearance: appearance
+                ).host
                 try await Task.sleep(for: .milliseconds(300))
                 host.layoutSubtreeIfNeeded()
                 let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))

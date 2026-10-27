@@ -121,15 +121,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
             .frame(width: DashboardGrid.cardWidth)
             .environment(AccountRenameStore?.none)
             .environment(\.colorScheme, .light)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = QuietMenuBarPanel(contentRect: host.frame)
-        window.acceptsMouseMovedEvents = true
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
-        host.layoutSubtreeIfNeeded()
-        return (window, host)
+        return show(view)
     }
 }
 

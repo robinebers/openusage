@@ -34,11 +34,11 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
             let asked = NSHostingView(rootView: warned.fixedSize().environment(AccountRenameStore?.none)).fittingSize.width
             XCTAssertLessThanOrEqual(asked, width, "\(label) asks \(asked) of \(width) pt")
 
-            let nameAlone = try await Ink(Text(name).font(DashboardGrid.captionFont).foregroundStyle(.secondary).fixedSize().padding(20), in: self)
-            let planAlone = try await Ink(Text(plan).font(DashboardGrid.planFont).foregroundStyle(.secondary).fixedSize().padding(20), in: self)
+            let nameAlone = try await ink(Text(name).font(DashboardGrid.captionFont).foregroundStyle(.secondary).fixedSize().padding(20))
+            let planAlone = try await ink(Text(plan).font(DashboardGrid.planFont).foregroundStyle(.secondary).fixedSize().padding(20))
             let nameWidth = try XCTUnwrap(nameAlone.span()).width
             let planWidth = try XCTUnwrap(planAlone.span()).width
-            let caption = try await Ink(DashboardAccountCaption(account: account, plan: plan), in: self, width: width)
+            let caption = try await ink(DashboardAccountCaption(account: account, plan: plan), width: width)
             XCTAssertEqual(CGFloat(caption.height) / caption.scale, DashboardGrid.captionHeight, accuracy: 1, label)
 
             let title = try XCTUnwrap(caption.span(from: 0, to: inset + nameWidth + 4), "\(label): no name drawn")
@@ -56,65 +56,18 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
         DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", displayName: kind.displayName,
                                             icon: kind.rawValue, accountLabel: name), lines: [])
     }
-}
 
-/// A view hosted in a quiet window, in light mode, read back as pixels with the top row first.
-private struct Ink {
-    struct Span {
-        /// The x of the first and last ink, in points.
-        let first: CGFloat
-        let last: CGFloat
-        var width: CGFloat { last - first }
-    }
-
-    let width: Int
-    let height: Int
-    let scale: CGFloat
-    private let pixels: [UInt8]
-    private let bytesPerRow: Int
-    private let samples: Int
-
-    /// Hosts `content` at `width` (its own width when nil), lets it lay out, and reads its pixels.
-    @MainActor
-    init(_ content: some View, in testCase: XCTestCase, width: CGFloat? = nil) async throws {
+    /// `content` hosted at `width` (its own width when nil) on white in a quiet window, laid out, and read as
+    /// ink: a painted pixel that is clearly not white.
+    private func ink(_ content: some View, width: CGFloat? = nil) async throws -> InkMap {
         let view = content
             .frame(width: width)
             .background(Color.white)
             .environment(AccountRenameStore?.none)
             .environment(\.hoverTooltipsDisabled, true)
             .environment(\.colorScheme, .light)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = QuietWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = host
-        QuietTestProcess.show(window, in: testCase)
-        host.layoutSubtreeIfNeeded()
+        let hosted = show(view, in: .borderless).host
         try await Task.sleep(for: .milliseconds(150))
-        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: rep)
-        self.width = rep.pixelsWide
-        self.height = rep.pixelsHigh
-        scale = CGFloat(rep.pixelsWide) / host.bounds.width
-        bytesPerRow = rep.bytesPerRow
-        samples = rep.samplesPerPixel
-        let data = try XCTUnwrap(rep.bitmapData)
-        pixels = Array(UnsafeBufferPointer(start: data, count: rep.bytesPerRow * rep.pixelsHigh))
-    }
-
-    /// Ink is a painted pixel that is clearly not the white background.
-    private func isInk(_ x: Int, _ y: Int) -> Bool {
-        let p = y * bytesPerRow + x * samples
-        guard samples < 4 || pixels[p + 3] > 200 else { return false }
-        return (0..<min(samples, 3)).contains { pixels[p + $0] < 215 }
-    }
-
-    /// The first and last ink between two x positions in points (the whole width by default), or `nil`
-    /// when there is none.
-    func span(from start: CGFloat = 0, to end: CGFloat? = nil) -> Span? {
-        let columns = max(0, Int(start * scale))..<min(width, end.map { Int($0 * scale) } ?? width)
-        let inked = columns.filter { x in (0..<height).contains { isInk(x, $0) } }
-        guard let first = inked.first, let last = inked.last else { return nil }
-        return Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale)
+        return InkMap(of: hosted, threshold: 40, background: .white)
     }
 }

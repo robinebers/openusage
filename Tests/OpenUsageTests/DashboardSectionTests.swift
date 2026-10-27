@@ -154,14 +154,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertNil(HoverTooltips.visibleText)
     }
 
-    /// The host's pixels as drawn now.
-    private func pixels(of host: NSView) throws -> Data {
-        host.layoutSubtreeIfNeeded()
-        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: rep)
-        return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
-    }
-
     /// A click on a row's value flips the meter style and a click on its reset flips the reset display,
     /// once per click; a click on the row's label or bar flips nothing, and no click opens anything or
     /// lifts the row.
@@ -374,16 +366,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
             .frame(width: PanelMetrics.width - 2 * PanelMetrics.margin)
             .environment(renaming)
             .environment(\.colorScheme, .light)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        // The dashboard's own panel, so clicks and the rename field behave as in the app, minus the
-        // keyboard: it never becomes key.
-        let window = QuietMenuBarPanel(contentRect: host.frame)
-        window.acceptsMouseMovedEvents = true
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
-        host.layoutSubtreeIfNeeded()
-        return (window, host)
+        return show(view)
     }
 }

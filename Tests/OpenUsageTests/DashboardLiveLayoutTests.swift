@@ -59,13 +59,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
             .environment(dataStore)
             .environment(container.renaming)
             .environment(\.colorScheme, .light)
-        let host = NSHostingView(rootView: view)
-        host.frame = NSRect(origin: .zero, size: host.fittingSize)
-        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.appearance = NSAppearance(named: .aqua)
-        window.contentView = host
-        QuietTestProcess.show(window, in: self)
-        host.layoutSubtreeIfNeeded()
+        let host = show(view, in: .borderless).host
         try await Task.sleep(for: .milliseconds(300))
         return (host, frames)
     }

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import OpenUsage
 
@@ -118,6 +119,51 @@ class QuietWindowTestCase: XCTestCase {
             XCTFail("the test \(taken), which takes the keyboard from whoever is typing")
         }
         super.tearDown()
+    }
+}
+
+/// The quiet windows a test hosts a view in.
+enum QuietHost {
+    /// The dashboard's own panel, so clicks, hovers and the rename field behave as in the app, minus the
+    /// keyboard: it never becomes key.
+    case panel
+    case titled
+    case borderless
+}
+
+@MainActor
+extension QuietWindowTestCase {
+    /// Shows `content` in a hosting view sized to what it asks for (or `size`), in a quiet window of `kind`
+    /// under `appearance` that takes pointer events, laid out.
+    func show(
+        _ content: some View,
+        in kind: QuietHost = .panel,
+        appearance: NSAppearance.Name = .aqua,
+        size: CGSize? = nil,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> (window: NSWindow, host: NSView) {
+        let host = NSHostingView(rootView: content)
+        host.frame = NSRect(origin: .zero, size: size ?? host.fittingSize)
+        let window: NSWindow = switch kind {
+        case .panel: QuietMenuBarPanel(contentRect: host.frame)
+        case .titled: QuietWindow(contentRect: host.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        case .borderless: QuietWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        }
+        window.acceptsMouseMovedEvents = true
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = host
+        QuietTestProcess.show(window, in: self, file: file, line: line)
+        host.layoutSubtreeIfNeeded()
+        return (window, host)
+    }
+
+    /// The host's pixels as drawn now, for an exact comparison between two states.
+    func pixels(of host: NSView) throws -> Data {
+        host.layoutSubtreeIfNeeded()
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        return try XCTUnwrap(rep.representation(using: .png, properties: [:]))
     }
 }
 
