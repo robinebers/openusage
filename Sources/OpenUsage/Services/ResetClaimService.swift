@@ -32,6 +32,8 @@ extension ResetClaimOutcome {
                 .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? "")
         case .failed(.signInExpired):
             "Your sign-in expired. Add the account again."
+        case .failed(.notPermitted):
+            "This sign-in can't use resets. Use the reset in Claude Code instead."
         case .failed(.connection):
             "Couldn't connect. Check your internet connection and try again."
         case .failed(.refused):
@@ -44,6 +46,9 @@ extension ResetClaimOutcome {
 enum ResetClaimFailure: Equatable, Sendable {
     /// The account's sign-in no longer works; adding the account again fixes it.
     case signInExpired
+    /// The provider turned the claim down because the sign-in's scopes don't cover it (Claude only).
+    /// Adding the account again asks for the same scopes, so the advice points elsewhere.
+    case notPermitted
     /// The request never reached the provider, or its answer never came back.
     case connection
     /// The provider refused the claim or answered with something the app can't read.

@@ -37,6 +37,10 @@ token and keeps working; remove it and add it again if you want the smaller gran
 exception: its refresh asks for `user:profile` only, so a refreshed Claude access token carries only
 that whatever the original sign-in granted.
 
+Spending a Claude reset has not been tried with a `user:profile`-only sign-in; every other client that
+spends one uses Claude Code's wider grant. If Anthropic refuses the claim for that reason, the resets
+popover says this sign-in can't use resets, and you can spend the reset in Claude Code instead.
+
 ## Claude
 
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows

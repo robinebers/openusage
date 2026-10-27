@@ -41,6 +41,11 @@ enum ClaudeUsageMapper {
     /// Collapses a reset-claim response to the popover's outcome. Request ids are fresh per confirm, so
     /// `already_used` can only answer this account's own earlier attempt and counts as claimed.
     static func resetClaimOutcome(from response: HTTPResponse) -> ResetClaimOutcome {
+        // Anthropic answers a token whose scopes don't cover an endpoint with a 403 whose message reads
+        // "OAuth token does not meet scope requirement …"; that is the sign-in's grant, not an expiry.
+        if response.statusCode == 403, String(decoding: response.body, as: UTF8.self).contains("scope requirement") {
+            return .failed(.notPermitted)
+        }
         if ProviderAuthRetry.isAuthFailure(response) { return .failed(.signInExpired) }
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),

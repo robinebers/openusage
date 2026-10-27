@@ -63,6 +63,8 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome(#"{"result":"reset"}"#, status: 500), .failed(.refused))
         XCTAssertEqual(outcome("", status: 401), .failed(.signInExpired))
         XCTAssertEqual(outcome("", status: 403), .failed(.signInExpired))
+        let scopeRefusal = #"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:inference"}}"#
+        XCTAssertEqual(outcome(scopeRefusal, status: 403), .failed(.notPermitted))
     }
 
     // MARK: - Status parse
@@ -141,6 +143,20 @@ final class ClaudeResetClaimTests: XCTestCase {
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
         XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a"])
         XCTAssertNotNil(runtime.claudeResetGrants.check?.status)
+    }
+
+    func testScopeRefusedClaimSaysTheSignInCantUseResetsAndKeepsTheCheck() async throws {
+        let refusal = #"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:inference"}}"#
+        let http = makeHTTP(claim: { _ in HTTPResponse(statusCode: 403, headers: [:], body: Data(refusal.utf8)) })
+        let runtime = try makeRuntime(http: http)
+        _ = await runtime.refresh()
+
+        let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .failed(.notPermitted))
+        XCTAssertEqual(http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }.count, 1)
+        XCTAssertNotNil(runtime.claudeResetGrants.check?.status)
+        XCTAssertNil(runtime.claudeResetGrants.unsettledClaim)
     }
 
     func testRemovedCredentialFailsWithoutSendingAClaim() async throws {
