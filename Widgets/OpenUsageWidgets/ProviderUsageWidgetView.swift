@@ -93,9 +93,7 @@ private struct ProviderContentView: View {
                     WidgetMetricView(
                         date: date,
                         metric: metric,
-                        compact: family != .systemLarge,
-                        // A small widget's single column only has room for the leading unit.
-                        countdownStyle: family == .systemSmall ? .leadingUnit : .relative
+                        compact: family != .systemLarge
                     )
                 }
             }
@@ -186,7 +184,6 @@ private struct WidgetMetricView: View {
     let date: Date
     let metric: WidgetMetricRecord
     let compact: Bool
-    let countdownStyle: CountdownStyle
 
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 3 : 5) {
@@ -200,24 +197,21 @@ private struct WidgetMetricView: View {
                     headline
                     Spacer(minLength: 6)
                     if let resetAt = metric.resetAt {
-                        let style = style(to: resetAt)
+                        let countdown = WidgetResetCountdown(resetAt: resetAt, at: date)
                         // Live-updating text fills whatever width it is offered and has no usable ideal
                         // width, so hidden static text reserves the widest countdown, the live text is
                         // drawn over it, and the headline scales down instead of the countdown truncating.
-                        ZStack {
-                            ForEach(countdownTemplates(style, to: resetAt), id: \.self) { template in
-                                clockLabel(Text(template)).hidden()
+                        clockLabel(Text(countdown.widthTemplate)).hidden()
+                            .fixedSize()
+                            .overlay {
+                                clockLabel(countdownText(countdown))
+                                    .multilineTextAlignment(.trailing)
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
                             }
-                        }
-                        .fixedSize()
-                        .overlay {
-                            clockLabel(countdown(style, to: resetAt))
-                                .multilineTextAlignment(.trailing)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
             } else {
@@ -236,9 +230,10 @@ private struct WidgetMetricView: View {
             } else if !compact, let resetAt = metric.resetAt {
                 HStack(spacing: 2) {
                     Text("Resets")
-                    countdown(.relative, to: resetAt)
+                    countdownText(WidgetResetCountdown(resetAt: resetAt, at: date))
                 }
                 .font(.caption2)
+                .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
@@ -251,23 +246,14 @@ private struct WidgetMetricView: View {
         Text("\(Image(systemName: "clock")) \(text)")
     }
 
-    private func countdown(_ style: CountdownStyle, to resetAt: Date) -> Text {
-        Text(.currentDate, format: WidgetCountdownFormatStyle(resetAt: resetAt, style: style))
-    }
-
-    /// Within the last hour the relative style adds seconds ("49 min, 26 secs") and gets too wide, so
-    /// minutes alone take over one entry early, before the next entry could be drawn inside that hour.
-    private func style(to resetAt: Date) -> CountdownStyle {
-        let minutesStyleFrom: TimeInterval = 60 * 60 + WidgetTimelineSchedule.entrySpacing
-        if countdownStyle == .relative, resetAt.timeIntervalSince(date) < minutesStyleFrom { return .minutes }
-        return countdownStyle
-    }
-
-    /// The countdown as it reads at this entry and at the next one, digits widened to "8". Hidden copies
-    /// reserve that width, so the headline only scales down when the real countdown needs the room.
-    private func countdownTemplates(_ style: CountdownStyle, to resetAt: Date) -> [String] {
-        [date, date.addingTimeInterval(WidgetTimelineSchedule.entrySpacing)].map {
-            WidgetCountdownFormatStyle(resetAt: resetAt, style: style).format($0).replacing(/\d/, with: "8")
+    private func countdownText(_ countdown: WidgetResetCountdown) -> Text {
+        switch countdown {
+        case .remaining(let interval):
+            // The system renderer knows this timer type. Pause at zero even if the deadline entry
+            // arrives late; a timer without an explicit pause date would count upward afterward.
+            Text(timerInterval: interval, pauseTime: interval.upperBound, countsDown: true, showsHours: true)
+        case .due:
+            Text("soon")
         }
     }
 
@@ -288,8 +274,6 @@ private struct WidgetMetricView: View {
         }
     }
 }
-
-private typealias CountdownStyle = WidgetCountdownFormatStyle.Style
 
 /// A thin bar whose fill joins the accented group, so tinted widgets keep the fill and the translucent
 /// track apart (a `ProgressView` renders both in the same tint).

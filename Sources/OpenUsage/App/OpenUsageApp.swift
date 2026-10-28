@@ -43,6 +43,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        container?.flushWidgetBridge()
         container?.telemetry.flush()
     }
 

@@ -23,7 +23,7 @@ removed from OpenUsage, opens the dashboard for recovery.
 The widget never reads credentials or contacts providers itself. OpenUsage handles its normal
 five-minute refresh and shares display-ready values with WidgetKit. Keep OpenUsage running for
 updates; **Launch at Login** is the easiest way to do that. Account names, visibility and order follow
-changes in the app too.
+changes in the app too, including changes made just before quitting.
 
 When OpenUsage is closed, the widget keeps the last good values and marks them **Outdated** after
 about 30 minutes. A refresh failure also keeps the last good values and shows a generic warning;
@@ -38,5 +38,6 @@ Unreadable shared data shows **Unable to Read Data**; data requiring a newer wid
 
 WidgetKit controls the exact redraw time, so a widget can update later than the in-app refresh.
 Fetch-time-only changes request a redraw at most once every 15 minutes; changed values request one
-sooner. Reset countdowns continue updating without another provider request and read **soon** once
-the reset time passes, until the app supplies an updated window.
+sooner. Reset timers continue updating without another provider request and pause at zero at the
+deadline. The preloaded timeline switches them to **soon** when WidgetKit displays the reset entry,
+until the app supplies an updated window.

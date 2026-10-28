@@ -164,6 +164,24 @@ final class WidgetBridgeExporterTests: XCTestCase {
 
 @MainActor
 final class WidgetBridgeCoordinatorTests: XCTestCase {
+    func testExplicitExportFlushesLayoutChangesBeforeTheDebounce() {
+        let fixture = Fixture(defaults: isolatedDefaults())
+        fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
+        let store = MemoryBridgeStore()
+        let coordinator = WidgetBridgeCoordinator(
+            exporter: fixture.exporter, store: store, debounceDuration: .seconds(60),
+            now: { fixture.now }, reload: {}
+        )
+        coordinator.start()
+        fixture.layout.setMetricEnabled(fixture.session.id, false)
+        XCTAssertTrue(store.documents.last?.providers.first?.metrics.contains { $0.id == fixture.session.id } == true)
+
+        coordinator.exportIfChanged()
+
+        XCTAssertEqual(store.documents.count, 2)
+        XCTAssertFalse(store.documents.last?.providers.first?.metrics.contains { $0.id == fixture.session.id } == true)
+    }
+
     func testTimestampOnlyRefreshWritesWithoutReloadUntilFreshnessUpdateIsDue() {
         let fixture = Fixture(defaults: isolatedDefaults())
         var clock = fixture.now

@@ -77,6 +77,10 @@ final class AppContainer {
         refreshTask?.cancel()
     }
 
+    func flushWidgetBridge() {
+        widgetBridgeCoordinator?.exportIfChanged()
+    }
+
     func resetClaim(for providerID: String) -> ResetClaimService? {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return nil }
         return runtime.resetClaimService { [dataStore] in

@@ -6,15 +6,16 @@ import Foundation
 public enum WidgetTimelineSchedule {
     public static let staleInterval: TimeInterval = 30 * 60
 
-    /// The longest gap between two entries. Countdown layouts reserve room for the text they show until
-    /// the next entry.
+    /// The longest gap between two entries.
     public static let entrySpacing: TimeInterval = 30 * 60
 
     /// How far ahead entries are written.
     public static let horizon: TimeInterval = 4 * 60 * 60
 
-    /// `now`, then one entry per `entrySpacing` through `horizon`.
-    public static func entryDates(from now: Date) -> [Date] {
-        stride(from: 0, through: horizon, by: entrySpacing).map { now.addingTimeInterval($0) }
+    /// Regular entries plus upcoming reset deadlines, so expired windows can show static "soon" text.
+    public static func entryDates(from now: Date, resetDates: [Date] = []) -> [Date] {
+        let end = now.addingTimeInterval(horizon)
+        let regular = stride(from: 0, through: horizon, by: entrySpacing).map { now.addingTimeInterval($0) }
+        return Set(regular + resetDates.filter { $0 > now && $0 <= end }).sorted()
     }
 }

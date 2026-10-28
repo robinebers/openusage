@@ -40,7 +40,12 @@ struct ProviderUsageTimelineProvider: AppIntentTimelineProvider {
     ) async -> Timeline<ProviderUsageEntry> {
         let now = Date()
         let selection = selection(for: configuration)
-        var dates = WidgetTimelineSchedule.entryDates(from: now)
+        let resetDates: [Date] = if case .provider(let provider) = selection {
+            provider.metrics.filter(\.hasData).compactMap(\.resetAt)
+        } else {
+            []
+        }
+        var dates = WidgetTimelineSchedule.entryDates(from: now, resetDates: resetDates)
 
         if case .provider(let provider) = selection, let refreshedAt = provider.refreshedAt {
             dates.append(max(
@@ -50,7 +55,7 @@ struct ProviderUsageTimelineProvider: AppIntentTimelineProvider {
         }
 
         return Timeline(
-            entries: dates.sorted().map { entry(for: selection, at: $0) },
+            entries: Set(dates).sorted().map { entry(for: selection, at: $0) },
             policy: .after(now.addingTimeInterval(fallbackInterval))
         )
     }

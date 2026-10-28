@@ -64,6 +64,7 @@ what each one shows and what each sign-in grants.
   resets. Rest the pointer on the count to see when each expires, and spend one from there.
 - **[macOS widgets](docs/macos-widgets.md).** Put an account's usage on the desktop or in Notification
   Center. Widgets follow its shown metrics and saved order, with values supplied by the running app.
+  Reset timers stop at zero while waiting for an updated window.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or
   right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with
   every account, to the clipboard; from an account's right-click, that account alone. The picture uses

@@ -4,7 +4,7 @@ OpenUsage is a SwiftPM package with `OpenUsage` (the app library),
 `OpenUsageApp` (a thin executable), and `OpenUsageCLI` (the `openusage` command, shipped at
 `Contents/Helpers/openusage`). Swift 6 with strict concurrency; SwiftUI content hosted in an
 AppKit-owned status item and panel. `OpenUsageWidgetSupport` contains the display-only bridge records
-and live countdown formatter.
+and reset timeline helpers.
 `OpenUsageWidgets.xcodeproj` builds the separate WidgetKit extension.
 
 ## Composition root
@@ -67,11 +67,14 @@ display-ready document. `WidgetBridgeCoordinator` observes account, snapshot, la
 changes, atomically writes changed content to the channel's App Group, and requests a WidgetKit
 reload. Fetch-time-only changes are saved without requesting a redraw on every refresh; a periodic
 freshness request keeps the widget's age current. Account removal removes its exported values as well.
+Termination writes pending display changes before the host exits.
 
 The extension renders the shared records directly. It never reads credentials, refreshes tokens or
 calls provider APIs. It keeps the last values when the host quits and marks them outdated after
-30 minutes. Widget clicks open the account in the dashboard, its Accounts detail when all metrics are
-hidden, or the dashboard for a missing account. Startup links wait until the status item is ready.
+30 minutes. Reset deadlines have preloaded timeline entries; built-in system timers pause at zero
+until the deadline entry replaces them with static text. Widget clicks open the account in the
+dashboard, its Accounts detail when all metrics are hidden, or the dashboard for a missing account.
+Startup links wait until the status item is ready.
 
 The build scripts embed and sign the extension before sealing the host, with matching App Group
 entitlements. Development and release bundles have separate groups and URL schemes.
