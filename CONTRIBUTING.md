@@ -52,7 +52,7 @@ Each provider is a `ProviderKind` case, a `ProviderLogin` the user starts from t
 
 1. Open or comment on an issue and wait for a maintainer to approve it (`approved` label) and assign it to you — include why the provider fits and how its usage data is accessible
 2. Add the `ProviderKind` case and its sign-in, then create `Sources/OpenUsage/Providers/<Name>/` with the usage client and mapper
-3. Add the provider's metrics to `AccountProviderRuntime` and its defaults to `DefaultLayout`
+3. Add the provider's metrics as descriptors in `AccountProviderRuntime+Descriptors.swift`, marking the ones the menu bar shows by default with `.pinnedByDefault()`
 4. Add focused tests under `Tests/OpenUsageTests/`
 5. Add the provider to `docs/providers.md` (sign-in, metrics, where the plan badge comes from, what its errors mean)
 6. Test it locally with `./script/build_and_run.sh`

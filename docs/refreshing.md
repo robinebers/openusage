@@ -12,9 +12,9 @@
 | Claiming a rate-limit reset | That account, once the result has shown: 5 seconds after a ChatGPT claim, 30 seconds after a Claude claim |
 
 There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
-⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that
-land close together are grouped so a burst shows as one update and is saved once. While an account is
-fetching, a spinner shows next to its name and in the footer.
+⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Each account's
+result shows and is saved as soon as it lands. While an account is fetching, a spinner shows next to
+its name and in the footer.
 
 ## Caching
 
