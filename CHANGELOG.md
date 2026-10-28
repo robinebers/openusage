@@ -36,7 +36,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
-- Hide From Screen Share, which shows the OpenUsage mark in the menu bar instead of usage while the
+- Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 

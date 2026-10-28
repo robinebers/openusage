@@ -21,7 +21,7 @@ final class HideFromScreenShareSetting {
         }
     }
 
-    private var isConcealing = false
+    private(set) var isConcealing = false
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let isScreenCaptured: @MainActor () -> Bool
@@ -41,12 +41,6 @@ final class HideFromScreenShareSetting {
     }
 
     deinit { pollTask?.cancel() }
-
-    /// The strip's content, or while the screen is captured the empty content the renderer draws as
-    /// the OpenUsage mark, so a shared screen never carries usage numbers.
-    func menuBarContent(_ usage: () -> MenuBarContent) -> MenuBarContent {
-        isConcealing ? MenuBarContent(groups: []) : usage()
-    }
 
     private func refreshCaptureState() {
         let concealing = isEnabled && isScreenCaptured()

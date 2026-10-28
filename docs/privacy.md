@@ -15,8 +15,8 @@ network request.
 
 ## Screen sharing
 
-With **Settings → Privacy → Hide From Screen Share** on, the menu bar shows the OpenUsage mark instead
-of your usage while your screen is shared or recorded. It is off by default and does not hide the
+With **Settings → Privacy → Hide From Screen Share** on, the menu bar shows the app icon instead of
+your usage while your screen is shared or recorded. It is off by default and does not hide the
 panel. To tell that a capture is running, OpenUsage asks the macOS window server whether anything is
 watching the screen.
 

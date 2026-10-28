@@ -103,7 +103,7 @@ struct SettingsScreen: View {
             Text("Privacy")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("While your screen is shared or recorded, the menu bar shows the OpenUsage mark instead of your usage.")
+                Text("While your screen is shared or recorded, the menu bar shows the app icon instead of your usage.")
                 Text("Share additional anonymous usage stats that tell the team where to improve.")
             }
             .font(.footnote)
