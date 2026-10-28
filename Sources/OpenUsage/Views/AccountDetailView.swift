@@ -9,6 +9,7 @@ import SwiftUI
 struct AccountDetailView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     let providerID: String
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
@@ -64,7 +65,7 @@ struct AccountDetailView: View {
     /// Back to the list first, so the removed row animates out of L1 instead of the detail vanishing.
     private func removeAccount() {
         guard let account = container.accounts.account(cardID: providerID) else { return }
-        withAnimation(Motion.spring) { layout.customizeProviderID = nil }
+        withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         container.accounts.remove(account.id)
     }
 
@@ -122,6 +123,7 @@ struct AccountDetailView: View {
 private struct StarButton: View {
     let metric: WidgetDescriptor
     @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     @State private var shakeTrigger = 0
 
     var body: some View {
@@ -129,10 +131,10 @@ private struct StarButton: View {
         Button {
             if layout.canPin(metric.id) {
                 layout.togglePin(metric.id)
-                layout.presentCustomizationNotice(pinned ? "Removed from menu bar" : "Starred for menu bar")
+                popover.accountsNotice.present(CustomizationNoticeContent(message: pinned ? "Removed from menu bar" : "Starred for menu bar", tone: .positive))
             } else {
                 shakeTrigger += 1
-                layout.presentCustomizationNotice(layout.pinDenialReason(metric.id) ?? "Up to 2 stars per provider", tone: .notice)
+                popover.accountsNotice.present(CustomizationNoticeContent(message: layout.pinDenialReason(metric.id) ?? "Up to 2 stars per provider", tone: .notice))
             }
         } label: {
             Image(systemName: pinned ? "star.fill" : "star")

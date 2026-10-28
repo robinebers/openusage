@@ -19,6 +19,7 @@ struct WidgetGroupedListView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(AccountRenameStore.self) private var renaming
+    @Environment(PopoverState.self) private var popover
     @Environment(\.colorScheme) private var colorScheme
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
@@ -156,8 +157,8 @@ struct WidgetGroupedListView: View {
         case .toggleStar(let descriptorID):
             if layout.isPinned(descriptorID) || layout.canPin(descriptorID) {
                 layout.togglePin(descriptorID)
-            } else {
-                layout.notePinDenied(descriptorID)
+            } else if let reason = layout.pinDenialReason(descriptorID) {
+                popover.pinNotice.present(reason)
             }
         case .hide(let descriptorID):
             layout.setMetricEnabled(descriptorID, false)
@@ -171,14 +172,16 @@ struct WidgetGroupedListView: View {
         guard let live = liveFamilies().first(where: { $0.accounts.contains { accountIDs.contains($0.id) } }) else { return false }
         let accounts = live.accounts.filter { accountIDs.contains($0.id) }
         let family = DashboardFamily(id: live.id, provider: accounts[0].provider, accounts: accounts)
-        return ShareCardRenderer.share(family: family, plans: plans(for: family), layout: layout, appearance: colorScheme)
+        guard ShareCardRenderer.share(family: family, plans: plans(for: family), appearance: colorScheme) else { return false }
+        popover.shareNotice.present(true)
+        return true
     }
 
     /// Opens the Accounts screen, on one account's page when `providerID` is set.
     private func openAccounts(_ providerID: String?) {
         withAnimation(Motion.modeSwitch) {
-            layout.customizeProviderID = providerID
-            layout.isEditing = true
+            popover.customizeProviderID = providerID
+            popover.screen = .accounts
         }
     }
 

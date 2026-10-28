@@ -3,8 +3,8 @@ import SwiftUI
 /// The dashboard-only scrolling content. Screen switching, panel sizing, fixed bars, keyboard handling,
 /// and close/reset behavior stay with `DashboardView`.
 struct DashboardContentView: View {
-    let container: AppContainer
-    let layout: LayoutStore
+    @Environment(AppContainer.self) private var container
+    @Environment(LayoutStore.self) private var layout
     let reorderSpaceName: String
 
     @Binding var reorderLift: ReorderLift?

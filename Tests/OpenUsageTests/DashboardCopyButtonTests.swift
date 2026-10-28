@@ -99,16 +99,17 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
             .environment(layout)
             .environment(dataStore)
             .environment(container.renaming)
+            .environment(container.popover)
         let (window, host) = hostView(dashboard)
         let clipboard = Clipboard.save()
         addTeardownBlock { clipboard.restore() }
-        XCTAssertFalse(layout.shareConfirmation)
+        XCTAssertFalse(container.popover.shareNotice.value)
 
         let button = CGPoint(x: slot.lowerBound + 8, y: headerMid)
         try hover(button, window, host)
         click(button, window, host)
 
-        XCTAssertTrue(layout.shareConfirmation, "the button's copy didn't raise the Copied pill")
+        XCTAssertTrue(container.popover.shareNotice.value, "the button's copy didn't raise the Copied pill")
         let png = try XCTUnwrap(NSPasteboard.general.data(forType: .png), "no PNG on the clipboard")
         let image = try XCTUnwrap(NSBitmapImageRep(data: png))
         XCTAssertEqual(CGFloat(image.pixelsWide), ShareCardView.width * ShareCardRenderer.scale, "the clipboard holds something other than the share card")

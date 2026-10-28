@@ -19,14 +19,12 @@ enum PopoverScreen: Hashable, Sendable {
     }
 }
 
-/// In-popover navigation: which screen is showing, the master/detail route inside Accounts, and the
-/// horizontal screen-switch slide bookkeeping. Split out of `LayoutStore` (which owns the *layout* —
-/// enabled widgets, order, pins) so screen routing is its own concern; `LayoutStore` forwards its
-/// existing `screen`/`isEditing`/`customizeProviderID`/`screenSlide*` surface to this store, so callers
-/// are unchanged.
+/// The popover's own state, apart from the layout: which screen is showing, the master/detail route
+/// inside Accounts, the horizontal screen-switch slide bookkeeping, and the three transient pills.
+/// `AppContainer` owns it and the views read it from the environment.
 @MainActor
 @Observable
-final class PopoverNavigationStore {
+final class PopoverState {
     /// Which in-popover screen is showing. Drives the footer buttons, the Esc handler, and the
     /// popover-closed reset alike.
     var screen = PopoverScreen.dashboard {
@@ -50,12 +48,6 @@ final class PopoverNavigationStore {
     /// that ticks on every switch so the view can detect and animate each transition. UI-only; not persisted.
     private(set) var screenSlideFrom = PopoverScreen.dashboard
     private(set) var screenSlideID = 0
-    /// Whether the Accounts screen is showing — a bridge over `screen` for the call sites that
-    /// think in terms of edit mode.
-    var isEditing: Bool {
-        get { screen == .accounts }
-        set { screen = newValue ? .accounts : .dashboard }
-    }
     /// The account whose Accounts detail (L2) is showing. nil shows the account list (L1); a set id
     /// shows that account's name and metric sections. UI-only (not persisted): cleared when leaving
     /// Accounts (see `screen`'s didSet) and on popover close.
@@ -69,4 +61,20 @@ final class PopoverNavigationStore {
     /// `.canJoinAllSpaces` panel is briefly fully occluded mid Space-switch while still following the
     /// user on-screen. Never persisted.
     var popoverShown = false
+
+    /// Why a star was denied, in the footer in place of the refresh status; its trigger replays the
+    /// deny shake on every attempt.
+    let pinNotice = TransientNotice<String?>(clearedValue: nil, timeout: .seconds(3))
+    /// The "Copied to clipboard" pill above the footer after a successful Share Screenshot.
+    let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
+    /// The Accounts screen's pill: "Starred for menu bar" in green, or the orange cap denial.
+    let accountsNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
+
+    /// Called when the popover closes: back to the dashboard, and a pill mid-countdown is cleared so
+    /// it can't reappear stale on the next open (this state outlives the popover).
+    func reset() {
+        if screen != .dashboard { screen = .dashboard }
+        shareNotice.clear()
+        accountsNotice.clear()
+    }
 }

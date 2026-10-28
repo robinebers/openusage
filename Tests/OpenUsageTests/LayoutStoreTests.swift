@@ -349,7 +349,7 @@ final class LayoutStoreTests: XCTestCase {
     }
 
     func testCustomizeProviderIDClearsWhenLeavingAccounts() {
-        let store = makeStore()
+        let store = PopoverState()
         store.screen = .accounts
         store.customizeProviderID = "claude"
         XCTAssertEqual(store.customizeProviderID, "claude")

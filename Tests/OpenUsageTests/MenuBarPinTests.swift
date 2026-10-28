@@ -64,13 +64,14 @@ final class MenuBarPinTests: XCTestCase {
 
         // A denied click surfaces the reason as the transient footer notice and bumps the shake
         // trigger every time, so repeat clicks re-shake even while the text is unchanged.
-        XCTAssertNil(store.pinLimitNotice)
-        XCTAssertEqual(store.pinNoticeShakeTrigger, 0)
-        store.notePinDenied("a.m3")
-        XCTAssertEqual(store.pinLimitNotice, "Up to 2 stars per provider")
-        XCTAssertEqual(store.pinNoticeShakeTrigger, 1)
-        store.notePinDenied("a.m3")
-        XCTAssertEqual(store.pinNoticeShakeTrigger, 2)
+        let popover = PopoverState()
+        XCTAssertNil(popover.pinNotice.value)
+        XCTAssertEqual(popover.pinNotice.trigger, 0)
+        popover.pinNotice.present(store.pinDenialReason("a.m3"))
+        XCTAssertEqual(popover.pinNotice.value, "Up to 2 stars per provider")
+        XCTAssertEqual(popover.pinNotice.trigger, 1)
+        popover.pinNotice.present(store.pinDenialReason("a.m3"))
+        XCTAssertEqual(popover.pinNotice.trigger, 2)
     }
 
     func testPinnedGroupsFollowCustomizeOrder() {

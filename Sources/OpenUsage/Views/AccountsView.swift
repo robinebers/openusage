@@ -1,17 +1,17 @@
 import SwiftUI
 
 /// The Accounts screen, a two-level master/detail: the account list (L1) or, when
-/// `layout.customizeProviderID` is set, that account's detail (L2). The two slide horizontally — L2
+/// `popover.customizeProviderID` is set, that account's detail (L2). The two slide horizontally — L2
 /// enters from the trailing edge, L1 returns from the leading edge — on the same spring. The back
 /// chevron (handled in `PopoverTopBar`) is context-aware: L2 → L1, L1 → dashboard.
 ///
 /// Reordering uses `DragGesture` plus local row geometry, kept inside the menu-bar popover instead
 /// of SwiftUI's pasteboard-backed drag/drop (unreliable here). The router owns the scroll view and
 /// the reorder-frame map; L1 and L2 read it for their drag hit-testing and emit frames via
-/// `.reorderFrame`. The `customizeProviderID` route lives in `LayoutStore` so the popover-closed
+/// `.reorderFrame`. The `customizeProviderID` route lives in `PopoverState` so the popover-closed
 /// reset and the Esc handler drive the same state.
 struct AccountsView: View {
-    @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
@@ -28,22 +28,22 @@ struct AccountsView: View {
         // the dashboard's "Copied to clipboard" share pill. Green for a successful star/unstar, orange
         // for the per-provider cap denial.
         .overlay(alignment: .bottom) {
-            if layout.customizationNotice != nil {
+            if popover.accountsNotice.value != nil {
                 customizationNoticePill
                     .padding(.bottom, 12)
             }
         }
-        .animation(Motion.spring, value: layout.customizationNotice)
-        .animation(Motion.spring, value: layout.customizationNoticeTrigger)
+        .animation(Motion.spring, value: popover.accountsNotice.value?.message)
+        .animation(Motion.spring, value: popover.accountsNotice.trigger)
     }
 
     private var customizationNoticePill: some View {
-        let isNotice = layout.customizationNoticeTone == .notice
+        let isNotice = popover.accountsNotice.value?.tone == .notice
         return TransientPill(
             systemImage: isNotice ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
-            text: layout.customizationNotice ?? "",
+            text: popover.accountsNotice.value?.message ?? "",
             tint: isNotice ? Theme.notice : Theme.positive,
-            trigger: layout.customizationNoticeTrigger,
+            trigger: popover.accountsNotice.trigger,
             showsShadow: false
         )
     }
@@ -59,7 +59,7 @@ struct AccountsView: View {
 
     @ViewBuilder
     private var level: some View {
-        if let id = layout.customizeProviderID {
+        if let id = popover.customizeProviderID {
             AccountDetailView(
                 providerID: id,
                 reorderSpaceName: reorderSpaceName,

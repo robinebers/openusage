@@ -87,6 +87,7 @@ final class StatusItemController: NSObject {
                     .environment(container.layout)
                     .environment(container.dataStore)
                     .environment(container.renaming)
+                    .environment(container.popover)
                     .environment(updater)
             )
         )
@@ -101,7 +102,7 @@ final class StatusItemController: NSObject {
             height: PanelHeightController.defaultHeight
         ))
         self.panel = panel
-        self.heightController = PanelHeightController(panel: panel) { container.layout.screen }
+        self.heightController = PanelHeightController(panel: panel) { container.popover.screen }
 
         super.init()
 
@@ -122,7 +123,7 @@ final class StatusItemController: NSObject {
         // A tapped alert opens the dashboard, without toggling an open panel shut.
         AppNotifications.shared.registerAsDelegate { [weak self] in
             guard let self else { return }
-            container.layout.screen = .dashboard
+            container.popover.screen = .dashboard
             if panel.isVisible {
                 panel.makeKeyAndOrderFront(nil)
                 statusItem.button?.highlight(true)
@@ -252,7 +253,7 @@ final class StatusItemController: NSObject {
     /// Opens the dashboard popover on the Settings screen — Settings is an in-popover screen, not a
     /// separate window. The screen is set before showing the panel so it opens already sized to Settings.
     private func openSettings() {
-        container.layout.screen = .settings
+        container.popover.screen = .settings
         if !panel.isVisible {
             showPanel()
         }
@@ -277,7 +278,7 @@ final class StatusItemController: NSObject {
         // the fixed opening guess, making large and small displays open at the same height.
         heightController.prepareForOpening(below: buttonRectOnScreen)
         // Mark the popover on-screen before laying out: `DashboardView` re-seeds its height on the flip.
-        container.layout.popoverShown = true
+        container.popover.popoverShown = true
 
         // Lay the content out first so the panel opens at the right size (no first-frame flash).
         hostingController.view.layoutSubtreeIfNeeded()
@@ -309,7 +310,7 @@ final class StatusItemController: NSObject {
         // afterward.
         heightController.saveBeforeClosing()
         // The authoritative hide signal, flipped synchronously with `orderOut`.
-        container.layout.popoverShown = false
+        container.popover.popoverShown = false
         panel.orderOut(nil)
         outsideClickMonitor.stop()
         statusItem.button?.highlight(false)

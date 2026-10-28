@@ -4,9 +4,9 @@ import SwiftUI
 /// A screen's footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
 /// It uses the screen it belongs to, so during a slide each mounted page draws its own footer.
 struct PopoverFooter: View {
+    @Environment(PopoverState.self) private var popover
+    @Environment(WidgetDataStore.self) private var dataStore
     let screen: PopoverScreen
-    let layout: LayoutStore
-    let dataStore: WidgetDataStore
     let horizontalPadding: CGFloat
     let onHeightChange: (PopoverScreen, CGFloat) -> Void
 
@@ -33,13 +33,13 @@ struct PopoverFooter: View {
             onHeightChange(screen, height)
         }
         .overlay(alignment: .top) {
-            if screen == .dashboard, layout.shareConfirmation {
+            if screen == .dashboard, popover.shareNotice.value {
                 shareCopiedPill
                     .offset(y: -34)
             }
         }
-        .animation(Motion.spring, value: layout.shareConfirmation)
-        .animation(Motion.spring, value: layout.shareConfirmationTrigger)
+        .animation(Motion.spring, value: popover.shareNotice.value)
+        .animation(Motion.spring, value: popover.shareNotice.trigger)
     }
 
     /// The Options pull-down on one glass capsule. The system `.buttonStyle(.glass)` renders flat on a
@@ -93,7 +93,7 @@ struct PopoverFooter: View {
 
     private func toggle(_ target: PopoverScreen) {
         withAnimation(Motion.modeSwitch) {
-            layout.screen = layout.screen == target ? .dashboard : target
+            popover.screen = popover.screen == target ? .dashboard : target
         }
     }
 
@@ -102,24 +102,24 @@ struct PopoverFooter: View {
             systemImage: "checkmark.circle.fill",
             text: "Copied to clipboard",
             tint: Theme.positive,
-            trigger: layout.shareConfirmationTrigger
+            trigger: popover.shareNotice.trigger
         )
     }
 
     private var footerIdentity: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("OpenUsage \(AppInfo.version)")
-            if let notice = layout.pinLimitNotice {
+            if let notice = popover.pinNotice.value {
                 Text(notice)
                     .foregroundStyle(Theme.notice)
-                    .denyShake(trigger: layout.pinNoticeShakeTrigger, shakeOnAppear: true)
+                    .denyShake(trigger: popover.pinNotice.trigger, shakeOnAppear: true)
             } else {
                 nextUpdateButton
             }
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
-        .animation(Motion.spring, value: layout.pinLimitNotice)
+        .animation(Motion.spring, value: popover.pinNotice.value)
     }
 
     private var nextUpdateButton: some View {

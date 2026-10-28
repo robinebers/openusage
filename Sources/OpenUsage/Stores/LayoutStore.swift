@@ -10,41 +10,6 @@ final class LayoutStore {
     /// The metrics the user turned off. Every other metric of every account shows.
     private(set) var hiddenMetricIDs: Set<String> = []
 
-    /// In-popover navigation (screen, Accounts master/detail, screen-switch slide). Its own store so
-    /// screen routing isn't tangled with layout state; the `screen`/`isEditing`/`customizeProviderID`/
-    /// `screenSlide*` surface below forwards to it, so existing call sites are unchanged. Private so the
-    /// forwarding surface stays the ONLY spelling — two live paths to the same state invites drift.
-    private let navigation = PopoverNavigationStore()
-
-    /// Which in-popover screen is showing. Drives the footer buttons, the Esc handler, and the
-    /// popover-closed reset alike.
-    var screen: PopoverScreen {
-        get { navigation.screen }
-        set { navigation.screen = newValue }
-    }
-    /// The screen being left plus a per-switch counter, for DashboardView's horizontal slide.
-    var screenSlideFrom: PopoverScreen { navigation.screenSlideFrom }
-    var screenSlideID: Int { navigation.screenSlideID }
-    /// Whether the Accounts screen is showing — a bridge over `screen` for edit-mode call sites.
-    var isEditing: Bool {
-        get { navigation.isEditing }
-        set { navigation.isEditing = newValue }
-    }
-    /// The account whose Accounts detail (L2) is showing (nil shows the L1 list).
-    var customizeProviderID: String? {
-        get { navigation.customizeProviderID }
-        set { navigation.customizeProviderID = newValue }
-    }
-    /// Whether the Add Account sheet is showing over the account list.
-    var isAddingAccount: Bool {
-        get { navigation.isAddingAccount }
-        set { navigation.isAddingAccount = newValue }
-    }
-    /// Whether the popover is on-screen, flipped by `StatusItemController` at its show/hide chokepoints.
-    var popoverShown: Bool {
-        get { navigation.popoverShown }
-        set { navigation.popoverShown = newValue }
-    }
     /// Persisted provider display order (provider IDs). Drives both the dashboard groups and the
     /// Accounts list, so the user can drag whole providers into the order they want.
     var providerOrder: [String] = []
@@ -56,32 +21,6 @@ final class LayoutStore {
     /// provider + metric order above, so pins follow the same sequence shown in Accounts. Capped via
     /// `canPin` to at most `maxPinsPerProvider` per provider (the strip stacks a provider's values in pairs).
     private(set) var pinnedMetricIDs: Set<String> = []
-
-    /// The three transient popover pills, each an auto-clearing `TransientNotice`. The public
-    /// `pinLimitNotice`/`shareConfirmation`/`customizationNotice` surface below forwards to these.
-    private let pinNotice = TransientNotice<String?>(clearedValue: nil, timeout: .seconds(3))
-    private let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
-    private let customizeNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
-
-    /// Transient explanation for a denied pin attempt; the popover footer renders it in place of the pin
-    /// counter. Set by `notePinDenied`, auto-cleared a few seconds later.
-    var pinLimitNotice: String? { pinNotice.value }
-    /// Bumped on every denied pin click so the footer notice plays its deny shake each time.
-    var pinNoticeShakeTrigger: Int { pinNotice.trigger }
-
-    /// Transient "Copied to clipboard" confirmation for the floating pill above the footer.
-    var shareConfirmation: Bool { shareNotice.value }
-    /// Bumped on every successful share so the pill replays its pop-in even on a repeat copy.
-    var shareConfirmationTrigger: Int { shareNotice.trigger }
-
-    /// Transient notice on the Accounts screen (e.g. "Starred for menu bar", or the orange cap denial).
-    var customizationNotice: String? { customizeNotice.value?.message }
-    /// The notice's tone: `.positive` (green checkmark) or `.notice` (orange denial). Falls back to
-    /// `.positive` once cleared (tone is only read while `customizationNotice` is non-nil, so the
-    /// snap-back is unobservable: message and tone clear atomically).
-    var customizationNoticeTone: CustomizationNoticeTone { customizeNotice.value?.tone ?? .positive }
-    /// Bumped on every present so the pill replays its pop-in even when the same notice repeats.
-    var customizationNoticeTrigger: Int { customizeNotice.trigger }
 
     /// How many steps ⌘Z can walk back: deep enough for a real editing session without growing unbounded.
     static let maxUndoDepth = 40
@@ -111,9 +50,6 @@ final class LayoutStore {
         undoSnapshots.removeAll()
         let knownCardIDs = Set(self.registry.providers.map(\.id))
         self.registry = registry
-        if let customizeProviderID, registry.provider(id: customizeProviderID) == nil {
-            self.customizeProviderID = nil
-        }
         loadLayout(newCardIDs: registry.providers.map(\.id).filter { !knownCardIDs.contains($0) })
     }
 
@@ -244,40 +180,6 @@ final class LayoutStore {
             return "Up to \(Self.maxPinsPerProvider) stars per provider"
         }
         return nil
-    }
-
-    /// Record a denied pin attempt so the footer can explain the cap (shown for a few seconds,
-    /// with a deny shake on every attempt).
-    func notePinDenied(_ descriptorID: String) {
-        guard let reason = pinDenialReason(descriptorID) else { return }
-        pinNotice.present(reason)
-    }
-
-    /// Record a successful "Share Screenshot" copy so the floating "Copied to clipboard" pill can
-    /// confirm it. Shown for a couple of seconds then cleared — the success-side counterpart to
-    /// `notePinDenied`'s transient denial notice, with the same lifecycle.
-    func presentShareConfirmation() {
-        shareNotice.present(true)
-    }
-
-    /// Clear any showing "Copied to clipboard" confirmation and cancel its auto-clear task. Called when
-    /// the popover closes so a pill mid-countdown can't reappear stale on the next open — the timer is
-    /// otherwise the only clearer, and the layout store outlives the popover.
-    func clearShareConfirmation() {
-        shareNotice.clear()
-    }
-
-    /// Show a transient pill on the Accounts screen (the floating confirmation above its content).
-    /// `tone` picks the green success style or the orange denial style. Auto-clears after a couple of
-    /// seconds; also cleared on popover close via `clearCustomizationNotice`.
-    func presentCustomizationNotice(_ message: String, tone: CustomizationNoticeTone = .positive) {
-        customizeNotice.present(CustomizationNoticeContent(message: message, tone: tone))
-    }
-
-    /// Clear any showing Accounts pill and cancel its auto-clear task. Called when the popover closes
-    /// so a pill mid-countdown can't reappear stale on the next open.
-    func clearCustomizationNotice() {
-        customizeNotice.clear()
     }
 
     /// Pin or unpin a metric for the menu bar. Pinning is a no-op when it would exceed a cap, so callers

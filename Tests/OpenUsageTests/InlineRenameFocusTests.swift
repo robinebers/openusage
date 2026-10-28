@@ -84,6 +84,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
                 .reduceAnimationsWhenRequested()
                 .environment(container)
                 .environment(container.layout)
+                .environment(container.popover)
                 .environment(container.dataStore)
                 .environment(container.renaming)
                 .environment(UpdaterController())
@@ -97,13 +98,13 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         panel.appearance = NSAppearance(named: .aqua)
         panel.contentViewController = hosting
         panel.setFrame(frame, display: false)
-        container.layout.popoverShown = true
+        container.popover.popoverShown = true
         panel.makeKeyAndOrderFront(nil)
         addTeardownBlock { panel.close() }
         try await Task.sleep(for: .milliseconds(800))
         if let accountsTitle {
-            container.layout.customizeProviderID = accounts[accountsTitle]
-            container.layout.screen = .accounts
+            container.popover.customizeProviderID = accounts[accountsTitle]
+            container.popover.screen = .accounts
             try await Task.sleep(for: .milliseconds(1200))
         }
         return Hosted(panel: panel, host: hosting.view, container: container, accounts: accounts)

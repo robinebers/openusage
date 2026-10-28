@@ -7,6 +7,7 @@ import SwiftUI
 struct AccountListView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
     let frameStore: ReorderFrameStore
@@ -14,7 +15,7 @@ struct AccountListView: View {
     @State private var activeProviderID: String?
 
     var body: some View {
-        @Bindable var layout = layout
+        @Bindable var popover = popover
         let providers = layout.orderedProviders()
         Group {
             if providers.isEmpty {
@@ -29,7 +30,7 @@ struct AccountListView: View {
             }
         }
         .animation(Motion.spring, value: providers.map(\.id))
-        .sheet(isPresented: $layout.isAddingAccount) {
+        .sheet(isPresented: $popover.isAddingAccount) {
             AddAccountSheet(store: container.accounts)
         }
     }
@@ -38,7 +39,7 @@ struct AccountListView: View {
         AccountListRow(
             provider: provider,
             grip: { ReorderGrip().highPriorityGesture(accountDragGesture(for: provider)) },
-            onOpen: { withAnimation(Motion.spring) { layout.customizeProviderID = provider.id } }
+            onOpen: { withAnimation(Motion.spring) { popover.customizeProviderID = provider.id } }
         )
         .opacity(activeProviderID == provider.id ? 0 : 1)
         .reorderFrame(id: provider.id, in: .named(reorderSpaceName))

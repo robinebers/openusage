@@ -17,6 +17,7 @@ final class AccountListEmptyStateTests: QuietWindowTestCase {
             AccountListView(reorderSpaceName: "reorder", reorderLift: .constant(nil), frameStore: ReorderFrameStore())
                 .environment(container)
                 .environment(container.layout)
+                .environment(container.popover)
                 .environment(container.renaming)
         )
         let noAccounts = host(ContentUnavailableView { Label("No Accounts", systemImage: "person.crop.circle") })

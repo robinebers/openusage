@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsScreen: View {
     @Environment(AppContainer.self) private var container
-    @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(UpdaterController.self) private var updater
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
@@ -26,7 +26,7 @@ struct SettingsScreen: View {
                         .settingsSwitchStyle()
                     }
                     row("Global Shortcut") {
-                        ShortcutRecorderField(name: .togglePopover, isVisible: layout.screen == .settings)
+                        ShortcutRecorderField(name: .togglePopover, isVisible: popover.screen == .settings)
                     }
                 }
                 section("Appearance") {
@@ -47,7 +47,7 @@ struct SettingsScreen: View {
             .padding(PanelMetrics.margin)
         }
         .scrollPosition($scrollPosition)
-        .onChange(of: layout.screen) { _, screen in
+        .onChange(of: popover.screen) { _, screen in
             if screen == .settings {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()

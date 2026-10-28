@@ -58,6 +58,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
             .environment(layout)
             .environment(dataStore)
             .environment(container.renaming)
+            .environment(container.popover)
             .environment(\.colorScheme, .light)
         let host = show(view, in: .borderless).host
         try await Task.sleep(for: .milliseconds(300))

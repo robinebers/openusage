@@ -23,13 +23,11 @@ enum ShareCardRenderer {
 
     /// The one "Share Screenshot": a picture of this card — a provider's accounts from its header's
     /// right-click, one account from its caption's — drawn as the dashboard draws them, copied to the
-    /// clipboard. On a successful copy it asks the layout store to surface the transient "Copied to
-    /// clipboard" pill; a failure beeps and logs instead.
+    /// clipboard. Returns whether the copy landed; a failure beeps and logs.
     @discardableResult
     static func share(
         family: DashboardFamily,
         plans: [String: String],
-        layout: LayoutStore,
         appearance: ColorScheme
     ) -> Bool {
         guard let png = png(for: ShareCardView(family: family, plans: plans, appearance: appearance)) else {
@@ -44,7 +42,6 @@ enum ShareCardRenderer {
             NSSound.beep()
             return false
         }
-        layout.presentShareConfirmation()
         return true
     }
 }

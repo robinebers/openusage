@@ -11,7 +11,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
     private struct Hosted {
         let panel: NSPanel
         let host: NSView
-        let layout: LayoutStore
+        let popover: PopoverState
     }
 
     /// Leaving Accounts for the dashboard: the Accounts page, top bar included, slides off to the
@@ -20,13 +20,13 @@ final class ScreenSlideTests: QuietWindowTestCase {
     func testTheAccountsPageSlidesAwayWithTheDashboardAndIsGoneOnceSettled() async throws {
         let hosted = try await hostPopover()
         let panel = hosted.panel, host = hosted.host
-        withAnimation(Motion.modeSwitch) { hosted.layout.screen = .accounts }
+        withAnimation(Motion.modeSwitch) { hosted.popover.screen = .accounts }
         try await Task.sleep(for: .seconds(1.5))
         XCTAssertEqual(scrollViews(in: host).count, 1, "the pager hasn't collapsed to the Accounts page")
         XCTAssertEqual(panel.frame.height, 200, "Accounts doesn't rest at its floor")
         let top = panel.frame.maxY
 
-        withAnimation(Motion.modeSwitch) { hosted.layout.screen = .dashboard }
+        withAnimation(Motion.modeSwitch) { hosted.popover.screen = .dashboard }
         var sampled = false
         for _ in 0..<120 where !sampled {
             try await Task.sleep(for: .milliseconds(10))
@@ -57,11 +57,11 @@ final class ScreenSlideTests: QuietWindowTestCase {
     func testSettingsKeepsItsChromeWhileItSlidesAway() async throws {
         let hosted = try await hostPopover()
         let panel = hosted.panel, host = hosted.host
-        withAnimation(Motion.modeSwitch) { hosted.layout.screen = .settings }
+        withAnimation(Motion.modeSwitch) { hosted.popover.screen = .settings }
         try await Task.sleep(for: .seconds(1.5))
         XCTAssertGreaterThan(panel.frame.height, 600, "Settings doesn't rest at its content's height")
 
-        withAnimation(Motion.modeSwitch) { hosted.layout.screen = .dashboard }
+        withAnimation(Motion.modeSwitch) { hosted.popover.screen = .dashboard }
         var sampled = false
         for _ in 0..<120 where !sampled {
             try await Task.sleep(for: .milliseconds(10))
@@ -116,6 +116,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
                 .environment(\.reduceAnimations, false)
                 .environment(container)
                 .environment(layout)
+                .environment(container.popover)
                 .environment(container.dataStore)
                 .environment(container.renaming)
                 .environment(UpdaterController())
@@ -128,7 +129,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
         host.layerContentsRedrawPolicy = .duringViewResize
         panel.contentViewController = hosting
 
-        let clamp: (CGFloat) -> CGFloat = { PanelGeometry.clampedHeight($0, minimum: PanelGeometry.minimumHeight(for: layout.screen), maximum: 800) }
+        let clamp: (CGFloat) -> CGFloat = { PanelGeometry.clampedHeight($0, minimum: PanelGeometry.minimumHeight(for: container.popover.screen), maximum: 800) }
         MenuBarPopover.clampHeight = clamp
         MenuBarPopover.applyHeight = { [weak panel] raw in
             guard let panel else { return }
@@ -142,10 +143,10 @@ final class ScreenSlideTests: QuietWindowTestCase {
             MenuBarPopover.clampHeight = nil
         }
         QuietTestProcess.show(panel, in: self)
-        layout.popoverShown = true
+        container.popover.popoverShown = true
         host.layoutSubtreeIfNeeded()
         try await Task.sleep(for: .milliseconds(800))
         XCTAssertEqual(panel.frame.height, 166, "the dashboard didn't open at its content's height")
-        return Hosted(panel: panel, host: host, layout: layout)
+        return Hosted(panel: panel, host: host, popover: container.popover)
     }
 }

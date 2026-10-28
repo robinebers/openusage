@@ -3,7 +3,8 @@ import SwiftUI
 /// A screen's navigation chrome. It reads the screen it belongs to, not the destination, so during a
 /// slide each mounted page carries its own bar and the bar travels with its content.
 struct PopoverTopBar: View {
-    let layout: LayoutStore
+    @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     /// The screen this bar belongs to — the page that hosts it, so a switch can't put the incoming
     /// screen's bar over the outgoing one.
     let screen: PopoverScreen
@@ -16,7 +17,7 @@ struct PopoverTopBar: View {
         case .dashboard:
             EmptyView()
         case .accounts:
-            if let providerID = layout.customizeProviderID, let provider = layout.provider(id: providerID) {
+            if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
                 navigationBar(back: accountsBack) {
                     AccountTitle(provider: provider)
                 } trailing: {
@@ -31,7 +32,7 @@ struct PopoverTopBar: View {
             }
         case .settings:
             navigationBar {
-                withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+                withAnimation(Motion.modeSwitch) { popover.screen = .dashboard }
             } title: {
                 Text("Settings")
             } trailing: {
@@ -41,10 +42,10 @@ struct PopoverTopBar: View {
     }
 
     private func accountsBack() {
-        if layout.customizeProviderID != nil {
-            withAnimation(Motion.spring) { layout.customizeProviderID = nil }
+        if popover.customizeProviderID != nil {
+            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         } else {
-            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+            withAnimation(Motion.modeSwitch) { popover.screen = .dashboard }
         }
     }
 
@@ -97,7 +98,7 @@ struct PopoverTopBar: View {
     /// Opens the account list's Add Account sheet.
     private var addAccountButton: some View {
         Button {
-            layout.isAddingAccount = true
+            popover.isAddingAccount = true
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 13, weight: .semibold))

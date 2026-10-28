@@ -13,16 +13,17 @@ final class PopoverTopBarTests: QuietWindowTestCase {
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
             defaults: defaults
         )
-        let layout = container.layout
-        layout.screen = .accounts
+        let popover = container.popover
+        popover.screen = .accounts
 
         let view = VStack(spacing: 0) {
-            PopoverTopBar(layout: layout, screen: .accounts, height: 44, horizontalPadding: PanelMetrics.margin)
+            PopoverTopBar(screen: .accounts, height: 44, horizontalPadding: PanelMetrics.margin)
             AccountListView(reorderSpaceName: "reorder", reorderLift: .constant(nil), frameStore: ReorderFrameStore())
         }
         .frame(width: PanelMetrics.width)
         .environment(container)
-        .environment(layout)
+        .environment(container.layout)
+        .environment(popover)
         .environment(container.renaming)
         let (window, host) = show(view, in: .titled)
         XCTAssertNil(window.attachedSheet)
@@ -39,7 +40,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         }
         try await Task.sleep(for: .milliseconds(800))
 
-        XCTAssertTrue(layout.isAddingAccount)
+        XCTAssertTrue(popover.isAddingAccount)
         let sheet = try XCTUnwrap(window.attachedSheet, "the + didn't present the Add Account sheet")
         XCTAssertFalse(QuietTestProcess.onAScreen(sheet), "the sheet shows on a screen")
     }
@@ -58,15 +59,16 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         for _ in 0..<200 where container.layout.displayGroups.isEmpty {
             try await Task.sleep(for: .milliseconds(5))
         }
-        let layout = container.layout
-        layout.screen = .accounts
-        layout.customizeProviderID = id
+        let popover = container.popover
+        popover.screen = .accounts
+        popover.customizeProviderID = id
 
         let height: CGFloat = 44
-        let view = PopoverTopBar(layout: layout, screen: .accounts, height: height, horizontalPadding: PanelMetrics.margin)
+        let view = PopoverTopBar(screen: .accounts, height: height, horizontalPadding: PanelMetrics.margin)
             .frame(width: PanelMetrics.width)
             .environment(container)
-            .environment(layout)
+            .environment(container.layout)
+            .environment(popover)
             .environment(container.renaming)
         let host = show(view, in: .titled).host
         try await Task.sleep(for: .milliseconds(300))
@@ -109,13 +111,12 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     }
 
     func testLeavingAccountsDropsAnOpenAddAccountSheet() {
-        let defaults = isolatedDefaults()
-        let layout = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout")
-        layout.screen = .accounts
-        layout.isAddingAccount = true
+        let popover = PopoverState()
+        popover.screen = .accounts
+        popover.isAddingAccount = true
 
-        layout.screen = .dashboard
+        popover.screen = .dashboard
 
-        XCTAssertFalse(layout.isAddingAccount)
+        XCTAssertFalse(popover.isAddingAccount)
     }
 }

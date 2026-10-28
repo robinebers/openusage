@@ -6,7 +6,7 @@ struct ProviderMetrics: Identifiable {
     var id: String { provider.id }
 }
 
-/// Tone for the Accounts screen's transient pill (`LayoutStore.customizationNotice`): green success or
+/// Tone for the Accounts screen's transient pill (`PopoverState.accountsNotice`): green success or
 /// orange denial.
 enum CustomizationNoticeTone {
     case positive

@@ -11,6 +11,7 @@ final class AppContainer {
     let layout: LayoutStore
     let dataStore: WidgetDataStore
     let renaming: AccountRenameStore
+    let popover = PopoverState()
     /// Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
     /// Exposed so Settings can toggle extra analytics and termination can flush queued events.
     let telemetry: TelemetryRecorder
@@ -128,6 +129,9 @@ final class AppContainer {
         )
         let registry = WidgetRegistry.from(providers)
         layout.apply(registry: registry)
+        if let id = popover.customizeProviderID, registry.provider(id: id) == nil {
+            popover.customizeProviderID = nil
+        }
         dataStore.apply(providers: providers, registry: registry)
         for id in providers.map(\.provider.id) where !previousIDs.contains(id) {
             Task { await dataStore.refresh(providerID: id, force: true) }
