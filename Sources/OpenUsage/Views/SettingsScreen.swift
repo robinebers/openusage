@@ -17,13 +17,21 @@ struct SettingsScreen: View {
     var body: some View {
         PopoverScrollView {
             Form {
-                Section("General") {
+                Section {
                     Toggle("Launch at Login", isOn: Binding(
                         get: { launchAtLogin.isEnabled },
                         set: { launchAtLogin.update(to: $0) }
                     ))
                     LabeledContent("Global Shortcut") {
                         ShortcutRecorderField(name: .togglePopover, isVisible: popover.screen == .settings)
+                    }
+                } header: {
+                    Text("General")
+                } footer: {
+                    if let errorMessage = launchAtLogin.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(Theme.notice)
                     }
                 }
                 Section("Appearance") {
