@@ -18,3 +18,17 @@ struct CustomizationNoticeContent {
     var message: String
     var tone: CustomizationNoticeTone
 }
+
+/// An immutable capture of every piece of layout state a user action can change — the unit the undo
+/// stack stores. Rather than record a bespoke inverse per action type (remove vs. reorder vs. pin),
+/// undo snapshots this whole slice before each change and restores it wholesale, so every action kind
+/// is undoable through one code path and the restore is always exact (interlocking state — order,
+/// enabled metrics, and pins all move together — can't drift out of sync).
+///
+/// Equatable so the store can skip pushing a snapshot when an action turned out to be a no-op.
+struct LayoutSnapshot: Equatable {
+    let hiddenMetricIDs: Set<String>
+    let providerOrder: [String]
+    let metricOrderByProvider: [String: [String]]
+    let pinnedMetricIDs: Set<String>
+}

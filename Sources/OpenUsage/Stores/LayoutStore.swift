@@ -83,11 +83,13 @@ final class LayoutStore {
     /// Bumped on every present so the pill replays its pop-in even when the same notice repeats.
     var customizationNoticeTrigger: Int { customizeNotice.trigger }
 
-    /// Bounded, app-wide undo stack for layout customization (remove/add a metric, reorder metrics or
+    /// How many steps ⌘Z can walk back: deep enough for a real editing session without growing unbounded.
+    static let maxUndoDepth = 40
+    /// Bounded, app-wide undo stack for layout customization (hide/show a metric, reorder metrics or
     /// providers, pin/unpin). UI-only state (not persisted): undo is a
     /// within-session affordance, so a relaunch starts fresh. Each entry is a pre-change `LayoutSnapshot`;
     /// `undo()` pops and restores one.
-    private var undoHistory = LayoutUndoHistory()
+    private var undoSnapshots: [LayoutSnapshot] = []
     /// True while `undo()` is replaying a snapshot, so the mutations it triggers don't push themselves
     /// back onto the stack (an undo must not be recorded as a new, separately-undoable action).
     private var isApplyingUndo = false
@@ -114,7 +116,7 @@ final class LayoutStore {
     /// happens, so reloading from storage against the new registry keeps the user's arrangement, stars
     /// a new account's defaults, and drops a removed account's hidden metrics, pins, and order.
     func apply(registry: WidgetRegistry) {
-        undoHistory.clear()
+        undoSnapshots.removeAll()
         let knownCardIDs = Set(self.registry.providers.map(\.id))
         self.registry = registry
         if let customizeProviderID, registry.provider(id: customizeProviderID) == nil {
@@ -166,7 +168,7 @@ final class LayoutStore {
     // MARK: - Undo
 
     /// Whether there's at least one layout step to walk back: the app-wide ⌘Z handler's no-op guard.
-    var canUndo: Bool { undoHistory.canUndo }
+    var canUndo: Bool { !undoSnapshots.isEmpty }
 
     /// A snapshot of the current undoable layout state.
     private func currentSnapshot() -> LayoutSnapshot {
@@ -192,7 +194,8 @@ final class LayoutStore {
         defer { isApplyingUndo = false }
         let result = body()
         if currentSnapshot() != before {
-            undoHistory.record(before)
+            undoSnapshots.append(before)
+            if undoSnapshots.count > Self.maxUndoDepth { undoSnapshots.removeFirst() }
         }
         return result
     }
@@ -202,7 +205,7 @@ final class LayoutStore {
     /// Available app-wide (the dashboard's menus and the Accounts screen alike), not just on one screen.
     @discardableResult
     func undo() -> Bool {
-        guard let snapshot = undoHistory.popLast() else { return false }
+        guard let snapshot = undoSnapshots.popLast() else { return false }
         isApplyingUndo = true
         defer { isApplyingUndo = false }
         restore(snapshot)

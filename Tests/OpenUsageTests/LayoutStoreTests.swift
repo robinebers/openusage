@@ -133,14 +133,14 @@ final class LayoutStoreTests: XCTestCase {
         // Drive more distinct, recordable changes than the cap by toggling a pin on and off repeatedly.
         store.setMetricEnabled("claude.weekly", true)
         var pinned = false
-        for _ in 0..<(LayoutUndoHistory.maxDepth + 10) {
+        for _ in 0..<(LayoutStore.maxUndoDepth + 10) {
             pinned.toggle()
             store.setPinned(pinned, for: "claude.weekly")
         }
         // Undo can only walk back the cap's worth of steps, then stops.
         var steps = 0
         while store.undo() { steps += 1 }
-        XCTAssertEqual(steps, LayoutUndoHistory.maxDepth)
+        XCTAssertEqual(steps, LayoutStore.maxUndoDepth)
     }
 
     func testNoOpActionDoesNotRecordUndoStep() {
