@@ -87,6 +87,20 @@ final class CommandLineToolInstallerTests: XCTestCase {
         }
     }
 
+    func testAFailedInstallOverAnotherCopysLinkKeepsTheStatusAndReportsTheError() throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let otherHelper = fixture.root.appendingPathComponent("Applications/OpenUsage.app/Contents/Helpers/openusage").path
+        try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: otherHelper)
+        let installer = CommandLineToolInstaller(sourcePath: fixture.source, destinationPath: fixture.destination) { _, _, _ in .failure("x") }
+
+        installer.install()
+
+        XCTAssertEqual(installer.status, .linkedToAnotherCopy(otherHelper), "the link did not change, so the footer must show the error, not the notice")
+        XCTAssertEqual(installer.errorMessage, "Couldn't install the terminal helper: x")
+    }
+
     func testUninstallRemovesALinkFromAnotherCopyOfOpenUsage() throws {
         let fixture = try fixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }

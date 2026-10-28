@@ -110,12 +110,12 @@ struct SettingsScreen: View {
                 if commandLineTool.status == .conflict {
                     Text("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
                         .foregroundStyle(Theme.notice)
-                } else if case .linkedToAnotherCopy = commandLineTool.status {
-                    Text("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
-                        .foregroundStyle(.secondary)
                 } else if let errorMessage = commandLineTool.errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(Theme.notice)
+                } else if case .linkedToAnotherCopy = commandLineTool.status {
+                    Text("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
+                        .foregroundStyle(.secondary)
                 }
             }
             .font(.footnote)
