@@ -27,7 +27,7 @@ Create `Sources/OpenUsage/Providers/<Name>/` with:
 
 - `<Name>UsageClient`: the HTTP calls, through the injected `HTTPClient`. Throw a `ProviderError`
   (`signInExpired`, `connectionFailed`, `invalidResponse`, `requestFailed`, or `unavailable` with the
-  account-specific reason); `ProviderAuthRetry.requireSuccess` triages a non-2xx for you. Never log a
+  account-specific reason); `ProviderError.requireSuccess` triages a non-2xx for you. Never log a
   credential or a response body.
 - `<Name>UsageMapper`: a pure function from the response to `(plan: String?, lines: [MetricLine])`.
   Validate the response here.

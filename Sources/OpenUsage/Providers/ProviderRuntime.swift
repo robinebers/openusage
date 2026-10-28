@@ -34,11 +34,6 @@ extension ProviderRuntime {
 /// so calling them inline would freeze the popover and the periodic-refresh loop. Offloading to a
 /// detached task moves the wait onto a background executor; the `Sendable` result crosses back cleanly.
 /// It is awaited immediately, so it reads like a normal call while no longer blocking the actor.
-func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () -> T) async -> T {
-    await Task.detached(priority: .utility, operation: load).value
-}
-
-/// Throwing counterpart for blocking credential reads that distinguish absence from access failure.
 func loadOffMainActor<T: Sendable>(_ load: @escaping @Sendable () throws -> T) async throws -> T {
     try await Task.detached(priority: .utility, operation: load).value
 }

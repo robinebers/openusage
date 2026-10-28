@@ -178,7 +178,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     private func refreshCopilot(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
         guard case .oauth(let tokens) = credential else { throw LoginError.invalidResponse }
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
-        try ProviderAuthRetry.requireSuccess(response, kind: .copilot)
+        try ProviderError.requireSuccess(response, kind: .copilot)
         let mapped = try CopilotUsageMapper.map(response)
         return (mapped.plan, mapped.lines)
     }
@@ -198,15 +198,12 @@ final class AccountProviderRuntime: ProviderRuntime {
     private func refreshCursor(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
         var tokens = try await cursorTokens(credential)
         let client = CursorUsageClient(http: http)
-        let usageResponse = try await ProviderAuthRetry.fetch(
-            token: tokens.accessToken,
-            attempt: { try await client.fetchUsage(accessToken: $0) },
-            refreshAccessToken: {
-                tokens = try await refreshCursorTokens(tokens)
-                return tokens.accessToken
-            }
-        )
-        try ProviderAuthRetry.requireSuccess(usageResponse, kind: .cursor)
+        var usageResponse = try await client.fetchUsage(accessToken: tokens.accessToken)
+        if ProviderError.isAuthFailure(usageResponse) {
+            tokens = try await refreshCursorTokens(tokens)
+            usageResponse = try await client.fetchUsage(accessToken: tokens.accessToken)
+        }
+        try ProviderError.requireSuccess(usageResponse, kind: .cursor)
         guard let usage = ProviderParse.jsonObject(usageResponse.body) else {
             throw ProviderError.invalidResponse
         }
@@ -243,7 +240,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let client = OllamaUsageClient(http: http)
         let balance = try await client.fetchBalance(apiKey: key)
-        try ProviderAuthRetry.requireSuccess(balance, kind: .ollama)
+        try ProviderError.requireSuccess(balance, kind: .ollama)
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchAccount(apiKey: key)), at: now())
         }
@@ -257,7 +254,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         if response.statusCode == 403, OpenCodeUsageMapper.errorType(in: response) == "EntitlementError" {
             throw ProviderError.unavailable("No OpenCode Go subscription on this account.")
         }
-        try ProviderAuthRetry.requireSuccess(response, kind: .opencodeGo)
+        try ProviderError.requireSuccess(response, kind: .opencodeGo)
         return (OpenCodeUsageMapper.plan, try OpenCodeUsageMapper.meterLines(response))
     }
 
@@ -272,8 +269,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     private func openRouterEndpoint(_ call: () async throws -> HTTPResponse) async -> OpenRouterEndpoint {
         do {
             let response = try await call()
-            if ProviderAuthRetry.isAuthFailure(response) { return .keyRejected }
-            try ProviderAuthRetry.requireSuccess(response, kind: .openrouter)
+            if ProviderError.isAuthFailure(response) { return .keyRejected }
+            try ProviderError.requireSuccess(response, kind: .openrouter)
             guard let data = OpenRouterUsageMapper.dataObject(response.body) else {
                 return .failed(ProviderError.invalidResponse)
             }
@@ -315,7 +312,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let client = ZAIUsageClient(http: http)
         let quota = try await client.fetchQuota(apiKey: key)
-        try ProviderAuthRetry.requireSuccess(quota, kind: .zai)
+        try ProviderError.requireSuccess(quota, kind: .zai)
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchSubscription(apiKey: key)), at: now())
         }

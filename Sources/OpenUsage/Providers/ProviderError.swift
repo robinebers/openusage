@@ -25,6 +25,17 @@ enum ProviderError: Error, LocalizedError, Equatable {
         }
     }
 
+    static func isAuthFailure(_ response: HTTPResponse) -> Bool {
+        response.statusCode == 401 || response.statusCode == 403
+    }
+
+    /// Triages a non-2xx: 401/403 means the sign-in expired, 429 a rate limit, anything else a request
+    /// failure that carries its status.
+    static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {
+        if isAuthFailure(response) { throw ProviderError.signInExpired(kind) }
+        guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
+    }
+
     /// The error for a non-2xx answer that isn't a sign-in problem: a 429 is a rate limit carrying the
     /// wait the provider named, anything else a failure with its status.
     static func failed(_ response: HTTPResponse, now: Date = Date()) -> ProviderError {

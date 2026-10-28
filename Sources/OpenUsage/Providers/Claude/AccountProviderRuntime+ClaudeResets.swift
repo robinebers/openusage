@@ -130,7 +130,7 @@ extension AccountProviderRuntime {
     private func claudeOrganizationUUID(accessToken: String) async throws -> String {
         let response = try await ClaudeUsageClient(httpClient: http)
             .fetchProfile(accessToken: accessToken)
-        if ProviderAuthRetry.isAuthFailure(response) { throw ProviderError.signInExpired(.claude) }
+        if ProviderError.isAuthFailure(response) { throw ProviderError.signInExpired(.claude) }
         guard let uuid = try ClaudeUsageClient.decodeProfile(response).organization?.uuid,
               UUID(uuidString: uuid) != nil
         else {

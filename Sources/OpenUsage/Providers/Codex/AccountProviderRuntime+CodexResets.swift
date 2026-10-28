@@ -53,7 +53,7 @@ extension AccountProviderRuntime {
                 AppLog.error(tag, "\(cardID) reset claim: credit list fetch failed: \(error.localizedDescription)")
                 return .failed(ResetClaimFailure(error))
             }
-            if ProviderAuthRetry.isAuthFailure(list) {
+            if ProviderError.isAuthFailure(list) {
                 AppLog.error(tag, "\(cardID) reset claim: credit list fetch rejected (HTTP \(list.statusCode))")
                 return .failed(.signInExpired)
             }

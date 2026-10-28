@@ -112,7 +112,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testA429ReadsAsARateLimitEverywhereRequireSuccessRuns() {
         let response = HTTPResponse(statusCode: 429, headers: ["retry-after": "60"], body: Data())
-        XCTAssertThrowsError(try ProviderAuthRetry.requireSuccess(response, kind: .claude)) { error in
+        XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .claude)) { error in
             XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: 60))
         }
         let snapshot = ProviderSnapshot.error(provider: provider, error: ProviderError.rateLimited(retryAfter: 60))

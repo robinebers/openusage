@@ -13,7 +13,7 @@ enum CodexUsageMapper {
         resetCredits: HTTPResponse? = nil,
         now: Date = Date()
     ) throws -> CodexMappedUsage {
-        try ProviderAuthRetry.requireSuccess(response, kind: .codex)
+        try ProviderError.requireSuccess(response, kind: .codex)
 
         guard let body = ProviderParse.jsonObject(response.body) else {
             throw ProviderError.invalidResponse
@@ -291,7 +291,7 @@ enum CodexUsageMapper {
     /// the outcome in the body's `code`; `already_redeemed` is the idempotency key absorbing a retry of a
     /// claim that already landed, so it counts as success.
     static func resetClaimOutcome(from response: HTTPResponse) -> ResetClaimOutcome {
-        if ProviderAuthRetry.isAuthFailure(response) { return .failed(.signInExpired) }
+        if ProviderError.isAuthFailure(response) { return .failed(.signInExpired) }
         guard (200..<300).contains(response.statusCode),
               let body = ProviderParse.jsonObject(response.body),
               let code = body["code"] as? String
