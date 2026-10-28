@@ -144,7 +144,6 @@ private struct ReplaceKeyRow: View {
             SecureField("API Key", text: $key, prompt: Text("New API Key"))
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
-                .disabled(isSaving)
                 .onSubmit(save)
                 .onExitCommand(perform: close)
                 .onAppear { isFocused = true }
@@ -163,6 +162,7 @@ private struct ReplaceKeyRow: View {
                     .disabled(!canSave)
             }
         }
+        .disabled(isSaving)
         .padding(12)
     }
 

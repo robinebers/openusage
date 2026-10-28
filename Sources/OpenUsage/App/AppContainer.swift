@@ -80,7 +80,11 @@ final class AppContainer {
 
     func replaceKey(_ key: String, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
-        try await runtime.replaceKey(key)
+        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
+            throw ProviderError.unavailable("This account is already added as \(existing.label).")
+        }
+        try await runtime.replaceKey(credential)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 

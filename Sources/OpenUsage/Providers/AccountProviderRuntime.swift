@@ -296,8 +296,7 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     /// Saves a pasted key over the account's own only once the account's usage read accepts it, so a
     /// refused key never replaces one that works.
-    func replaceKey(_ key: String) async throws {
-        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+    func replaceKey(_ credential: AccountCredential) async throws {
         _ = try await refresh(credential)
         try await replaceCredential(credential)
     }

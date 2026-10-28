@@ -109,6 +109,7 @@ quota, and the plan.
 
 A warning icon next to the account's name means the last refresh failed; the account's right-click menu
 starts with the reason.
-"Not logged in" or "sign in again" means the provider rejected the stored credential: remove the
-account and add it again. "Rate limited" and HTTP errors clear on a later refresh. See
+"Sign-in expired" means the provider rejected the stored sign-in: remove the account and add it
+again. "Rejected the API key" means the key no longer works: use **Replace API Key…** on the account's
+page. "Rate limited" and HTTP errors clear on a later refresh. See
 [Refreshing](refreshing.md).

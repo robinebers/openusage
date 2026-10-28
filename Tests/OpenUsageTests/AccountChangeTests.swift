@@ -52,12 +52,21 @@ final class AccountChangeTests: XCTestCase {
         try await waitUntil { dataStore.errorMessage(for: personal.cardID) != nil && dataStore.errorMessage(for: work.cardID) != nil }
         container.layout.togglePin("\(personal.cardID).today")
         let stars = container.layout.pinnedMetricIDs
+        XCTAssertTrue(stars.contains("\(personal.cardID).today"))
 
         do {
             try await container.replaceKey("refused-key", for: personal.cardID)
             XCTFail("a refused key was accepted")
         } catch {
-            XCTAssertEqual(error.localizedDescription, ProviderError.signInExpired(.openrouter).localizedDescription)
+            XCTAssertEqual(error.localizedDescription, "OpenRouter rejected the API key. Replace it on the account's page.")
+        }
+        XCTAssertEqual(try vault.load(personal.id), .apiKey("old-key"))
+
+        do {
+            try await container.replaceKey("work-key", for: personal.cardID)
+            XCTFail("another account's key was accepted")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "This account is already added as Work.")
         }
         XCTAssertEqual(try vault.load(personal.id), .apiKey("old-key"))
 
