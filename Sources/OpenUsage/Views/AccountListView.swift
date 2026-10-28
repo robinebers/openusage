@@ -54,7 +54,7 @@ struct AccountListView: View {
             makeLift: { value in
                 ReorderLift.make(
                     id: provider.id,
-                    payload: .accountRow(provider: provider),
+                    preview: AnyView(AccountListRow(provider: provider, handle: { $0 }).liftedRowSurface()),
                     value: value,
                     frames: frameStore.frames
                 )

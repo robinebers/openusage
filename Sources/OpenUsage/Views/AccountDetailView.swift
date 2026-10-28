@@ -98,7 +98,13 @@ struct AccountDetailView: View {
             makeLift: { value in
                 ReorderLift.make(
                     id: metric.id,
-                    payload: .customizeMetric(title: metric.title),
+                    preview: AnyView(
+                        CustomizeMetricRow(title: metric.title, handle: { $0 }) {
+                            CustomizeStarPlaceholder()
+                            CustomizeSwitchPlaceholder()
+                        }
+                        .liftedRowSurface()
+                    ),
                     value: value,
                     frames: frameStore.frames
                 )

@@ -204,7 +204,7 @@ struct WidgetGroupedListView: View {
                 let preview = DashboardMetricRow(model: line.data.dashboardRow())
                     .padding(.horizontal, DashboardGrid.cardPadding)
                     .liftedRowSurface()
-                return ReorderLift.make(id: line.id, payload: .view(AnyView(preview)), value: value, frames: frameStore.frames)
+                return ReorderLift.make(id: line.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },
             orderedIDs: { visibleLineIDs(for: accountID) },
             reorder: { layout.reorderMetric(dragged: line.id, target: $0, in: accountID) }
@@ -224,7 +224,7 @@ struct WidgetGroupedListView: View {
                 let preview = DashboardAccountRows(account: account, plan: dataStore.plan(for: account.id))
                     .padding(DashboardGrid.cardPadding)
                     .liftedRowSurface()
-                return ReorderLift.make(id: account.id, payload: .view(AnyView(preview)), value: value, frames: frameStore.frames)
+                return ReorderLift.make(id: account.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },
             orderedIDs: { liveFamilies().first { $0.id == family.id }?.accounts.map(\.id) ?? [] },
             reorder: { layout.reorderProvider(dragged: account.id, target: $0) }
@@ -244,7 +244,7 @@ struct WidgetGroupedListView: View {
                 let preview = DashboardProviderSection(family: family) { account in
                     DashboardAccountRows(account: account, plan: plans[account.id])
                 }
-                return ReorderLift.make(id: frameID, payload: .view(AnyView(preview)), value: value, frames: frameStore.frames)
+                return ReorderLift.make(id: frameID, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },
             orderedIDs: { liveFamilies().map { Self.familyFrameID($0.id) } },
             reorder: { target in

@@ -28,13 +28,6 @@ struct CustomizeMetricRow<Handle: View, Trailing: View>: View {
     }
 }
 
-extension CustomizeMetricRow where Handle == AnyView {
-    /// Static variant for the lifted drag preview: the grip is rendered inert (no gesture).
-    init(title: String, @ViewBuilder trailing: () -> Trailing) {
-        self.init(title: title, handle: { $0 }, trailing: trailing)
-    }
-}
-
 /// The static switch placeholder the lifted previews render where the live row shows a real
 /// `Toggle` — a quaternary capsule the size of a small switch, so the floating chip reads like the
 /// row without carrying a live control.

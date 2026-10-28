@@ -1,32 +1,25 @@
 import SwiftUI
 
 struct ReorderLift {
-    enum Payload {
-        case accountRow(provider: Provider)
-        case customizeMetric(title: String)
-        /// A dashboard metric line, account, or provider card, drawn by the dashboard itself.
-        case view(AnyView)
-    }
-
     let id: String
-    let payload: Payload
+    let preview: AnyView
     let sourceFrame: CGRect
     let touchOffset: CGPoint
     var location: CGPoint
 
     /// The one place a lift is built from a drag value. Every reorder site (dashboard/Accounts ×
-    /// provider/metric) differs only in the `payload`; the frame lookup and touch-offset math are
+    /// provider/metric) differs only in the `preview`; the frame lookup and touch-offset math are
     /// identical, so they live here once. Returns `nil` when the dragged row has no recorded frame.
     static func make(
         id: String,
-        payload: Payload,
+        preview: AnyView,
         value: DragGesture.Value,
         frames: [String: CGRect]
     ) -> ReorderLift? {
         guard let sourceFrame = frames[id] else { return nil }
         return ReorderLift(
             id: id,
-            payload: payload,
+            preview: preview,
             sourceFrame: sourceFrame,
             touchOffset: CGPoint(
                 x: value.startLocation.x - sourceFrame.minX,
@@ -43,7 +36,7 @@ struct ReorderLiftPreview: View {
     let lift: ReorderLift
 
     var body: some View {
-        preview
+        lift.preview
             .frame(width: lift.sourceFrame.width)
             .scaleEffect(1.025)
             .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 8)
@@ -54,37 +47,6 @@ struct ReorderLiftPreview: View {
             .animation(.none, value: lift.location)
             .allowsHitTesting(false)
     }
-
-    @ViewBuilder
-    private var preview: some View {
-        switch lift.payload {
-        case .accountRow(let provider):
-            accountRowPreview(provider)
-        case .customizeMetric(let title):
-            customizeMetricPreview(title)
-        case .view(let view):
-            view
-        }
-    }
-
-    private func accountRowPreview(_ provider: Provider) -> some View {
-        // Same row anatomy as the live L1 (`AccountListRow`), rendered inert — the lift's shadow +
-        // scale read as the floating chip, and the whole preview is non-interactive (`.allowsHitTesting`
-        // false in `body`), so the chevron carries no live action.
-        AccountListRow(provider: provider, handle: { $0 })
-            .liftedRowSurface()
-    }
-
-    private func customizeMetricPreview(_ title: String) -> some View {
-        CustomizeMetricRow(title: title,
-            trailing: {
-                CustomizeStarPlaceholder()
-                CustomizeSwitchPlaceholder()
-            }
-        )
-        .liftedRowSurface()
-    }
-
 }
 
 /// Lightweight in-view geometry used for reordering inside the menu-bar popover.
@@ -108,16 +70,12 @@ final class ReorderFrameStore {
 }
 
 extension View {
-    func reorderFrame(
-        id: String,
-        in coordinateSpace: CoordinateSpace,
-        yOutset: CGFloat = 0
-    ) -> some View {
+    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: ReorderFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: coordinateSpace).insetBy(dx: 0, dy: -yOutset)]
+                    value: [id: proxy.frame(in: coordinateSpace)]
                 )
             }
         )
