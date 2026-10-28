@@ -16,7 +16,7 @@ enum CredentialVaultError: Error {
     case missingCredential
 }
 
-final class KeychainCredentialVault: CredentialVault, @unchecked Sendable {
+struct KeychainCredentialVault: CredentialVault {
     static let service = "com.robinebers.openusage.accounts"
 
     func load(_ id: UUID) throws -> AccountCredential? {
