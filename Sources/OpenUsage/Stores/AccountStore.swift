@@ -15,19 +15,10 @@ final class AccountStore {
     private let defaults: UserDefaults
     let credentialVault: any CredentialVault
 
-    /// A sign-in names an API-key account after its provider, and a provider's name can change: an
-    /// account still carrying the old default takes the new one, so its header never reads
-    /// "OpenCode — OpenCode Go".
-    private static let retiredDefaultLabels: [ProviderKind: String] = [.opencodeGo: "OpenCode Go"]
-
     init(defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault()) {
         self.defaults = defaults
         credentialVault = vault
         accounts = Self.load(from: defaults)
-        let stale = accounts.indices.filter { accounts[$0].label == Self.retiredDefaultLabels[accounts[$0].kind] }
-        guard !stale.isEmpty else { return }
-        for index in stale { accounts[index].label = accounts[index].kind.displayName }
-        _ = persist()
     }
 
     /// The persisted accounts in the order they were added; empty when nothing is stored yet.
