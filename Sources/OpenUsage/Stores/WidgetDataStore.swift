@@ -108,6 +108,7 @@ final class WidgetDataStore {
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
         self.snapshots = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+        for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
     }
 
     /// Adopts a new set of account runtimes in place. A removed account's refresh is cancelled and its
@@ -122,7 +123,10 @@ final class WidgetDataStore {
         cache.remove(providerIDs: Set(snapshots.keys).subtracting(ids))
         var next = snapshots.filter { ids.contains($0.key) }
         let added = ids.subtracting(next.keys)
-        for (cardID, snapshot) in cache.loadSnapshots(providerIDs: Array(added)) { next[cardID] = snapshot }
+        for (cardID, snapshot) in cache.loadSnapshots(providerIDs: Array(added)) {
+            next[cardID] = snapshot
+            providersByID[cardID]?.restore(snapshot)
+        }
         snapshots = next
         providerErrors = providerErrors.filter { ids.contains($0.key) }
         backoffs = backoffs.filter { ids.contains($0.key) }
@@ -157,11 +161,12 @@ final class WidgetDataStore {
 
     /// Refreshes these accounts side by side, so a slow one never holds the others behind its deadline.
     /// `Task {}` from MainActor context inherits the isolation (a task-group child can't capture the
-    /// non-Sendable store), so: fire one task per account, then await them all.
+    /// non-Sendable store), so: fire one task per account, then await them all. A forced batch (⌘R, the
+    /// Refresh menu item) also asks each account's hourly reads again.
     @discardableResult
     func refresh(providerIDs: [String], force: Bool) async -> [RefreshOutcome] {
         let tasks = providerIDs.map { providerID in
-            Task { await self.refresh(providerID: providerID, force: force) }
+            Task { await self.refresh(providerID: providerID, force: force, rereadHourly: force) }
         }
         var outcomes: [RefreshOutcome] = []
         outcomes.reserveCapacity(tasks.count)
@@ -214,9 +219,10 @@ final class WidgetDataStore {
     /// already in flight) so the suppression is visible in the logs.
     enum RefreshOutcome: Sendable { case refreshed, failed, cacheHit, skipped, backedOff }
 
-    /// Refresh one account; a fetched snapshot is cached as it lands.
+    /// Refresh one account; a fetched snapshot is cached as it lands. `rereadHourly` asks its hourly reads
+    /// again first, which a claim's or a new account's forced refresh doesn't.
     @discardableResult
-    func refresh(providerID: String, force: Bool = false) async -> RefreshOutcome {
+    func refresh(providerID: String, force: Bool = false, rereadHourly: Bool = false) async -> RefreshOutcome {
         if !force, let cached = cache.snapshot(providerID: providerID) {
             // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
             // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
@@ -243,7 +249,7 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
             return .skipped
         }
-        if force { provider.forgetHourlyReads() }
+        if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
         // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
@@ -289,6 +295,23 @@ final class WidgetDataStore {
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, force)
         return .refreshed
+    }
+
+    /// The secondary-reads slot, halfway between passes: each account with a snapshot on screen, one at a
+    /// time, makes the reads its runtime keeps out of a pass, and its card shows the answer now rather than
+    /// a pass later. An account that is refreshing or waiting out a backoff is left for the next slot, and
+    /// an answer that a refresh overtook is dropped, since the next pass carries it.
+    func refreshHourlyReads() async {
+        for id in registry.providers.map(\.id) {
+            guard let provider = providersByID[id], inFlight[id] == nil, let snapshot = snapshots[id],
+                  backoffs[id]?.holds(at: now(), forced: false) != true
+            else { continue }
+            guard let updated = await provider.refreshHourlyReads(of: snapshot),
+                  providersByID[id] === provider, snapshots[id] == snapshot
+            else { continue }
+            snapshots[id] = updated
+            cache.store(updated)
+        }
     }
 
     /// A failed refresh keeps the last good snapshot on screen rather than collapsing every row to

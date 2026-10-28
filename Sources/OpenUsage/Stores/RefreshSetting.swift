@@ -19,4 +19,6 @@ enum RefreshSetting {
     /// How long a read that rarely changes (a plan name, Codex's reset-credit list, Claude's reset
     /// grants) is reused before it is asked again; a forced refresh (⌘R) asks it again at once.
     static let secondaryReadInterval: TimeInterval = 60 * 60
+    /// ⌘R reads Claude's reset grants along with its usage only when the last check is at least this old.
+    static let forcedResetGrantsMinimumAge: TimeInterval = 15 * 60
 }

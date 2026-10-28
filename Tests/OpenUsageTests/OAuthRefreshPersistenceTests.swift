@@ -33,31 +33,6 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         XCTAssertNotNil(saved.expiresAt)
     }
 
-    func testClaudePlanComesFromTheProfileAndIsFetchedOncePerToken() async throws {
-        let account = Account(kind: .claude, label: "Claude")
-        let vault = InMemoryCredentialVault()
-        try vault.save(.oauth(OAuthTokens(accessToken: "access")), for: account.id)
-        let http = RoutingHTTPClient { request in
-            switch request.url.absoluteString {
-            case "https://api.anthropic.com/api/oauth/usage":
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":12}}"#.utf8))
-            case "https://api.anthropic.com/api/oauth/profile":
-                let body = #"{"account":{"uuid":"a"},"organization":{"uuid":"o","organization_type":"claude_max","rate_limit_tier":"default_claude_max_20x"}}"#
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
-            default:
-                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
-            }
-        }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-
-        let first = await runtime.refresh()
-        let second = await runtime.refresh()
-
-        XCTAssertEqual(first.plan, "Max 20x")
-        XCTAssertEqual(second.plan, "Max 20x")
-        XCTAssertEqual(http.requests.filter { $0.url.path == "/api/oauth/profile" }.count, 1)
-    }
-
     func testAntigravityRefreshPersistsTheNewAccessTokenAndUsesIt() async throws {
         let account = Account(kind: .antigravity, label: "Google")
         let vault = InMemoryCredentialVault()

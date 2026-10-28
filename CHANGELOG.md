@@ -25,6 +25,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
 - New app icon.
+- Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
+  too, and cards signed in to one login share one usage request.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

@@ -19,6 +19,7 @@ final class AppContainer {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     @ObservationIgnored private let http: any HTTPClient
+    @ObservationIgnored private let claudeSessions: ClaudeSessions
 
     /// `telemetry` and `telemetryStore` have no defaults on purpose: the PostHog sink starts the
     /// process-global SDK and the production store writes the bundle's telemetry suite, so only the app
@@ -33,7 +34,11 @@ final class AppContainer {
     ) {
         self.accounts = accounts
         self.http = http
-        let providers = ProviderCatalog.make(accounts: accounts.accounts, vault: accounts.credentialVault, http: http)
+        let claudeSessions = ClaudeSessions(defaults: defaults)
+        self.claudeSessions = claudeSessions
+        let providers = ProviderCatalog.make(
+            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, claudeSessions: claudeSessions
+        )
         let registry = WidgetRegistry.from(providers)
         let notificationSettings = NotificationSettingsStore(defaults: defaults)
         let layout = LayoutStore(registry: registry, defaults: defaults)
@@ -86,7 +91,8 @@ final class AppContainer {
         }
     }
 
-    /// Runs a pass at launch and then every `RefreshSetting.interval`, so the menu bar keeps updating.
+    /// Runs a pass at launch and then every `RefreshSetting.interval`, so the menu bar keeps updating, with
+    /// the secondary-reads slot halfway between passes.
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {
@@ -96,7 +102,10 @@ final class AppContainer {
                 // Day-rollover beat: emits `app_daily_active` once per local day and flushes prior-day
                 // provider rollups while optional analytics are on.
                 telemetry.tick()
-                try? await Task.sleep(for: .seconds(RefreshSetting.interval))
+                try? await Task.sleep(for: .seconds(RefreshSetting.interval / 2))
+                guard !Task.isCancelled else { return }
+                await dataStore.refreshHourlyReads()
+                try? await Task.sleep(for: .seconds(RefreshSetting.interval / 2))
             }
         }
     }
@@ -110,6 +119,7 @@ final class AppContainer {
             accounts: accounts.accounts,
             vault: accounts.credentialVault,
             http: http,
+            claudeSessions: claudeSessions,
             reusing: providers
         )
         let registry = WidgetRegistry.from(providers)

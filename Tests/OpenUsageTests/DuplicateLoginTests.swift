@@ -65,7 +65,8 @@ final class DuplicateLoginTests: XCTestCase {
                 HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":12}}"#.utf8))
             }
         }
-        _ = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh()
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        _ = await runtime.refreshHourlyReads(of: await runtime.refresh())
         XCTAssertEqual(try vault.load(account.id)?.identity, "acct/org")
     }
 

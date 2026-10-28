@@ -7,8 +7,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     let vault: any CredentialVault
     let http: any HTTPClient
     let now: () -> Date
-    /// The plan name (Claude `/api/oauth/profile`, Grok `/settings`, Cursor `GetPlanInfo`), read hourly
-    /// rather than every pass.
+    /// The plan name (Grok `/settings`, Cursor `GetPlanInfo`), read hourly rather than every pass.
     var planRead = SecondaryRead<String>()
     /// The body the plan comes from (Ollama `/api/me`, the Z.ai subscription, Antigravity
     /// `loadCodeAssist`), read hourly rather than every pass.
@@ -16,8 +15,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// Codex's reset-credit list, for each credit's expiry, read hourly; the count comes from the usage
     /// body every pass.
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
-    /// Claude's reset-grants state, carried across refreshes (see `AccountProviderRuntime+ClaudeResets`).
-    var claudeResetGrants = ClaudeResetGrantsState()
+    /// Claude's link to its login's session (see `AccountProviderRuntime+ClaudeUsage`).
+    var claude: ClaudeAccountState
     /// The Codex credit each claim's idempotency key was matched to (see `AccountProviderRuntime+CodexResets`).
     var codexMatchedCreditIDs: [String: String] = [:]
 
@@ -25,9 +24,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         account: Account,
         vault: any CredentialVault,
         http: any HTTPClient = URLSessionHTTPClient(),
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        claudeSessions: ClaudeSessions = ClaudeSessions()
     ) {
         self.account = account
+        claude = ClaudeAccountState(sessions: claudeSessions)
         self.vault = vault
         self.http = http
         self.now = now
@@ -44,7 +45,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
-        claudeResetGrants.check?.checkedAt = .distantPast
+        claude.forcedReadsPending = true
     }
 
     static func provider(for account: Account) -> Provider {
@@ -65,13 +66,14 @@ final class AccountProviderRuntime: ProviderRuntime {
     ) -> ResetClaimService? {
         switch account.kind {
         case .claude:
-            let status = claudeResetGrants.check?.status
+            let status = claude.session?.resetGrants.check?.status
             return ResetClaimService(
                 accountID: account.cardID,
                 isClaimable: status?.claimableGrantID != nil,
                 confirmDetail: status?.confirmDetail,
                 claimReset: { [self] _, redeemRequestID in await claimClaudeResetGrant(redeemRequestID: redeemRequestID) },
-                refreshAccount: refreshAccount
+                refreshAccount: refreshAccount,
+                refreshDelay: .seconds(30)
             )
         case .codex:
             return ResetClaimService(
@@ -134,36 +136,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         tokens.expiresAt = granted.expiresAt
         try await replaceCredential(.oauth(tokens))
         return tokens
-    }
-
-    private func refreshClaude(_ credential: AccountCredential) async throws -> ProviderUsage {
-        let tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
-        let response = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: tokens.accessToken)
-        var lines = try ClaudeUsageMapper.mapUsageResponse(response)
-        if let resets = await claudeResetGrantsLine(accessToken: tokens.accessToken) {
-            lines.append(resets)
-        }
-        return ProviderUsage(plan: await claudeLivePlan(tokens), lines: lines)
-    }
-
-    /// Read hourly (`planRead`). Also records the sign-in's identity on an account added before sign-ins
-    /// recorded it, so a later sign-in to the same Claude account is caught.
-    private func claudeLivePlan(_ tokens: OAuthTokens) async -> String? {
-        guard planRead.isDue(at: now()) else { return planRead.value }
-        do {
-            let response = try await ClaudeUsageClient(httpClient: http).fetchProfile(accessToken: tokens.accessToken)
-            let profile = try ClaudeUsageClient.decodeProfile(response)
-            if tokens.extras[OAuthTokens.identityKey] == nil {
-                var identified = tokens
-                identified.extras[OAuthTokens.identityKey] = profile.identity
-                try? await replaceCredential(.oauth(identified))
-            }
-            planRead.record(ClaudeUsageMapper.formatLivePlan(profile: profile), at: now())
-        } catch {
-            AppLog.warn(LogTag.plugin("claude"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
-            planRead.record(nil, at: now())
-        }
-        return planRead.value
     }
 
     private func refreshCodex(_ credential: AccountCredential) async throws -> ProviderUsage {

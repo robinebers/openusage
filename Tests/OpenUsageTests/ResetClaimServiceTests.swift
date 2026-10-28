@@ -1,8 +1,8 @@
 import XCTest
 @testable import OpenUsage
 
-/// The resets popover's claim seam: which accounts get one, which outcomes refresh the account, and how
-/// the post-claim refresh waits out an in-flight refresh or a transient failure.
+/// The resets popover's claim seam: which accounts get one, which outcomes refresh the account, and that
+/// the post-claim refresh runs once.
 @MainActor
 final class ResetClaimServiceTests: XCTestCase {
     @MainActor
@@ -44,24 +44,16 @@ final class ResetClaimServiceTests: XCTestCase {
         }
     }
 
-    func testPostClaimRefreshWaitsOutAnInFlightRefresh() async {
-        let recorder = Recorder()
-        let service = makeService(outcome: .success, refreshOutcomes: [.skipped, .skipped, .refreshed], recorder: recorder)
+    func testThePostClaimRefreshRunsOnceWhateverItReturns() async {
+        for refresh in [WidgetDataStore.RefreshOutcome.skipped, .failed, .backedOff] {
+            let recorder = Recorder()
+            let service = makeService(outcome: .success, refreshOutcomes: [refresh], recorder: recorder)
 
-        _ = await service.claim(creditExpiringAt: Date(), redeemRequestID: "redeem-1")
+            _ = await service.claim(creditExpiringAt: Date(), redeemRequestID: "redeem-1")
 
-        XCTAssertEqual(recorder.refreshes, 3)
-        XCTAssertEqual(recorder.pauses, [.seconds(1), .seconds(1)])
-    }
-
-    func testPostClaimRefreshRetriesAFailedRefreshThenGivesUp() async {
-        let recorder = Recorder()
-        let service = makeService(outcome: .success, refreshOutcomes: [.failed], recorder: recorder)
-
-        _ = await service.claim(creditExpiringAt: Date(), redeemRequestID: "redeem-1")
-
-        XCTAssertEqual(recorder.refreshes, 3)
-        XCTAssertEqual(recorder.pauses, [.seconds(2), .seconds(2)])
+            XCTAssertEqual(recorder.refreshes, 1, "\(refresh)")
+            XCTAssertEqual(recorder.pauses, [], "\(refresh)")
+        }
     }
 
     func testOnlyClaudeAndCodexAccountsGetAClaimService() {

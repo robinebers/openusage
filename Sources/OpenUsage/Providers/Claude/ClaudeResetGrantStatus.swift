@@ -65,6 +65,8 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         return "Refills your \(names.joined(separator: " and ")) limits now. This can't be undone."
     }
 
+    static let lineLabel = "Rate Limit Resets"
+
     /// The row reads "N available" and each remaining reset's grant deadline rides along in
     /// `expiriesAt` for the resets popover; a grant with several resets left contributes one expiry per
     /// reset. Grants past their deadline or with none left are skipped, and an ineligible account reads
@@ -80,7 +82,7 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
             }
         }
         return .values(
-            label: "Rate Limit Resets",
+            label: Self.lineLabel,
             values: [MetricValue(number: Double(count), kind: .count, label: "available")],
             expiriesAt: expiries.sorted()
         )

@@ -50,7 +50,8 @@ tokens or an API key) per account id in the app's Keychain service.
 There is one per account. It declares the account's `widgetDescriptors` (the metrics its card can
 show, prefixed with the account's `cardID`), loads the credential from the vault, calls the provider's
 usage client, maps the response to `MetricLine` values, and returns a `ProviderSnapshot`. Token
-refresh, Claude's live plan lookup, and the reset-claim services live in its extensions under
+refresh, Claude's per-login session (`ClaudeSession`: the saved 429 window, the shared usage read,
+the hourly plan and reset-grant reads), and the reset-claim services live in its extensions under
 `Providers/<Name>/`. Each provider folder holds a `<Name>UsageClient` (HTTP) and a
 `<Name>UsageMapper` (pure response-to-metrics mapping).
 
@@ -60,7 +61,9 @@ in what order; `WidgetDataStore` turns snapshots into `WidgetData` for the views
 ## Refresh loop
 
 `AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `evaluateNotifications`, then
-`TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes). Every cadence
+`TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes), with
+`WidgetDataStore.refreshHourlyReads` halfway between passes for the reads a provider must not get in
+the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Every cadence
 and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
 cache and asks each runtime's hourly reads again (`ProviderRuntime.forgetHourlyReads`); whether a
 forced refresh waits out a backoff is `RefreshBackoff.holds`.

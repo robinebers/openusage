@@ -117,9 +117,12 @@ struct ClaudeUsageClient: Sendable {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "anthropic-beta": "oauth-2025-04-20",
-            "User-Agent": "claude-cli/2.1.294 (external, cli)"
+            "User-Agent": "claude-cli/\(claudeCodeVersion) (external, cli)"
         ]
     }
+
+    /// Tracks Claude Code: Anthropic's grants check rejects old versions (`ineligible_reason: cli_version`).
+    static let claudeCodeVersion = "2.1.294"
 
     /// `GET /api/oauth/profile`. Transport failures surface as `connectionFailed`; the status code is the
     /// caller's to triage.

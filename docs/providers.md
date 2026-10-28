@@ -45,7 +45,7 @@ popover says this sign-in can't use resets, and you can spend the reset in Claud
 
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows
 one instead of returning to the app. The card reads `/api/oauth/usage` for the session, weekly,
-Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once per token for the
+Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
 plan (Pro, Max, Team). Team seats get no weekly window from the API, so none shows.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see

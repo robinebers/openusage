@@ -7,9 +7,9 @@
 | Launch | Every account whose saved values are 5 minutes old or more |
 | Every 5 minutes | Every account, whatever you are doing, so the menu bar stays current |
 | Adding an account | That account |
-| **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure |
+| **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure, never a wait the provider asked for |
 | An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
-| Claiming a rate-limit reset | That account |
+| Claiming a rate-limit reset | That account; for Claude, once, 30 seconds after the claim |
 
 There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
 ⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that
@@ -22,7 +22,8 @@ Usage is read on every refresh. Reads that rarely change are read at most once a
 between: the plan name (Claude, Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project),
 Codex's list of reset credits with their expiry times (the count still updates every refresh), and
 Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
-the next ⌘R.
+the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
+its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.
 
 The last snapshot of every account is saved on disk and shown at launch, so you see your last-known
 values before the first fetch finishes. A value counts as fresh for one interval (5 minutes) after it
@@ -45,6 +46,12 @@ When a provider rate-limits OpenUsage (HTTP 429), the account waits as long as t
 `Retry-After` header asks, or on the same doubling schedule when it names no wait. The last good values
 stay on screen with the clock icon, whose tooltip names the time of the next try, for example "Claude
 asked OpenUsage to wait. Retrying at 14:32." A manual refresh does not ask before that time.
+
+Claude budgets requests per Anthropic login, so its wait covers the whole login: every card signed in
+to it, its usage, plan and reset-grant reads, and the refresh after a claim. When Claude names no wait
+(or a wait of 0), the first wait is 5 minutes and each 429 in a row doubles it, up to an hour. The wait
+is saved, so a relaunch inside it sends Claude nothing and shows the same "Retrying at" time. Two cards
+signed in to the same Claude login share one usage request per pass.
 
 An account that stops responding is given up on after two minutes. Its spinner stops, the warning reads
 "Refresh timed out after 120s", and it is tried again on a later pass.

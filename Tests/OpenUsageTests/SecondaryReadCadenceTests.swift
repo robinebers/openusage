@@ -63,36 +63,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.perHour.filter { $0.key.hasSuffix(AntigravityUsageClient.loadCodeAssistPath) }.values.reduce(0, +), 1)
     }
 
-    func testClaudeProfileFailureIsAskedAgainHourlyNotEveryPass() async throws {
-        let counts = try await hourOfRefreshes(.claude, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
-            request.url.path == "/api/oauth/profile"
-                ? HTTPResponse(statusCode: 500, headers: [:], body: Data())
-                : Self.ok(#"{"five_hour":{"utilization":12}}"#)
-        }
-        XCTAssertEqual(counts.perHour["/api/oauth/profile"], 1)
-        XCTAssertEqual(counts.nextHour["/api/oauth/profile"], 1)
-    }
-
-    func testClaudeReadsThePlanHourly() async throws {
-        let counts = try await hourOfRefreshes(.claude, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
-            request.url.path == "/api/oauth/profile"
-                ? Self.ok(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org","organization_type":"claude_max"}}"#)
-                : Self.ok(#"{"five_hour":{"utilization":12}}"#)
-        }
-        XCTAssertEqual(counts.perHour["/api/oauth/profile"], 1)
-        XCTAssertEqual(counts.nextHour["/api/oauth/profile"], 1, "a plan that was found is read again once the hour is up")
-        XCTAssertEqual(counts.lastPlan, "Max")
-    }
-
     func testAForcedRefreshAsksTheHourlyReadsAgain() async throws {
-        let claude = try await passThenForcedRefresh(.claude) { request in
-            request.url.path == "/api/oauth/profile"
-                ? Self.ok(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org","organization_type":"claude_max"}}"#)
-                : Self.ok(#"{"five_hour":{"utilization":12}}"#)
-        }
-        XCTAssertEqual(claude.map { $0["/api/oauth/profile"] }, [1, 2])
-        XCTAssertEqual(claude.map { $0["grants"] }, [1, 2])
-
         let codex = try await passThenForcedRefresh(.codex) { _ in Self.ok(#"{"rate_limit":{}}"#) }
         XCTAssertEqual(codex.map { $0[CodexUsageClient.resetCreditsURL.path] }, [1, 2])
 
@@ -103,7 +74,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
     // MARK: - Helpers
 
     /// Request counts after a scheduled pass and a second one 5 minutes later, then after a forced refresh a
-    /// minute on, through the store. Claude's reset-grants check counts under "grants".
+    /// minute on, through the store.
     private func passThenForcedRefresh(
         _ kind: ProviderKind,
         credential: AccountCredential = .oauth(OAuthTokens(accessToken: "token")),
@@ -117,7 +88,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
         func counts() -> [String: Int] {
-            http.requests.reduce(into: [:]) { $0[$1.isClaudeResetGrantsCheck ? "grants" : $1.url.path, default: 0] += 1 }
+            http.requests.reduce(into: [:]) { $0[$1.url.path, default: 0] += 1 }
         }
         await store.refreshAll()
         clock.set(start.addingTimeInterval(RefreshSetting.interval))

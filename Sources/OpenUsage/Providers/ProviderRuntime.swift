@@ -21,10 +21,18 @@ protocol ProviderRuntime: AnyObject {
     /// Makes the next `refresh()` ask again for the reads it reuses for an hour; the store calls it before
     /// a forced refresh.
     func forgetHourlyReads()
+    /// Shown the account's saved snapshot before its first refresh, so a runtime that reads its plan
+    /// outside a pass can keep showing the saved one until it asks.
+    func restore(_ snapshot: ProviderSnapshot)
+    /// The secondary-reads slot, halfway between passes: the reads a runtime keeps out of a pass, applied
+    /// to the account's current `snapshot`; `nil` when nothing changed.
+    func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot?
 }
 
 extension ProviderRuntime {
     func forgetHourlyReads() {}
+    func restore(_ snapshot: ProviderSnapshot) {}
+    func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? { nil }
 }
 
 /// What one refresh read: the plan name, if the provider reports one, and the account's metric lines.

@@ -78,38 +78,32 @@ struct ResetClaimService {
     let confirmDetail: String?
     let claimReset: @MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome
     let refreshAccount: @MainActor () async -> WidgetDataStore.RefreshOutcome
+    /// How long after a claim the account is refreshed. Codex refreshes at once, so the banner lands over
+    /// meters that already show the claim. Claude's answer already updated its resets row, so its meters
+    /// are read in the background 30 seconds later, apart from the claim.
+    var refreshDelay: Duration = .zero
     var pause: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
     /// Claims the reset the popover picked, then refreshes the account unless nothing was claimed.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
         let outcome = await claimReset(expiry, redeemRequestID)
         if case .failed = outcome { return outcome }
-        await refreshAfterClaim()
+        guard refreshDelay > .zero else {
+            await refreshAfterClaim()
+            return outcome
+        }
+        Task {
+            await pause(refreshDelay)
+            await refreshAfterClaim()
+        }
         return outcome
     }
 
-    /// A forced refresh returns `.skipped` while another refresh owns the account, and that in-flight
-    /// probe may carry pre-claim usage, so this retries until its own refresh actually runs. The bound
-    /// outlasts the slowest refresh. A failed refresh is retried a few times so a transient flake can't
-    /// strand pre-claim meters behind a success banner, then gives up loudly.
+    /// One forced refresh. One that another refresh or a wait the provider set holds off, or that fails,
+    /// leaves the meters to the next pass.
     private func refreshAfterClaim() async {
-        var failures = 0
-        for attempt in 1...45 {
-            switch await refreshAccount() {
-            case .refreshed, .cacheHit, .backedOff:
-                return
-            case .failed:
-                failures += 1
-                guard failures < 3 else {
-                    AppLog.error(.refresh, "\(accountID) post-claim refresh failed \(failures) times; meters may lag until the next cycle")
-                    return
-                }
-                await pause(.seconds(2))
-            case .skipped:
-                AppLog.info(.refresh, "\(accountID) post-claim refresh waiting out an in-flight refresh (attempt \(attempt))")
-                await pause(.seconds(1))
-            }
-        }
-        AppLog.error(.refresh, "\(accountID) post-claim refresh kept being skipped; meters may lag until the next cycle")
+        let outcome = await refreshAccount()
+        guard outcome != .refreshed, outcome != .cacheHit else { return }
+        AppLog.warn(.refresh, "\(accountID) post-claim refresh \(outcome); meters may lag until the next pass")
     }
 }
