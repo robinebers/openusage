@@ -52,6 +52,22 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         XCTAssertEqual(limit, 100)
     }
 
+    func testCreditsRowLeadsWithTheirDollarValueAtFourCentsACredit() throws {
+        let cases = [
+            (credits: #"{ "balance": 821.6 }"#, row: "$32.84 · 821 credits"),
+            (credits: #"{ "has_credits": false }"#, row: "$0 · 0 credits")
+        ]
+        for (credits, row) in cases {
+            let body = Data(#"{ "credits": \#(credits) }"#.utf8)
+            let mapped = try CodexUsageMapper.mapUsageResponse(HTTPResponse(statusCode: 200, headers: [:], body: body))
+            guard case .values(_, let values, _) = mapped.lines.first(where: { $0.label == "Credits" })
+            else { return XCTFail("expected a Credits row for \(credits)") }
+            var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
+            data.values = values
+            XCTAssertEqual(data.unboundedDetail, row)
+        }
+    }
+
     func testShowsRateLimitResetsBeforeCredits() throws {
         let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 1 }, "credits": { "balance": 100 } }"#.utf8)
         let mapped = try CodexUsageMapper.mapUsageResponse(

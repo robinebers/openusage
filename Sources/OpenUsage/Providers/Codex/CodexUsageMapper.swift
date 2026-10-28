@@ -1,6 +1,9 @@
 import Foundation
 
 enum CodexUsageMapper {
+    /// OpenAI sells ChatGPT credits at 4¢ each; the usage API reports only the count.
+    static let creditUSDRate = 0.04
+
     static func mapUsageResponse(
         _ response: HTTPResponse,
         resetCredits: HTTPResponse? = nil,
@@ -114,7 +117,10 @@ enum CodexUsageMapper {
 
     static func creditValues(remaining: Double) -> [MetricValue] {
         let credits = max(0, Int(remaining.rounded(.down)))
-        return [MetricValue(number: Double(credits), kind: .count, label: "credits")]
+        return [
+            MetricValue(number: Double(credits) * creditUSDRate, kind: .dollars),
+            MetricValue(number: Double(credits), kind: .count, label: "credits")
+        ]
     }
 
     /// The count comes from the usage body of this pass; the dedicated list, read hourly, supplies the
