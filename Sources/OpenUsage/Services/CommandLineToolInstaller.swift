@@ -115,33 +115,37 @@ final class CommandLineToolInstaller {
         return isOpenUsageHelper(target) ? .linkedToAnotherCopy(target) : .conflict
     }
 
-    private static func runPrivileged(
-        operation: Operation,
-        sourcePath: String,
-        destinationPath: String
-    ) -> OperationResult {
+    /// The script that runs as root. `ln -h` never follows a link planted at the destination between the
+    /// check and the write, so a link to a directory fails with "File exists" instead of writing into it.
+    static func shellCommand(for operation: Operation, source sourcePath: String, destination destinationPath: String) -> String {
         let directory = (destinationPath as NSString).deletingLastPathComponent
-        let command: String
         switch operation {
         case .install(replacing: nil):
-            command = """
+            return """
             if [ -e \(shellQuote(destinationPath)) ] || [ -L \(shellQuote(destinationPath)) ]; then exit 73; fi
-            /bin/mkdir -p \(shellQuote(directory)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
+            /bin/mkdir -p \(shellQuote(directory)) && /bin/ln -sh \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
             """
         case .install(replacing: let target?):
-            command = """
+            return """
             existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 73
             [ "$existing" = \(shellQuote(target)) ] || exit 73
-            /bin/rm \(shellQuote(destinationPath)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
+            /bin/ln -sfh \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
             """
         case .uninstall:
-            command = """
+            return """
             existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
             [ "$existing" = \(shellQuote(sourcePath)) ] || exit 75
             /bin/rm \(shellQuote(destinationPath))
             """
         }
+    }
 
+    private static func runPrivileged(
+        operation: Operation,
+        sourcePath: String,
+        destinationPath: String
+    ) -> OperationResult {
+        let command = shellCommand(for: operation, source: sourcePath, destination: destinationPath)
         let source = "do shell script \(appleScriptStringLiteral(command)) with administrator privileges"
         guard let script = NSAppleScript(source: source) else {
             return .failure("macOS couldn't prepare the authorization request.")

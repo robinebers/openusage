@@ -189,6 +189,47 @@ final class CommandLineToolInstallerTests: XCTestCase {
         )
     }
 
+    func testTheScriptLinksRefusesAnExistingPathOrAChangedLinkAndNeverWritesThroughAPlantedLink() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("open usage's \(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("OpenUsage.app/Contents/Helpers/openusage").path
+        let other = root.appendingPathComponent("Other OpenUsage.app/Contents/Helpers/openusage").path
+        let destination = root.appendingPathComponent("bin/openusage").path
+        try FileManager.default.createDirectory(atPath: (source as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try Data().write(to: URL(fileURLWithPath: source))
+        func run(_ operation: CommandLineToolInstaller.Operation) throws -> Int32 {
+            let shell = Process()
+            shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+            shell.arguments = ["-c", CommandLineToolInstaller.shellCommand(for: operation, source: source, destination: destination)]
+            shell.standardError = FileHandle.nullDevice
+            try shell.run()
+            shell.waitUntilExit()
+            return shell.terminationStatus
+        }
+
+        XCTAssertEqual(try run(.install(replacing: nil)), 0)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source, "install creates the link")
+        XCTAssertEqual(try run(.install(replacing: nil)), 73, "install refuses an existing path")
+
+        XCTAssertEqual(try run(.install(replacing: other)), 73, "replace refuses a link that changed")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source)
+        try FileManager.default.removeItem(atPath: destination)
+        try FileManager.default.createSymbolicLink(atPath: destination, withDestinationPath: other)
+        XCTAssertEqual(try run(.install(replacing: other)), 0)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source, "replace points another copy's link here")
+        XCTAssertEqual(try run(.uninstall), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination))
+
+        let planted = root.appendingPathComponent("planted").path
+        try FileManager.default.createDirectory(atPath: planted, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: destination, withDestinationPath: planted)
+        XCTAssertNotEqual(try run(.install(replacing: nil)), 0, "install over a planted directory link fails")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: planted), [], "nothing is written through the planted link")
+        XCTAssertEqual(try run(.install(replacing: planted)), 0, "a replace whose link matches swaps the link itself")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: planted), [], "the swap never writes into the directory the link named")
+    }
+
     func testMissingHelperIsReportedWithoutAskingForAuthorization() throws {
         let fixture = try fixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
