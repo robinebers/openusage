@@ -11,7 +11,8 @@ import Foundation
 /// - `.badge` — a short status pill (e.g. "Disabled", or a pay-as-you-go cap). Use for state, not a number
 ///   to fill a bar with.
 ///
-/// On failure, return `ProviderSnapshot.error(provider:error:)` with a typed provider error.
+/// On failure, return `ProviderSnapshot(provider:failure:)` with `RefreshFailure(error:)` from a typed
+/// provider error.
 @MainActor
 protocol ProviderRuntime: AnyObject {
     var provider: Provider { get }

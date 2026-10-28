@@ -107,7 +107,7 @@ final class HangingProviderRuntime: ProviderRuntime {
         } catch {
             wasCancelled = true
         }
-        return ProviderSnapshot.error(provider: provider, message: "hung")
+        return ProviderSnapshot(provider: provider, failure: RefreshFailure(message: "hung", kind: .refused))
     }
 }
 

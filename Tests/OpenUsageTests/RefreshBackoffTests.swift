@@ -50,7 +50,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testAccountThatKeepsFailingBacksOffExponentiallyButManualRefreshRetries() async {
         let clock = TestClock(start)
-        let runtime = makeRuntime([.error(provider: provider, error: ProviderError.signInExpired(.openrouter))])
+        let runtime = makeRuntime([ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.signInExpired(.openrouter)))])
         let store = makeStore(runtime, clock: clock)
 
         await store.refreshAll()
@@ -66,7 +66,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testSuccessResetsTheBackoff() async {
         let clock = TestClock(start)
-        let failure = ProviderSnapshot.error(provider: provider, error: ProviderError.requestFailed(500))
+        let failure = ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.requestFailed(500)))
         let runtime = makeRuntime([failure, failure, failure, ok(at: start), failure])
         let store = makeStore(runtime, clock: clock)
 
@@ -85,7 +85,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testNoAnswerRetriesEveryPassWithoutGrowingTheWait() async {
         let clock = TestClock(start)
-        let runtime = makeRuntime([.error(provider: provider, error: URLError(.notConnectedToInternet))])
+        let runtime = makeRuntime([ProviderSnapshot(provider: provider, failure: RefreshFailure(error: URLError(.notConnectedToInternet)))])
         let store = makeStore(runtime, clock: clock)
 
         await store.refreshAll()
@@ -115,7 +115,7 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .claude)) { error in
             XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: 60))
         }
-        let snapshot = ProviderSnapshot.error(provider: provider, error: ProviderError.rateLimited(retryAfter: 60))
+        let snapshot = ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.rateLimited(retryAfter: 60)))
         XCTAssertEqual(snapshot.failure?.kind, .rateLimited(retryAfter: 60))
     }
 
@@ -159,7 +159,7 @@ final class RefreshBackoffTests: XCTestCase {
     }
 
     private func rateLimited(retryAfter: TimeInterval?) -> ProviderSnapshot {
-        .error(provider: provider, error: ProviderError.rateLimited(retryAfter: retryAfter))
+        ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.rateLimited(retryAfter: retryAfter)))
     }
 
     private func makeRuntime(_ snapshots: [ProviderSnapshot]) -> StubRuntime {

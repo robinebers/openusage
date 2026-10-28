@@ -33,40 +33,14 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines.first { $0.label == label }
     }
 
-    /// The success-path counterpart to `error(provider:message:)`: derives `providerID`/`displayName`
-    /// from the provider so account runtimes build their snapshots consistently.
-    static func make(
-        provider: Provider,
-        plan: String?,
-        lines: [MetricLine],
-        refreshedAt: Date
-    ) -> ProviderSnapshot {
-        ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: plan,
-            lines: lines,
-            refreshedAt: refreshedAt
-        )
+    /// A successful refresh of `provider`.
+    init(provider: Provider, plan: String?, lines: [MetricLine], refreshedAt: Date = Date()) {
+        self.init(providerID: provider.id, displayName: provider.displayName, plan: plan, lines: lines, refreshedAt: refreshedAt)
     }
 
-    /// Build an error snapshot straight from a caught error: the message is the error's user-facing
-    /// `localizedDescription`, and the kind says whether the provider asked for a wait or never answered.
-    static func error(provider: Provider, error: Error) -> ProviderSnapshot {
-        let kind: RefreshFailure.Kind = switch error {
-        case ProviderError.rateLimited(let retryAfter): .rateLimited(retryAfter: retryAfter)
-        case is URLError, ProviderError.connectionFailed: .unreachable
-        default: .refused
-        }
-        return Self.error(provider: provider, failure: RefreshFailure(message: error.localizedDescription, kind: kind))
-    }
-
-    static func error(provider: Provider, message: String) -> ProviderSnapshot {
-        Self.error(provider: provider, failure: RefreshFailure(message: message, kind: .refused))
-    }
-
-    static func error(provider: Provider, failure: RefreshFailure) -> ProviderSnapshot {
-        ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [], failure: failure)
+    /// A failed refresh of `provider`.
+    init(provider: Provider, failure: RefreshFailure) {
+        self.init(providerID: provider.id, displayName: provider.displayName, lines: [], failure: failure)
     }
 }
 
@@ -83,4 +57,17 @@ struct RefreshFailure: Hashable, Sendable, Codable {
 
     var message: String
     var kind: Kind
+}
+
+extension RefreshFailure {
+    /// A caught error: the message is its user-facing `localizedDescription`, and the kind says whether
+    /// the provider asked for a wait or never answered.
+    init(error: Error) {
+        let kind: Kind = switch error {
+        case ProviderError.rateLimited(let retryAfter): .rateLimited(retryAfter: retryAfter)
+        case is URLError, ProviderError.connectionFailed: .unreachable
+        default: .refused
+        }
+        self.init(message: error.localizedDescription, kind: kind)
+    }
 }
