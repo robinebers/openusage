@@ -11,8 +11,8 @@ import SwiftUI
 /// the native soft scroll-edge fade (`softScrollEdges` →
 /// `.scrollEdgeEffectStyle(.soft)`, macOS 26+) — Apple's blurred boundary, not a custom gradient or a
 /// material bar. On macOS 15 the footer/top bar still pin via `safeAreaInset`, just without the blur
-/// (content scrolls flush). The panel **auto-fits its content**: each screen publishes its intrinsic
-/// height (`ScrollContentHeightKey` + the measured footer), and the host window is driven to that on
+/// (content scrolls flush). The panel **auto-fits its content**: each screen's scroll view reports its
+/// content height plus the pinned bars' insets (`onScrollGeometryChange`), and the host window is driven to that on
 /// SwiftUI's animation clock (`drivesPanelHeight` / `PanelHeightModifier`) — so a screen switch morphs
 /// the window height in lockstep with the slide (one spring), and the scroll views only take over once
 /// content exceeds the screen-height cap.
@@ -30,11 +30,9 @@ struct DashboardView: View {
     /// Whether `animatedHeight` has been seeded for this open. Until then the first measurement (or a
     /// reopen) establishes it without animation; afterwards, changes spring.
     @State private var didEstablishHeight = false
-    /// Popover auto-fit height computation: per-screen measured pieces summed into each screen's clamped
-    /// morph target (`heightCoordinator.measuredIdeal` / `.target(for:)`). Written from the geometry
-    /// actions below. The animation itself — `animatedHeight`, the slide, the `withAnimation` spring —
-    /// stays in this view; the coordinator holds only the deterministic measurement.
-    @State private var heightCoordinator = PanelHeightCoordinator(topBarHeight: Self.topBarHeight)
+    /// The window height each screen wants: its scroll content plus the insets its pinned bars add.
+    /// `heightTarget(for:)` clamps it into the morph target.
+    @State private var measuredIdeal: [PopoverScreen: CGFloat] = [:]
     /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives the
     /// page offset so the screens slide between modes on one spring.
     @State private var slideProgress: CGFloat = 1
@@ -112,7 +110,7 @@ struct DashboardView: View {
                     // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
                     // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
                     // there's no visible jump. If not yet measured, the measurement onChange seeds it.
-                    if let target = heightCoordinator.target(for: popover.screen) {
+                    if let target = heightTarget(for: popover.screen) {
                         didEstablishHeight = true
                         animatedHeight = target
                     }
@@ -141,7 +139,7 @@ struct DashboardView: View {
                     animatedSlideID = id
                     settledSlideID = id
                     slideProgress = 1
-                    if let target = heightCoordinator.target(for: popover.screen) {
+                    if let target = heightTarget(for: popover.screen) {
                         didEstablishHeight = true
                         animatedHeight = target
                     }
@@ -159,7 +157,7 @@ struct DashboardView: View {
                     // straight from the status-item menu), we must NOT morph to a clamped zero, which
                     // the clamp floors at the screen's minimum and wrongly shrinks the panel: leave the
                     // height alone and let the completion / measurement establish it once a real ideal lands.
-                    let coTarget: CGFloat? = heightCoordinator.target(for: destination)
+                    let coTarget: CGFloat? = heightTarget(for: destination)
                         ?? (animatedHeight > 0 ? animatedHeight : nil)
                     if coTarget != nil { didEstablishHeight = true }
                     // `.removed`: the pager collapses to one page only once the spring has settled, so
@@ -169,7 +167,7 @@ struct DashboardView: View {
                         if let coTarget { animatedHeight = coTarget }
                     } completion: {
                         settledSlideID = id
-                        guard let target = heightCoordinator.target(for: popover.screen) else { return }
+                        guard let target = heightTarget(for: popover.screen) else { return }
                         if !didEstablishHeight {
                             didEstablishHeight = true
                             animatedHeight = target            // un-animated establish — never grow from 0
@@ -183,8 +181,8 @@ struct DashboardView: View {
             // height on the same spring. Establishment is allowed even mid-slide (a measurement that
             // lands during a switch must seed the height — there's nothing to fight yet); the animated
             // *re-target* defers to the switch path while a slide is in flight.
-            .onChange(of: heightCoordinator.measuredIdeal[popover.screen]) { _, _ in
-                guard let target = heightCoordinator.target(for: popover.screen) else { return }
+            .onChange(of: measuredIdeal[popover.screen]) { _, _ in
+                guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
                     didEstablishHeight = true
                     animatedHeight = target
@@ -347,11 +345,13 @@ struct DashboardView: View {
     @ViewBuilder
     private func screenView(_ screen: PopoverScreen, includeChrome: Bool = true) -> some View {
         scrollBody(for: screen)
-            // Auto-fit: the scroll content publishes its intrinsic height (invariant to the viewport),
-            // which we sum with the chrome into this screen's ideal window height. Keyed by the per-page
-            // `screen`, so during a slide each mounted page measures its own content.
-            .onPreferenceChange(ScrollContentHeightKey.self) { height in
-                heightCoordinator.setScrollContent(height, for: screen)
+            // Auto-fit: the scroll view's content height (invariant to the viewport) plus the insets the
+            // pinned bars add is this screen's ideal window height. Keyed by the per-page `screen`, so
+            // during a slide each mounted page measures its own content; parked Settings has no bars.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+            } action: { _, height in
+                if includeChrome, height > 0 { measuredIdeal[screen] = height }
             }
             .softScrollEdges()
             .pinnedBar(.top, spacing: 0) {
@@ -365,14 +365,14 @@ struct DashboardView: View {
             }
             .pinnedBar(.bottom, spacing: 0) {
                 if includeChrome {
-                    PopoverFooter(
-                        screen: screen,
-                        horizontalPadding: PanelMetrics.margin
-                    ) { screen, height in
-                        heightCoordinator.setFooter(height, for: screen)
-                    }
+                    PopoverFooter(screen: screen, horizontalPadding: PanelMetrics.margin)
                 }
             }
+    }
+
+    /// A screen's clamped morph target, or `nil` until it has been measured.
+    private func heightTarget(for screen: PopoverScreen) -> CGFloat? {
+        measuredIdeal[screen].map { MenuBarPopover.clampHeight?($0) ?? $0 }
     }
 
     /// The scrolling content for a screen, without chrome — this is the part that slides during a

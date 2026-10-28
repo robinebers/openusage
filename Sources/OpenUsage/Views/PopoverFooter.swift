@@ -8,7 +8,6 @@ struct PopoverFooter: View {
     @Environment(WidgetDataStore.self) private var dataStore
     let screen: PopoverScreen
     let horizontalPadding: CGFloat
-    let onHeightChange: (PopoverScreen, CGFloat) -> Void
 
     @ViewBuilder
     var body: some View {
@@ -29,9 +28,6 @@ struct PopoverFooter: View {
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
         .barGlass()
-        .onGeometryChange(for: CGFloat.self) { proxy in proxy.size.height } action: { height in
-            onHeightChange(screen, height)
-        }
         .overlay(alignment: .top) {
             if screen == .dashboard, popover.shareNotice.value {
                 shareCopiedPill
