@@ -66,7 +66,8 @@ final class AccountProviderRuntime: ProviderRuntime {
                 claimReset: { [self] expiry, redeemRequestID in
                     await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: redeemRequestID)
                 },
-                refreshAccount: refreshAccount
+                refreshAccount: refreshAccount,
+                refreshDelay: .seconds(5)
             )
         case .cursor, .antigravity, .copilot, .grok, .ollama, .opencodeGo, .openrouter, .zai:
             return nil

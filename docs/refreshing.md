@@ -9,7 +9,7 @@
 | Adding an account | That account |
 | **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure, never a wait the provider asked for |
 | An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
-| Claiming a rate-limit reset | That account; for Claude, once, 30 seconds after the claim |
+| Claiming a rate-limit reset | That account, once the result has shown: 5 seconds after a Codex claim, 30 seconds after a Claude claim |
 
 There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
 ⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that

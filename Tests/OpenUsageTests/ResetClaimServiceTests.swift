@@ -120,8 +120,80 @@ final class ResetClaimServiceTests: XCTestCase {
 
     func testCodexClaimRefreshesTheDashboardPastItsCache() async throws {
         let expiry = Date(timeIntervalSince1970: 1_800_000_000)
-        let claimed = TestSwitch(false)
-        let http = RoutingHTTPClient { request in
+        let runtime = try makeCodexRuntime(http: Self.codexHTTP(expiry: expiry, claimed: TestSwitch(false)))
+        let defaults = isolatedDefaults()
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
+        let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.sample.showsResetExpiries })
+        await store.refreshAll()
+        XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "1 available")
+        XCTAssertEqual(store.data(for: descriptor).expiriesAt, [expiry])
+
+        let refreshed = expectation(description: "the post-claim refresh")
+        var service = try XCTUnwrap(runtime.resetClaimService {
+            defer { refreshed.fulfill() }
+            return await store.refresh(providerID: runtime.provider.id, force: true)
+        })
+        service.pause = { _ in }
+        let outcome = await service.claim(creditExpiringAt: expiry, redeemRequestID: "redeem-1")
+        await fulfillment(of: [refreshed], timeout: 5)
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "0 available")
+        XCTAssertEqual(store.data(for: descriptor).expiriesAt, [])
+    }
+
+    func testACodexClaimReturnsBeforeItsRefreshRuns() async throws {
+        let expiry = Date(timeIntervalSince1970: 1_800_000_000)
+        let runtime = try makeCodexRuntime(http: Self.codexHTTP(expiry: expiry, claimed: TestSwitch(false)))
+        let recorder = Recorder()
+        let gate = Gate()
+        let refreshed = expectation(description: "the post-claim refresh")
+        var service = try XCTUnwrap(runtime.resetClaimService {
+            recorder.refreshes += 1
+            refreshed.fulfill()
+            return .refreshed
+        })
+        service.pause = { delay in
+            recorder.pauses.append(delay)
+            await gate.wait()
+        }
+
+        let outcome = await service.claim(creditExpiringAt: expiry, redeemRequestID: "redeem-1")
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(recorder.refreshes, 0, "the claim's result shows before the refresh drops the spent row")
+        gate.open()
+        await fulfillment(of: [refreshed], timeout: 5)
+        XCTAssertEqual(recorder.pauses, [.seconds(5)])
+        XCTAssertEqual(recorder.refreshes, 1)
+    }
+
+    @MainActor
+    private final class Gate {
+        private var isOpen = false
+        private var waiting: CheckedContinuation<Void, Never>?
+
+        func wait() async {
+            guard !isOpen else { return }
+            await withCheckedContinuation { waiting = $0 }
+        }
+
+        func open() {
+            isOpen = true
+            waiting?.resume()
+            waiting = nil
+        }
+    }
+
+    private func makeCodexRuntime(http: RoutingHTTPClient) throws -> AccountProviderRuntime {
+        let account = Account(kind: .codex, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "token")), for: account.id)
+        return AccountProviderRuntime(account: account, vault: vault, http: http)
+    }
+
+    private static func codexHTTP(expiry: Date, claimed: TestSwitch<Bool>) -> RoutingHTTPClient {
+        RoutingHTTPClient { request in
             let available = claimed.value ? 0 : 1
             switch request.url {
             case CodexUsageClient.usageURL:
@@ -138,24 +210,5 @@ final class ResetClaimServiceTests: XCTestCase {
                 return HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let account = Account(kind: .codex, label: "Work")
-        let vault = InMemoryCredentialVault()
-        try vault.save(.oauth(OAuthTokens(accessToken: "token")), for: account.id)
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
-        let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.sample.showsResetExpiries })
-        await store.refreshAll()
-        XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "1 available")
-        XCTAssertEqual(store.data(for: descriptor).expiriesAt, [expiry])
-
-        let service = try XCTUnwrap(runtime.resetClaimService {
-            await store.refresh(providerID: runtime.provider.id, force: true)
-        })
-        let outcome = await service.claim(creditExpiringAt: expiry, redeemRequestID: "redeem-1")
-
-        XCTAssertEqual(outcome, .success)
-        XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "0 available")
-        XCTAssertEqual(store.data(for: descriptor).expiriesAt, [])
     }
 }
