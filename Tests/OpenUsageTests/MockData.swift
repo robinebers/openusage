@@ -15,14 +15,14 @@ enum MockData {
     // MARK: - Registered widgets (limit => bar; no limit => value)
     static let descriptors: [WidgetDescriptor] = [
         // Claude — percent limits (bars) + dollar amounts (values)
-        percent(key: "session", provider: claude, title: "Session", used: 0),
-        percent(key: "weekly", provider: claude, title: "Weekly", used: 34),
+        percent(key: "session", provider: claude, title: "Session", used: 0).pinnedByDefault(),
+        percent(key: "weekly", provider: claude, title: "Weekly", used: 34).pinnedByDefault(),
         amount(key: "extra", provider: claude, title: "Extra usage", used: 217.59),
         amount(key: "today", provider: claude, title: "Today", used: 64.20),
 
         // Codex — percent limits (bars), credits as a counted limit (bar), dollars (value)
-        percent(key: "session", provider: codex, title: "Session", used: 80),
-        percent(key: "weekly", provider: codex, title: "Weekly", used: 20),
+        percent(key: "session", provider: codex, title: "Session", used: 80).pinnedByDefault(),
+        percent(key: "weekly", provider: codex, title: "Weekly", used: 20).pinnedByDefault(),
         countBounded(key: "credits", provider: codex, title: "Extra Usage", used: 320, limit: 1000),
         amount(key: "today", provider: codex, title: "Today", used: 569.09),
 

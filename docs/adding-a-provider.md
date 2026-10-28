@@ -32,14 +32,14 @@ Create `Sources/OpenUsage/Providers/<Name>/` with:
 - `<Name>UsageMapper`: a pure function from the response to `(plan: String?, lines: [MetricLine])`.
   Validate the response here.
 
-In `AccountProviderRuntime`, add the kind's `widgetDescriptors` (the card's metrics, each id
-prefixed with the account's `cardID`) and a `refresh<Name>` case. If the provider needs a token
+In `AccountProviderRuntime`, add the kind's `widgetDescriptors` (the card's metrics, each named
+by a key such as `"session"`) and a `refresh<Name>` case. If the provider needs a token
 refresh, add it as an extension in the provider folder, as `AccountProviderRuntime+CursorAuth` does.
 
 ## 4. Defaults
 
-Every metric starts shown. Add the one or two that should start in the menu bar to
-`DefaultLayout.pinnedMetricIDs`, and confirm them with the owner.
+Every metric starts shown. Chain `.pinnedByDefault()` on the one or two descriptors that should start in
+the menu bar, and confirm them with the owner.
 
 ## 5. Test
 

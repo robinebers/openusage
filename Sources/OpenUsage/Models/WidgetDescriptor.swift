@@ -13,6 +13,8 @@ struct WidgetDescriptor: Identifiable, Hashable {
     /// The scalars this metric contributes to the `openusage` command's limits JSON; empty for
     /// presentation-only rows.
     var limitResources: [LimitResourceDescriptor] = []
+    /// Starred into the menu bar the first time its account shows up.
+    var isPinnedByDefault = false
 
     init(provider: Provider, key: String, metricLabel: String, sample: WidgetData) {
         id = "\(provider.id).\(key)"
@@ -26,6 +28,12 @@ struct WidgetDescriptor: Identifiable, Hashable {
     /// "claude.session" on every Claude account. Telemetry reports these, so PostHog keeps one id per
     /// provider instead of one per account.
     var kindScopedKey: String { "\(providerKind.rawValue).\(key)" }
+
+    func pinnedByDefault() -> WidgetDescriptor {
+        var copy = self
+        copy.isPinnedByDefault = true
+        return copy
+    }
 
     /// The metric's single display name.
     var title: String { sample.title }

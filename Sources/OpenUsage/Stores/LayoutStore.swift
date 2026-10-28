@@ -97,18 +97,10 @@ final class LayoutStore {
     /// The accounts' providers and metrics. Replaced in place by `apply(registry:)` when accounts change.
     private(set) var registry: WidgetRegistry
     private let persistence: LayoutPersistence
-    /// Provider-family default stars ("codex.session"), given to an account the first time it shows up.
-    private let defaultPinnedMetricIDs: [String]
 
-    init(
-        registry: WidgetRegistry,
-        defaults: UserDefaults = .standard,
-        storageKey: String = "openusage.layout.v1",
-        defaultPinnedMetricIDs: [String] = DefaultLayout.pinnedMetricIDs
-    ) {
+    init(registry: WidgetRegistry, defaults: UserDefaults = .standard, storageKey: String = "openusage.layout.v1") {
         self.registry = registry
         self.persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
-        self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
         loadLayout(newCardIDs: [])
     }
 
@@ -142,10 +134,9 @@ final class LayoutStore {
         if let savedPins, pinnedMetricIDs != savedPins { persistPins() }
     }
 
-    /// `defaultPinnedMetricIDs` on one account: "claude.session" is "claude@1a2b3c4d.session" on
-    /// "claude@1a2b3c4d".
+    /// The account's metrics that start starred.
     private func defaultPins(forCard cardID: String) -> [String] {
-        registry.descriptors(for: cardID).filter { defaultPinnedMetricIDs.contains($0.kindScopedKey) }.map(\.id)
+        registry.descriptors(for: cardID).filter(\.isPinnedByDefault).map(\.id)
     }
 
     // MARK: - Layout mutations

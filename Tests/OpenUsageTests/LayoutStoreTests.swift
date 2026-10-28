@@ -238,7 +238,7 @@ final class LayoutStoreTests: XCTestCase {
 
     func testFreshStoreSeedsDefaultPins() {
         let store = makeStore()
-        let expected = Set(DefaultLayout.pinnedMetricIDs.filter { MockData.descriptor($0) != nil })
+        let expected = Set(MockData.descriptors.filter(\.isPinnedByDefault).map(\.id))
 
         XCTAssertFalse(expected.isEmpty, "fixture registry should know some default-pinned metrics")
         XCTAssertEqual(store.pinnedMetricIDs, expected)
