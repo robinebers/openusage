@@ -319,8 +319,8 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
-        data.values = CodexUsageMapper.creditValues(remaining: 820.9)
-        XCTAssertEqual(data.unboundedDetail, "$32.80 · 820 credits")
+        data.values = CodexUsageMapper.creditValues(remaining: 821.6)
+        XCTAssertEqual(data.unboundedDetail, "$32.84 · 821 credits")
         data.values = CodexUsageMapper.creditValues(remaining: -5)
         XCTAssertEqual(data.unboundedDetail, "$0 · 0 credits")
     }

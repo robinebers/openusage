@@ -1,6 +1,7 @@
 # Providers
 
-How each provider signs in and what its card shows. Every value comes from the provider's own API.
+How each provider signs in and what its card shows. Every value comes from the provider's own API,
+except ChatGPT's credit value, an estimate at 4¢ a credit.
 OpenUsage computes no spend from logs and applies no model pricing; a metric the provider does not
 report stays hidden.
 

@@ -9,7 +9,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Account discovery. OpenUsage no longer reads other tools' credentials, config files, Keychain items,
   databases, or logs. Sign in to each account from the new **Accounts** screen instead.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
-  and dollar values a provider reports, nothing computed.
+  and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
 - iCloud sync of settings and layout.
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
