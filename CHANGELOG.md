@@ -37,7 +37,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
-- Z.ai: a key with no GLM Coding Plan says so instead of reporting an invalid response.
+- Z.ai's notice when a key has no GLM Coding Plan.
 
 ## v0.7.16
 
