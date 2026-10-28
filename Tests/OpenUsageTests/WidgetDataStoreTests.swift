@@ -15,8 +15,7 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll()
 
         XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
-            .loadSnapshots(providerIDs: ids)
+        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
         XCTAssertEqual(Set(persisted.keys), Set(ids))
     }
 
@@ -30,8 +29,7 @@ final class WidgetDataStoreTests: XCTestCase {
 
         await store.refresh(providerID: fixture.0.id, force: true)
 
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
-            .loadSnapshots(providerIDs: [fixture.0.id])
+        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
         XCTAssertNotNil(persisted[fixture.0.id])
     }
 
@@ -51,8 +49,7 @@ final class WidgetDataStoreTests: XCTestCase {
         for _ in 0..<1_000 where store.snapshots[fast.0.id] == nil { await Task.yield() }
         XCTAssertTrue(slow.didStart)
         XCTAssertNotNil(store.snapshots[fast.0.id], "a finished account shows without waiting for the pass")
-        XCTAssertNotNil(ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
-            .loadSnapshots(providerIDs: [fast.0.id])[fast.0.id], "and its snapshot is on disk")
+        XCTAssertNotNil(ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()[fast.0.id], "and its snapshot is on disk")
 
         slow.complete()
         await refreshTask.value
@@ -352,18 +349,13 @@ final class WidgetDataStoreTests: XCTestCase {
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let cache = ProviderSnapshotCache(
-            userDefaults: isolatedDefaults(),
-            storageKey: "snapshots",
-            ttl: 600,
-            now: { now }
-        )
-        cache.store(ProviderSnapshot(
+        let cache = ProviderSnapshotCache(userDefaults: isolatedDefaults(), storageKey: "snapshots")
+        cache.save([provider.id: ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
             lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
             refreshedAt: now.addingTimeInterval(-60)
-        ))
+        )])
         let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
@@ -374,7 +366,7 @@ final class WidgetDataStoreTests: XCTestCase {
                 refreshedAt: now
             )
         )
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults())
+        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults(), now: { now })
 
         await store.refreshAll()
 
@@ -392,18 +384,13 @@ final class WidgetDataStoreTests: XCTestCase {
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let defaults = isolatedDefaults()
-        let cache = ProviderSnapshotCache(
-            userDefaults: defaults,
-            storageKey: "snapshots",
-            ttl: 600,
-            now: { now }
-        )
-        cache.store(ProviderSnapshot(
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+        cache.save([provider.id: ProviderSnapshot(
             providerID: provider.id,
             displayName: provider.displayName,
             lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
             refreshedAt: now.addingTimeInterval(-601)
-        ))
+        )])
         let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
@@ -414,7 +401,7 @@ final class WidgetDataStoreTests: XCTestCase {
                 refreshedAt: now
             )
         )
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults())
+        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults(), now: { now })
 
         await store.refreshAll()
 

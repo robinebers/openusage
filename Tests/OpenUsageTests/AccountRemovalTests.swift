@@ -44,7 +44,7 @@ final class AccountRemovalTests: XCTestCase {
         XCTAssertNil(dataStore.snapshots[account.cardID])
         XCTAssertNil(dataStore.errorMessage(for: account.cardID))
         XCTAssertTrue(dataStore.refreshingProviderIDs.isEmpty)
-        XCTAssertTrue(ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: [account.cardID]).isEmpty)
+        XCTAssertNil(ProviderSnapshotCache(userDefaults: defaults).load()[account.cardID])
         XCTAssertTrue(accounts.accounts.isEmpty)
         XCTAssertTrue(container.layout.displayGroups.isEmpty)
     }

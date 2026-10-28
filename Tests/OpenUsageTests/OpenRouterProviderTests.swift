@@ -44,14 +44,14 @@ final class OpenRouterProviderTests: XCTestCase {
         persistence.saveHidden(["\(card).credits", "\(card).keyLimit"])
         persistence.savePins(["\(card).credits", "\(card).keyLimit", "\(card).balance"])
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
-        cache.store(ProviderSnapshot(providerID: card, displayName: "OpenRouter", lines: [
+        cache.save([card: ProviderSnapshot(providerID: card, displayName: "OpenRouter", lines: [
             .progress(label: "Credits", used: 22.23, limit: 100, format: .dollars),
             .values(label: "Balance", values: [MetricValue(number: 77.77, kind: .dollars)]),
             .values(label: "Today", values: [MetricValue(number: 1.5, kind: .dollars)]),
             .values(label: "This Week", values: [MetricValue(number: 4, kind: .dollars)]),
             .values(label: "This Month", values: [MetricValue(number: 12, kind: .dollars)]),
             .progress(label: "Key Limit", used: 0.75, limit: 1, format: .dollars)
-        ]))
+        ])])
 
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
         let data = WidgetDataStore.forTesting([runtime], registry: registry, cache: cache, defaults: defaults)

@@ -107,7 +107,8 @@ final class WidgetDataStore {
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
         // dashboard show last-known values immediately at launch instead of "—"; the refresh loop
         // replaces them as soon as fresh data lands.
-        self.snapshots = cache.loadSnapshots(providerIDs: registry.providers.map(\.id))
+        let ids = Set(registry.providers.map(\.id))
+        self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
     }
 
@@ -120,14 +121,15 @@ final class WidgetDataStore {
         let ids = Set(providersByID.keys)
         for (id, task) in inFlight where !ids.contains(id) { task.cancel() }
         inFlight = inFlight.filter { ids.contains($0.key) }
-        cache.remove(providerIDs: Set(snapshots.keys).subtracting(ids))
         var next = snapshots.filter { ids.contains($0.key) }
+        let removed = next.count < snapshots.count
         let added = ids.subtracting(next.keys)
-        for (cardID, snapshot) in cache.loadSnapshots(providerIDs: Array(added)) {
+        for (cardID, snapshot) in cache.load() where added.contains(cardID) {
             next[cardID] = snapshot
             providersByID[cardID]?.restore(snapshot)
         }
         snapshots = next
+        if removed { cache.save(next) }
         providerErrors = providerErrors.filter { ids.contains($0.key) }
         backoffs = backoffs.filter { ids.contains($0.key) }
     }
@@ -223,13 +225,11 @@ final class WidgetDataStore {
     /// again first, which a claim's or a new account's forced refresh doesn't.
     @discardableResult
     func refresh(providerID: String, force: Bool = false, rereadHourly: Bool = false) async -> RefreshOutcome {
-        if !force, let cached = cache.snapshot(providerID: providerID) {
-            // Skip the no-op write: `@Observable` doesn't compare values, so unconditionally
-            // re-assigning an unchanged snapshot would re-render the menu-bar label every pass.
+        // Fresh means fetched less than one interval ago, across a relaunch too. A clock that went
+        // backwards never makes a snapshot fresh.
+        if !force, let shown = snapshots[providerID],
+           (0..<RefreshSetting.interval).contains(now().timeIntervalSince(shown.refreshedAt)) {
             AppLog.debug(.refresh, "cache hit \(providerID)")
-            if snapshots[providerID] != cached {
-                snapshots[providerID] = cached
-            }
             return .cacheHit
         }
         if !force { AppLog.debug(.refresh, "cache miss \(providerID)") }
@@ -291,7 +291,7 @@ final class WidgetDataStore {
         // Recovered: drop any backoff so the account resumes the normal cadence immediately.
         if backoffs[providerID] != nil { backoffs[providerID] = nil }
         snapshots[providerID] = snapshot
-        cache.store(snapshot)
+        cache.save(snapshots)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(providerID, .refreshed, force)
         return .refreshed
@@ -310,7 +310,7 @@ final class WidgetDataStore {
                   providersByID[id] === provider, snapshots[id] == snapshot
             else { continue }
             snapshots[id] = updated
-            cache.store(updated)
+            cache.save(snapshots)
         }
     }
 

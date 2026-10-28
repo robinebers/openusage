@@ -3,8 +3,8 @@ import Foundation
 /// Single source of truth for how often OpenUsage asks the providers. Every cadence and wait lives here
 /// so they are easy to tune together.
 ///
-/// The periodic refresh loop and the snapshot-cache TTL both read the cadence through here so they can
-/// never disagree: the cache treats a snapshot as fresh for exactly one refresh interval, and the loop
+/// The periodic refresh loop and `WidgetDataStore`'s freshness check both read the cadence through here
+/// so they can never disagree: a snapshot is fresh for exactly one refresh interval, and the loop
 /// re-fetches when that window elapses. There's no user-facing control.
 enum RefreshSetting {
     /// Every account refreshes together this often, whatever the user is doing, so the menu bar stays

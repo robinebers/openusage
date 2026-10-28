@@ -4,7 +4,8 @@ import XCTest
 @MainActor
 final class UsageReaderTests: XCTestCase {
     private func cache(_ snapshot: ProviderSnapshot, in defaults: UserDefaults) {
-        ProviderSnapshotCache(userDefaults: defaults).store(snapshot)
+        let cache = ProviderSnapshotCache(userDefaults: defaults)
+        cache.save(cache.load().merging([snapshot.providerID: snapshot]) { $1 })
     }
 
     private func weekly(_ account: Account, used: Double) -> ProviderSnapshot {

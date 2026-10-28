@@ -141,8 +141,8 @@ extension AppContainer {
 }
 
 extension WidgetDataStore {
-    /// A store over `runtimes`, its registry built from them and its snapshot cache on the same defaults and
-    /// clock; pass `registry` or `cache` to shape either by hand.
+    /// A store over `runtimes`, its registry built from them and its snapshot cache on the same defaults;
+    /// pass `registry` or `cache` to shape either by hand.
     static func forTesting(
         _ runtimes: [ProviderRuntime],
         registry: WidgetRegistry? = nil,
@@ -157,7 +157,7 @@ extension WidgetDataStore {
         WidgetDataStore(
             registry: registry ?? .from(runtimes),
             providers: runtimes,
-            cache: cache ?? ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots", now: now),
+            cache: cache ?? ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
             defaults: defaults,
             orderedDescriptors: orderedDescriptors,
             now: now,

@@ -67,7 +67,7 @@ the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and
 and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
 cache and asks each runtime's hourly reads again (`ProviderRuntime.forgetHourlyReads`); whether a
 forced refresh waits out a backoff is `RefreshBackoff.holds`.
-`refresh(providerID:)` honours the on-disk `ProviderSnapshotCache`, the account's `RefreshBackoff`,
+`refresh(providerID:)` skips an account whose snapshot is less than an interval old, honours its `RefreshBackoff`,
 and a two-minute deadline per account, and reports each real outcome through `onRefreshOutcome`. Each
 fetched snapshot is written to the cache as it lands.
 

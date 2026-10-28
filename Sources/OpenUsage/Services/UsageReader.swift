@@ -31,7 +31,7 @@ public enum UsageReader {
         where !descriptor.limitResources.isEmpty {
             limitDescriptors[descriptor.providerID, default: []].append(descriptor)
         }
-        let snapshots = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: providerIDs)
+        let snapshots = ProviderSnapshotCache(userDefaults: defaults).load().filter { providerIDs.contains($0.key) }
         let data = LimitsEnvelope.encode(LimitsEnvelope.Input(
             providerIDs: providerIDs,
             snapshots: snapshots,
