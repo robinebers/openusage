@@ -8,37 +8,17 @@ struct CopilotLogin: ProviderLogin {
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
-        let startURL = URL(string: "https://github.com/login/device/code")!
-        let startResponse = try await LoginHTTP.postForm(startURL, fields: [
-            "client_id": Self.clientID,
-            "scope": Self.scopes
-        ], using: http, headers: ["User-Agent": "OpenUsage"])
-        let device = try LoginHTTP.decode(GitHubDeviceCode.self, from: startResponse)
-        guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
-            throw LoginError.invalidResponse
-        }
-        await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
-        let token: GitHubDeviceToken = try await DeviceCodePoller.poll(
-            interval: device.interval ?? 5,
-            expiresIn: TimeInterval(device.expiresIn)
-        ) { [http] in
-            let response = try await LoginHTTP.postForm(URL(string: "https://github.com/login/oauth/access_token")!, fields: [
-                "client_id": Self.clientID,
-                "device_code": device.deviceCode,
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
-            ], using: http, headers: ["User-Agent": "OpenUsage"])
-            let values = LoginHTTP.jsonObject(response)
-            if let accessToken = values["access_token"] {
-                return .complete(GitHubDeviceToken(accessToken: accessToken))
-            }
-            return switch values["error"] {
-            case "authorization_pending": DeviceCodePollResult<GitHubDeviceToken>.pending
-            case "slow_down": DeviceCodePollResult<GitHubDeviceToken>.slowDown
-            case "expired_token": DeviceCodePollResult<GitHubDeviceToken>.failed("GitHub device sign-in expired.")
-            case "access_denied": DeviceCodePollResult<GitHubDeviceToken>.failed("GitHub device sign-in was denied.")
-            default: DeviceCodePollResult<GitHubDeviceToken>.failed("GitHub device sign-in failed.")
-            }
-        }
+        let token = try await deviceAuthorization(
+            provider: "GitHub",
+            startURL: URL(string: "https://github.com/login/device/code")!,
+            tokenURL: URL(string: "https://github.com/login/oauth/access_token")!,
+            clientID: Self.clientID,
+            scopes: Self.scopes,
+            headers: ["User-Agent": "OpenUsage"],
+            deniedMessage: "GitHub device sign-in was denied.",
+            http: http,
+            prompt: prompt
+        )
         let profileURL = URL(string: "https://api.github.com/user")!
         let profile = try await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http, headers: [
             "Accept": "application/vnd.github+json",
@@ -60,33 +40,16 @@ struct GrokLogin: ProviderLogin {
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
-        let start = try await LoginHTTP.postForm(URL(string: "https://auth.x.ai/oauth2/device/code")!, fields: [
-            "client_id": Self.clientID,
-            "scope": Self.scopes
-        ], using: http)
-        let device = try LoginHTTP.decode(XAIDeviceCode.self, from: start)
-        guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
-            throw LoginError.invalidResponse
-        }
-        await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
-        let token: OAuthTokenResponse = try await DeviceCodePoller.poll(
-            interval: device.interval ?? 5,
-            expiresIn: TimeInterval(device.expiresIn)
-        ) { [http] in
-            let response = try await LoginHTTP.postForm(Self.tokenURL, fields: [
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                "client_id": Self.clientID,
-                "device_code": device.deviceCode
-            ], using: http)
-            if (200..<300).contains(response.statusCode) {
-                return .complete(try LoginHTTP.decode(OAuthTokenResponse.self, from: response))
-            }
-            let error = LoginHTTP.jsonObject(response)["error"] ?? ""
-            if error == "authorization_pending" { return DeviceCodePollResult<OAuthTokenResponse>.pending }
-            if error == "slow_down" { return DeviceCodePollResult<OAuthTokenResponse>.slowDown }
-            if error == "expired_token" { return DeviceCodePollResult<OAuthTokenResponse>.failed("xAI device sign-in expired.") }
-            return DeviceCodePollResult<OAuthTokenResponse>.failed("xAI device sign-in failed.")
-        }
+        let token = try await deviceAuthorization(
+            provider: "xAI",
+            startURL: URL(string: "https://auth.x.ai/oauth2/device/code")!,
+            tokenURL: Self.tokenURL,
+            clientID: Self.clientID,
+            scopes: Self.scopes,
+            deniedMessage: "xAI device sign-in failed.",
+            http: http,
+            prompt: prompt
+        )
         let claims = token.accessToken.jwtPayload(as: GrokIDClaims.self)
         return (claims?.email ?? "Grok Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
@@ -163,7 +126,43 @@ enum ProviderLoginCatalog {
     }
 }
 
-private struct GitHubDeviceCode: Decodable {
+private func deviceAuthorization(
+    provider: String,
+    startURL: URL,
+    tokenURL: URL,
+    clientID: String,
+    scopes: String,
+    headers: [String: String] = [:],
+    deniedMessage: String,
+    http: any HTTPClient,
+    prompt: @Sendable (LoginPrompt) async -> Void
+) async throws -> OAuthTokenResponse {
+    let start = try await LoginHTTP.postForm(startURL, fields: ["client_id": clientID, "scope": scopes], using: http, headers: headers)
+    let device = try LoginHTTP.decode(DeviceCode.self, from: start)
+    guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
+        throw LoginError.invalidResponse
+    }
+    await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
+    return try await DeviceCodePoller.poll(interval: device.interval ?? 5, expiresIn: TimeInterval(device.expiresIn)) {
+        let response = try await LoginHTTP.postForm(tokenURL, fields: [
+            "client_id": clientID,
+            "device_code": device.deviceCode,
+            "grant_type": "urn:ietf:params:oauth:grant-type:device_code"
+        ], using: http, headers: headers)
+        if let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body) {
+            return .complete(token)
+        }
+        return switch LoginHTTP.jsonObject(response)["error"] {
+        case "authorization_pending": .pending
+        case "slow_down": .slowDown
+        case "expired_token": .failed("\(provider) device sign-in expired.")
+        case "access_denied": .failed(deniedMessage)
+        default: .failed("\(provider) device sign-in failed.")
+        }
+    }
+}
+
+private struct DeviceCode: Decodable {
     let deviceCode: String
     let userCode: String
     let verificationURI: String
@@ -176,30 +175,11 @@ private struct GitHubDeviceCode: Decodable {
         case expiresIn = "expires_in"
         case interval
     }
-}
-
-private struct GitHubDeviceToken: Sendable {
-    let accessToken: String
 }
 
 private struct GitHubUser: Decodable {
     let id: Int?
     let login: String
-}
-
-private struct XAIDeviceCode: Decodable {
-    let deviceCode: String
-    let userCode: String
-    let verificationURI: String
-    let expiresIn: Int
-    let interval: TimeInterval?
-    enum CodingKeys: String, CodingKey {
-        case deviceCode = "device_code"
-        case userCode = "user_code"
-        case verificationURI = "verification_uri"
-        case expiresIn = "expires_in"
-        case interval
-    }
 }
 
 private struct CursorTokenResponse: Decodable, Sendable {
