@@ -101,29 +101,6 @@ final class CommandLineToolInstallerTests: XCTestCase {
         XCTAssertEqual(installer.errorMessage, "Couldn't install the terminal helper: x")
     }
 
-    func testUninstallRemovesALinkFromAnotherCopyOfOpenUsage() throws {
-        let fixture = try fixture()
-        defer { try? FileManager.default.removeItem(at: fixture.root) }
-        let otherHelper = fixture.root.appendingPathComponent("Applications/OpenUsage.app/Contents/Helpers/openusage").path
-        try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: otherHelper)
-        var operations: [CommandLineToolInstaller.Operation] = []
-        let installer = CommandLineToolInstaller(
-            sourcePath: fixture.source,
-            destinationPath: fixture.destination,
-            performPrivileged: { operation, _, destination in
-                operations.append(operation)
-                try? FileManager.default.removeItem(atPath: destination)
-                return .success
-            }
-        )
-
-        installer.uninstall()
-
-        XCTAssertEqual(operations, [.uninstall(target: otherHelper)])
-        XCTAssertEqual(installer.status, .notInstalled)
-    }
-
     func testALinkIntoAnotherAppsBundleIsAConflict() throws {
         let fixture = try fixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }

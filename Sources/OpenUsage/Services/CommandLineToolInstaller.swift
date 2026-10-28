@@ -16,7 +16,7 @@ final class CommandLineToolInstaller {
 
     enum Operation: Equatable {
         case install(replacing: String?)
-        case uninstall(target: String)
+        case uninstall
     }
     enum OperationResult { case success, cancelled, failure(String) }
 
@@ -78,13 +78,8 @@ final class CommandLineToolInstaller {
 
     func uninstall() {
         refreshStatus()
-        let target: String
-        switch status {
-        case .installed: target = sourcePath
-        case .linkedToAnotherCopy(let other): target = other
-        case .notInstalled, .conflict: return
-        }
-        handle(performPrivileged(.uninstall(target: target), sourcePath, destinationPath), action: "remove")
+        guard status == .installed else { return }
+        handle(performPrivileged(.uninstall, sourcePath, destinationPath), action: "remove")
     }
 
     /// Every OpenUsage installer, main's included, links the command to `<OpenUsage….app>/Contents/Helpers/openusage`.
@@ -139,10 +134,10 @@ final class CommandLineToolInstaller {
             [ "$existing" = \(shellQuote(target)) ] || exit 73
             /bin/rm \(shellQuote(destinationPath)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
             """
-        case .uninstall(let target):
+        case .uninstall:
             command = """
             existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
-            [ "$existing" = \(shellQuote(target)) ] || exit 75
+            [ "$existing" = \(shellQuote(sourcePath)) ] || exit 75
             /bin/rm \(shellQuote(destinationPath))
             """
         }
