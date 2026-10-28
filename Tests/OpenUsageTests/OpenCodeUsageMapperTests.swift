@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Go plan meters from `/zen/go/v1/usage`: percent format, resets, periods, and boundary failures.
 final class OpenCodeUsageMapperTests: XCTestCase {
     private let sampleBody: [String: Any] = [
         "usage": [
@@ -78,9 +77,6 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertNil(resetsAt)
     }
 
-    /// The reported bug at the point it matters most: a newly started session still reads 0%, but its
-    /// reset has already moved inside the five-hour period. Thirty and sixty seconds are both well past
-    /// the upstream response's unavoidable whole-second ambiguity and must keep the countdown.
     func testSubOnePercentRollingWindowKeepsAnchoredReset() throws {
         let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
         let period = TimeInterval(MetricPeriod.sessionMs) / 1000
@@ -147,7 +143,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         )
         let lines = try OpenCodeUsageMapper.meterLines(
             response,
-            capturedAt: serverDate.addingTimeInterval(2 * 60) // deliberately wrong local clock
+            capturedAt: serverDate.addingTimeInterval(2 * 60)
         )
         guard case let .progress(_, _, _, _, resetsAt, _) = lines[0] else {
             return XCTFail("session is not a progress line")
@@ -176,9 +172,6 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         }
     }
 
-    /// Weekly and monthly resets are calendar/billing instants that exist with or without usage, so the
-    /// placeholder rule must not touch them — early in a cycle one sits a near-full period out, and
-    /// dropping it would strip a real countdown off a row that has no "Not started" state to fall to.
     func testFullPeriodWeeklyAndMonthlyResetsSurviveAtZeroUsage() throws {
         let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
         let weeklyReset = capturedAt.addingTimeInterval(7 * 86_400)

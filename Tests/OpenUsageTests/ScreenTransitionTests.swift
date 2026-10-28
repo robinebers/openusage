@@ -44,8 +44,6 @@ final class ScreenTransitionTests: XCTestCase {
         XCTAssertFalse(DashboardView.settingsChromeIsVisible(pages: [.dashboard, .accounts]))
     }
 
-    /// The pager holds both screens from the switch until that slide has settled, and never before
-    /// the first switch.
     func testNormalMotionKeepsScreenTransitionPagerUntilTheSlideSettles() {
         XCTAssertFalse(DashboardView.screenTransitionIsActive(reduceAnimations: false, screenSlideID: 0, settledSlideID: 0))
         XCTAssertTrue(DashboardView.screenTransitionIsActive(reduceAnimations: false, screenSlideID: 2, settledSlideID: 1))

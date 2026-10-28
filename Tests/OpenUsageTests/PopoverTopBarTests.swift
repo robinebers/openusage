@@ -3,8 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The Accounts top bars: the list's trailing + opens the Add Account sheet, the screen's only way in,
-/// and an account's page ends its bar with the provider's mark.
 @MainActor
 final class PopoverTopBarTests: QuietWindowTestCase {
     func testTheAccountsBarsTrailingButtonOpensAddAccount() async throws {
@@ -28,7 +26,6 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertNil(window.attachedSheet)
 
-        // The trailing button's center: a large circular glass button inset by the bar's padding.
         let point = NSPoint(x: host.bounds.width - PanelMetrics.margin - 14, y: host.bounds.height - 22)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             window.sendEvent(NSEvent.mouseEvent(
@@ -74,7 +71,6 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         try await Task.sleep(for: .milliseconds(300))
         host.layoutSubtreeIfNeeded()
 
-        // The two 28 pt slots inside the bar's padding, and what landed in each.
         let slot: CGFloat = 28
         let leading = CGRect(x: PanelMetrics.margin, y: (height - slot) / 2, width: slot, height: slot)
         let trailing = CGRect(x: PanelMetrics.width - PanelMetrics.margin - slot, y: leading.minY, width: slot, height: slot)
@@ -100,7 +96,6 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         view.subviews.flatMap { [$0] + hostedViews(in: $0) }
     }
 
-    /// The frames, in `host` coordinates, of every layer under `host` that draws something.
     private func drawnFrames(in host: NSView) -> [CGRect] {
         guard let root = host.layer else { return [] }
         func walk(_ layer: CALayer) -> [CGRect] {

@@ -2,8 +2,6 @@ import os
 import XCTest
 @testable import OpenUsage
 
-/// The inline rename rules shared by the dashboard header and the Accounts detail title: commit saves the
-/// trimmed draft, an empty or unchanged draft keeps the name, and Esc (cancel) never saves.
 @MainActor
 final class AccountRenameStoreTests: XCTestCase {
     func testBeginSeedsTheDraftWithTheCurrentName() {

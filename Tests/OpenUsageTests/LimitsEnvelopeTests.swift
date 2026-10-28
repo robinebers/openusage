@@ -1,13 +1,10 @@
 import XCTest
 @testable import OpenUsage
 
-/// The `openusage` command's limits JSON: the documented envelope, raw scalars with explicit units,
-/// freshness, and which rows stay out of it.
 final class LimitsEnvelopeTests: XCTestCase {
     private let fetchedAt = OpenUsageISO8601.date(from: "2026-07-13T01:39:30.000Z")!
     private let generatedAt = OpenUsageISO8601.date(from: "2026-07-13T01:40:00.000Z")!
 
-    /// The example in docs/cli.md.
     private static let documentedExample = """
     {
       "schema": "openusage.limits.v1",

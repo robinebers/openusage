@@ -47,8 +47,6 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(PanelGeometry.clampedHeight(520, minimum: 200, maximum: 700), 520)
     }
 
-    /// The dashboard hugs its content: a one-account card with one row makes a 146 pt popover, and the
-    /// dashboard's floor sits under it. Accounts and Settings keep their 200 pt floor.
     func testTheDashboardsFloorSitsUnderAOneRowCard() {
         let oneRowCard = 2 * PanelMetrics.margin + DashboardGrid.headerHeight + DashboardGrid.headerGap
             + 2 * DashboardGrid.cardPadding + DashboardGrid.captionHeight + DashboardGrid.rowHeight
@@ -71,7 +69,6 @@ final class PanelGeometryTests: XCTestCase {
     }
 
     func testFractionalAnchorAndHeightsKeepTopEdgeOnOneWholePoint() {
-        // A status item on a half point puts the anchor at x.5; the morph passes fractional heights.
         let topLeft = NSPoint(x: 995, y: 949.5)
 
         let frames = (0...1610).map { step in

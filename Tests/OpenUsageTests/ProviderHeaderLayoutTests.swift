@@ -2,12 +2,8 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The provider's header and card, as drawn: the header is the logo and the provider's name, and every
-/// account, one or several, is captioned in the card; the header's logo, every caption and every label
-/// start 12 pt in, and every caption's plan ends where the reset column does; the heights are literal points; a row's columns sit at their fixed x.
 @MainActor
 final class ProviderHeaderLayoutTests: XCTestCase {
-    /// The card: the panel minus its margin on each side.
     private let boxWidth = PanelMetrics.width - 2 * PanelMetrics.margin
     private let inset = DashboardGrid.cardPadding + DashboardGrid.inset
 
@@ -36,9 +32,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         return data
     }
 
-    /// Robin: "always show it as if they had multiple accounts". The header is the logo, 12 pt in and as
-    /// tall as the line, then the provider's name 8 pt after it, centred on the logo, and nothing else:
-    /// no account name, no status, no plan, over a sole account as over several.
     func testTheHeaderIsTheLogoAndTheProvidersNameAlone() throws {
         let sole = section(family([claude("Sunstory")]), plans: ["claude@1": "Pro 200"])
         let bitmap = try InkMap(rendering: sole.header, width: boxWidth, scale: 2)
@@ -62,9 +55,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         XCTAssertEqual((nameRows.first + nameRows.last) / 2, (logoRows.first + logoRows.last) / 2, accuracy: 2, "the name isn't centred on the logo")
     }
 
-    /// Every header reads the provider's name, whatever its accounts are called and however many there
-    /// are: drawn in the same place and font, a header over "Attention Machine", "Claude", an unnamed
-    /// account, an email or two accounts ends at the same x.
     func testEveryHeaderReadsTheProviderWhateverItsAccounts() throws {
         func titleEnd(_ accounts: [Provider]) throws -> CGFloat {
             let bitmap = try InkMap(rendering: section(family(accounts)).header, width: boxWidth, scale: 2)
@@ -76,9 +66,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         }
     }
 
-    /// Every account is captioned with its name and plan over its rows, a sole account named like its
-    /// provider (Robin's OpenCode card) or by its email as much as each of several; the header never
-    /// carries a plan.
     func testEveryAccountIsCaptionedWithItsPlanWhateverTheirNumber() throws {
         let rows = [line(percent("Session", used: 8)), line(percent("Weekly", used: 81))]
         let planArea = (boxWidth / 2, boxWidth)
@@ -96,9 +83,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         XCTAssertNil(try InkMap(rendering: several.header, width: boxWidth, scale: 2).span(from: planArea.0, to: planArea.1), "the plan is on the header over several accounts")
     }
 
-    /// The header's logo, each caption and each label start 12 pt in from the card's edge, and the
-    /// header's name 8 pt after the logo; the plan on a caption and the reset column end 12 pt before
-    /// the edge. A sole account lines up the same way.
     func testTheLogoSharesTheLabelsLeadingEdgeAndThePlansEndWithTheResets() throws {
         let session = line(percent("Session", used: 0, resetsIn: 3 * 3600))
         let two = family([claude("Personal"), claude("Work", "claude@2")], lines: [session, line(percent("Weekly", used: 24, resetsIn: 86_400))])
@@ -118,9 +102,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(soleBands[1].last, soleBands[2].last, accuracy: 1.5, "a sole account's plan doesn't end where the reset does")
     }
 
-    /// Robin: "Everything takes too much space." The steps are pinned in literal points, so changing any
-    /// fails here: a 16 pt header (one Headline line), 4 to the card, 8 inside it, 14 per caption (one
-    /// Subheadline line), 20 per row, 16 between accounts, 16 between providers.
     func testSectionsKeepTheirHeights() throws {
         let rows = ["Session", "Weekly", "Fable"].map { line(percent($0, used: 30)) }
         let one = family([claude("Work")], lines: rows)
@@ -133,10 +114,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(DashboardGrid.iconSize, DashboardGrid.headerHeight, "the logo isn't as tall as the header's line")
     }
 
-    /// A row at rest shows every column in its fixed place: the bar starts 8 pt after the 86 pt label
-    /// column and fills its slot, the value is right-aligned in its 52 pt column, the reset in its 56 pt
-    /// column ending 12 pt before the card's edge. A row without a limit shows its value where the bar
-    /// would start, at its natural width.
     func testARowShowsItsBarValueAndResetInTheirColumns() throws {
         let end = boxWidth - inset
         let barStart = inset + DashboardGrid.labelWidth + DashboardGrid.columnGap
@@ -170,9 +147,6 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         XCTAssertEqual(drawn.last - drawn.first, alone.last - alone.first, accuracy: 1, "the value shrank")
     }
 
-    /// A row running out shows the flame before its value, inside the value column, and nothing else
-    /// moves: the label, the bar, the value's right edge and the reset sit where they do on a row at
-    /// rest, and even the widest value, "100%", keeps the flame inside the column.
     func testTheFlameSitsInTheValueColumnAndMovesNothing() throws {
         let end = boxWidth - inset
         let resetStart = end - DashboardGrid.resetWidth

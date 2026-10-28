@@ -2,8 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// Claude and Codex tokens are refreshed shortly before they expire, never after, so a pass that lands
-/// at expiry never sends a dying token and never flashes "sign-in expired".
 @MainActor
 final class TokenRefreshMarginTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -34,8 +32,6 @@ final class TokenRefreshMarginTests: XCTestCase {
         let http = try await refreshCodex(expiringIn: 10 * 60)
         XCTAssertFalse(http.requests.contains { $0.url == CodexLogin.tokenURL })
     }
-
-    // MARK: - Helpers
 
     private func refreshClaude(expiringIn seconds: TimeInterval) async throws -> (ProviderSnapshot, RoutingHTTPClient, OAuthTokens) {
         let account = Account(kind: .claude, label: "Claude")

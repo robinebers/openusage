@@ -3,17 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The dashboard shows what it shows: nothing on a provider's header, a caption or a row opens on a
-/// click, no plan or name reacts to the pointer, and a row under the pointer draws exactly as it does
-/// at rest. Five things react: resting the pointer on the Limit
-/// Resets row's count opens the resets timeline after the hover dwell, resting it on the warning or
-/// clock after an account's name opens a tooltip with the reason, resting it on a row's bar, value or
-/// reset opens a tooltip with the figure the row doesn't show, a click on a row's value or reset
-/// flips the display, and a double-click on an account's name on its caption renames it. The header,
-/// the provider's logo and name, opens nothing, over one account as over several; the copy button it
-/// reveals under the pointer is DashboardCopyButtonTests' business.
-/// Dragging still reorders: the header drags the provider, a caption drags its account, and a row
-/// drags itself.
 @MainActor
 final class DashboardSectionTests: QuietWindowTestCase {
     private final class Log {
@@ -24,7 +13,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         var resetFlips = 0
     }
 
-    /// The hosted section, with the account a rename can begin on.
     private struct Hosted {
         let window: NSWindow
         let host: NSView
@@ -32,18 +20,12 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let accountID: String
     }
 
-    /// The caption's centre line, inside the card under the header.
     private static let captionY = DashboardGrid.headerHeight + DashboardGrid.headerGap + DashboardGrid.cardPadding + DashboardGrid.captionHeight / 2
-    /// The first row's centre line, under the caption.
     private static let firstRowY = DashboardGrid.headerHeight + DashboardGrid.headerGap + DashboardGrid.cardPadding
         + DashboardGrid.captionHeight + DashboardGrid.rowHeight / 2
-    /// A point on a caption's name, which starts 12 pt in.
     private static let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + 10
-    /// A point on the header's name, which starts 8 pt after the logo.
     private static let headerNameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
 
-    /// A week-long window, so the pace figure the bar's tooltip names can't change between the row's
-    /// 30-second clock tick and the assertion's own reading of the time.
     private let lines: [DashboardLine] = ["Session", "Weekly", "Fable"].map { title in
         var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
         data.resetsAt = Date().addingTimeInterval(86_400)
@@ -51,7 +33,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         return DashboardLine(descriptor: WidgetDescriptor(provider: Provider(id: "claude", kind: .claude), key: title, metricLabel: title, sample: data), data: data)
     }
 
-    /// The Limit Resets row: "2 available", the one row with a hover.
     private let resets: DashboardLine = {
         var data = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
         data.values = [MetricValue(number: 2, kind: .count, label: "available")]
@@ -66,12 +47,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         DashboardAccount(provider: provider, lines: lines ?? self.lines)
     }
 
-    /// Resting the pointer on the caption's name or on a row's label opens nothing and changes nothing
-    /// on the panel: no highlight, no text swap, no height. A row's bar, value and reset each open a
-    /// tooltip with the one figure the row doesn't show (where the pace lands at reset, the other
-    /// reading, the other format), and the row under the pointer still draws as at rest. Only the Limit
-    /// Resets row's count opens the resets timeline after the hover dwell, with no click, and the panel
-    /// keeps its height.
     func testOnlyTheResetsCountOpensAPopoverAndEveryOtherRowDrawsAsAtRest() throws {
         let log = Log()
         let hosted = hostWithRenaming(log: log, lines: lines + [resets])
@@ -112,10 +87,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         HoverPopoverState.dismissAll()
     }
 
-    /// The warning after the caption's name of an account whose refresh failed explains itself, in a
-    /// one-account card as in any other: resting the pointer on it opens a tooltip with the notice after
-    /// the hover dwell, which goes once the pointer leaves. The header's logo and name and the caption's
-    /// name open nothing.
     func testHoveringTheWarningShowsTheNoticeAndHoveringTheNameShowsNothing() throws {
         let notice = "Refresh failed: the token has expired."
         let (renaming, provider) = storedAccount(label: "Work")
@@ -156,9 +127,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertNil(HoverTooltips.visibleText)
     }
 
-    /// A click on a row's value flips the meter style and a click on its reset flips the reset display,
-    /// once per click; a click on the row's label or bar flips nothing, and no click opens anything or
-    /// lifts the row.
     func testClickingTheValueOrTheResetFlipsItsDisplayAndTheRestOfTheRowDoesNot() {
         let log = Log()
         let hosted = hostWithRenaming(log: log)
@@ -185,7 +153,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertNil(hosted.renaming.edit)
     }
 
-    /// A click on an account's name, on its plan or on a row opens nothing, starts no drag and no rename.
     func testClicksChangeNothing() throws {
         let log = Log()
         let hosted = hostWithRenaming(log: log)
@@ -200,7 +167,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
             send(.leftMouseDown, at: point, hosted.window, hosted.host)
             send(.leftMouseUp, at: point, hosted.window, hosted.host)
             XCTAssertFalse(NSApp.windows.contains { $0.isVisible && !shown.contains(ObjectIdentifier($0)) }, "a click at \(point) opened a window")
-            // Off the row before its hover dwell runs out.
             send(.mouseMoved, at: CGPoint(x: hosted.host.bounds.width / 2, y: DashboardGrid.headerHeight / 2), hosted.window, hosted.host)
             RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         }
@@ -211,7 +177,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
     func testTheCaptionDragsTheAccountAndARowDragsItself() {
         let log = Log()
         let hosted = hostWithRenaming(log: log)
-        // The empty middle of the caption belongs to it too.
         drag(from: CGPoint(x: hosted.host.bounds.width / 2, y: Self.captionY), hosted.window, hosted.host)
         XCTAssertGreaterThan(log.accountDrags, 0)
         XCTAssertEqual(log.metricDrags, 0)
@@ -222,8 +187,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(log.accountDrags, 0)
     }
 
-    /// A double-click on the account's name opens the inline rename, as the right-click Rename does. A
-    /// single click there, or a double-click on the empty rest of the caption, does nothing.
     func testDoubleClickingTheNameRenamesTheAccountAndASingleClickDoesNot() throws {
         let log = Log()
         let hosted = hostWithRenaming(log: log)
@@ -243,11 +206,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(log.accountDrags + log.metricDrags, 0)
     }
 
-    /// Robin: "always show it as if they had multiple accounts". A provider with one account is drawn
-    /// like one with several: the header reads the provider, "Claude", and the account "Work" is
-    /// captioned over its rows. A double-click on the header's name renames nothing; on the caption's
-    /// name it renames the account with the whole name selected. The header drags the provider and the
-    /// caption the account.
     func testAOneAccountCardIsCaptionedLikeAnyOther() throws {
         let log = Log()
         let (renaming, provider) = storedAccount(label: "Work")
@@ -295,7 +253,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertNil(renaming.edit)
     }
 
-    /// Right-click → Rename starts the same edit, and it too opens with the whole name selected.
     func testARenameFromTheMenuSelectsTheWholeName() throws {
         let hosted = hostWithRenaming(log: Log())
         hosted.renaming.begin(hosted.accountID)
@@ -309,8 +266,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(editor.selectedRange(), NSRange(location: 0, length: (name as NSString).length), "the whole name isn't selected", line: line)
     }
 
-    /// Pressing on the name and moving lifts the account on the first move, with no wait for a second
-    /// click, and opens no rename.
     func testDraggingTheNameDragsTheAccountAtOnce() {
         let log = Log()
         let hosted = hostWithRenaming(log: log)
@@ -321,7 +276,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertGreaterThan(log.accountDrags, 0, "the drag waited past the first move")
         send(.leftMouseUp, at: CGPoint(x: name.x, y: name.y + 12), hosted.window, hosted.host)
 
-        // A second press-and-drag right after, which reads as the second click of a double-click, drags too.
         log.accountDrags = 0
         send(.leftMouseDown, at: name, hosted.window, hosted.host, clickCount: 2)
         send(.leftMouseDragged, at: CGPoint(x: name.x, y: name.y + 12), hosted.window, hosted.host, clickCount: 2)
@@ -332,7 +286,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertNil(hosted.renaming.edit, "a drag on the name started a rename")
     }
 
-    /// A Claude account saved under `label`, and a rename store that can edit it.
     private func storedAccount(label: String) -> (AccountRenameStore, Provider) {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
@@ -341,9 +294,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         return (AccountRenameStore(accounts: accounts), provider)
     }
 
-    /// A provider with two accounts, Personal (saved, so it can be renamed) and Work, as the dashboard
-    /// hosts it: each caption carries its account's drag, every row its drag, and the environment holds
-    /// the rename store.
     private func hostWithRenaming(log: Log, lines: [DashboardLine]? = nil) -> Hosted {
         let (renaming, provider) = storedAccount(label: "Personal")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider, lines: lines), account(work)])
@@ -361,8 +311,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
         return Hosted(window: window, host: host, renaming: renaming, accountID: provider.id)
     }
 
-    /// `view` at the card's width in an offscreen window that takes events, with `renaming` in its
-    /// environment.
     private func hostView(_ content: some View, renaming: AccountRenameStore) -> (NSWindow, NSView) {
         let view = content
             .frame(width: PanelMetrics.width - 2 * PanelMetrics.margin)

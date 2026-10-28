@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Claiming a Claude reset grant: request shape, outcome decoding, and the account runtime's full flow,
-/// all through a stub HTTP client with the account's own vault credential; the grants come from the
-/// secondary-reads slot.
 @MainActor
 final class ClaudeResetClaimTests: XCTestCase {
     private nonisolated static let orgUUID = "6a9f1c2e-1b4d-4c3a-9e8f-0123456789ab"
@@ -13,8 +10,6 @@ final class ClaudeResetClaimTests: XCTestCase {
         "ends_at":"2026-10-22T16:00:00+00:00","clears":["five_hour","seven_day"],"paused":false,"usable_now":true,
         "use_requires_limit":false}],"next_grant_id":"opus55-launch-promax-20260921"}
         """
-
-    // MARK: - Request shape
 
     func testClaimRequestMatchesClaudeCode() async throws {
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
@@ -36,8 +31,6 @@ final class ClaudeResetClaimTests: XCTestCase {
             "program": "cedar_ember", "grant_id": "opus55-launch-promax-20260921", "request_id": Self.requestID
         ])
     }
-
-    // MARK: - Outcome decoding
 
     func testOutcomeTable() {
         func outcome(_ json: String, status: Int = 200) -> ResetClaimOutcome {
@@ -67,8 +60,6 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome(scopeRefusal, status: 403), .failed(.notPermitted))
     }
 
-    // MARK: - Status parse
-
     func testStatusParseRejectsBlockWithMalformedGrant() {
         XCTAssertNil(ClaudeResetGrantStatus.parse(["eligible": true, "grants": [["resets_left": 1]]]))
         XCTAssertNil(ClaudeResetGrantStatus.parse(["eligible": true, "grants": [["id": "g"]]]))
@@ -89,8 +80,6 @@ final class ClaudeResetClaimTests: XCTestCase {
         noNext.nextGrantID = nil
         XCTAssertNil(noNext.claimableGrantID)
     }
-
-    // MARK: - Account runtime flow
 
     func testClaimSpendsNextGrantWithTheAccountsLoginAndUpdatesTheRowFromItsAnswer() async throws {
         let http = makeHTTP(claim: { _ in Self.json(#"{"result":"reset","resets_left":0,"cleared":["five_hour","seven_day"]}"#) })
@@ -277,8 +266,6 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertNotNil(runtime.claude.session?.resetGrants.check?.status)
     }
 
-    // MARK: - Helpers
-
     private func makeHTTP(
         grants: String = grantsBlock,
         claim: @escaping @Sendable (HTTPRequest) throws -> HTTPResponse
@@ -301,7 +288,6 @@ final class ClaudeResetClaimTests: XCTestCase {
         }
     }
 
-    /// A pass, then the secondary-reads slot that reads the profile and the grants.
     private func prime(_ runtime: AccountProviderRuntime) async {
         let snapshot = await runtime.refresh()
         _ = await runtime.refreshHourlyReads(of: snapshot)

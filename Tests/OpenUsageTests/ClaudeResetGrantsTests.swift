@@ -4,7 +4,7 @@ import XCTest
 /// The Claude "Rate Limit Resets" row, read from the reset-grants response's `cedar_ember` block
 /// (Anthropic's one-off usage-limit reset grants).
 final class ClaudeResetGrantsTests: XCTestCase {
-    private let now = Date(timeIntervalSince1970: 1_790_000_000) // 2026-09-21
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
 
     private func resetsLine(_ json: String, status: Int = 200) throws -> MetricLine? {
         let response = HTTPResponse(statusCode: status, headers: [:], body: Data(json.utf8))
@@ -17,8 +17,6 @@ final class ClaudeResetGrantsTests: XCTestCase {
     }
 
     func testMapsEachRemainingResetWithItsGrantDeadline() throws {
-        // Shape from a live Max 20x response (the Opus 5.5 launch grant), plus a second grant with two
-        // resets left so both share one deadline.
         let line = try resetsLine("""
         { "cedar_ember": {
             "eligible": true, "at_limit": false, "exhausted": [],

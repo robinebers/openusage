@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// `GetCurrentPeriodUsage` answers with the usage object at the top level (no `usage` envelope).
-/// Shape taken from the live API on 2026-10-23; values are fake.
 @MainActor
 final class CursorCurrentPeriodUsageTests: XCTestCase {
     nonisolated private static let currentPeriodUsage = #"""

@@ -37,7 +37,6 @@ extension HTTPRequest {
     var isClaudeResetGrantsCheck: Bool { url.query?.contains("cedar_ember=1") == true }
 }
 
-/// A mutable clock so a test can advance `now` between refreshes to exercise time-based gates.
 final class TestClock: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock(initialState: Date.distantPast)
 
@@ -48,7 +47,6 @@ final class TestClock: @unchecked Sendable {
     func set(_ value: Date) { lock.withLock { $0 = value } }
 }
 
-/// A thread-safe value a stub HTTP handler can read while the test flips it.
 final class TestSwitch<Value: Sendable>: @unchecked Sendable {
     private let lock: OSAllocatedUnfairLock<Value>
 
@@ -60,8 +58,6 @@ final class TestSwitch<Value: Sendable>: @unchecked Sendable {
     }
 }
 
-/// A provider runtime that answers each refresh from a script: `answer` gets the refresh's ordinal, so a
-/// fixed snapshot, a sequence, a swap between refreshes and a clock-stamped answer are each one closure.
 @MainActor
 final class StubRuntime: ProviderRuntime {
     let provider: Provider
@@ -79,7 +75,6 @@ final class StubRuntime: ProviderRuntime {
         self.init(provider: provider, descriptors: descriptors) { _ in snapshot }
     }
 
-    /// Answers `snapshots` in order and repeats the last one.
     convenience init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
         self.init(provider: provider, descriptors: descriptors) { snapshots[min($0, snapshots.count - 1)] }
     }
@@ -111,7 +106,6 @@ final class HangingProviderRuntime: ProviderRuntime {
     }
 }
 
-/// Records captured telemetry events without touching PostHog.
 @MainActor
 final class RecordingTelemetrySink: TelemetrySink {
     var events: [(name: String, properties: [String: Any])] = []
@@ -123,7 +117,6 @@ final class RecordingTelemetrySink: TelemetrySink {
 }
 
 extension AppContainer {
-    /// A container on isolated defaults with a recording telemetry sink; the shape every test uses.
     static func forTesting(
         accounts: AccountStore,
         defaults: UserDefaults,
@@ -141,8 +134,6 @@ extension AppContainer {
 }
 
 extension WidgetDataStore {
-    /// A store over `runtimes`, its registry built from them and its snapshot cache on the same defaults;
-    /// pass `registry` or `cache` to shape either by hand.
     static func forTesting(
         _ runtimes: [ProviderRuntime],
         registry: WidgetRegistry? = nil,
@@ -193,7 +184,6 @@ final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
 }
 
 extension XCTestCase {
-    /// A UserDefaults on a suite of its own, empty now and removed again when the test ends.
     func isolatedDefaults() -> UserDefaults {
         let suite = "\(type(of: self)).\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

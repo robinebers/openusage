@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// The wait after a failed refresh, driven through `WidgetDataStore` on a fake clock: a 429 honours its
-/// Retry-After and holds off manual refreshes too, a 429 without one and an account that keeps failing
-/// both double from 5 minutes up to an hour, a success resets the wait, and no answer at all never grows it.
 @MainActor
 final class RefreshBackoffTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
@@ -119,8 +116,6 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertEqual(snapshot.failure?.kind, .rateLimited(retryAfter: 60))
     }
 
-    // MARK: - Helpers
-
     private let provider = Provider(id: "test", kind: .claude)
 
     private var descriptor: WidgetDescriptor {
@@ -130,7 +125,6 @@ final class RefreshBackoffTests: XCTestCase {
         )
     }
 
-    /// Advances to one second before the expected next attempt (nothing is asked), then to it (one request).
     private func assertNextAttempt(
         after wait: TimeInterval,
         store: WidgetDataStore,

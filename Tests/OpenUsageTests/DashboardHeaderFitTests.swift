@@ -3,20 +3,10 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// Robin's own accounts at the 340 pt panel, as the dashboard hosts them: every account's caption,
-/// name and plan, sits whole inside its card with room for the status glyph, and nothing is ever
-/// truncated or shrunk. The caption is hosted in a window at the card's inner width and its name and
-/// plan are measured in pixels against the same text drawn alone, so a truncated name, which draws
-/// narrower, fails here. Every card captions every account, so this is the proof the rule fits the panel.
 @MainActor
 final class DashboardHeaderFitTests: QuietWindowTestCase {
-    /// What a caption has to draw in: the card less its padding on each side.
     private let width = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
 
-    /// Every one of Robin's accounts: the name starts at the caption's inset and ends where the name alone
-    /// would, the plan ends at the inset before the card's edge as wide as the plan alone, at least 8 pt
-    /// between them with nothing in between, the caption one Subheadline line, and the line still has
-    /// room for the warning glyph after the name.
     func testRobinsCaptionsFitWhole() async throws {
         let captions: [(ProviderKind, String, String)] = [
             (.grok, "rob@sunstory.com", "SuperGrok Heavy"), (.cursor, "rob@sunstory.com", "Ultra"),
@@ -56,8 +46,6 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
         DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", kind: kind, accountLabel: name), lines: [])
     }
 
-    /// `content` hosted at `width` (its own width when nil) on white in a quiet window, laid out, and read as
-    /// ink: a painted pixel that is clearly not white.
     private func ink(_ content: some View, width: CGFloat? = nil) async throws -> InkMap {
         let view = content
             .frame(width: width)

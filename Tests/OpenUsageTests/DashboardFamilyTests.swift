@@ -31,12 +31,9 @@ final class DashboardFamilyTests: XCTestCase {
         func codex(_ label: String?) -> Provider {
             Provider(id: "codex@\(label ?? "plain")", kind: .codex, accountLabel: label)
         }
-        // A caption names its account by its name, by its email when it has no name of its own, and by
-        // the provider's name when it has none at all; one account or several alike.
         XCTAssertEqual(family([codex("Sunstory")]).accounts.map(\.name), ["Sunstory"])
         XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com"), codex("Codex"), codex(nil)]).accounts.map(\.name),
                        ["Sunstory", "sam@hey.com", "Codex", "Codex"])
-        // The copied image keeps a custom name and drops an email.
         XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Codex"])
         XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Sunstory", "Codex"])
     }

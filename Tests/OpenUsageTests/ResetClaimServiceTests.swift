@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// The resets popover's claim seam: which accounts get one, which outcomes refresh the account, and that
-/// the post-claim refresh runs once.
 @MainActor
 final class ResetClaimServiceTests: XCTestCase {
     @MainActor
@@ -77,7 +75,6 @@ final class ResetClaimServiceTests: XCTestCase {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults)
-        // An API-key credential fails a Codex refresh before any request, so nothing reaches the network.
         let codex = accounts.add(kind: .codex, label: "Work", credential: .apiKey("key"))
         var backedOff = false
         for _ in 0..<200 where !backedOff {

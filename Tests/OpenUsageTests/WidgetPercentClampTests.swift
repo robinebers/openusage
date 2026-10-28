@@ -1,10 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// A percent meter fed an out-of-range sample (a provider reporting a negative or
-/// >100 utilization) must never surface "-5%" or "105%" on any rendering path — the row's hover text or
-/// the menu-bar value — in either meter style. The sample is sanitized at the
-/// construction choke point (`WidgetDataStore.resolve`), with a defensive clamp in `MetricFormatter`.
 @MainActor
 final class WidgetPercentClampTests: XCTestCase {
     func testOutOfRangePercentSamplesClampAcrossEveryRenderingPath() async {
@@ -31,10 +27,6 @@ final class WidgetPercentClampTests: XCTestCase {
         }
     }
 
-    // MARK: - Helper
-
-    /// A refreshed store whose single provider emits one `.progress(format: .percent)` line with the
-    /// given `used` against a limit of 100 — i.e. the real resolve path every provider funnels through.
     private func makePercentStore(used: Double, suite: String) async -> (WidgetDataStore, WidgetDescriptor) {
         let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(

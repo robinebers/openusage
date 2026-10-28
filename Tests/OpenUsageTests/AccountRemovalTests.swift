@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// Removing an account ends everything running on its behalf. The hazard is a token refresh suspended
-/// at the network when the account is removed: its response must not save the rotated tokens back into
-/// the Keychain or publish a snapshot for a card that no longer exists.
 @MainActor
 final class AccountRemovalTests: XCTestCase {
     func testRemovingAnAccountDiscardsItsInFlightTokenRefresh() async throws {
@@ -64,8 +61,6 @@ final class AccountRemovalTests: XCTestCase {
     }
 }
 
-/// A network response the test holds back and releases: `hold()` parks the caller until `release()`,
-/// and `waitUntilHeld()` tells the test the request has arrived.
 private actor HeldResponse {
     private var released = false
     private var held: [CheckedContinuation<Void, Never>] = []

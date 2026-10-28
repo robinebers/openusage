@@ -1,10 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the daily-rollup/dedup contract of `TelemetryRecorder`: the 5-minute refresh timer produces
-/// ~1,440 outcomes/user/day, so the recorder must collapse the real fetches among them into at most
-/// one event per provider per day (and one `app_daily_active` per day) and keep the daily ping when
-/// optional analytics are off.
 @MainActor
 final class TelemetryRecorderTests: XCTestCase {
     private typealias FakeSink = RecordingTelemetrySink
@@ -27,10 +23,8 @@ final class TelemetryRecorderTests: XCTestCase {
         recorder.record(providerID: "claude", result: .failed, manual: false)
         recorder.record(providerID: "claude", result: .failed, manual: false)
 
-        // Same day → nothing emitted yet (it's still accumulating).
         XCTAssertTrue(sink.events(named: "provider_refresh_daily").isEmpty)
 
-        // New day → the first record rolls day 25's complete totals into one event.
         clock = day(26)
         recorder.record(providerID: "claude", result: .refreshed, manual: false)
 
@@ -81,7 +75,6 @@ final class TelemetryRecorderTests: XCTestCase {
 
         recorder.record(providerID: "grok", result: .refreshed, manual: false)
 
-        // A new day with no further grok outcomes: the tick sweep must still emit day 25's rollup.
         clock = day(26)
         recorder.tick()
 
@@ -142,9 +135,6 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(first, second)
     }
 
-    // MARK: - Helpers
-
-    /// Local noon on 2026-06-`d`, matching the recorder's local-calendar day boundary.
     private func day(_ d: Int) -> Date {
         var c = DateComponents()
         c.year = 2026; c.month = 6; c.day = d; c.hour = 12

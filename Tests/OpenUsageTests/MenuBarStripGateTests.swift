@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the status item's strip gate: an unchanged strip is not set on the button again, while a
-/// changed one is.
 @MainActor
 final class MenuBarStripGateTests: XCTestCase {
     func testUnchangedStripIsNotShownAgain() {

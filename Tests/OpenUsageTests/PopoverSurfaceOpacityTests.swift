@@ -2,9 +2,6 @@ import XCTest
 import AppKit
 @testable import OpenUsage
 
-/// Guards the popover's core invariant: the backdrop and card surfaces are fully opaque, so the data
-/// region never shows the desktop through it. Glass is reserved for the footer chrome; the tray and
-/// cards themselves stay solid in both appearances.
 final class PopoverSurfaceOpacityTests: XCTestCase {
     private let appearances: [NSAppearance.Name] = [.aqua, .darkAqua]
 
@@ -12,11 +9,6 @@ final class PopoverSurfaceOpacityTests: XCTestCase {
         assertOpaque(Theme.trayNSColor, label: "tray")
     }
 
-    // The grouped card is the opaque tray with a translucent `.fill.quaternary` composited on top (see
-    // `Theme.cardSurface`), so the card surface is opaque by construction as long as the tray is — which
-    // the test above guards.
-
-    /// Resolves the dynamic (light/dark) color in each appearance and asserts it is fully opaque.
     private func assertOpaque(_ color: NSColor, label: String,
                               file: StaticString = #filePath, line: UInt = #line) {
         for name in appearances {

@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the "No data" state: a placed tile whose provider snapshot has no line matching the
-/// descriptor's metric label must report `hasData == false`, render the exact "—"/"No data" copy, and
-/// never leak its placeholder sample numbers into the menu bar.
 @MainActor
 final class WidgetNoDataTests: XCTestCase {
     func testMissingLineShowsNoDataAcrossDashboardAndMenuBar() async {
@@ -20,15 +17,9 @@ final class WidgetNoDataTests: XCTestCase {
         XCTAssertNotEqual(real.valueText, WidgetData.noDataValue)
     }
 
-    // Menu-bar ordering / no-data-skip / fallback are exercised on the real tray path
-    // (MenuBarContentBuilder + LayoutStore.pinnedGroups) in MenuBarContentTests and MenuBarPinTests.
-
-    // MARK: - Helpers
-
     private func makeRefreshedStore() async -> (WidgetDataStore, WidgetDescriptor, WidgetDescriptor) {
         let provider = Provider(id: "test", kind: .cursor)
         let present = boundedPercent(provider, key: "present", metric: "Present", sampleUsed: 40)
-        // Deliberately fake sample numbers we must never show once the account lacks this metric.
         let missing = boundedPercent(provider, key: "missing", metric: "Missing", sampleUsed: 99)
         let runtime = StubRuntime(
             provider: provider,

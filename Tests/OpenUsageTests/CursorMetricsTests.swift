@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Every Cursor metric that comes from Cursor's API. Response shapes match the live API on 2026-10-23;
-/// every value is fake.
 @MainActor
 final class CursorMetricsTests: XCTestCase {
     /// A JWT whose subject carries the user id the cursor.com cookie endpoints need.
@@ -37,7 +35,6 @@ final class CursorMetricsTests: XCTestCase {
      "unifiedPlanMigration":{"href":"fake"},"upgradeRecommendations":[],"usagePercent":30}
     """#
 
-    /// A request-based Enterprise seat: the primary body carries no limit, pools or total.
     nonisolated private static let enterpriseUsage = #"{"billingCycleEnd":"1764547200000","billingCycleStart":"1761955200000","enabled":true,"planUsage":{}}"#
     nonisolated private static let requestUsage = #"{"gpt-4":{"numRequests":120,"maxRequestUsage":500},"startOfMonth":"2026-10-01T00:00:00Z"}"#
     nonisolated private static let enterpriseSummary = #"""
@@ -45,7 +42,6 @@ final class CursorMetricsTests: XCTestCase {
      "individualUsage":{"onDemand":{"enabled":true,"used":2500,"limit":10000}}}
     """#
 
-    /// A team seat with model pools: the primary body has no on-demand, usage-summary does.
     nonisolated private static let teamUsage = #"""
     {"billingCycleEnd":"1764547200000","billingCycleStart":"1761955200000","enabled":true,
      "planUsage":{"apiPercentUsed":10,"autoPercentUsed":5,"limit":2000,"totalSpend":300,"totalPercentUsed":7},

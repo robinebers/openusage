@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Default stars belong to an account the first time it is seen: an edit to one account's stars does
-/// not cost a later account its defaults, a relaunch reseeds nothing, and pins saved under the old
-/// family-wide ids do not stand in for an account's own.
 @MainActor
 final class DefaultStarsTests: XCTestCase {
     func testAnAccountAddedAfterAStarEditStillGetsItsDefaultStars() {
@@ -42,7 +39,6 @@ final class DefaultStarsTests: XCTestCase {
 
 }
 
-/// The account and layout wiring `AppContainer` does, without the data store.
 @MainActor
 private final class StarsApp {
     private let defaults: UserDefaults

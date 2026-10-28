@@ -2,10 +2,6 @@ import XCTest
 import SwiftUI
 @testable import OpenUsage
 
-/// Covers the Share card export pipeline: `png(for:)` rasterizes the flexible-height card into a valid
-/// PNG. `ImageRenderer` is MainActor-only, so the whole case runs on the main actor. Pixel dimensions
-/// are checked scale-agnostically (the bitmap width is a multiple of the authored card width) because
-/// `ImageRenderer.scale` is not honored in headless CI.
 @MainActor
 final class ShareCardRendererTests: XCTestCase {
     private func sampleCard() -> ShareCardView {
@@ -31,10 +27,8 @@ final class ShareCardRendererTests: XCTestCase {
         let png = try XCTUnwrap(ShareCardRenderer.png(for: sampleCard()))
 
         XCTAssertFalse(png.isEmpty)
-        // PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A.
         let magic: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
         XCTAssertEqual(Array(png.prefix(magic.count)), magic)
-        // The PNG must decode back into an image (a non-empty Data alone isn't proof it's valid).
         XCTAssertNotNil(NSImage(data: png))
     }
 
@@ -42,7 +36,6 @@ final class ShareCardRendererTests: XCTestCase {
         let empty = DashboardFamily(id: "cursor", provider: MockData.cursor, accounts: [DashboardAccount(provider: MockData.cursor, lines: [])])
         let card = ShareCardView(family: empty, appearance: .dark)
         let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: card))))
-        // Same scale-agnostic width check; the point is it doesn't crash on an empty provider.
         XCTAssertEqual(rep.pixelsWide % Int(ShareCardView.width), 0)
         XCTAssertGreaterThan(rep.pixelsHigh, 0)
     }

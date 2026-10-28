@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `WidgetDataStore.plan(for:)`: the provider-header plan is `nil` until the provider has a
-/// snapshot, then mirrors that snapshot's `plan`.
 @MainActor
 final class WidgetDataStorePlanTests: XCTestCase {
     func testPlanMirrorsSnapshotAndHandlesMissingValues() async {

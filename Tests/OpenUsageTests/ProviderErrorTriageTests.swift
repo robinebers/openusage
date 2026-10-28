@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `ProviderError.requireSuccess`, the shared non-2xx triage the Claude/Codex/Grok/Cursor
-/// mappers route through: 401/403 → the account's sign-in expired, any other non-2xx → a request
-/// failure carrying the status, and a 2xx returns without throwing.
 final class ProviderErrorTriageTests: XCTestCase {
     private func requireSuccess(status: Int) throws {
         let response = HTTPResponse(statusCode: status, headers: [:], body: Data())

@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// The cache is plain persistence: what one instance saves, a fresh instance loads back.
 final class ProviderSnapshotCacheTests: XCTestCase {
     private func snapshot(_ id: String, used: Double, now: Date) -> ProviderSnapshot {
         ProviderSnapshot(
@@ -26,7 +25,6 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         XCTAssertEqual(reloaded["alpha"]?.refreshedAt, now)
     }
 
-    /// A blob saved while the payload still carried the app version that wrote it loads as before.
     func testBlobSavedWithAnAppVersionStillLoads() throws {
         struct VersionedPayload: Encodable {
             var snapshots: [String: ProviderSnapshot]

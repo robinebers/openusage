@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the pure milestone logic that decides when a quota notification fires: worsening pace edges
-/// (blue→orange, orange→red), the under-10%-remaining crossing, per-window dedup, reset rollover,
-/// recovery re-arming, and the no-trustworthy-pace suppression.
 final class PaceNotificationLogicTests: XCTestCase {
     private let reset = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -11,7 +8,6 @@ final class PaceNotificationLogicTests: XCTestCase {
     private let close = WidgetData.MeterState.closeToLimit
     private let running = WidgetData.MeterState.runningOut
 
-    /// Run one evaluation from a prior state.
     private func step(
         _ state: WidgetData.MeterState,
         fraction: Double = 0.5,
@@ -22,8 +18,6 @@ final class PaceNotificationLogicTests: XCTestCase {
             state: state, fraction: fraction, resetsAt: resetsAt ?? reset, previous: previous
         )
     }
-
-    // MARK: - Pace-verdict edges
 
     func testHealthyToCloseFiresOnce() {
         let first = step(healthy)
@@ -46,40 +40,29 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(red.fire, [.closeToRunningOut])
     }
 
-    // MARK: - Under 10% remaining
-
     func testUnderTenPercentFiresOncePerWindow() {
-        let primed = step(close, fraction: 0.50).newState   // prime at close, 50% remaining
+        let primed = step(close, fraction: 0.50).newState
         let first = step(close, fraction: 0.08, from: primed)
         XCTAssertTrue(first.fire.contains(.underTenPercent))
         let again = step(close, fraction: 0.05, from: first.newState)
         XCTAssertFalse(again.fire.contains(.underTenPercent))
     }
 
-    // MARK: - Cold start with already-bad state
-
     func testColdStartPrimesWithoutFiring() {
-        // First real observation at launch records the baseline without firing — an already-bad metric
-        // shouldn't spam alerts the moment the app opens.
         let first = step(running, fraction: 0.02)
         XCTAssertTrue(first.fire.isEmpty, "cold start primes, it doesn't fire")
         XCTAssertTrue(step(.level(.critical), fraction: 0.01).fire.isEmpty)
         XCTAssertTrue(step(.level(.normal), fraction: 0.99).fire.isEmpty)
-        // A later worsening (after recovery) still fires normally.
         let recovered = step(healthy, fraction: 0.50, from: first.newState).newState
         let red = step(running, fraction: 0.02, from: recovered)
         XCTAssertTrue(red.fire.contains(.closeToRunningOut))
         XCTAssertTrue(red.fire.contains(.underTenPercent))
     }
 
-    // MARK: - Reset rollover
-
     func testResetRolloverClearsFiredSetSoItCanFireAgain() {
         var state = step(healthy).newState
-        state = step(close, from: state).newState   // fires healthyToClose this window
-        XCTAssertTrue(step(close, from: state).fire.isEmpty)   // deduped within the window
-        // A later reset window: same worsening should fire again. Re-enter healthy then close in the
-        // new window so the edge is present.
+        state = step(close, from: state).newState
+        XCTAssertTrue(step(close, from: state).fire.isEmpty)
         let newReset = reset.addingTimeInterval(3600)
         let rolled = step(healthy, resetsAt: newReset, from: state).newState
         let refired = step(close, resetsAt: newReset, from: rolled)
@@ -95,15 +78,11 @@ final class PaceNotificationLogicTests: XCTestCase {
         }
     }
 
-    // MARK: - Recovery re-arms
-
     func testRecoveryThenReworseningRefires() {
         var state = step(healthy).newState
-        state = step(close, from: state).newState   // fired
-        state = step(running, from: state).newState // fired closeToRunningOut
-        // Recover all the way back to blue — clears the fired flags.
+        state = step(close, from: state).newState
+        state = step(running, from: state).newState
         state = step(healthy, from: state).newState
-        // Worsen again: both edges should be available to fire once more.
         let close2 = step(close, from: state)
         XCTAssertEqual(close2.fire, [.healthyToClose])
         let red2 = step(running, from: close2.newState)
@@ -111,16 +90,14 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testUnderTenPercentReArmsAfterRecoveryAboveTen() {
-        let primed = step(close, fraction: 0.50).newState   // prime at close, 50% remaining
+        let primed = step(close, fraction: 0.50).newState
         let first = step(close, fraction: 0.05, from: primed)
         XCTAssertTrue(first.fire.contains(.underTenPercent))
-        let recovered = step(close, fraction: 0.50, from: first.newState)  // back above 10%
+        let recovered = step(close, fraction: 0.50, from: first.newState)
         XCTAssertFalse(recovered.fire.contains(.underTenPercent))
         let dipsAgain = step(close, fraction: 0.05, from: recovered.newState)
         XCTAssertTrue(dipsAgain.fire.contains(.underTenPercent))
     }
-
-    // MARK: - No data / level-band states
 
     func testNoDataNeverFires() {
         let result = step(.noData, fraction: 0.01)
@@ -128,8 +105,6 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testLevelFiresAlmostOutUnderTenPercent() {
-        // `.level` metrics still fire "Almost Out" on the under-10% edge — it's a remaining-based
-        // trigger, not a pace one. No pace milestone fires for `.level`.
         let primed = step(.level(.warning), fraction: 0.20).newState
         let first = step(.level(.critical), fraction: 0.08, from: primed)
         XCTAssertTrue(first.fire.contains(.underTenPercent))
@@ -138,8 +113,6 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
-        // healthy, then an untracked gap (e.g. a failed refresh → no data), then close. The gap must
-        // not look like an improvement that re-arms, nor swallow the edge: close should still fire.
         var state = step(healthy).newState
         state = step(.noData, fraction: 0.5, from: state).newState
         let close = step(self.close, from: state)

@@ -1,27 +1,18 @@
 import XCTest
 @testable import OpenUsage
 
-/// End-to-end coverage of the loop's notification step (`QuotaNotificationEvaluator.evaluate` over the
-/// store's values, as `AppContainer` runs it): it resolves each visible
-/// bounded metric, runs the pure milestone logic, gates on the per-trigger settings, dedups per metric
-/// per window, and posts one notification per fired milestone. A recording sink stands in for
-/// `AppNotifications`; pace worsens by raising the metric's `used` between refreshes (real-world
-/// consumption), with `now` pinned so the projection stays deterministic.
 @MainActor
 final class WidgetDataStoreNotificationTests: XCTestCase {
     private let week: TimeInterval = 7 * 24 * 60 * 60
     private let base = Date(timeIntervalSince1970: 1_700_000_000)
-    /// Reset window with ~90% of the week already elapsed at `base`, so `used%` ≈ the projected end %.
     private var resetsAt: Date { base.addingTimeInterval(week * 0.10) }
 
-    /// A recording sink for posted notifications: each entry is `(idPrefix, title, subtitle, body)`.
     private final class Recorder {
         var posts: [(String, String, String, String)] = []
     }
 
     private static let provider = Provider(id: "test", kind: .cursor)
 
-    /// The loop's notification step over the store the test built.
     private var notify: @MainActor (Date) async -> Void = { _ in }
 
     private func notifier(
@@ -82,7 +73,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         return (store, runtime, descriptor)
     }
 
-    /// All three triggers on; the store defaults to off, so tests opt in explicitly.
     private func allOn(_ settings: UserDefaults) {
         for milestone in PaceMilestone.allCases { settings.set(true, forKey: milestone.settingKey) }
     }
@@ -101,8 +91,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await notify(base)
     }
 
-    /// Two accounts of one provider name themselves in the subtitle ("Claude · Personal Session",
-    /// "Claude · Work Session"), never "Claude Session" twice.
     func testTwoAccountsOfOneProviderNameThemselvesInTheSubtitle() async {
         let settings = isolatedDefaults()
         allOn(settings)
@@ -150,18 +138,15 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
-        // 80% used at ~90% elapsed → projected ~89% → healthy.
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         XCTAssertTrue(recorder.posts.isEmpty, "healthy should not fire")
 
-        // Usage rises to 87% → projected ~96.7% → close.
         await evaluate(store, runtime: runtime, used: 87)
         XCTAssertEqual(recorder.posts.count, 1)
         XCTAssertEqual(recorder.posts.first?.0, "test.healthyToClose")
         XCTAssertEqual(recorder.posts.first?.1, "Cutting It Close")
 
-        // Staying orange doesn't re-fire.
         await notify(base)
         XCTAssertEqual(recorder.posts.count, 1)
     }
@@ -174,7 +159,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime)
         XCTAssertTrue(recorder.posts.isEmpty, "first launch primes the baseline without firing")
 
-        // Usage rises to 95% → projected ~105% → red.
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
         XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
@@ -208,8 +192,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertTrue(recorder.posts.isEmpty)
     }
 
-    /// A worsening while its trigger is off doesn't consume the crossing: turning the trigger on while the
-    /// quota is still in the worse bucket fires on the next pass.
     func testAnOffTriggerDoesNotConsumeTheEdge() async {
         let settings = isolatedDefaults()
         settings.set(true, forKey: PaceMilestone.closeToRunningOut.settingKey)
@@ -227,23 +209,17 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
         let settings = isolatedDefaults()
         allOn(settings)
-        settings.set(false, forKey: PaceMilestone.healthyToClose.settingKey)   // turn off "Cutting It Close" only
+        settings.set(false, forKey: PaceMilestone.healthyToClose.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 87)
         XCTAssertFalse(recorder.posts.contains { $0.0 == "test.healthyToClose" })
-        // The critical trigger is still on: pushing to red fires it.
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
     }
 
     func testLowRemainingFiresInUsedDisplayMode() async {
-        // The under-10%-remaining check must use remaining share, not the display-mode-
-        // dependent `fraction`. When the meter shows "used", `data.fraction` is `used/limit` (0.95
-        // here), so a `< 0.10` check on it would not fire "Almost Out" despite only 5% remaining.
-        // `remainingFraction` fires it regardless of the used/remaining display choice. Prime from
-        // healthy first so the under-10% edge is a real transition, not a cold start.
         let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
@@ -258,9 +234,6 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testFailedDeliveryRetriesNextTick() async {
-        // If delivery fails (not authorized, or scheduling errored), the milestone must not
-        // be marked fired — the edge stays un-consumed so it re-fires on the next evaluation instead of
-        // being lost for the rest of the reset window.
         let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()

@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// A container reports through the sink and defaults it was given and nowhere else: an account change
-/// drives a refresh whose outcome lands in the injected defaults, and the daily ping lands in the
-/// injected sink. The PostHog sink is constructed only at the app entry point.
 @MainActor
 final class ContainerTelemetryTests: XCTestCase {
     func testAccountChangesRecordThroughTheInjectedSinkAndStore() async throws {
@@ -13,7 +10,6 @@ final class ContainerTelemetryTests: XCTestCase {
         let sink = RecordingTelemetrySink()
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, telemetry: sink)
 
-        // An API-key credential fails a Claude refresh before any request, so nothing reaches the network.
         let claude = accounts.add(kind: .claude, label: "Home", credential: .apiKey("key"))
         let recorder = container.telemetry
         for _ in 0..<200 where recorder.providerCounters().isEmpty {

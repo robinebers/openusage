@@ -3,22 +3,14 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// Which pixels of a render are ink: those that differ from the background by more than `threshold` in
-/// any channel. Positions are points from the top-left corner.
 struct InkMap {
-    /// The pixel the others are measured against.
     enum Background {
-        /// The top-left pixel.
         case topLeft
-        /// Each row's pixel this many points in, for a render whose rows differ (a card's rounded edge).
         case column(CGFloat)
-        /// Opaque white, for a view drawn on white in a window whose edge pixels are transparent: a
-        /// transparent pixel is not ink.
         case white
     }
 
     struct Span {
-        /// The x (or y) of the first and last ink, in points.
         let first: CGFloat
         let last: CGFloat
         var width: CGFloat { last - first }
@@ -56,7 +48,6 @@ struct InkMap {
         self.scale = scale
     }
 
-    /// `host` as drawn now.
     @MainActor
     init(of host: NSView, threshold: Int = 24, background: Background = .topLeft) {
         host.layoutSubtreeIfNeeded()
@@ -65,8 +56,6 @@ struct InkMap {
         self.init(rep, size: host.bounds.size, threshold: threshold, background: background)
     }
 
-    /// `content` rendered offscreen in light mode at `width`, its ink read against each row's pixel 6 pt in,
-    /// where only a card's rounded edge can be.
     @MainActor
     init(rendering content: some View, width: CGFloat, scale: CGFloat = 1) throws {
         let renderer = ImageRenderer(content: content
@@ -86,7 +75,6 @@ struct InkMap {
         return count
     }
 
-    /// The box around the inked pixels of the rows in `y`, or nil when there are none.
     func bounds(y: Range<CGFloat>) -> CGRect? {
         var minX = width, maxX = -1, minY = height, maxY = -1
         for row in pixels(y, limit: height) {
@@ -99,8 +87,6 @@ struct InkMap {
         return CGRect(x: CGFloat(minX) / scale, y: CGFloat(minY) / scale, width: CGFloat(maxX - minX + 1) / scale, height: CGFloat(maxY - minY + 1) / scale)
     }
 
-    /// The first and last ink between two x positions in points (the whole width by default), or `nil`
-    /// when there is none.
     func span(from start: CGFloat = 0, to end: CGFloat? = nil) -> Span? {
         let columns = pixels(start..<(end ?? CGFloat(width) / scale), limit: width)
         let inked = columns.filter { x in (0..<height).contains { self.inked[$0 * width + x] } }
@@ -108,7 +94,6 @@ struct InkMap {
         return Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale)
     }
 
-    /// The first and last ink row between two x positions, in points from the top.
     func rows(from start: CGFloat, to end: CGFloat) -> Span? {
         let columns = pixels(start..<end, limit: width)
         let inked = (0..<height).filter { y in columns.contains { self.inked[y * width + $0] } }
@@ -116,9 +101,6 @@ struct InkMap {
         return Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale)
     }
 
-    /// Each horizontal band of ink, top to bottom: a line of text, or the provider's mark. The 6 pt at
-    /// either side hold only a grouped box's rounded edge, and so do bands under 4 pt tall, so neither
-    /// counts.
     func bands() -> [Span] {
         let edge = Int(6 * scale)
         var bands: [Span] = []

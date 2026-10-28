@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Session and Weekly read the window whose `limit_window_seconds` names their duration, wherever
-/// Codex put it; a window with no duration or an unfamiliar one stays in its slot's meter.
 final class CodexWindowClassificationTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 

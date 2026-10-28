@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Apart from the Limit Resets row's popover, right-click is the only way to act on the dashboard, and
-/// its Share Screenshot the only way to copy a picture: a provider's header shares all its accounts, an
-/// account's caption that account.
 @MainActor
 final class DashboardMenusTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -50,8 +47,6 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
-    /// The menu says why the caption shows a warning and that metrics are hidden. Resets live in the
-    /// Limit Resets row's popover, so the menu has no reset item even when the account has resets.
     func testTheAccountMenuExplainsItsStatusAndShowsHiddenMetrics() {
         let menu = DashboardMenus.account(
             account(resetExpiries: [now.addingTimeInterval(6 * 86_400)]),

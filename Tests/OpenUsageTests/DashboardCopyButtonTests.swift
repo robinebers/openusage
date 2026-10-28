@@ -3,10 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The copy button on a provider's dashboard header: nothing at rest, revealed at the header's
-/// trailing edge while the pointer rests on the header, gone once it leaves. A click on it copies the
-/// card once and starts no drag; the header still drags the provider. Only the dashboard gives its
-/// header the button: the share image and the drag previews build the section without one.
 @MainActor
 final class DashboardCopyButtonTests: QuietWindowTestCase {
     private final class Log {
@@ -22,9 +18,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     }
 
     private let headerMid = DashboardGrid.headerHeight / 2
-    /// A point on the header's name, which starts 8 pt after the logo.
     private let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
-    /// The header's trailing 16 pt, inside its padding: the button's slot, ending where the rows' resets end.
     private let slot = (DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset - 16)..<(DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset)
 
     private func family() -> DashboardFamily {
@@ -64,8 +58,6 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         XCTAssertEqual(log.copies, 1, "the drag copied")
     }
 
-    /// The share image and the drag previews build the section without a copy action, and that
-    /// header draws nothing at its trailing edge, under the pointer as at rest.
     func testAHeaderWithoutACopyActionHasNoButton() throws {
         let section = DashboardProviderSection(family: family()) { account in
             DashboardAccountRows(account: account, plan: "Max 5x")
@@ -77,8 +69,6 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         XCTAssertEqual(inkInSlot(host), 0, "a header without a copy action revealed a button")
     }
 
-    /// On the dashboard, the button copies what the menu's Share Screenshot copies, through the same
-    /// path: the provider's share card lands on the clipboard as a PNG and the Copied pill shows.
     func testTheDashboardsButtonCopiesTheShareCard() async throws {
         let defaults = isolatedDefaults()
         let descriptor = WidgetDescriptor(
@@ -115,7 +105,6 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         XCTAssertEqual(CGFloat(image.pixelsWide), ShareCardView.width * ShareCardRenderer.scale, "the clipboard holds something other than the share card")
     }
 
-    /// `content` at the card's width in the dashboard's own panel, offscreen, taking pointer events.
     private func hostView(_ content: some View) -> (NSWindow, NSView) {
         let view = content
             .frame(width: DashboardGrid.cardWidth)
@@ -125,7 +114,6 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     }
 }
 
-/// The general pasteboard's data, put back after a test that copies.
 private struct Clipboard {
     let items: [[(NSPasteboard.PasteboardType, Data)]]
 

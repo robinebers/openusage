@@ -32,13 +32,9 @@ final class WidgetRegistryTests: XCTestCase {
         XCTAssertNil(registry.provider(id: "missing"))
     }
 
-    /// The precomputed per-provider list must preserve the original `descriptors` array order — the UI's
-    /// metric ordering depends on it, so this guards the O(1) refactor against silent reordering.
     func testDescriptorsForProviderPreserveOriginalOrder() {
         let claude = provider("claude")
         let codex = provider("codex")
-        // Interleave two providers so a naive grouping that didn't preserve order could still pass for a
-        // single contiguous run.
         let c1 = descriptor("session", provider: claude)
         let x1 = descriptor("session", provider: codex)
         let c2 = descriptor("weekly", provider: claude)

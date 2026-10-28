@@ -8,8 +8,6 @@ import XCTest
 @MainActor
 final class MenuBarStripTrimTests: XCTestCase {
     func testVisibleBoundsFindsOffCenterContent() throws {
-        // A 3x2 opaque block near the top-left of a 20x10 canvas: rows 1...2 from the top, columns
-        // 4...6. If the scan or the crop were vertically flipped, the trim would land on empty pixels.
         let image = try makeImage(width: 20, height: 10, opaqueRect: CGRect(x: 4, y: 1, width: 3, height: 2))
 
         let bounds = try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: image))

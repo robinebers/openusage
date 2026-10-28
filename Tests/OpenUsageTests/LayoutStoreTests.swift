@@ -3,25 +3,20 @@ import XCTest
 
 @MainActor
 final class LayoutStoreTests: XCTestCase {
-    // MARK: - Undo
-
     func testUndoRestoresRemovedMetricToSamePosition() {
         let store = makeStore()
-        // Enable Claude's full set so the order is well-defined and the removed metric has neighbours.
         for id in ["claude.session", "claude.weekly", "claude.extra", "claude.today"] {
             store.setMetricEnabled(id, true)
         }
         let orderBefore = store.orderedSupportedMetrics(for: "claude").map(\.id)
         let enabledBefore = store.visibleDescriptors.map(\.id).filter { $0.hasPrefix("claude.") }
 
-        // Remove a middle metric, then undo it.
         store.setMetricEnabled("claude.weekly", false)
         XCTAssertFalse(store.isMetricEnabled("claude.weekly"))
         XCTAssertTrue(store.canUndo)
 
         XCTAssertTrue(store.undo())
 
-        // Re-enabled and back in its exact slot, with the shown order unchanged.
         XCTAssertTrue(store.isMetricEnabled("claude.weekly"))
         XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), orderBefore)
         XCTAssertEqual(
@@ -32,7 +27,6 @@ final class LayoutStoreTests: XCTestCase {
 
     func testUndoReversesEnable() {
         let store = makeStore()
-        // cursor.today starts hidden in the fixture.
         XCTAssertFalse(store.isMetricEnabled("cursor.today"))
 
         store.setMetricEnabled("cursor.today", true)
@@ -87,17 +81,14 @@ final class LayoutStoreTests: XCTestCase {
 
     func testUndoReversesPinAndUnpin() {
         let store = makeStore()
-        // cursor.usage is enabled by default but not pinned (cursor's default pins aren't in the mock).
         XCTAssertTrue(store.isMetricEnabled("cursor.usage"))
         XCTAssertFalse(store.isPinned("cursor.usage"))
 
-        // Pin, then undo → back to unpinned.
         store.setPinned(true, for: "cursor.usage")
         XCTAssertTrue(store.isPinned("cursor.usage"))
         XCTAssertTrue(store.undo())
         XCTAssertFalse(store.isPinned("cursor.usage"), "undo reverses a pin")
 
-        // Unpin a default-pinned metric, then undo → back to pinned.
         XCTAssertTrue(store.isPinned("claude.session"))
         store.setPinned(false, for: "claude.session")
         XCTAssertFalse(store.isPinned("claude.session"))
@@ -107,21 +98,19 @@ final class LayoutStoreTests: XCTestCase {
 
     func testUndoWalksBackMultipleMixedSteps() {
         let store = makeStore()
-        // Distinct, real changes: enable an off metric, pin an unpinned one, remove an on metric.
-        store.setMetricEnabled("cursor.today", true)  // step 1: enable
-        store.setPinned(true, for: "cursor.usage")      // step 2: pin
-        store.setMetricEnabled("claude.session", false) // step 3: remove
+        store.setMetricEnabled("cursor.today", true)
+        store.setPinned(true, for: "cursor.usage")
+        store.setMetricEnabled("claude.session", false)
 
-        // Walk back in reverse order, one step per ⌘Z.
-        XCTAssertTrue(store.undo())                      // undo remove
+        XCTAssertTrue(store.undo())
         XCTAssertTrue(store.isMetricEnabled("claude.session"))
         XCTAssertTrue(store.isPinned("cursor.usage"))
 
-        XCTAssertTrue(store.undo())                      // undo pin
+        XCTAssertTrue(store.undo())
         XCTAssertFalse(store.isPinned("cursor.usage"))
         XCTAssertTrue(store.isMetricEnabled("cursor.today"))
 
-        XCTAssertTrue(store.undo())                      // undo enable
+        XCTAssertTrue(store.undo())
         XCTAssertFalse(store.isMetricEnabled("cursor.today"))
 
         XCTAssertFalse(store.canUndo)
@@ -130,14 +119,12 @@ final class LayoutStoreTests: XCTestCase {
 
     func testUndoStackIsCappedAtMaxDepth() {
         let store = makeStore()
-        // Drive more distinct, recordable changes than the cap by toggling a pin on and off repeatedly.
         store.setMetricEnabled("claude.weekly", true)
         var pinned = false
         for _ in 0..<(LayoutStore.maxUndoDepth + 10) {
             pinned.toggle()
             store.setPinned(pinned, for: "claude.weekly")
         }
-        // Undo can only walk back the cap's worth of steps, then stops.
         var steps = 0
         while store.undo() { steps += 1 }
         XCTAssertEqual(steps, LayoutStore.maxUndoDepth)
@@ -145,12 +132,10 @@ final class LayoutStoreTests: XCTestCase {
 
     func testNoOpActionDoesNotRecordUndoStep() {
         let store = makeStore()
-        store.setMetricEnabled("cursor.today", true)  // one real step
-        // Re-enabling an already-on metric, or a self-target reorder, changes nothing → no step.
+        store.setMetricEnabled("cursor.today", true)
         store.setMetricEnabled("cursor.today", true)
         store.reorderMetric(dragged: "claude.weekly", target: "claude.weekly", in: "claude")
 
-        // Exactly one undoable step (the first enable).
         XCTAssertTrue(store.undo())
         XCTAssertFalse(store.canUndo)
     }
@@ -256,8 +241,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertTrue(reloaded.pinnedMetricIDs.isEmpty, "an explicitly emptied pin set must not be reseeded")
     }
 
-    // MARK: - Hiding unstars
-
     func testHidingAStarredMetricUnstarsItAndUndoRestoresBoth() {
         let defaults = isolatedDefaults()
         let store = makeStore(defaults)
@@ -302,8 +285,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.isMetricEnabled("cursor.usage"), "one undo takes back the star and the show")
     }
 
-    /// A layout saved before hiding unstarred can hold a star on a hidden metric. Loading it drops that
-    /// star, keeps the others, and saves the fix.
     func testSavedStarOnAHiddenMetricIsDroppedAtLoad() {
         let defaults = isolatedDefaults()
         defaults.set(["claude.session", "claude.weekly"], forKey: "layout.menuBarPins")
@@ -315,8 +296,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(defaults.stringArray(forKey: "layout.menuBarPins"), ["claude.weekly"])
     }
 
-    /// A metric is either enabled or not: every enabled metric is in the provider's one list, in the
-    /// saved metric order, and the Accounts detail lists the same order.
     func testDisplayGroupsListEveryEnabledMetricInMetricOrder() {
         let store = makeStore(hidden: ["claude.extra", "claude.today"])
 
@@ -326,8 +305,6 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertEqual(group?.metrics.map(\.id), ["claude.weekly", "claude.session"])
         XCTAssertEqual(store.customizeDetail(for: "claude")?.metrics.prefix(2).map(\.id), ["claude.weekly", "claude.session"])
     }
-
-    // MARK: - Accounts master/detail (L1 list + L2 detail)
 
     func testAccountListFollowsReorder() {
         let store = makeStore()
@@ -357,15 +334,12 @@ final class LayoutStoreTests: XCTestCase {
         store.screen = .dashboard
         XCTAssertNil(store.customizeProviderID, "leaving Accounts resets the L2 selection back to the list")
 
-        // A direct jump to Settings also clears it — never strand a detail selection on another screen.
         store.screen = .accounts
         store.customizeProviderID = "codex"
         store.screen = .settings
         XCTAssertNil(store.customizeProviderID)
     }
 
-    /// A store whose layout hides `hidden` (the fixture's Today metrics by default) unless `defaults`
-    /// already holds a saved layout, which a reload keeps.
     private func makeStore(
         _ defaults: UserDefaults? = nil,
         registry: WidgetRegistry = .mock,
@@ -376,7 +350,6 @@ final class LayoutStoreTests: XCTestCase {
         return LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
     }
 
-    /// The metrics the menu bar strip shows, as `StatusItemController` builds it.
     private func trayMetricIDs(_ store: LayoutStore) -> [String] {
         MenuBarContentBuilder.build(groups: store.pinnedGroups, data: { $0.sample }).groups.flatMap { $0.metrics.map(\.id) }
     }

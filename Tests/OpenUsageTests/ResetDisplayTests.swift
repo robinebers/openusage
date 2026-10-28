@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the relative/absolute reset display: `Formatters.whenLabel` (the claim timeline's and claim
-/// notice's "when" phrase) with its absolute day buckets, the session rows' "not started" state (an
-/// empty reset column), the reset-credit expiry bands, and the resets popover's entries.
 final class ResetDisplayTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -15,7 +12,7 @@ final class ResetDisplayTests: XCTestCase {
 
     func testWhenLabelBucketsTheDayAndCollapsesImminentDeadlines() {
         let calendar = utcCalendar()
-        let now = calendar.date(from: DateComponents(year: 2024, month: 6, day: 1, hour: 12))! // noon, stable
+        let now = calendar.date(from: DateComponents(year: 2024, month: 6, day: 1, hour: 12))!
 
         XCTAssertEqual(Formatters.whenLabel(at: now.addingTimeInterval(2 * 3600 + 360), mode: .relative, now: now), "2h 6m")
         XCTAssertTrue(Formatters.whenLabel(at: now.addingTimeInterval(2 * 3600),
@@ -30,7 +27,6 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertTrue(label.contains(" at "))
         XCTAssertFalse(label.hasPrefix("today") || label.hasPrefix("tomorrow"))
 
-        // Imminent deadlines collapse to "soon" in both modes.
         XCTAssertEqual(Formatters.whenLabel(at: now.addingTimeInterval(60), mode: .relative, now: now), "soon")
         XCTAssertEqual(Formatters.whenLabel(at: now.addingTimeInterval(-1),
                                             mode: .absolute, now: now, calendar: calendar), "soon")
@@ -47,7 +43,6 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0, severity: .normal, value: "0%", reset: nil))
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
 
-        // Once the reset has passed the snapshot is stale: no "not started" claim, the normal countdown.
         XCTAssertFalse(data.isFreshSessionWindow(now: data.resetsAt!.addingTimeInterval(1)))
     }
 
@@ -63,7 +58,6 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertFalse(data.isFreshSessionWindow(now: now))
         XCTAssertEqual(data.compactResetText(now: now), "2h")
 
-        // A genuinely fresh session carries no reset date — that is this signal's "not started" state.
         data.resetsAt = nil
         XCTAssertTrue(data.isFreshSessionWindow(now: now))
         XCTAssertNil(data.compactResetText(now: now))
@@ -80,8 +74,6 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testTheResetFollowsTheClockSetting() {
-        // Halfway through a 10h window with 90/100 used: a red bar, the flame (projected to run out
-        // ~34m out, well before the reset 5h out), and the reset in the clock form under that setting.
         var data = WidgetData(title: "Session", kind: .percent, used: 90, limit: 100)
         data.resetsAt = now.addingTimeInterval(5 * 3600)
         data.periodDurationMs = 10 * 3600 * 1000
@@ -102,7 +94,6 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testExpirySeverityBands() {
-        // A reset credit's dot: red under 48 hours, orange under 7 days, blue beyond.
         XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: WidgetData.expiryCriticalWindow - 3600), .critical)
         XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: -60), .critical)
         XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: WidgetData.expiryCriticalWindow + 3600), .warning)
@@ -129,22 +120,19 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testResetsPopoverEntriesAreSoonestFirstAndNumbered() {
-        // The popover timeline sorts the resets soonest-first, numbers them from 1, and pairs each exact
-        // expiry time with its countdown. Per-reset dot color reuses the expiry severity bands.
         let entries = RateLimitResetsDetail.entries(
             from: [
-                // Deliberately out of order to prove the sort.
-                now.addingTimeInterval(12 * 24 * 3600 + 18 * 3600),          // ~12d18h -> blue
-                now.addingTimeInterval(WidgetData.expiryCriticalWindow - 3600) // <48h  -> red, soonest
+                now.addingTimeInterval(12 * 24 * 3600 + 18 * 3600),
+                now.addingTimeInterval(WidgetData.expiryCriticalWindow - 3600)
             ],
             now: now
         )
 
         XCTAssertEqual(entries.map(\.number), [1, 2])
-        XCTAssertEqual(entries[0].severity, .critical)   // soonest sorts first
+        XCTAssertEqual(entries[0].severity, .critical)
         XCTAssertEqual(entries[1].severity, .normal)
-        XCTAssertEqual(entries[1].time.contains(" at "), true) // exact wall-clock time leads
-        XCTAssertEqual(entries[1].countdown, "12d 18h")        // countdown trails
+        XCTAssertEqual(entries[1].time.contains(" at "), true)
+        XCTAssertEqual(entries[1].countdown, "12d 18h")
     }
 
     func testResetsPopoverPastDueAndImminentEntriesReadSoonWithNoCountdown() {
@@ -163,17 +151,13 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testResetsPopoverContentResolvesEmptyCountOnlyAndTimeline() {
-        // Zero resets -> the genuine empty state.
         XCTAssertEqual(RateLimitResetsDetail.content(count: 0, expiries: [], now: now), .empty)
 
-        // Resets present but no expiry list (the dedicated fetch failed, so the row fell back to the
-        // usage-body count): must NOT read "no resets"; it states the count instead.
         XCTAssertEqual(
             RateLimitResetsDetail.content(count: 3, expiries: [], now: now),
             .unknownExpiries(count: 3)
         )
 
-        // Expiries present -> the timeline.
         let expiries = [now.addingTimeInterval(4 * 24 * 3600)]
         guard case .timeline(let entries) = RateLimitResetsDetail.content(count: 1, expiries: expiries, now: now) else {
             return XCTFail("expected timeline")
@@ -182,12 +166,10 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testCompactDurationAlwaysShowsHoursAtDayScale() {
-        // Day-scale durations always show two units so a whole-day-ish span never reads as a flat "Xd"
-        // that hides the sub-day remainder. Sub-day durations are unchanged.
-        XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h") // 4d 52m -> "4d 0h"
-        XCTAssertEqual(Formatters.compactDuration(7 * 24 * 3600), "7d 0h")            // exact week
+        XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h")
+        XCTAssertEqual(Formatters.compactDuration(7 * 24 * 3600), "7d 0h")
         XCTAssertEqual(Formatters.compactDuration(9 * 24 * 3600 + 21 * 3600), "9d 21h")
-        XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")                    // sub-day unchanged
+        XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")
         XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")
     }
 }

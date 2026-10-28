@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// The never-log-secrets guard on the redaction every log line passes through.
 final class LogRedactionTests: XCTestCase {
     func testRedactLogMessageJWTAndBareApiKey() {
         let msg = "token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U key=sk-1234567890abcdef"

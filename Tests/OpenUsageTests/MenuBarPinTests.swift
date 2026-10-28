@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers the menu-bar pin model on `LayoutStore`: the ≤2-per-provider rendering cap, denial
-/// reasons/notices, order derivation from the saved layout order, and persistence across relaunch.
 @MainActor
 final class MenuBarPinTests: XCTestCase {
     func testNoPinsByDefault() {
@@ -36,7 +34,6 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertFalse(store.isPinned("a.m3"))
         XCTAssertEqual(store.pinnedCount(forProvider: "a"), 2)
 
-        // An already-pinned id can still be pinned, so its toggle can unpin it.
         XCTAssertTrue(store.canPin("a.m1"))
 
         store.setPinned(false, for: "a.m1")
@@ -62,8 +59,6 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertEqual(store.pinDenialReason("a.m3"), "Up to 2 stars per provider")
         XCTAssertNil(store.pinDenialReason("b.m1"))
 
-        // A denied click surfaces the reason as the transient footer notice and bumps the shake
-        // trigger every time, so repeat clicks re-shake even while the text is unchanged.
         let popover = PopoverState()
         XCTAssertNil(popover.pinNotice.value)
         XCTAssertEqual(popover.pinNotice.trigger, 0)
@@ -76,7 +71,6 @@ final class MenuBarPinTests: XCTestCase {
 
     func testPinnedGroupsFollowCustomizeOrder() {
         let store = makeStore()
-        // Pin out of order; expect provider order (a before b) and metric order (m1 before m2).
         store.setPinned(true, for: "b.m2")
         store.setPinned(true, for: "a.m2")
         store.setPinned(true, for: "a.m1")
@@ -103,8 +97,6 @@ final class MenuBarPinTests: XCTestCase {
         XCTAssertFalse(store.isPinned("ghost.metric"))
     }
 
-    // MARK: - Fixtures
-
     private func makeStore() -> LayoutStore {
         makeStore(defaults: isolatedDefaults())
     }
@@ -113,7 +105,6 @@ final class MenuBarPinTests: XCTestCase {
         LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
     }
 
-    /// Two providers, each with three percent metrics, are sufficient to exercise provider-local caps.
     private func makeRegistry() -> WidgetRegistry {
         let providers = ["a", "b"].map { id in
             Provider(id: id, kind: id == "a" ? .claude : .codex)

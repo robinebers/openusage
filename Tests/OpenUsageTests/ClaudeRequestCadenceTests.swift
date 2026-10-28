@@ -232,8 +232,6 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         )
     }
 
-    // MARK: - Helpers
-
     private nonisolated static let farFuture = OpenUsageISO8601.date(from: "2099-01-01T00:00:00.000Z")!
 
     private func makeRuntime(http: RoutingHTTPClient, clock: TestClock) throws -> AccountProviderRuntime {
@@ -243,7 +241,6 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         return AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
     }
 
-    /// What each request asked Anthropic for, in order.
     private func kinds(_ http: RoutingHTTPClient) -> [String] {
         http.requests.map { request in
             switch request.url.path {

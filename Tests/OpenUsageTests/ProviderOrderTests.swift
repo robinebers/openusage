@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Providers and accounts keep the user's order; new ones go to the bottom in the order they were added.
 @MainActor
 final class ProviderOrderTests: XCTestCase {
     func testNewProvidersGoToTheBottomInTheOrderTheyWereAdded() {
@@ -38,10 +37,6 @@ final class ProviderOrderTests: XCTestCase {
         ])
     }
 
-    /// Claude A, Codex B, Claude C added without a drag: C joins A on the Accounts screen and the
-    /// dashboard alike, and still does after a relaunch. Before any drag there is no saved order, and
-    /// the whole registry standing in for one left C below B on the Accounts screen while the dashboard
-    /// grouped it under Claude.
     func testASecondAccountJoinsItsProviderWithoutADrag() {
         let app = makeApp()
         let firstClaude = app.add(.claude)
@@ -93,7 +88,6 @@ final class ProviderOrderTests: XCTestCase {
     }
 }
 
-/// The account, runtime, and layout wiring `AppContainer` does, without the data store.
 @MainActor
 private final class OrderingApp {
     private let defaults: UserDefaults

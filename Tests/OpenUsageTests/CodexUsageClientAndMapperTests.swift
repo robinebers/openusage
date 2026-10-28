@@ -52,8 +52,6 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         XCTAssertEqual(limit, 100)
     }
 
-    // MARK: - Rate Limit Resets
-
     func testShowsRateLimitResetsBeforeCredits() throws {
         let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 1 }, "credits": { "balance": 100 } }"#.utf8)
         let mapped = try CodexUsageMapper.mapUsageResponse(

@@ -1,16 +1,10 @@
 import XCTest
 @testable import OpenUsage
 
-/// What a dashboard row shows, resolved from its reading for one instant: a bar in the severity's colour
-/// with its value and its reset beside it — always, at rest — or a value where the bar would be. The
-/// reset follows the clock setting; a window that has not started and a cap without a reset date leave
-/// the reset column empty, and a status badge shows its text where the bar would be. The live row's
-/// three hovers each add the one figure the row doesn't show.
 final class DashboardRowModelTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let week: TimeInterval = 7 * 24 * 3600
 
-    /// A weekly percent window with `elapsed` of it gone, showing what is left.
     private func paced(used: Double, elapsed: Double = 0.5, period: TimeInterval? = nil, title: String = "Weekly") -> WidgetData {
         let period = period ?? week
         var data = WidgetData(title: title, kind: .percent, used: used, limit: 100)
@@ -35,8 +29,6 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(resets.dashboardRow(now: now).mark, .value("2 available"))
     }
 
-    /// A bar row's value is the Used/Left flip's target; a badge's text, a reading without a limit and a
-    /// row without data are not.
     func testOnlyABoundedReadingFlipsBetweenUsedAndLeft() {
         XCTAssertTrue(paced(used: 30).hasMeterStyleToggle)
         var badge = paced(used: 30)
@@ -50,11 +42,6 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertFalse(empty.hasMeterStyleToggle)
     }
 
-    /// Robin: "blue with red flame?" — one state colours the bar and lights the flame. With a reset window the colour is the pace verdict: red with the flame while
-    /// projected to run out before the reset, orange and no flame while projected to land inside the
-    /// last 10%, blue and no flame on course. Spent is red with no flame (the bar is empty already).
-    /// Without a window the level's band colours the bar (orange once 75% is used, red once 90%), and
-    /// never a flame. A blue or an orange bar never carries a flame.
     func testTheColourAndTheFlameFollowOneState() {
         XCTAssertEqual(paced(used: 60).dashboardRow(now: now).mark, .bar(fill: 0.4, severity: .critical, value: "40%", reset: "3d 12h", flame: true))
         XCTAssertEqual(paced(used: 93, elapsed: 0.2).dashboardRow(now: now).mark, .bar(fill: 0.07, severity: .critical, value: "7%", reset: "5d 14h", flame: true))
@@ -94,9 +81,6 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(badge.dashboardRow(now: now).mark, .value("Disabled"))
     }
 
-    /// The bar's hover is where the pace lands at reset: the cushion on a blue bar, the projected usage
-    /// on an orange one, the overage on a red one (never "~0% over"), "Limit reached" once spent, and
-    /// nothing where the colour is a level band rather than a projection.
     func testTheBarsHoverIsTheProjectionAtReset() {
         XCTAssertEqual(paced(used: 30).paceTooltip(now: now), "~40% left at reset")
         XCTAssertEqual(paced(used: 46).paceTooltip(now: now), "~92% used at reset")
@@ -111,8 +95,6 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertNil(empty.paceTooltip(now: now))
     }
 
-    /// The value's hover is the other reading and the reset's the other format; a badge, a reading
-    /// without a limit, a due reset and a window that has not started add nothing.
     func testTheValuesHoverIsTheOtherReadingAndTheResetsTheOtherFormat() {
         var data = paced(used: 30)
         XCTAssertEqual(data.meterStyleTooltip, "30% used", "the value reads 70%")

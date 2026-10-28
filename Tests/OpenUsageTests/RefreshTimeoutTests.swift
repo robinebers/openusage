@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// The per-provider refresh deadline. A provider whose `refresh()` never returns must not leave
-/// the dashboard spinner turning for the rest of the session, the abandoned work must actually be
-/// cancelled rather than left running, and a refresh that lands inside the deadline must be untouched.
 @MainActor
 final class RefreshTimeoutTests: XCTestCase {
     func testHungProviderRefreshFailsAndStopsTheSpinner() async {
@@ -17,8 +14,6 @@ final class RefreshTimeoutTests: XCTestCase {
         XCTAssertEqual(outcome, .failed)
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty, "the spinner must stop when the deadline wins")
         XCTAssertEqual(store.errorMessage(for: provider.id)?.hasPrefix("Refresh timed out after"), true)
-        // Same failure handling as any other error: the provider is negative-cached, so the next
-        // non-forced pass backs off instead of re-probing a provider that just hung.
         let next = await store.refresh(providerID: provider.id)
         XCTAssertEqual(next, .backedOff)
     }

@@ -33,8 +33,6 @@ final class GrokCreditsConfigDecoderTests: XCTestCase {
         }
     }
 
-    /// A credits config with the fields the decoder reads; `nil` leaves a field out, as proto-JSON
-    /// does at 0.
     private static func responseBody(
         percent: Any? = 99.0,
         onDemandCap: Any? = 2500,

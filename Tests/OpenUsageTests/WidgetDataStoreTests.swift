@@ -55,8 +55,6 @@ final class WidgetDataStoreTests: XCTestCase {
         await refreshTask.value
     }
 
-    /// A provider's Refresh covers its accounts side by side, as Refresh All does: both start before
-    /// either finishes, so one slow account never holds the other behind its deadline.
     func testRefreshingSeveralAccountsStartsThemAllBeforeAnyFinishes() async {
         let providers = ["first", "second"].map { Provider(id: $0, kind: .codex) }
         let runtimes = providers.map {
@@ -104,8 +102,6 @@ final class WidgetDataStoreTests: XCTestCase {
                 )]
             )
         )
-        // Hermetic: pin the meter style and the snapshot cache via an isolated suite, so neither a persisted
-        // `.used` nor a snapshot another test left in `.standard` can stand in for this refresh.
         let defaults = isolatedDefaults()
         let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
 
@@ -134,7 +130,6 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testCreditsRenderProviderReportedCountInvariantToMeterStyle() async {
-        // Codex flex credits are provider-reported counts, with no locally estimated dollar value.
         let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
             key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
@@ -166,9 +161,6 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testRateLimitResetsTileShowsCountInTrayAndPopover() async {
-        // The menu-bar tile and the popover row resolve from one raw number, so a
-        // pinned tile can't read "0" while the popover reads "1". The popover keeps Codex's "available"
-        // wording, while the tighter tray reads "resets".
         let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
             key: "rateLimitResets",
@@ -199,8 +191,6 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testZeroRateLimitResetsStillFlagsResetPopoverForEmptyState() async {
-        // The descriptor opt-in must survive resolve even at "0 available" (no expiries): that's exactly
-        // when the value column needs to stay a hover target so the popover can show the empty state.
         let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
             key: "rateLimitResets",
@@ -301,10 +291,6 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testUncappedExtraUsageRendersCompactAndUnbounded() async {
-        // Claude's `claude.extra` is a `boundedDollars` descriptor (a meter when the
-        // provider reports a monthly cap), but an uncapped spend arrives as a `.values` line. It must
-        // resolve to an unbounded tile — the sample's placeholder limit dropped — and read in the same
-        // compact shorthand as the spend tiles ("$1.2K spent"), not full currency, in both row and tray.
         let provider = Provider(id: "claude", kind: .claude)
         let descriptor = WidgetDescriptor.boundedDollars(
             key: "extra", provider: provider, title: "Extra Usage",
@@ -326,16 +312,15 @@ final class WidgetDataStoreTests: XCTestCase {
 
         let data = store.data(for: descriptor)
         XCTAssertTrue(data.hasData)
-        XCTAssertFalse(data.isBounded)                          // sample's limit: 100 dropped for a .values row
-        XCTAssertEqual(data.unboundedDetail, "$1.2K spent")     // popover row — compact, not "$1,234.56"
-        XCTAssertEqual(data.menuBarValue, "$1.2K")              // tray — same shorthand
+        XCTAssertFalse(data.isBounded)
+        XCTAssertEqual(data.unboundedDetail, "$1.2K spent")
+        XCTAssertEqual(data.menuBarValue, "$1.2K")
     }
 
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 820.9)
         XCTAssertEqual(data.unboundedDetail, "820 credits")
-        // An exhausted/negative balance clamps to a real, measured zero, not "No data".
         data.values = CodexUsageMapper.creditValues(remaining: -5)
         XCTAssertEqual(data.unboundedDetail, "0 credits")
     }

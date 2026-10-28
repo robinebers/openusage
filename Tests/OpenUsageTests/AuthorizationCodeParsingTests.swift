@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// What a user pastes into the sign-in sheet: a bare code, a `code#state` pair, or the whole callback
-/// URL the browser landed on. Only the URL is read for its query; the other two are not relative URLs.
 final class AuthorizationCodeParsingTests: XCTestCase {
     func testAPastedCodeWithItsStateIsAccepted() throws {
         XCTAssertEqual(try authorizationCode(from: .pasted("abc123#expected"), expectedState: "expected"), "abc123")

@@ -3,9 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The screen slide as the panel hosts it: the outgoing and incoming screens move together, each
-/// pinned to the top of the panel as its height morphs, and the outgoing one keeps its chrome until
-/// the slide has settled; only then does the pager collapse to the destination.
 @MainActor
 final class ScreenSlideTests: QuietWindowTestCase {
     private struct Hosted {
@@ -14,9 +11,6 @@ final class ScreenSlideTests: QuietWindowTestCase {
         let popover: PopoverState
     }
 
-    /// Leaving Accounts for the dashboard: the Accounts page, top bar included, slides off to the
-    /// right as the dashboard slides in from the left, both following the panel's shrinking height from
-    /// the top, and the Accounts page is gone once the spring settles.
     func testTheAccountsPageSlidesAwayWithTheDashboardAndIsGoneOnceSettled() async throws {
         let hosted = try await hostPopover()
         let panel = hosted.panel, host = hosted.host
@@ -51,9 +45,6 @@ final class ScreenSlideTests: QuietWindowTestCase {
         XCTAssertEqual(panel.frame.maxY, top, "the panel's top edge moved")
     }
 
-    /// Leaving Settings for the dashboard: Settings keeps its bar and footer while it slides off to
-    /// the right, pinned to the top of the shrinking panel; once settled it parks beyond the pager
-    /// without chrome.
     func testSettingsKeepsItsChromeWhileItSlidesAway() async throws {
         let hosted = try await hostPopover()
         let panel = hosted.panel, host = hosted.host

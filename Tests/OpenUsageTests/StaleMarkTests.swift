@@ -2,10 +2,6 @@ import AppKit
 import XCTest
 @testable import OpenUsage
 
-/// The menu bar's stale mark: an account whose numbers are older than one refresh interval while a
-/// failure's backoff holds it sets the mark, current numbers and a refresh in flight do not, and a
-/// successful refresh clears it. A stale strip, or the app icon standing in for an empty one, draws at
-/// half strength, and VoiceOver hears that the strip is waiting.
 @MainActor
 final class StaleMarkTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)

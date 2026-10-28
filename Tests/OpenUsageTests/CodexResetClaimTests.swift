@@ -1,9 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// The Codex reset-credit claim: request shape, outcome decoding, expiry-to-id matching, and the account
-/// runtime's list-then-consume flow, all through a stub HTTP client with the account's own vault
-/// credential. Also covers the refresh that fills the row's expiries.
 @MainActor
 final class CodexResetClaimTests: XCTestCase {
     private nonisolated static let expiry = Date(timeIntervalSince1970: 1_800_000_000)
@@ -22,8 +19,6 @@ final class CodexResetClaimTests: XCTestCase {
     private nonisolated static func consumeBody(code: String) -> Data {
         Data(#"{"code": "\#(code)", "windows_reset": 2}"#.utf8)
     }
-
-    // MARK: - Consume request shape
 
     func testConsumeRequestShape() async throws {
         let http = RoutingHTTPClient { _ in
@@ -47,8 +42,6 @@ final class CodexResetClaimTests: XCTestCase {
         ])
     }
 
-    // MARK: - Outcome decoding
-
     func testConsumeOutcomeDecodesAllProtocolCodes() {
         func outcome(_ code: String, status: Int = 200) -> ResetClaimOutcome {
             CodexUsageMapper.resetClaimOutcome(from: HTTPResponse(statusCode: status, headers: [:], body: Self.consumeBody(code: code)))
@@ -67,12 +60,9 @@ final class CodexResetClaimTests: XCTestCase {
         )
     }
 
-    // MARK: - Expiry to credit-id matching
-
     func testCreditMatchingByExpiry() throws {
         let body = try XCTUnwrap(ProviderParse.jsonObject(Self.listBody()))
         XCTAssertEqual(CodexUsageMapper.resetCreditID(in: body, expiringAt: Self.expiry), "RateLimitResetCredit_target")
-        // Sub-second truncation is tolerated; a different credit's expiry is not.
         XCTAssertEqual(
             CodexUsageMapper.resetCreditID(in: body, expiringAt: Self.expiry.addingTimeInterval(0.5)),
             "RateLimitResetCredit_target"
@@ -89,8 +79,6 @@ final class CodexResetClaimTests: XCTestCase {
         )))
         XCTAssertEqual(CodexUsageMapper.resetCreditID(in: noStatus, expiringAt: Self.expiry), "RateLimitResetCredit_bare")
     }
-
-    // MARK: - Account runtime claim
 
     func testClaimMatchesCreditAndConsumesItWithTheAccountsLogin() async throws {
         let http = makeHTTP()
@@ -144,12 +132,7 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome, .nothingToReset)
     }
 
-    // MARK: - Idempotent replay
-
     func testLostConsumeAnswerIsRetriedWithTheSameKeyAndCredit() async throws {
-        // The first consume lands but its answer is lost; by the retry the credit has left the list.
-        // The runtime must replay the consume with the matched credit id (the server answers
-        // `already_redeemed`), not match again and misreport `.noCredit`.
         let consumed = TestSwitch(false)
         let http = RoutingHTTPClient { request in
             switch request.url {
@@ -180,8 +163,6 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(payload["credit_id"], "RateLimitResetCredit_target", "the originally matched credit id")
         XCTAssertEqual(payload["redeem_request_id"], "redeem-1")
     }
-
-    // MARK: - Refresh
 
     func testRefreshReadsEachCreditsExpiryWithTheAccountsLogin() async throws {
         let http = RoutingHTTPClient { request in
@@ -229,8 +210,6 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(values, [MetricValue(number: 1, kind: .count, label: "available")])
         XCTAssertTrue(expiries.isEmpty)
     }
-
-    // MARK: - Helpers
 
     private func makeHTTP(
         listStatus: Int = 200,

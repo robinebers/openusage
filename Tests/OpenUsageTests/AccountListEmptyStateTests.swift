@@ -3,8 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The Accounts list with nothing in it says so: a "No Accounts" line in the system's empty-state style
-/// where the card would be. The first account fills the card and the line goes.
 @MainActor
 final class AccountListEmptyStateTests: QuietWindowTestCase {
     func testAnEmptyListReadsNoAccountsUntilAnAccountIsAdded() async throws {
@@ -31,7 +29,6 @@ final class AccountListEmptyStateTests: QuietWindowTestCase {
         XCTAssertNotEqual(try pixels(of: list), try pixels(of: noAccounts), "the list still draws the No Accounts state")
     }
 
-    /// `content` at the panel's width in an offscreen window, sized to what it asks for.
     private func host(_ content: some View) -> NSView {
         show(content.frame(width: PanelMetrics.width).environment(\.colorScheme, .light), in: .titled).host
     }

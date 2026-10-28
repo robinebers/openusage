@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// Signing in to a provider account that's already added adds no second copy, so one login is fetched
-/// once: the sign-in sheet reports which account it already is. A different account of the same provider,
-/// and a sign-in that recorded no identity, still add.
 @MainActor
 final class DuplicateLoginTests: XCTestCase {
     func testSigningInToAnAddedClaudeAccountAgainNamesTheExistingOne() async throws {
@@ -69,8 +66,6 @@ final class DuplicateLoginTests: XCTestCase {
         _ = await runtime.refreshHourlyReads(of: await runtime.refresh())
         XCTAssertEqual(try vault.load(account.id)?.identity, "acct/org")
     }
-
-    // MARK: - Helpers
 
     nonisolated private static func claude(identity: String) -> AccountCredential {
         .oauth(OAuthTokens(accessToken: UUID().uuidString, extras: [OAuthTokens.identityKey: identity]))

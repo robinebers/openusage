@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// A refresh triages the HTTP status before it reads a body: a 401 or 403 is an expired sign-in
-/// whatever the body says, any other non-2xx is a request failure that names its status, a transport
-/// error keeps its own message, and a failed best-effort request costs the plan, never the meters.
 private let openCodeUsage = #"{"usage":{"rolling":{"percent":12,"resetsAt":"2026-07-12T13:30:00Z"},"weekly":{"percent":8,"resetsAt":"2026-07-13T00:00:00Z"},"monthly":{"percent":40,"resetsAt":"2026-08-04T11:18:32Z"}}}"#
 private let ollamaBalance = #"{"included":{"balance_usd":72.5,"allowance_usd":100,"period":{"from":"2026-09-15T09:30:00Z","until":"2026-10-15T09:30:00Z"}},"purchased":{"balance_usd":25}}"#
 private let openRouterCredits = #"{"data":{"total_credits":100,"total_usage":22.23}}"#

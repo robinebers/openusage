@@ -61,9 +61,6 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
     }
 
-    /// Robin: the plans read "Google AI Pro" and "Google AI Ultra", the names Google sells them as,
-    /// whether `loadCodeAssist` names the paid tier by id or buries the tier word in a longer name; a
-    /// tier Google names otherwise keeps its name.
     func testPaidTiersReadAsGoogleSellsThem() {
         func plan(id: String, name: String) -> String? {
             AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(#"{"paidTier":{"id":"\#(id)","name":"\#(name)"}}"#.utf8))

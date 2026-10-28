@@ -20,7 +20,6 @@ enum QuietTestProcess {
 
     @MainActor private static var installed = false
 
-    /// Once per process, before the first window: the process can't be activated.
     @MainActor
     static func install() {
         guard !installed else { return }
@@ -29,7 +28,6 @@ enum QuietTestProcess {
         NSApplication.shared.setActivationPolicy(.prohibited)
     }
 
-    /// Skips the calling test unless the keyboard tests were asked for.
     static func requireFocus() throws {
         guard focusTestsRequested else {
             throw XCTSkip("needs the keyboard: run with OPENUSAGE_FOCUS_TESTS=1")
@@ -57,13 +55,11 @@ enum QuietTestProcess {
         }
     }
 
-    /// Whether the owner could see the window: visible, drawn, and over a screen.
     @MainActor
     static func onAScreen(_ window: NSWindow) -> Bool {
         window.isVisible && window.alphaValue > 0 && NSScreen.screens.contains { $0.frame.intersects(window.frame) }
     }
 
-    /// What the owner would notice right now, or `nil`.
     @MainActor
     static func intrusion() -> String? {
         if NSApp.isActive { return "the process active" }
@@ -75,8 +71,6 @@ enum QuietTestProcess {
     @MainActor private static var sampler: Timer?
     @MainActor private static var noticed: String?
 
-    /// Samples the process 20 times a second while a test runs, so a window key for a moment in the
-    /// middle of a test fails it too, not only one left key at its end.
     @MainActor
     fileprivate static func startSampling() {
         noticed = nil
@@ -87,7 +81,6 @@ enum QuietTestProcess {
         }
     }
 
-    /// Stops sampling and gives back what the test did to the owner, if anything, after undoing it.
     @MainActor
     fileprivate static func stopSampling() -> String? {
         sampler?.invalidate()
@@ -99,9 +92,6 @@ enum QuietTestProcess {
     }
 }
 
-/// A test that hosts windows: the quiet process is installed before any of its tests run, and a test
-/// that activates the process, makes a window key or shows one on a screen, for however short a
-/// moment, fails.
 @MainActor
 class QuietWindowTestCase: XCTestCase {
     override class func setUp() {
@@ -122,10 +112,7 @@ class QuietWindowTestCase: XCTestCase {
     }
 }
 
-/// The quiet windows a test hosts a view in.
 enum QuietHost {
-    /// The dashboard's own panel, so clicks, hovers and the rename field behave as in the app, minus the
-    /// keyboard: it never becomes key.
     case panel
     case titled
     case borderless
@@ -133,8 +120,6 @@ enum QuietHost {
 
 @MainActor
 extension QuietWindowTestCase {
-    /// Shows `content` in a hosting view sized to what it asks for (or `size`), in a quiet window of `kind`
-    /// under `appearance` that takes pointer events, laid out.
     func show(
         _ content: some View,
         in kind: QuietHost = .panel,
@@ -158,7 +143,6 @@ extension QuietWindowTestCase {
         return (window, host)
     }
 
-    /// The host's pixels as drawn now, for an exact comparison between two states.
     func pixels(of host: NSView) throws -> Data {
         host.layoutSubtreeIfNeeded()
         let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
@@ -186,9 +170,6 @@ final class QuietWindow: NSWindow, NSWindowDelegate {
     }
 }
 
-/// The dashboard's panel as a test hosts it: it takes the events a test sends it and never the
-/// keyboard, so the panel's own makeKey on a click, and the rename field's as it appears, do nothing;
-/// a sheet it presents is invisible.
 final class QuietMenuBarPanel: MenuBarPanel, NSWindowDelegate {
     override init(contentRect: NSRect) {
         super.init(contentRect: contentRect)

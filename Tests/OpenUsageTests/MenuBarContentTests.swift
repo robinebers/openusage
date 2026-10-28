@@ -1,8 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Covers `MenuBarContentBuilder`: it resolves pinned provider groups into strip groups (order, labels,
-/// and values preserved), and reports empty when nothing is pinned.
 @MainActor
 final class MenuBarContentTests: XCTestCase {
     func testEmptyWhenNoGroups() {
@@ -36,9 +34,6 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     func testNoDataMetricsDropFromStrip() {
-        // The strip is dynamic: a pinned metric without data vanishes instead of rendering "—", and
-        // the surviving pin renders alone (full size). A provider whose pins all lack data
-        // contributes no icon at all.
         let content = MenuBarContentBuilder.build(
             groups: [
                 group("a", percent("a.live", "Session", 41), noDataPercent("a.dark", "Weekly")),
@@ -73,21 +68,14 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     func testBoundedTrayValuesStayUnitAware() {
-        // Percent meters still read as percentages, while bounded dollars/counts keep their natural
-        // unit in the strip instead of collapsing to "used / limit" percentages.
         let usage = percent("a.usage", "Usage", 67)
         let credits = boundedDollars("a.credits", "Credits", used: 12000, limit: 18000)
         let requests = boundedCount("a.requests", "Requests", used: 412, limit: 500)
-        let spend = unbounded("a.spend", "Spend")   // unbounded $42
+        let spend = unbounded("a.spend", "Spend")
         let content = MenuBarContentBuilder.build(groups: [group("a", usage, credits, requests, spend)], data: { $0.sample })
 
         XCTAssertEqual(content.groups[0].metrics.map(\.value), ["67%", "$12K", "412", "$42"])
     }
-
-    // Compact-notation rules for tray values (abbreviation, decimal rounding) are pinned exactly in
-    // MetricFormatterTests — the strip only relays MetricFormatter output.
-
-    // MARK: - Fixtures
 
     private func group(_ providerID: String, _ metrics: WidgetDescriptor...) -> ProviderMetrics {
         let provider = Provider(id: providerID, kind: providerID == "a" ? .claude : .codex)

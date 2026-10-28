@@ -34,16 +34,12 @@ final class PanelOutsideClickPolicyTests: XCTestCase {
         XCTAssertFalse(PanelOutsideClickPolicy.shouldKeepOpen(.init(eventWindowTypeName: "NSWindow")))
     }
 
-    // MARK: - Status-button hit test
-
     /// A button frame a few points shorter than its menu bar, the way AppKit lays it out: the
     /// screen tops out at y=1000 but the 24pt button frame ends at y=996.
     private let buttonFrame = NSRect(x: 100, y: 972, width: 40, height: 24)
     private let screenTop: CGFloat = 1000
 
     func testClickAtTopOfScreenWithRealCapturedGeometryHits() {
-        // Verbatim from the diagnostic log that pinned the bug down: point {4122.98, 1555},
-        // buttonFrame {{4061, 1529}, {242.5, 22}}, screen {{1728, -65}, {2880, 1620}} (maxY 1555).
         XCTAssertTrue(PanelOutsideClickPolicy.pointHitsStatusButton(
             NSPoint(x: 4122.98046875, y: 1555),
             buttonFrame: NSRect(x: 4061, y: 1529, width: 242.5, height: 22),

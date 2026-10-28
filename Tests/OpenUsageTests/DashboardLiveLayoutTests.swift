@@ -3,10 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The dashboard as the app hosts it — `WidgetGroupedListView` with its stores, in an `NSHostingView`
-/// inside a window — keeps the grid's heights: 20 pt per row, one Subheadline line per caption, one
-/// Headline line per header, a caption over every account, one or several, and nothing between two rows of one account. The share image draws the static
-/// `DashboardAccountRows`, so a height the live tree adds around a row shows only here.
 @MainActor
 final class DashboardLiveLayoutTests: QuietWindowTestCase {
     private final class Frames {
@@ -24,8 +20,6 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         )
     }
 
-    /// Codex alone with three rows, then Claude with two accounts of two rows each, every row with a
-    /// reset so it takes the live row's clock.
     private func host() async throws -> (host: NSView, frames: Frames) {
         let defaults = isolatedDefaults()
         let registry = WidgetRegistry(

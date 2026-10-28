@@ -3,11 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// One severity palette: blue, orange, red. Each severity maps to its system colour, and the meter
-/// bar, the row's value, the row's flame, the resets timeline's dot and the claim banner all paint that
-/// same colour. The views are rasterized and their dominant opaque colour is matched to
-/// the nearest candidate colour, so a surface that drifts to yellow, the accent colour, or SwiftUI's own
-/// orange/red fails here.
 @MainActor
 final class SeverityPaletteTests: XCTestCase {
     private let d: TimeInterval = 86400
@@ -34,15 +29,11 @@ final class SeverityPaletteTests: XCTestCase {
             let meter = UsageMeterBar(fill: 1, severity: severity).frame(width: 60)
             XCTAssertEqual(try dominant(meter), name, "meter \(severity)")
 
-            // An empty bar leaves the value as the row's only colour: orange or red with the bar (a blue
-            // row's value stays plain).
             if severity != .normal {
                 let row = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: severity, value: "0%", reset: "1d 8h")))
                     .frame(width: 292)
                 XCTAssertEqual(try dominant(row), name, "value \(severity)")
             }
-            // The flame is red, the colour of the one state that lights it; here on a bar with no fill
-            // and a plain value, so it is the row's only colour.
             if severity == .critical {
                 let flame = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: .normal, value: "60%", reset: "1d 8h", flame: true)))
                     .frame(width: 292)
@@ -78,8 +69,6 @@ final class SeverityPaletteTests: XCTestCase {
         }
     }
 
-    // MARK: - Fixtures
-
     private func expiryOffset(_ severity: WidgetData.MeterSeverity) -> TimeInterval {
         switch severity {
         case .critical: return 1 * d
@@ -88,10 +77,6 @@ final class SeverityPaletteTests: XCTestCase {
         }
     }
 
-    // MARK: - Colour sampling
-
-    /// The most common fully opaque, saturated pixel of the rendered view (fills and glyphs, never the
-    /// gray text or a translucent track), named by its nearest candidate colour.
     private func dominant(_ view: some View) throws -> String {
         let renderer = ImageRenderer(content: view.environment(\.colorScheme, .light))
         renderer.scale = 2
@@ -119,7 +104,6 @@ final class SeverityPaletteTests: XCTestCase {
         nearest(resolve(color, .aqua))
     }
 
-    /// The candidate closest to `rgb`, each compared in both its light and dark appearance.
     private static func nearest(_ rgb: SIMD3<Double>) -> String {
         candidates.min { distance(rgb, $0.1) < distance(rgb, $1.1) }!.0
     }

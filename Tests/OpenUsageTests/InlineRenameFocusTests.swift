@@ -3,12 +3,6 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// Every inline rename takes the keyboard at once, in the dashboard's own panel: the panel is key, the
-/// field editor is first responder with the whole name selected after SwiftUI's focus has settled, and
-/// typing replaces the name. Each case starts with the panel not key, the state it's in after the app
-/// deactivates or a menu or popover took key, and drives the panel with real events sent through
-/// `NSApp`, so first-mouse handling and key routing are AppKit's own. They make the panel key and the
-/// process active, so they run only under `OPENUSAGE_FOCUS_TESTS=1`.
 @MainActor
 final class InlineRenameFocusTests: QuietWindowTestCase {
     private struct Hosted {
@@ -18,7 +12,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         let accounts: [String: String]
     }
 
-    /// A double-click on an account's name on its caption, in a provider with two accounts.
     func testDoubleClickingAnAccountNameTakesTheKeyboard() async throws {
         let hosted = try await host()
         try await resignKey(hosted)
@@ -28,7 +21,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         try await assertRenameTakesTyping("Personal", hosted)
     }
 
-    /// Right-click → Rename, which begins the edit once the menu has closed.
     func testRenameFromTheMenuTakesTheKeyboard() async throws {
         let hosted = try await host()
         try await resignKey(hosted)
@@ -36,7 +28,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         try await assertRenameTakesTyping("Work", hosted)
     }
 
-    /// A click on the Accounts screen's title.
     func testClickingTheAccountsTitleTakesTheKeyboard() async throws {
         let hosted = try await host(accountsTitle: "Work")
         try await resignKey(hosted)
@@ -64,8 +55,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         renaming.cancel()
     }
 
-    /// The dashboard (or, with `accountsTitle`, that account's Accounts page) as `StatusItemController`
-    /// hosts it, for Claude "Personal" and "Work".
     private func host(accountsTitle: String? = nil) async throws -> Hosted {
         try QuietTestProcess.requireFocus()
         let defaults = isolatedDefaults()
@@ -110,7 +99,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         return Hosted(panel: panel, host: hosting.view, container: container, accounts: accounts)
     }
 
-    /// Leaves the panel on screen but not key, as it is once the app deactivates.
     private func resignKey(_ hosted: Hosted) async throws {
         NSApp.deactivate()
         for _ in 0..<100 where hosted.panel.isKeyWindow || NSApp.isActive {
@@ -127,7 +115,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         try await send(.leftMouseUp, at: point, hosted, clickCount: 2)
     }
 
-    /// `point` is top-left based, in the panel's content.
     private func send(_ type: NSEvent.EventType, at point: CGPoint, _ hosted: Hosted, clickCount: Int = 1) async throws {
         NSApp.sendEvent(NSEvent.mouseEvent(
             with: type,

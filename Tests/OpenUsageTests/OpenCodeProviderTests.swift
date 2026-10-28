@@ -2,7 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// OpenCode is named "OpenCode" with a "Go" plan tag, while every stored identifier keeps `opencode`.
 @MainActor
 final class OpenCodeProviderTests: XCTestCase {
     func testAccountSavedUnderTheOldRawValueStillLoads() throws {

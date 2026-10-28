@@ -1,11 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// A refresh that keeps failing leaves the last good snapshot on screen (stale-while-revalidate by
-/// design), so the user must be told how old that data is or the fossilized plan/limits look current.
-/// The store exposes a per-provider hint once the displayed snapshot ages past its freshness window:
-/// its age ("Last updated 3h ago"), which puts the clock glyph after the account's name and opens its
-/// right-click menu.
 @MainActor
 final class StalenessLabelTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -25,7 +20,6 @@ final class StalenessLabelTests: XCTestCase {
     }
 
     func testSnapshotExactlyAtThresholdIsStale() {
-        // Pins the `>=` boundary: exactly `stalenessThreshold` old must already count as stale.
         let store = makeStore()
         store.snapshots["devin"] = snapshot(refreshedAt: now.addingTimeInterval(-WidgetDataStore.stalenessThreshold))
         XCTAssertNotNil(store.stalenessHint(for: "devin"))
@@ -42,9 +36,6 @@ final class StalenessLabelTests: XCTestCase {
         XCTAssertNil(store.stalenessHint(for: "devin"))
     }
 
-    /// End to end: a cached snapshot is on screen, the live refresh keeps failing, so the fossil
-    /// persists — and is labelled with its age instead of silently passing
-    /// for current data.
     func testFailingRefreshKeepsFossilButLabelsItStale() async {
         let provider = Provider(id: "devin", kind: .claude)
         let descriptor = WidgetDescriptor(
@@ -57,7 +48,6 @@ final class StalenessLabelTests: XCTestCase {
             snapshot: ProviderSnapshot(provider: provider, failure: RefreshFailure(message: "Not logged in", kind: .refused))
         )
         let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime)
-        // Old cached snapshot already on screen (the "Team 5x" fossil), three hours stale.
         store.snapshots["devin"] = ProviderSnapshot(
             providerID: "devin", displayName: "Devin", plan: "Team 5x",
             lines: [.progress(label: "Weekly quota", used: 40, limit: 100, format: .percent)],
@@ -72,8 +62,6 @@ final class StalenessLabelTests: XCTestCase {
         XCTAssertEqual(store.stalenessHint(for: "devin"), "Last updated 3h ago",
                        "the fossil is now visibly labelled as old")
     }
-
-    // MARK: - Helpers
 
     private func snapshot(refreshedAt: Date) -> ProviderSnapshot {
         ProviderSnapshot(

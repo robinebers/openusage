@@ -2,10 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// An hour of refreshes, one every 5 minutes, against each provider's runtime: usage is asked every pass
-/// and the reads that rarely change (plans, Codex's reset-credit list) once, so Codex, Grok, Ollama and
-/// Z.ai cost 13 requests an hour instead of 24, and Cursor's plan read drops from 12 to 1. A forced
-/// refresh (⌘R) asks those reads again at once.
 @MainActor
 final class SecondaryReadCadenceTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
@@ -71,10 +67,6 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(ollama.map { $0[OllamaUsageClient.accountPath] }, [1, 2])
     }
 
-    // MARK: - Helpers
-
-    /// Request counts after a scheduled pass and a second one 5 minutes later, then after a forced refresh a
-    /// minute on, through the store.
     private func passThenForcedRefresh(
         _ kind: ProviderKind,
         credential: AccountCredential = .oauth(OAuthTokens(accessToken: "token")),
@@ -106,7 +98,6 @@ final class SecondaryReadCadenceTests: XCTestCase {
         var lastPlan: String?
     }
 
-    /// Twelve refreshes 5 minutes apart (one hour), then one more an hour after the first.
     private func hourOfRefreshes(
         _ kind: ProviderKind,
         credential: AccountCredential,

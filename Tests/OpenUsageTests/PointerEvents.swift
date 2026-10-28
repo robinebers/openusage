@@ -6,8 +6,6 @@ import XCTest
 /// coordinates.
 @MainActor
 extension QuietWindowTestCase {
-    /// Moves the pointer onto `point` and rests there past the popover's 400 ms hover dwell: the enter
-    /// event for the host's tracking area, then a move to `point`.
     func hover(_ point: CGPoint, _ window: NSWindow, _ host: NSView) throws {
         let area = try XCTUnwrap(host.trackingAreas.first, "nothing on the section tracks the pointer")
         host.mouseEntered(with: NSEvent.enterExitEvent(
@@ -25,8 +23,6 @@ extension QuietWindowTestCase {
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
     }
 
-    /// Takes the pointer off the section: the exit event for the host's tracking area, which is what
-    /// ends a hover (a move to another point of the section does not).
     func leave(_ window: NSWindow, _ host: NSView) throws {
         let area = try XCTUnwrap(host.trackingAreas.first, "nothing on the section tracks the pointer")
         host.mouseExited(with: NSEvent.enterExitEvent(
@@ -66,7 +62,6 @@ extension QuietWindowTestCase {
         send(.leftMouseUp, at: end, window, host)
     }
 
-    /// `point` is top-left based, in the host's coordinates.
     func send(_ type: NSEvent.EventType, at point: CGPoint, _ window: NSWindow, _ host: NSView, clickCount: Int = 1) {
         let event = NSEvent.mouseEvent(
             with: type,
