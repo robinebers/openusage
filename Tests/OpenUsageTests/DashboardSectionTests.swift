@@ -42,10 +42,12 @@ final class DashboardSectionTests: QuietWindowTestCase {
     /// A point on the header's name, which starts 8 pt after the logo.
     private static let headerNameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
 
+    /// A week-long window, so the pace figure the bar's tooltip names can't change between the row's
+    /// 30-second clock tick and the assertion's own reading of the time.
     private let lines: [DashboardLine] = ["Session", "Weekly", "Fable"].map { title in
         var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
-        data.resetsAt = Date().addingTimeInterval(3 * 3600)
-        data.periodDurationMs = 5 * 3600 * 1000
+        data.resetsAt = Date().addingTimeInterval(86_400)
+        data.periodDurationMs = 7 * 86_400 * 1000
         return DashboardLine(descriptor: WidgetDescriptor(id: title, providerID: "claude", metricLabel: title, sample: data), data: data)
     }
 
