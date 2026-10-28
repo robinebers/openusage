@@ -12,7 +12,8 @@ final class ResetClaimServiceTests: XCTestCase {
     private func makeService(
         outcome: ResetClaimOutcome,
         refreshOutcomes: [WidgetDataStore.RefreshOutcome] = [.refreshed],
-        recorder: Recorder
+        recorder: Recorder,
+        refreshed: XCTestExpectation
     ) -> ResetClaimService {
         ResetClaimService(
             accountID: "codex@test",
@@ -20,37 +21,44 @@ final class ResetClaimServiceTests: XCTestCase {
             confirmDetail: nil,
             claimReset: { _, _ in outcome },
             refreshAccount: {
-                defer { recorder.refreshes += 1 }
+                defer { recorder.refreshes += 1; refreshed.fulfill() }
                 return refreshOutcomes[min(recorder.refreshes, refreshOutcomes.count - 1)]
             },
+            refreshDelay: .seconds(5),
             pause: { recorder.pauses.append($0) }
         )
     }
 
-    func testClaimRefreshesTheAccountUnlessItFailed() async {
+    func testClaimRefreshesTheAccountAfterTheDelayUnlessItFailed() async {
         let outcomes: [ResetClaimOutcome] = [
             .success, .nothingToReset, .noCredit, .unconfirmed, .unavailableNow(until: nil), .failed(.connection)
         ]
         for outcome in outcomes {
             let recorder = Recorder()
-            let service = makeService(outcome: outcome, recorder: recorder)
+            let failed = outcome == .failed(.connection)
+            let refreshed = expectation(description: "the post-claim refresh after \(outcome)")
+            refreshed.isInverted = failed
+            let service = makeService(outcome: outcome, recorder: recorder, refreshed: refreshed)
 
             let result = await service.claim(creditExpiringAt: Date(), redeemRequestID: "redeem-1")
 
             XCTAssertEqual(result, outcome)
-            XCTAssertEqual(recorder.refreshes, outcome == .failed(.connection) ? 0 : 1, "\(outcome)")
+            await fulfillment(of: [refreshed], timeout: failed ? 0.1 : 5)
+            XCTAssertEqual(recorder.refreshes, failed ? 0 : 1, "\(outcome)")
+            XCTAssertEqual(recorder.pauses, failed ? [] : [.seconds(5)], "\(outcome)")
         }
     }
 
     func testThePostClaimRefreshRunsOnceWhateverItReturns() async {
         for refresh in [WidgetDataStore.RefreshOutcome.skipped, .failed, .backedOff] {
             let recorder = Recorder()
-            let service = makeService(outcome: .success, refreshOutcomes: [refresh], recorder: recorder)
+            let refreshed = expectation(description: "the post-claim refresh answering \(refresh)")
+            let service = makeService(outcome: .success, refreshOutcomes: [refresh], recorder: recorder, refreshed: refreshed)
 
             _ = await service.claim(creditExpiringAt: Date(), redeemRequestID: "redeem-1")
 
+            await fulfillment(of: [refreshed], timeout: 5)
             XCTAssertEqual(recorder.refreshes, 1, "\(refresh)")
-            XCTAssertEqual(recorder.pauses, [], "\(refresh)")
         }
     }
 
