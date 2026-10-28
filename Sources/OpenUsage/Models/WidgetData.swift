@@ -143,10 +143,12 @@ struct WidgetData: Hashable {
         return .normal
     }
 
-    /// The figure of a row carrying reset expiries takes the colour of the reset that expires next.
+    /// The figure of a row carrying reset expiries warns in the colour of the reset that expires next;
+    /// beyond the warning window it keeps the row's normal colour.
     func expirySeverity(now: Date = Date()) -> MeterSeverity? {
         guard hasData, let soonest = expiriesAt.min() else { return nil }
-        return Self.expirySeverity(secondsRemaining: soonest.timeIntervalSince(now))
+        let severity = Self.expirySeverity(secondsRemaining: soonest.timeIntervalSince(now))
+        return severity == .normal ? nil : severity
     }
 
     var resetCreditCount: Int {

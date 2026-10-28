@@ -41,7 +41,7 @@ struct DashboardMetricRow: View {
                         .lineLimit(1)
                         .contentTransition(.numericText())
                         .fixedSize()
-                        .accessibilityValue(severity.map(Self.expiryAccessibilityValue) ?? "")
+                        .accessibilityValue(severity.flatMap(Self.expiryAccessibilityValue) ?? "")
                 ))
                 Spacer(minLength: 0)
             }
@@ -53,9 +53,9 @@ struct DashboardMetricRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String {
+    static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String? {
         switch severity {
-        case .normal: "the next reset expires in more than 7 days"
+        case .normal: nil
         case .warning: "a reset expires within 7 days"
         case .critical: "a reset expires within 48 hours"
         }
