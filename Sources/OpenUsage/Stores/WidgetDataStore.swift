@@ -335,6 +335,16 @@ final class WidgetDataStore {
         return "Last updated \(duration) ago"
     }
 
+    /// Whether any account's numbers are past their refresh slot because refreshes fail or a wait holds
+    /// them back: its snapshot is older than one refresh interval and it has a backoff, which every failed
+    /// refresh leaves until a success clears it. The menu-bar strip dims while this is set; current data
+    /// and an account that is only mid-refresh leave it clear.
+    var hasStaleAccount: Bool {
+        snapshots.contains { id, snapshot in
+            backoffs[id] != nil && now().timeIntervalSince(snapshot.refreshedAt) >= RefreshSetting.interval
+        }
+    }
+
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {
         switch line {
         case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs):

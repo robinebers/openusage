@@ -24,18 +24,21 @@ struct MenuBarContent: Equatable {
     /// have real data appear, and a provider whose pinned metrics all lack data drops out entirely
     /// (no orphan icon) — so the strip never renders "—" placeholders.
     let groups: [Group]
+    /// An account's numbers are past their refresh slot (`WidgetDataStore.hasStaleAccount`).
+    var isStale = false
 
     /// Nothing is pinned, or no pinned metric has data yet — the menu bar falls back to the app icon.
     var isEmpty: Bool { groups.isEmpty }
 
     /// VoiceOver summary for the rendered strip image, e.g.
-    /// "Claude Session 41%, Weekly 12%; Cursor Credits $12".
+    /// "Claude Session 41%, Weekly 12%; Cursor Credits $12", ending ", waiting for a provider" while stale.
     var accessibilityText: String {
-        groups.map { group in
+        let summary = groups.map { group in
             let metrics = group.metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
             return "\(group.provider.fullName) \(metrics)"
         }
         .joined(separator: "; ")
+        return isStale ? summary + ", waiting for a provider" : summary
     }
 }
 
@@ -49,7 +52,7 @@ enum MenuBarContentBuilder {
     /// The strip is dynamic: a pinned metric without data is dropped (one of two pins renders alone at
     /// full size), and a provider with no data-carrying pins contributes no icon at all. Pins are
     /// membership; the strip shows whatever subset is real right now.
-    static func build(groups: [ProviderMetrics], data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
+    static func build(groups: [ProviderMetrics], isStale: Bool = false, data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
             let metrics = group.metrics.compactMap { descriptor -> MenuBarContent.Metric? in
                 let data = data(descriptor)
@@ -59,7 +62,7 @@ enum MenuBarContentBuilder {
             guard !metrics.isEmpty else { return nil }
             return MenuBarContent.Group(provider: group.provider, metrics: metrics)
         }
-        return MenuBarContent(groups: badged(resolvedGroups))
+        return MenuBarContent(groups: badged(resolvedGroups), isStale: isStale)
     }
 
     /// Tags each group whose provider has more than one account in the strip.

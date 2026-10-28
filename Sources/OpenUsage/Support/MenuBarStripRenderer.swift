@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Renders the Text-style menu-bar strip (`MenuBarContent`) into a template `NSImage` for the
 /// `MenuBarExtra` label: provider mark + bare value for a single metric, or a tight labeled stack for
-/// two. Black-on-clear so macOS tints it for light/dark; sized to its natural width. The image is built
+/// two. Black-on-clear so macOS tints it for light/dark; sized to its natural width. A stale strip draws at
+/// half strength, which the tint keeps. The image is built
 /// outside the `label:` view builder (an `ImageRenderer` inline there throws obscure errors).
 @MainActor
 enum MenuBarStripRenderer {
@@ -27,6 +28,19 @@ enum MenuBarStripRenderer {
         image.isTemplate = true
         image.accessibilityDescription = content.accessibilityText
         return image
+    }
+
+    /// The app icon the status item shows when the strip is empty, dimmed like a stale strip.
+    static func appIcon(for content: MenuBarContent) -> NSImage {
+        // The brand mark's smaller inset fills the menu-bar slot about as fully as a system glyph.
+        let icon = ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
+        guard content.isStale else { return icon }
+        let dimmed = NSImage(size: icon.size, flipped: false) { rect in
+            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.5)
+            return true
+        }
+        dimmed.isTemplate = true
+        return dimmed
     }
 
     /// Crops fully transparent margins off a rendered strip, or `nil` when the image has no visible
@@ -93,6 +107,8 @@ private struct MenuBarTextStrip: View {
         .padding(.horizontal, 2)
         .padding(.vertical, 1)
         .fixedSize()
+        .compositingGroup()
+        .opacity(content.isStale ? 0.5 : 1)
     }
 
     /// A provider's pinned values, no labels: one metric as a single large number, two stacked on two

@@ -202,6 +202,7 @@ final class StatusItemController: NSObject {
         let content = withObservationTracking {
             MenuBarContentBuilder.build(
                 groups: container.layout.pinnedGroups,
+                isStale: container.dataStore.hasStaleAccount,
                 data: { container.dataStore.data(for: $0) }
             )
         } onChange: { [weak self] in
@@ -211,9 +212,8 @@ final class StatusItemController: NSObject {
             }
         }
         stripGate.show(content) { content in
-            // The brand mark's smaller inset fills the menu-bar slot about as fully as a system glyph.
             statusItem.button?.image = MenuBarStripRenderer.image(for: content)
-                ?? ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
+                ?? MenuBarStripRenderer.appIcon(for: content)
         }
     }
 

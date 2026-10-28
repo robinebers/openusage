@@ -27,6 +27,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
+- Menu bar: the strip, or the app icon in its place, dims while an account's values are out of date
+  because refreshes fail or a provider asked OpenUsage to wait.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

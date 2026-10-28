@@ -59,6 +59,10 @@ An account that stops responding is given up on after two minutes. Its spinner s
 Once an account's values are more than two refresh cycles old, a clock appears next to its name, and
 the account's right-click menu starts with their age. A successful refresh clears it.
 
+While any account's values are older than one refresh cycle because its refreshes fail or a provider
+asked OpenUsage to wait, the menu bar strip dims, or the app icon when nothing is starred. A refresh
+that is only in progress does not dim it, and a successful refresh brings it back to full strength.
+
 ## Expired sign-ins
 
 OAuth accounts renew their own sign-in with the provider's refresh token, 5 minutes before the
