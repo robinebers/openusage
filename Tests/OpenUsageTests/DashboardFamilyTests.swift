@@ -33,9 +33,9 @@ final class DashboardFamilyTests: XCTestCase {
         }
         XCTAssertEqual(family([codex("Sunstory")]).accounts.map(\.name), ["Sunstory"])
         XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com"), codex("Codex"), codex(nil)]).accounts.map(\.name),
-                       ["Sunstory", "sam@hey.com", "Codex", "Codex"])
-        XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Codex"])
-        XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Sunstory", "Codex"])
+                       ["Sunstory", "sam@hey.com", "Codex", "ChatGPT"])
+        XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["ChatGPT"])
+        XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Sunstory", "ChatGPT"])
     }
 
     func testTheLimitResetsRowShowsOnlyWhileAResetIsAvailable() {

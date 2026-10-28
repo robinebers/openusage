@@ -113,7 +113,7 @@ struct CodexLogin: ProviderLogin {
         var extras: [String: String] = [:]
         extras["chatgpt_account_id"] = accountID
         if let accountID, let email = idClaims?.email { extras[OAuthTokens.identityKey] = "\(accountID)/\(email)" }
-        return (idClaims?.email ?? "Codex Account", .oauth(OAuthTokens(
+        return (idClaims?.email ?? "ChatGPT Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: token.expiry,

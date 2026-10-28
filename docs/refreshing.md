@@ -9,7 +9,7 @@
 | Adding an account | That account |
 | **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure, never a wait the provider asked for |
 | An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
-| Claiming a rate-limit reset | That account, once the result has shown: 5 seconds after a Codex claim, 30 seconds after a Claude claim |
+| Claiming a rate-limit reset | That account, once the result has shown: 5 seconds after a ChatGPT claim, 30 seconds after a Claude claim |
 
 There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
 ⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that
@@ -20,7 +20,7 @@ fetching, a spinner shows next to its name and in the footer.
 
 Usage is read on every refresh. Reads that rarely change are read at most once an hour and reused in
 between: the plan name (Claude, Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project),
-Codex's list of reset credits with their expiry times (the count still updates every refresh), and
+ChatGPT's list of reset credits with their expiry times (the count still updates every refresh), and
 Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.

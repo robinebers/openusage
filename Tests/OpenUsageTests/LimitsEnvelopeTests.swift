@@ -11,7 +11,7 @@ final class LimitsEnvelopeTests: XCTestCase {
       "generatedAt": "2026-07-13T01:40:00.000Z",
       "providers": {
         "codex": {
-          "displayName": "Codex",
+          "displayName": "ChatGPT",
           "plan": "Pro 200",
           "fetchedAt": "2026-07-13T01:39:30.000Z",
           "expiresAt": "2026-07-13T01:44:30.000Z",
@@ -67,7 +67,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         let account = Account(kind: .codex, label: "Codex")
         let snapshot = ProviderSnapshot(
             providerID: account.cardID,
-            displayName: "Codex",
+            displayName: "ChatGPT",
             plan: "Pro 200",
             lines: [
                 .progress(label: "Session", used: 42, limit: 100, format: .percent,
@@ -97,7 +97,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         .exportingLimit("creditValue", kind: .balance, unit: "usd", source: .value(kind: .dollars))
         let snapshot = ProviderSnapshot(
             providerID: "codex",
-            displayName: "Codex",
+            displayName: "ChatGPT",
             plan: "Pro 200",
             lines: [
                 .progress(

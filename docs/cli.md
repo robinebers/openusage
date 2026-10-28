@@ -7,7 +7,7 @@ successful fetch, and the command reads that saved copy. Running it does not lau
 
 ```sh
 openusage                  # every account
-openusage codex            # every Codex account
+openusage codex            # every ChatGPT account (the provider id stays codex)
 openusage codex@1a2b3c4d   # one account, by its id
 ```
 
@@ -41,7 +41,7 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
   "generatedAt": "2026-07-13T01:40:00.000Z",
   "providers": {
     "codex@1a2b3c4d": {
-      "displayName": "Codex",
+      "displayName": "ChatGPT",
       "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
       "expiresAt": "2026-07-13T01:44:30.000Z",
@@ -92,7 +92,7 @@ app, with its reason in the account's right-click menu.
 | Provider | Resource keys |
 | --- | --- |
 | Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage`, `rateLimitResets` |
-| Codex | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
+| ChatGPT (`codex`) | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions` |
@@ -102,7 +102,7 @@ app, with its reason in the account's right-click menu.
 | OpenRouter | `balance` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
-Codex's combined Credits row becomes two scalars, `credits` and `creditValue`. Antigravity's
+ChatGPT's combined Credits row becomes two scalars, `credits` and `creditValue`. Antigravity's
 `argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.
 Charts, colours, subtitles, badges, layout state, and spend periods (OpenRouter's today, week, and
 month) stay out of this output.

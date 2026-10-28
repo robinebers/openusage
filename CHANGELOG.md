@@ -24,6 +24,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
+- Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.

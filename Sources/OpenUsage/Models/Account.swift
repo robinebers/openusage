@@ -21,7 +21,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
     var displayName: String {
         switch self {
         case .claude: "Claude"
-        case .codex: "Codex"
+        case .codex: "ChatGPT"
         case .cursor: "Cursor"
         case .antigravity: "Antigravity"
         case .copilot: "Copilot"

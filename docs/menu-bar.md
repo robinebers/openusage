@@ -12,7 +12,7 @@ Left-click opens the panel.
 Star a metric from its right-click menu on the dashboard, or with the star on its row on an account's
 page in Accounts.
 
-- Each provider ships with default stars (for example Claude Session and Weekly, Codex Session and
+- Each provider ships with default stars (for example Claude Session and Weekly, ChatGPT Session and
   Weekly, Cursor Models and Other Models, OpenRouter Balance), so the strip shows numbers as soon as
   an account refreshes. Change them any time.
 - At most **two stars per provider**.

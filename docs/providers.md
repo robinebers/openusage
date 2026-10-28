@@ -7,7 +7,7 @@ report stays hidden.
 | Provider | Sign-in | Card shows |
 |---|---|---|
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| Codex | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Rate Limit Resets |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Rate Limit Resets |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
@@ -26,7 +26,7 @@ here.
 | Provider | Scopes requested | Why |
 |---|---|---|
 | Claude | `user:profile` | `/api/oauth/usage` and `/api/oauth/profile` require it and nothing else. The token cannot run inference, create API keys, or reach Claude Code sessions, MCP servers, or uploads. |
-| Codex | `openid profile email offline_access` | Plain OpenID Connect: the email names the account and `offline_access` is the refresh token. The usage endpoint reads the account id from the token itself. |
+| ChatGPT | `openid profile email offline_access` | Plain OpenID Connect: the email names the account and `offline_access` is the refresh token. The usage endpoint reads the account id from the token itself. |
 | Cursor | none (Cursor's own sign-in, no scopes) | Cursor's login returns a dashboard session; there is no scope to narrow. |
 | Antigravity | `cloud-platform`, `userinfo.email` | Cloud Code's quota API is a Google Cloud API and takes `cloud-platform`; the email names the account. Every Cloud Code client, Gemini CLI included, asks for `cloud-platform`; none is known to work without it. The Antigravity app also asks for `userinfo.profile`, `cclog`, and `experimentsandconfigs`; the card never uses them. |
 | Copilot | `read:user` | The scope Copilot's own sign-in asks for, and the one known to read `/copilot_internal/user`. It reads your GitHub profile and nothing else; whether the quota read works with no scope at all is unverified. |
@@ -51,9 +51,10 @@ plan (Pro, Max, Team). Team seats get no weekly window from the API, so none sho
 The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
 when each expires; choose **Use**, then **Reset** to spend one.
 
-## Codex
+## ChatGPT
 
-Sign in through OpenAI in your browser. When the app cannot listen on port 1455 for the browser's
+Sign in through OpenAI in your browser. The account shows as ChatGPT; its provider id, as the command line
+takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). Rate-limit reset credits
 work like Claude's Limit Resets row.

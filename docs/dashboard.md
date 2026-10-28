@@ -43,7 +43,7 @@ such as `$12.40 left`. A metric the provider has not reported is hidden.
 
 ## Resets
 
-Claude and Codex accounts show a **Limit Resets** row with the number of available rate-limit resets
+Claude and ChatGPT accounts show a **Limit Resets** row with the number of available rate-limit resets
 while they have any. The count takes the colour of the reset that expires next: blue with more than
 7 days left, orange within 7 days, red within 48 hours. Rest the pointer on the count for a moment to
 see when each reset expires. To spend

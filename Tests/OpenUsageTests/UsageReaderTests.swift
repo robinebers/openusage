@@ -38,7 +38,7 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertNil(providers[pending.cardID])
         let resources = try XCTUnwrap(providers[codex.cardID]?["resources"] as? [String: Any])
         XCTAssertEqual((resources["weekly"] as? [String: Any])?["used"] as? Double, 20)
-        XCTAssertEqual(providers[codex.cardID]?["displayName"] as? String, "Codex")
+        XCTAssertEqual(providers[codex.cardID]?["displayName"] as? String, "ChatGPT")
     }
 
     func testProviderKindNamesEveryAccountOfThatKindAndCardIDNamesOne() throws {

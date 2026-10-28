@@ -11,7 +11,7 @@ values that the provider's own API reports.
 
 <!-- assets/screenshot.jpg needs a new capture of the account-based dashboard before release. -->
 <p align="center">
-  <img src="assets/screenshot.jpg" alt="OpenUsage menu bar panel showing Claude and Codex usage limits" width="900">
+  <img src="assets/screenshot.jpg" alt="OpenUsage menu bar panel showing Claude and ChatGPT usage limits" width="900">
 </p>
 
 ## Installation
@@ -42,8 +42,8 @@ app's own Keychain service.
 
 ## Providers
 
-Claude, Codex, Cursor, Antigravity, Copilot, Grok, Ollama, OpenCode, OpenRouter, and Z.ai. Claude,
-Codex, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Ollama, OpenCode, OpenRouter, and
+Claude, ChatGPT, Cursor, Antigravity, Copilot, Grok, Ollama, OpenCode, OpenRouter, and Z.ai. Claude,
+ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Ollama, OpenCode, OpenRouter, and
 Z.ai use API keys. OpenRouter's balance needs a Management key. [Providers](docs/providers.md) lists
 what each one shows and what each sign-in grants.
 
@@ -60,7 +60,7 @@ what each one shows and what each sign-in grants.
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
-- **Resets.** Claude and Codex accounts show a Limit Resets row with the number of available rate-limit
+- **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
   resets. Rest the pointer on the count to see when each expires, and spend one from there.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or
   right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with

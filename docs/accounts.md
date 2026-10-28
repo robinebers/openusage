@@ -8,7 +8,7 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
 1. Click **+** at the top of the Accounts screen.
 2. Click a provider, or select it with the arrow keys and press Return. The sign-in starts at once.
 3. Finish the sign-in:
-   - **Browser** (Claude, Codex, Cursor, Antigravity): your browser opens on its own. **Open Browser**
+   - **Browser** (Claude, ChatGPT, Cursor, Antigravity): your browser opens on its own. **Open Browser**
      opens it again, and **Copy Link** lets you open the link in another browser. The sheet closes
      when you are signed in. If your browser shows a code instead, paste it into the sheet and click
      **Continue**.
