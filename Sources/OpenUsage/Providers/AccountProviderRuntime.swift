@@ -215,25 +215,15 @@ final class AccountProviderRuntime: ProviderRuntime {
         let tokens = try await freshTokens(credential, grant: AntigravityLogin.refresh)
         let client = AntigravityUsageClient(http: http)
         if planBodyRead.isDue(at: now()) {
-            let fresh: Data? = if case .ok(let data) = await client.loadCodeAssist(token: tokens.accessToken) { data } else { nil }
-            planBodyRead.record(fresh, at: now())
+            planBodyRead.record(try? await client.loadCodeAssist(token: tokens.accessToken), at: now())
         }
         let codeAssist = planBodyRead.value
-        let project = codeAssist.flatMap(AntigravityUsageMapper.parseProject)
-        let response = await client.cloudCodeAllHosts(
-            path: AntigravityUsageClient.quotaSummaryPath,
+        let bodies = try await client.quotaSummary(
             token: tokens.accessToken,
-            userAgent: AntigravityUsageClient.clientUserAgent,
-            body: project.map { ["project": $0] } ?? [:],
-            isComplete: AntigravityUsageMapper.isCompleteSummary
+            project: codeAssist.flatMap(AntigravityUsageMapper.parseProject)
         )
-        switch response {
-        case .authFailed: throw ProviderError.signInExpired(.antigravity)
-        case .unavailable: throw ProviderError.unavailable(AntigravityUsageClient.unavailableMessage)
-        case .ok(let bodies):
-            guard let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) else { throw ProviderError.invalidResponse }
-            return (codeAssist.flatMap(AntigravityUsageMapper.parseLoadCodeAssistPlan), lines)
-        }
+        guard let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) else { throw ProviderError.invalidResponse }
+        return (codeAssist.flatMap(AntigravityUsageMapper.parseLoadCodeAssistPlan), lines)
     }
 
     private func refreshOllama(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
