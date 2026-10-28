@@ -63,9 +63,14 @@ enum ProviderParse {
         cents.rounded() / 100
     }
 
-    /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object. Base64url is
-    /// translated to standard base64 and padded before decoding.
+    /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object.
     static func jwtPayload(_ token: String) -> [String: Any]? {
+        guard let data = jwtPayloadData(token) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    }
+
+    /// A JWT's payload bytes. Base64url is translated to standard base64 and padded before decoding.
+    static func jwtPayloadData(_ token: String) -> Data? {
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else { return nil }
         var payload = String(parts[1])
@@ -74,12 +79,7 @@ enum ProviderParse {
         while !payload.count.isMultiple(of: 4) {
             payload.append("=")
         }
-        guard let data = Data(base64Encoded: payload),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-        return json
+        return Data(base64Encoded: payload)
     }
 
     /// A JWT's `exp` claim as a date, read without verifying the signature. Use it only for the

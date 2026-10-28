@@ -226,20 +226,6 @@ struct AntigravityLogin: ProviderLogin {
     }
 }
 
-private struct OAuthTokenResponse: Decodable {
-    let accessToken: String
-    let refreshToken: String?
-    let expiresIn: Double?
-    let idToken: String?
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case expiresIn = "expires_in"
-        case idToken = "id_token"
-    }
-    var expiry: Date? { expiresIn.map { Date().addingTimeInterval($0) } }
-}
-
 private struct ClaudeProfileResponse: Decodable {
     struct Account: Decodable { let email: String?; let uuid: String? }
     struct Organization: Decodable { let uuid: String? }
@@ -294,10 +280,3 @@ private struct CodexAccessClaims: Decodable {
 }
 
 private struct CodexIDClaims: Decodable { let email: String? }
-
-private extension String {
-    func jwtPayload<T: Decodable>(as type: T.Type) -> T? {
-        guard let data = LoginHTTP.jwtPayload(self) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
-    }
-}
