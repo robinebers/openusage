@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// A screen's footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
@@ -18,7 +19,9 @@ struct PopoverFooter: View {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
                     Spacer(minLength: 8)
-                    HeaderView(screen: screen)
+                    if screen == .dashboard {
+                        optionsMenu
+                    }
                 }
             }
         }
@@ -37,6 +40,61 @@ struct PopoverFooter: View {
         }
         .animation(Motion.spring, value: layout.shareConfirmation)
         .animation(Motion.spring, value: layout.shareConfirmationTrigger)
+    }
+
+    /// The Options pull-down on one glass capsule. The system `.buttonStyle(.glass)` renders flat on a
+    /// `Menu`, so `.menuStyle(.button)` + `.buttonStyle(.plain)` strip the menu chrome and
+    /// `interactiveGlass` owns the surface. Accounts and Settings carry their key equivalents only as
+    /// labels: while the menu is closed `PopoverKeyReader` handles (and consumes) them first, so they
+    /// can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
+    private var optionsMenu: some View {
+        Menu {
+            Button { toggle(.accounts) } label: {
+                Label("Accounts", systemImage: "person.crop.circle")
+            }
+            .keyboardShortcut(.return, modifiers: [])
+
+            Button { toggle(.settings) } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .keyboardShortcut(",")
+
+            Divider()
+
+            Link(destination: URL(string: "https://github.com/robinebers/openusage/issues/new/choose")!) {
+                Label("Report an Issue…", systemImage: "ladybug")
+            }
+
+            Button { AboutPanel.present() } label: {
+                Label("About OpenUsage", systemImage: "info.circle")
+            }
+            Button(role: .destructive) { NSApplication.shared.terminate(nil) } label: {
+                Label("Quit OpenUsage", systemImage: "power")
+            }
+            .keyboardShortcut("q")
+        } label: {
+            HStack(spacing: 5) {
+                Text("Options")
+                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 12)
+            .frame(height: 28)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .interactiveGlass(in: Capsule())
+    }
+
+    private func toggle(_ target: PopoverScreen) {
+        withAnimation(Motion.modeSwitch) {
+            layout.screen = layout.screen == target ? .dashboard : target
+        }
     }
 
     private var shareCopiedPill: some View {
