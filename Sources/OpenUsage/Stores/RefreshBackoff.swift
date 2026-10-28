@@ -13,6 +13,12 @@ struct RefreshBackoff: Equatable {
     /// The provider set this wait (HTTP 429), so no refresh, manual or not, asks before `retryAt`.
     var providerAsked: Bool
 
+    /// Whether this wait still stops a refresh at `now`: a forced refresh (⌘R) skips the client's own
+    /// backoff, but no refresh asks before a wait the provider set.
+    func holds(at now: Date, forced: Bool) -> Bool {
+        now < retryAt && (providerAsked || !forced)
+    }
+
     /// The backoff after `failure`, following `previous` (`nil` when the last refresh succeeded).
     static func after(_ failure: RefreshFailure.Kind, previous: RefreshBackoff?, now: Date) -> RefreshBackoff {
         let failures = previous?.failures ?? 0

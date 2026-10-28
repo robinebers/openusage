@@ -19,7 +19,8 @@ struct SecondaryRead<Value> {
         if let fresh { value = fresh }
     }
 
-    /// Makes the next refresh read again, after something (a claim) changed the answer.
+    /// Makes the next refresh read again, after something (a claim, a forced refresh) changed or may have
+    /// changed the answer.
     mutating func forget() {
         readAt = nil
     }

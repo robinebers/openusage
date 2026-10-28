@@ -4,9 +4,6 @@ import os
 struct ProviderSnapshotCache {
     private struct Payload: Codable {
         var snapshots: [String: ProviderSnapshot]
-        /// The app version that saved the blob. Snapshots from another version are shown at launch but
-        /// never count as fresh, since that version may have read different metrics (#697).
-        var appVersion: String?
     }
 
     /// In-memory mirror of the persisted blob. Reads (`snapshot`, `loadSnapshots`, and the read inside
@@ -17,17 +14,9 @@ struct ProviderSnapshotCache {
     /// safe to share.
     private let memo = OSAllocatedUnfairLock<Payload?>(initialState: nil)
 
-    /// Provider IDs whose snapshot may count as fresh: every one written by `store` this session, and at
-    /// launch every one this same app version saved. So a relaunch inside the refresh interval costs no
-    /// requests, while an update refetches on its first pass instead of showing what the old version read
-    /// (#697). Lock-backed for the same reason as `memo`: the value-type cache shares it across copies
-    /// and stays safe.
-    private let trusted = OSAllocatedUnfairLock<Set<String>>(initialState: [])
-
     private let userDefaults: UserDefaults
     private let storageKey: String
-    private let appVersion: String
-    /// A trusted snapshot stays fresh for exactly one refresh interval after it was fetched, then expires
+    /// A snapshot stays fresh for exactly one refresh interval after it was fetched, then expires
     /// so the periodic loop refetches on schedule. Tests inject a fixed TTL for a deterministic window.
     private let ttl: TimeInterval
     private let now: () -> Date
@@ -37,13 +26,11 @@ struct ProviderSnapshotCache {
     init(
         userDefaults: UserDefaults = .standard,
         storageKey: String = "openusage.providerSnapshots.v11",
-        appVersion: String = AppInfo.version,
         ttl: TimeInterval = RefreshSetting.interval,
         now: @escaping () -> Date = Date.init
     ) {
         self.userDefaults = userDefaults
         self.storageKey = storageKey
-        self.appVersion = appVersion
         self.ttl = ttl
         self.now = now
         let encoder = JSONEncoder()
@@ -69,14 +56,11 @@ struct ProviderSnapshotCache {
     func snapshot(providerID: String) -> ProviderSnapshot? {
         let snapshot = loadPayload().snapshots[providerID]
         guard let snapshot else { return nil }
-        // Fresh means trusted (written this session, or saved by this app version) and fetched less than
-        // one TTL ago. A clock that went backwards never makes a snapshot fresh.
-        let isTrusted = trusted.withLock { $0.contains(providerID) }
+        // Fresh means fetched less than one TTL ago, across a relaunch too. A clock that went backwards
+        // never makes a snapshot fresh.
         let age = now().timeIntervalSince(snapshot.refreshedAt)
-        let fresh = isTrusted && (0..<ttl).contains(age)
-        let reason = !isTrusted ? "stale (saved by another app version)"
-            : fresh ? "fresh" : "stale"
-        AppLog.debug(.cache, "\(providerID) staleness \(Int(age))s vs ttl \(Int(ttl))s -> \(reason)")
+        let fresh = (0..<ttl).contains(age)
+        AppLog.debug(.cache, "\(providerID) staleness \(Int(age))s vs ttl \(Int(ttl))s -> \(fresh ? "fresh" : "stale")")
         return fresh ? snapshot : nil
     }
 
@@ -88,9 +72,7 @@ struct ProviderSnapshotCache {
         }
         AppLog.debug(.cache, "write \(snapshot.providerID)")
         var payload = loadPayload()
-        trusted.withLock { _ = $0.insert(snapshot.providerID) }
         payload.snapshots[snapshot.providerID] = snapshot
-        payload.appVersion = appVersion
         save(payload)
     }
 
@@ -99,7 +81,6 @@ struct ProviderSnapshotCache {
         guard !providerIDs.isEmpty else { return }
         var payload = loadPayload()
         payload.snapshots = payload.snapshots.filter { !providerIDs.contains($0.key) }
-        trusted.withLock { $0.subtract(providerIDs) }
         save(payload)
     }
 
@@ -109,9 +90,6 @@ struct ProviderSnapshotCache {
         // lock keeps `self` out of the `@Sendable` closure; cache access is MainActor-serialized in
         // production, so the worst a race could do is decode twice into the same value — harmless.)
         let loaded = decodeStoredPayload()
-        if loaded.appVersion == appVersion {
-            trusted.withLock { $0.formUnion(loaded.snapshots.keys) }
-        }
         memo.withLock { $0 = loaded }
         return loaded
     }

@@ -4,7 +4,8 @@ import XCTest
 
 /// An hour of refreshes, one every 5 minutes, against each provider's runtime: usage is asked every pass
 /// and the reads that rarely change (plans, Codex's reset-credit list) once, so Codex, Grok, Ollama and
-/// Z.ai cost 13 requests an hour instead of 24, and Cursor's plan read drops from 12 to 1.
+/// Z.ai cost 13 requests an hour instead of 24, and Cursor's plan read drops from 12 to 1. A forced
+/// refresh (⌘R) asks those reads again at once.
 @MainActor
 final class SecondaryReadCadenceTests: XCTestCase {
     private let start = Date(timeIntervalSince1970: 1_800_000_000)
@@ -72,7 +73,60 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.nextHour["/api/oauth/profile"], 1)
     }
 
+    func testClaudeReadsThePlanHourly() async throws {
+        let counts = try await hourOfRefreshes(.claude, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
+            request.url.path == "/api/oauth/profile"
+                ? Self.ok(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org","organization_type":"claude_max"}}"#)
+                : Self.ok(#"{"five_hour":{"utilization":12}}"#)
+        }
+        XCTAssertEqual(counts.perHour["/api/oauth/profile"], 1)
+        XCTAssertEqual(counts.nextHour["/api/oauth/profile"], 1, "a plan that was found is read again once the hour is up")
+        XCTAssertEqual(counts.lastPlan, "Max")
+    }
+
+    func testAForcedRefreshAsksTheHourlyReadsAgain() async throws {
+        let claude = try await passThenForcedRefresh(.claude) { request in
+            request.url.path == "/api/oauth/profile"
+                ? Self.ok(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org","organization_type":"claude_max"}}"#)
+                : Self.ok(#"{"five_hour":{"utilization":12}}"#)
+        }
+        XCTAssertEqual(claude.map { $0["/api/oauth/profile"] }, [1, 2])
+        XCTAssertEqual(claude.map { $0["grants"] }, [1, 2])
+
+        let codex = try await passThenForcedRefresh(.codex) { _ in Self.ok(#"{"rate_limit":{}}"#) }
+        XCTAssertEqual(codex.map { $0[CodexUsageClient.resetCreditsURL.path] }, [1, 2])
+
+        let ollama = try await passThenForcedRefresh(.ollama, credential: .apiKey("key")) { _ in Self.ok("{}") }
+        XCTAssertEqual(ollama.map { $0[OllamaUsageClient.accountPath] }, [1, 2])
+    }
+
     // MARK: - Helpers
+
+    /// Request counts after a scheduled pass and a second one 5 minutes later, then after a forced refresh a
+    /// minute on, through the store. Claude's reset-grants check counts under "grants".
+    private func passThenForcedRefresh(
+        _ kind: ProviderKind,
+        credential: AccountCredential = .oauth(OAuthTokens(accessToken: "token")),
+        handler: @escaping @Sendable (HTTPRequest) -> HTTPResponse
+    ) async throws -> [[String: Int]] {
+        let account = Account(kind: kind, label: kind.displayName)
+        let vault = InMemoryCredentialVault()
+        try vault.save(credential, for: account.id)
+        let http = RoutingHTTPClient { handler($0) }
+        let clock = TestClock(start)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
+        func counts() -> [String: Int] {
+            http.requests.reduce(into: [:]) { $0[$1.isClaudeResetGrantsCheck ? "grants" : $1.url.path, default: 0] += 1 }
+        }
+        await store.refreshAll()
+        clock.set(start.addingTimeInterval(RefreshSetting.interval))
+        await store.refreshAll()
+        let scheduled = counts()
+        clock.set(start.addingTimeInterval(RefreshSetting.interval + 60))
+        await store.refreshAll(force: true)
+        return [scheduled, counts()]
+    }
 
     private struct Counts {
         var perHour: [String: Int]

@@ -18,6 +18,13 @@ protocol ProviderRuntime: AnyObject {
     var widgetDescriptors: [WidgetDescriptor] { get }
 
     func refresh() async -> ProviderSnapshot
+    /// Makes the next `refresh()` ask again for the reads it reuses for an hour; the store calls it before
+    /// a forced refresh.
+    func forgetHourlyReads()
+}
+
+extension ProviderRuntime {
+    func forgetHourlyReads() {}
 }
 
 /// Run a blocking, `Sendable` credential load off the MainActor.

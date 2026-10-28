@@ -152,8 +152,7 @@ extension WidgetDataStore {
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
-        expectedRefreshInterval: @escaping () -> TimeInterval = { RefreshSetting.interval }
+        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) -> WidgetDataStore {
         WidgetDataStore(
             registry: registry ?? .from(runtimes),
@@ -164,8 +163,7 @@ extension WidgetDataStore {
             now: now,
             providerRefreshTimeout: providerRefreshTimeout,
             notificationSettings: notificationSettings,
-            postNotification: postNotification,
-            expectedRefreshInterval: expectedRefreshInterval
+            postNotification: postNotification
         )
     }
 }

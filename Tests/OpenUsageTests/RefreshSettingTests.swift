@@ -3,14 +3,12 @@ import XCTest
 
 /// Covers the refresh cadence as the single source of truth: `RefreshSetting`'s fixed interval, and the
 /// snapshot cache's freshness — a snapshot is fresh for one interval after it was fetched, across a
-/// relaunch of the same app version, so a quick relaunch costs no requests; a snapshot an older version
-/// saved is painted at launch but refetched on the first pass.
+/// relaunch too, so a quick relaunch costs no requests and the first pass refetches only older ones.
 @MainActor
 final class RefreshSettingTests: XCTestCase {
     // MARK: - Fixed cadence
 
     func testCadenceIsFixedAtFiveMinutes() {
-        XCTAssertEqual(RefreshSetting.defaultMinutes, 5)
         XCTAssertEqual(RefreshSetting.interval, 300)
     }
 
@@ -47,23 +45,6 @@ final class RefreshSettingTests: XCTestCase {
                        .progress(label: "Session", used: 80, limit: 100, format: .percent))
     }
 
-    func testUpdateRefetchesEvenWithinIntervalButPaintsCachedValueFirst() async {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = isolatedDefaults()
-        storeSnapshot(used: 20, age: 240, into: suite, now: now, appVersion: "1.0.0")
-
-        let runtime = makeRuntime(used: 80)
-        let store = WidgetDataStore.forTesting(
-            [runtime],
-            cache: ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", appVersion: "1.0.1", now: { now }),
-            defaults: suite
-        )
-        XCTAssertEqual(store.snapshots["test"]?.line(label: "Session"),
-                       .progress(label: "Session", used: 20, limit: 100, format: .percent))
-        await store.refreshAll()
-        XCTAssertEqual(runtime.refreshCount, 1, "another version may have read different metrics (#697)")
-    }
-
     func testWithinSessionPassServedFromCacheUntilInterval() async {
         var now = Date(timeIntervalSince1970: 1_800_000_000)
         let suite = isolatedDefaults()
@@ -93,9 +74,9 @@ final class RefreshSettingTests: XCTestCase {
     // MARK: - Helpers
 
     private func storeSnapshot(
-        used: Double, age: TimeInterval, into suite: UserDefaults, now: Date, appVersion: String = AppInfo.version
+        used: Double, age: TimeInterval, into suite: UserDefaults, now: Date
     ) {
-        let cache = ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", appVersion: appVersion, now: { now })
+        let cache = ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots", now: { now })
         cache.store(ProviderSnapshot(
             providerID: "test",
             displayName: "Test",

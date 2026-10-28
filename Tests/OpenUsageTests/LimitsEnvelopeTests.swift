@@ -152,23 +152,6 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(expiredProvider["stale"] as? Bool, true)
     }
 
-    func testEntryFetchedOnTheIdleCadenceStaysFreshUntilItsNextRefresh() throws {
-        var snapshot = ProviderSnapshot(providerID: "codex", displayName: "Codex", lines: [], refreshedAt: fetchedAt)
-        snapshot.nextRefreshAt = fetchedAt.addingTimeInterval(RefreshSetting.idleInterval)
-        var input = input(snapshot: snapshot, descriptors: [])
-
-        func provider() throws -> [String: Any] {
-            let root = try json(LimitsEnvelope.encode(input))
-            return try XCTUnwrap((root["providers"] as? [String: Any])?["codex"] as? [String: Any])
-        }
-
-        input.generatedAt = fetchedAt.addingTimeInterval(10 * 60)
-        XCTAssertEqual(try provider()["expiresAt"] as? String, "2026-07-13T01:54:30.000Z")
-        XCTAssertEqual(try provider()["stale"] as? Bool, false)
-        input.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.idleInterval)
-        XCTAssertEqual(try provider()["stale"] as? Bool, true)
-    }
-
     func testCardWithoutSnapshotHasNoEntryAndFailedRefreshIsListedUnderErrors() throws {
         var input = LimitsEnvelope.Input(providerIDs: ["codex@ab12cd34"], snapshots: [:], generatedAt: generatedAt)
         let pending = try json(LimitsEnvelope.encode(input))

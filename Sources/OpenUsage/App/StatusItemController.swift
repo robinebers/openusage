@@ -288,7 +288,6 @@ final class StatusItemController: NSObject {
         heightController.prepareForOpening(below: buttonRectOnScreen)
         // Mark the popover on-screen before laying out: `DashboardView` re-seeds its height on the flip.
         container.layout.popoverShown = true
-        container.popoverDidOpen()
 
         // Lay the content out first so the panel opens at the right size (no first-frame flash).
         hostingController.view.layoutSubtreeIfNeeded()

@@ -59,11 +59,11 @@ in what order; `WidgetDataStore` turns snapshots into `WidgetData` for the views
 
 ## Refresh loop
 
-`AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll` at launch and then every
-`RefreshSetting.interval` (5 minutes), or `RefreshSetting.idleInterval` (15 minutes) while the Mac is
-idle and the popover closed, then `evaluateNotifications`, then `TelemetryRecorder.tick`. Every cadence,
-wait and minimum is a named constant in `RefreshSetting`. Opening the popover calls
-`AppContainer.popoverDidOpen`, which refreshes accounts whose numbers are over 5 minutes old.
+`AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `evaluateNotifications`, then
+`TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes). Every cadence
+and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
+cache and asks each runtime's hourly reads again (`ProviderRuntime.forgetHourlyReads`); whether a
+forced refresh waits out a backoff is `RefreshBackoff.holds`.
 `refresh(providerID:)` honours the on-disk `ProviderSnapshotCache`, the account's `RefreshBackoff`,
 and a two-minute deadline per account, and reports each real outcome through `onRefreshOutcome`. Each
 fetched snapshot is written to the cache as it lands.

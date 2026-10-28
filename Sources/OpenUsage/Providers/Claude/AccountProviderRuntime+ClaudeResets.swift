@@ -25,8 +25,6 @@ struct ClaudeResetGrantsState {
 }
 
 extension AccountProviderRuntime {
-    static let claudeResetGrantsCheckInterval: TimeInterval = 60 * 60
-
     /// The Rate Limit Resets row, asking Anthropic at most once an hour. Claude Code itself only asks
     /// occasionally, and sending the reset-grants request on every refresh brought sustained 429s on the
     /// usage endpoint. Runs after a successful usage fetch, so the token is known-good and a failure here
@@ -34,7 +32,7 @@ extension AccountProviderRuntime {
     func claudeResetGrantsLine(accessToken: String) async -> MetricLine? {
         let now = self.now()
         let previous = claudeResetGrants.check
-        if let previous, now.timeIntervalSince(previous.checkedAt) < Self.claudeResetGrantsCheckInterval {
+        if let previous, now.timeIntervalSince(previous.checkedAt) < RefreshSetting.secondaryReadInterval {
             return previous.status?.line(now: now)
         }
         let epoch = claudeResetGrants.claimEpoch

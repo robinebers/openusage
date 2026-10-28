@@ -7,11 +7,6 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     var plan: String?
     var lines: [MetricLine]
     var refreshedAt: Date
-    /// When the app expects to fetch this account again, stamped as a good snapshot is saved: 5 minutes
-    /// on, or 15 when the Mac is going idle (`RefreshSetting.expectedInterval`). The command line's
-    /// `expiresAt` reads it, so an idle-cadence entry isn't reported stale. `nil` on a snapshot saved
-    /// before it existed, which expires one `RefreshSetting.interval` after `refreshedAt`.
-    var nextRefreshAt: Date?
     /// Set only on a failed refresh: what the card says and how long the store waits before asking
     /// again. `lines` is empty then.
     var failure: RefreshFailure?

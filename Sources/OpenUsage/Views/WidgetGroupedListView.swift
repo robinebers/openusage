@@ -142,7 +142,7 @@ struct WidgetGroupedListView: View {
     private func perform(_ command: DashboardCommand) {
         switch command {
         case .refresh(let accountIDs):
-            Task { await dataStore.refreshManually(providerIDs: accountIDs) }
+            Task { await dataStore.refresh(providerIDs: accountIDs, force: true) }
         case .manageAccounts:
             openAccounts(nil)
         case .open(let url):

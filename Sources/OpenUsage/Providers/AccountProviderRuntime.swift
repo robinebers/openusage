@@ -7,11 +7,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     let vault: any CredentialVault
     let http: any HTTPClient
     let now: () -> Date
-    /// Claude's plan from `/api/oauth/profile`, looked up once per access token. The in-app login never
-    /// receives a plan, so the profile is the only source of it. A lookup that found no plan is asked
-    /// again an hour later, not on every pass.
-    private var claudePlan: (accessToken: String, plan: String?, readAt: Date)?
-    /// The plan name (Grok `/settings`, Cursor `GetPlanInfo`), read hourly rather than every pass.
+    /// The plan name (Claude `/api/oauth/profile`, Grok `/settings`, Cursor `GetPlanInfo`), read hourly
+    /// rather than every pass.
     var planRead = SecondaryRead<String>()
     /// The body the plan comes from (Ollama `/api/me`, the Z.ai subscription, Antigravity
     /// `loadCodeAssist`), read hourly rather than every pass.
@@ -41,6 +38,13 @@ final class AccountProviderRuntime: ProviderRuntime {
     func update(_ account: Account) {
         self.account = account
         provider = Self.provider(for: account)
+    }
+
+    func forgetHourlyReads() {
+        planRead.forget()
+        planBodyRead.forget()
+        codexResetCreditsRead.forget()
+        claudeResetGrants.check?.checkedAt = .distantPast
     }
 
     static func provider(for account: Account) -> Provider {
@@ -142,14 +146,10 @@ final class AccountProviderRuntime: ProviderRuntime {
         return (await claudeLivePlan(tokens), lines)
     }
 
-    /// Also records the sign-in's identity on an account added before sign-ins recorded it, so a later
-    /// sign-in to the same Claude account is caught.
+    /// Read hourly (`planRead`). Also records the sign-in's identity on an account added before sign-ins
+    /// recorded it, so a later sign-in to the same Claude account is caught.
     private func claudeLivePlan(_ tokens: OAuthTokens) async -> String? {
-        let cached = claudePlan
-        if let cached, cached.accessToken == tokens.accessToken,
-           cached.plan != nil || now().timeIntervalSince(cached.readAt) < RefreshSetting.secondaryReadInterval {
-            return cached.plan
-        }
+        guard planRead.isDue(at: now()) else { return planRead.value }
         do {
             let response = try await ClaudeUsageClient(httpClient: http).fetchProfile(accessToken: tokens.accessToken)
             let profile = try ClaudeUsageClient.decodeProfile(response)
@@ -158,14 +158,12 @@ final class AccountProviderRuntime: ProviderRuntime {
                 identified.extras[OAuthTokens.identityKey] = profile.identity
                 try? await replaceCredential(.oauth(identified))
             }
-            let plan = ClaudeUsageMapper.formatLivePlan(profile: profile)
-            claudePlan = (tokens.accessToken, plan, now())
-            return plan
+            planRead.record(ClaudeUsageMapper.formatLivePlan(profile: profile), at: now())
         } catch {
             AppLog.warn(LogTag.plugin("claude"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
-            claudePlan = (tokens.accessToken, cached?.plan, now())
-            return cached?.plan
+            planRead.record(nil, at: now())
         }
+        return planRead.value
     }
 
     /// The account's Codex tokens, refreshed and saved back to the vault first when they expire within

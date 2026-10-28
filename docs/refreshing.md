@@ -2,33 +2,32 @@
 
 ## When data updates
 
-- Every account refreshes together: once at launch, then every 5 minutes while you use the Mac or the
-  panel is open. Once the Mac has had no keyboard, mouse or trackpad input for 10 minutes, passes run
-  every 15 minutes instead; the first pass after you come back runs within a minute. There is no
-  setting for these intervals.
-- Opening the panel refreshes every account whose values are more than 5 minutes old. An account
-  waiting out a failure or a provider's rate limit keeps waiting.
-- Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that land close
-  together are grouped so a burst shows as one update and is saved once.
-- A new account refreshes as soon as you add it.
-- The footer shows **Next update in …**. Click it, or press **⌘R**, to refresh now; this skips the cache.
-  An account fetched in the last 30 seconds is left alone, so pressing ⌘R repeatedly asks each provider
-  once.
-- While an account is fetching, a spinner shows next to its name and in the footer.
+| Trigger | What refreshes |
+| --- | --- |
+| Launch | Every account whose saved values are 5 minutes old or more |
+| Every 5 minutes | Every account, whatever you are doing, so the menu bar stays current |
+| Adding an account | That account |
+| **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure |
+| An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
+| Claiming a rate-limit reset | That account |
+
+There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
+⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Results that
+land close together are grouped so a burst shows as one update and is saved once. While an account is
+fetching, a spinner shows next to its name and in the footer.
 
 ## Caching
 
 Usage is read on every refresh. Reads that rarely change are read at most once an hour and reused in
-between: the plan name (Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project), Codex's list
-of reset credits with their expiry times (the count still updates every refresh), and Claude's reset
-grants. Claude's plan is read once per sign-in token, and again an hour later when that read failed. A
-plan upgrade can take up to an hour to show.
+between: the plan name (Claude, Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project),
+Codex's list of reset credits with their expiry times (the count still updates every refresh), and
+Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
+the next ⌘R.
 
 The last snapshot of every account is saved on disk and shown at launch, so you see your last-known
 values before the first fetch finishes. A value counts as fresh for one interval (5 minutes) after it
 was fetched, across a relaunch too: relaunching within 5 minutes of a refresh asks no provider until
-the next pass. Values saved by a different app version are shown but refreshed on the first pass, so
-an update never shows what the old version read.
+the next pass.
 
 ## When a fetch fails
 

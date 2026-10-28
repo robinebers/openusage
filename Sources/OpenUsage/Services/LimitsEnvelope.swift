@@ -72,7 +72,7 @@ enum LimitsEnvelope {
             displayName = snapshot.displayName
             plan = snapshot.plan
             fetchedAt = OpenUsageISO8601.string(from: snapshot.refreshedAt)
-            let expiry = snapshot.nextRefreshAt ?? snapshot.refreshedAt.addingTimeInterval(RefreshSetting.interval)
+            let expiry = snapshot.refreshedAt.addingTimeInterval(RefreshSetting.interval)
             expiresAt = OpenUsageISO8601.string(from: expiry)
             stale = generatedAt >= expiry
 

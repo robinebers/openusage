@@ -71,7 +71,7 @@ left alone and the setting reads **Unavailable**.
 `providers` has one entry per account, keyed by account id; an account the app has not fetched yet
 has no entry. `displayName` is the provider's name and `plan` the plan the provider reports.
 `fetchedAt` is when the app last fetched the account, `expiresAt` is when it expects to fetch it
-again (5 minutes after `fetchedAt`, or 15 when the Mac was going idle), and `stale` says whether that instant has passed at `generatedAt`: a stale
+again (5 minutes after `fetchedAt`), and `stale` says whether that instant has passed at `generatedAt`: a stale
 entry means the app is not running or its refreshes are failing.
 
 Each resource is one scalar with an explicit `unit`. `kind` is `consumption` (`used`) or `balance`
