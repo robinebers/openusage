@@ -170,12 +170,10 @@ struct WidgetGroupedListView: View {
     /// header's copy button, through one path.
     @discardableResult
     private func shareScreenshot(_ accountIDs: [String]) -> Bool {
-        ShareCardRenderer.share(
-            groups: layout.displayGroups.filter { accountIDs.contains($0.provider.id) },
-            dataStore: dataStore,
-            layout: layout,
-            appearance: colorScheme
-        )
+        guard let live = liveFamilies().first(where: { $0.accounts.contains { accountIDs.contains($0.id) } }) else { return false }
+        let accounts = live.accounts.filter { accountIDs.contains($0.id) }
+        let family = DashboardFamily(id: live.id, provider: accounts[0].provider, accounts: accounts)
+        return ShareCardRenderer.share(family: family, plans: plans(for: family), layout: layout, appearance: colorScheme)
     }
 
     /// Opens the Accounts screen, on one account's page when `providerID` is set.

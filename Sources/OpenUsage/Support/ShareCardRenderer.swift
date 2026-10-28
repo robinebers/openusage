@@ -21,25 +21,17 @@ enum ShareCardRenderer {
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// The one "Share Screenshot": a picture of these accounts' card — a provider's accounts from its
-    /// header's right-click, one account from its caption's — drawn as the dashboard draws them, copied
-    /// to the clipboard. On a successful copy it asks the layout store to surface the transient "Copied
-    /// to clipboard" pill; a failure beeps and logs instead.
+    /// The one "Share Screenshot": a picture of this card — a provider's accounts from its header's
+    /// right-click, one account from its caption's — drawn as the dashboard draws them, copied to the
+    /// clipboard. On a successful copy it asks the layout store to surface the transient "Copied to
+    /// clipboard" pill; a failure beeps and logs instead.
     @discardableResult
     static func share(
-        groups: [ProviderGroup],
-        dataStore: WidgetDataStore,
+        family: DashboardFamily,
+        plans: [String: String],
         layout: LayoutStore,
         appearance: ColorScheme
     ) -> Bool {
-        func line(_ widget: PlacedWidget) -> DashboardLine? {
-            guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return DashboardLine(descriptor: descriptor, data: dataStore.data(for: descriptor))
-        }
-        guard let family = DashboardFamily.make(groups: groups, line: line).first else { return false }
-        let plans = Dictionary(uniqueKeysWithValues: family.accounts.compactMap { account in
-            dataStore.plan(for: account.id).map { (account.id, $0) }
-        })
         guard let png = png(for: ShareCardView(family: family, plans: plans, appearance: appearance)) else {
             AppLog.error(.lifecycle, "share card: failed to render a PNG for \(family.id)")
             NSSound.beep()
