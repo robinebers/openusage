@@ -33,13 +33,15 @@ struct DashboardMetricRow: View {
                 .frame(width: DashboardGrid.valueWidth, alignment: .trailing)
                 resetColumn(reset)
                     .frame(width: DashboardGrid.resetWidth, alignment: .trailing)
-            case .value(let text):
+            case .value(let text, let severity):
                 figure(AnyView(
                     Text(text)
+                        .foregroundStyle(severity.map { AnyShapeStyle(Theme.severityColor($0)) } ?? AnyShapeStyle(.primary))
                         .monospacedDigit()
                         .lineLimit(1)
                         .contentTransition(.numericText())
                         .fixedSize()
+                        .accessibilityValue(severity.map(Self.expiryAccessibilityValue) ?? "")
                 ))
                 Spacer(minLength: 0)
             }
@@ -49,6 +51,14 @@ struct DashboardMetricRow: View {
         .frame(height: DashboardGrid.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String {
+        switch severity {
+        case .normal: "the next reset expires in more than 7 days"
+        case .warning: "a reset expires within 7 days"
+        case .critical: "a reset expires within 48 hours"
+        }
     }
 
     @ViewBuilder

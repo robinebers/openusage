@@ -29,6 +29,24 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(resets.dashboardRow(now: now).mark, .value("2 available"))
     }
 
+    func testTheResetsFigureTakesTheColourOfTheResetThatExpiresNext() {
+        var resets = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
+        resets.values = [MetricValue(number: 2, kind: .count, label: "available")]
+        resets.showsResetExpiries = true
+        let day: TimeInterval = 24 * 3600
+        let cases: [(expiries: [TimeInterval], severity: WidgetData.MeterSeverity?)] = [
+            ([], nil),
+            ([10 * day], .normal),
+            ([3 * day, 20 * day], .warning),
+            ([20 * day, 1 * day], .critical),
+            ([-1 * day, 20 * day], .critical)
+        ]
+        for (expiries, severity) in cases {
+            resets.expiriesAt = expiries.map { now.addingTimeInterval($0) }
+            XCTAssertEqual(resets.dashboardRow(now: now).mark, .value("2 available", severity: severity), "\(expiries)")
+        }
+    }
+
     func testOnlyABoundedReadingFlipsBetweenUsedAndLeft() {
         XCTAssertTrue(paced(used: 30).hasMeterStyleToggle)
         var badge = paced(used: 30)

@@ -44,7 +44,9 @@ such as `$12.40 left`. A metric the provider has not reported is hidden.
 ## Resets
 
 Claude and Codex accounts show a **Limit Resets** row with the number of available rate-limit resets
-while they have any. Rest the pointer on the count for a moment to see when each reset expires. To spend
+while they have any. The count takes the colour of the reset that expires next: blue with more than
+7 days left, orange within 7 days, red within 48 hours. Rest the pointer on the count for a moment to
+see when each reset expires. To spend
 one, choose **Use** on it, then **Reset**.
 
 A spinner after an account's name means it is refreshing. A warning icon means its last refresh failed,

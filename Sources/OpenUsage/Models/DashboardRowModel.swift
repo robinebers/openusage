@@ -3,7 +3,7 @@ import Foundation
 struct DashboardRowModel: Equatable {
     enum Mark: Equatable {
         case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, flame: Bool = false)
-        case value(String)
+        case value(String, severity: WidgetData.MeterSeverity? = nil)
     }
 
     let label: String
@@ -12,7 +12,9 @@ struct DashboardRowModel: Equatable {
 
 extension WidgetData {
     func dashboardRow(now: Date = Date()) -> DashboardRowModel {
-        guard hasData, isBounded else { return DashboardRowModel(label: title, mark: .value(unboundedDetail)) }
+        guard hasData, isBounded else {
+            return DashboardRowModel(label: title, mark: .value(unboundedDetail, severity: expirySeverity(now: now)))
+        }
         let state = meterState(now: now)
         return DashboardRowModel(
             label: title,
