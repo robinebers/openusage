@@ -136,6 +136,15 @@ final class CursorMetricsTests: XCTestCase {
         XCTAssertEqual(data["Extra Usage"]?.limit, 100)
     }
 
+    func testASeatOnTheGenericRequestFallbackShowsItsRequestsAsTotalUsage() async throws {
+        let (plan, data, _) = try await refresh(usage: Self.enterpriseUsage, planName: "Pro", requests: Self.requestUsage)
+
+        XCTAssertEqual(plan, "Pro")
+        XCTAssertEqual(data["Requests"]?.used, 120)
+        XCTAssertEqual(data["Total Usage"]?.used, 120)
+        XCTAssertEqual(data["Total Usage"]?.limit, 500)
+    }
+
     func testATeamSeatTakesExtraUsageAndMembershipFromUsageSummary() async throws {
         let (plan, data, _) = try await refresh(usage: Self.teamUsage, planName: "Pro", summary: Self.teamSummary)
 

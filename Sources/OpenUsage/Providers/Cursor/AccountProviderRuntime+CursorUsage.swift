@@ -27,8 +27,8 @@ extension AccountProviderRuntime {
             )
         } else if facts.shouldTryGenericRequestFallback,
                   let requestUsage = await Self.optionalJSON({ try await client.fetchRequestBasedUsage(accessToken: accessToken) }),
-                  let requestBased = try? CursorUsageMapper.mapRequestBasedUsage(
-                      requestUsage, planName: planName, unavailableMessage: ""
+                  let requestBased = try? CursorUsageSummaryMapper.map(
+                      summary: nil, requestUsage: requestUsage, planName: planName, unavailableMessage: ""
                   ) {
             mapped = requestBased
         } else {

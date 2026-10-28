@@ -182,34 +182,6 @@ enum CursorUsageMapper {
         return inferred > 0 ? inferred : (reported.first ?? 0)
     }
 
-    static func mapRequestBasedUsage(
-        _ usage: [String: Any]?,
-        planName: String?,
-        unavailableMessage: String
-    ) throws -> ProviderUsage {
-        var lines: [MetricLine] = []
-        if let gpt4 = usage?["gpt-4"] as? [String: Any],
-           let limit = ProviderParse.number(gpt4["maxRequestUsage"]),
-           limit > 0 {
-            let used = ProviderParse.number(gpt4["numRequests"]) ?? 0
-            let cycleStart = (usage?["startOfMonth"] as? String).flatMap(OpenUsageISO8601.date(from:))
-            lines.append(.progress(
-                label: "Requests",
-                used: used,
-                limit: limit,
-                format: .count(suffix: "requests"),
-                resetsAt: cycleStart?.addingTimeInterval(TimeInterval(billingPeriodMs) / 1000),
-                periodDurationMs: billingPeriodMs
-            ))
-        }
-
-        guard !lines.isEmpty else {
-            throw ProviderError.unavailable(unavailableMessage)
-        }
-
-        return ProviderUsage(plan: planLabel(planName), lines: lines)
-    }
-
     static func shouldUseRequestBasedFallback(
         facts: CursorPlanUsageFacts,
         planName: String?
