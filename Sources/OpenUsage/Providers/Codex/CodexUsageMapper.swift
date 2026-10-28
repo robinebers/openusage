@@ -16,7 +16,7 @@ enum CodexUsageMapper {
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]
-        lines.append(contentsOf: classifiedWindowLines(
+        lines.append(contentsOf: windowLines(
             rateLimit: rateLimit,
             labels: (session: "Session", weekly: "Weekly"),
             headerPercents: (
@@ -50,90 +50,35 @@ enum CodexUsageMapper {
         return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
-    /// One rate-limit window → a percent-used meter, or `nil` when `usedPercent` is absent. Resolves the
-    /// window's own period (falling back to `defaultPeriodMs`) while preserving the percentage reported
-    /// by Codex, so all Session/Weekly/Spark paths share one construction.
-    private static func windowLine(
-        label: String,
-        usedPercent: Double?,
-        window: [String: Any]?,
-        defaultPeriodMs: Int,
-        now: Date
-    ) -> MetricLine? {
-        guard let usedPercent else { return nil }
-        return .percent(label, usedPercent, resetsAt: resetDate(window, now: now), periodMs: readPeriodMs(window) ?? defaultPeriodMs)
-    }
-
-    private enum WindowKind {
-        case session
-        case weekly
-    }
-
-    private struct WindowCandidate {
-        var window: [String: Any]
-        var usedPercent: Double?
-        var fallbackKind: WindowKind
-    }
-
     /// Codex normally returns the five-hour window as `primary_window` and the weekly window as
-    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot.
-    /// Classify by the explicit duration when present; keep the historical slot mapping only as a
-    /// compatibility fallback for payloads that omit or introduce an unfamiliar duration.
-    private static func classifiedWindowLines(
+    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot. Each
+    /// meter takes the window whose explicit duration is its own; failing that, the window in its own slot
+    /// when that window's duration is absent or unfamiliar. A slot known only from its header percent is a
+    /// window with no fields. The meter keeps the percentage Codex reported and the window's own period,
+    /// falling back to the meter's; a chosen window without a percentage shows nothing.
+    private static func windowLines(
         rateLimit: [String: Any]?,
         labels: (session: String, weekly: String),
         headerPercents: (primary: Double?, secondary: Double?) = (nil, nil),
         now: Date
     ) -> [MetricLine] {
-        let candidates = [
-            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .session),
-            windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
-        ].compactMap { $0 }
-
-        return [
-            classifiedWindowLine(kind: .session, label: labels.session, candidates: candidates, now: now),
-            classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now)
-        ].compactMap { $0 }
-    }
-
-    private static func windowCandidate(
-        _ value: Any?,
-        headerPercent: Double?,
-        fallbackKind: WindowKind
-    ) -> WindowCandidate? {
-        guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
-        return WindowCandidate(
-            window: window,
-            usedPercent: ProviderParse.number(window["used_percent"]) ?? headerPercent,
-            fallbackKind: fallbackKind
-        )
-    }
-
-    private static func classifiedWindowLine(
-        kind: WindowKind,
-        label: String,
-        candidates: [WindowCandidate],
-        now: Date
-    ) -> MetricLine? {
-        let exact = candidates.first { exactKind(for: $0.window) == kind }
-        let fallback = candidates.first { exactKind(for: $0.window) == nil && $0.fallbackKind == kind }
-        guard let candidate = exact ?? fallback else { return nil }
-        let defaultPeriodMs = kind == .session ? sessionPeriodMs : weeklyPeriodMs
-        return windowLine(
-            label: label,
-            usedPercent: candidate.usedPercent,
-            window: candidate.window,
-            defaultPeriodMs: defaultPeriodMs,
-            now: now
-        )
-    }
-
-    private static func exactKind(for window: [String: Any]) -> WindowKind? {
-        guard let periodMs = readPeriodMs(window) else { return nil }
-        switch periodMs {
-        case sessionPeriodMs: return .session
-        case weeklyPeriodMs: return .weekly
-        default: return nil
+        let slots = [
+            (rateLimit?["primary_window"], headerPercents.primary),
+            (rateLimit?["secondary_window"], headerPercents.secondary)
+        ].map { value, headerPercent -> (window: [String: Any], usedPercent: Double?)? in
+            guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
+            return (window, ProviderParse.number(window["used_percent"]) ?? headerPercent)
+        }
+        let meters = [(label: labels.session, periodMs: sessionPeriodMs), (label: labels.weekly, periodMs: weeklyPeriodMs)]
+        let familiarPeriods = meters.map(\.periodMs)
+        return meters.enumerated().compactMap { slot, meter in
+            let exact = slots.compactMap { $0 }.first { readPeriodMs($0.window) == meter.periodMs }
+            let fallback = slots[slot].flatMap { candidate in
+                readPeriodMs(candidate.window).map(familiarPeriods.contains) == true ? nil : candidate
+            }
+            guard let candidate = exact ?? fallback, let used = candidate.usedPercent else { return nil }
+            let periodMs = readPeriodMs(candidate.window) ?? meter.periodMs
+            return .percent(meter.label, used, resetsAt: resetDate(candidate.window, now: now), periodMs: periodMs)
         }
     }
 
@@ -153,7 +98,7 @@ enum CodexUsageMapper {
             return []
         }
 
-        return classifiedWindowLines(
+        return windowLines(
             rateLimit: rateLimit,
             labels: (session: "Spark", weekly: "Spark Weekly"),
             now: now
