@@ -45,12 +45,12 @@ enum MockData {
             id,
             provider,
             title,
-            WidgetData(title: title, icon: provider.icon, kind: .percent, used: used, limit: 100)
+            WidgetData(title: title, kind: .percent, used: used, limit: 100)
         )
     }
 
     private static func countBounded(id: String, provider: Provider, title: String, used: Double, limit: Double) -> WidgetDescriptor {
-        descriptor(id, provider, title, WidgetData(title: title, icon: provider.icon, kind: .count, used: used, limit: limit))
+        descriptor(id, provider, title, WidgetData(title: title, kind: .count, used: used, limit: limit))
     }
 
     private static func amount(id: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
@@ -58,7 +58,7 @@ enum MockData {
             id,
             provider,
             title,
-            WidgetData(title: title, icon: provider.icon, kind: .dollars, used: used, limit: nil)
+            WidgetData(title: title, kind: .dollars, used: used, limit: nil)
         )
     }
 

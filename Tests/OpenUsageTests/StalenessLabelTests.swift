@@ -49,7 +49,7 @@ final class StalenessLabelTests: XCTestCase {
         let provider = Provider(id: "devin", displayName: "Devin", icon: "devin")
         let descriptor = WidgetDescriptor(
             id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
-            sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
         let runtime = StubRuntime(
             provider: provider,
@@ -87,7 +87,7 @@ final class StalenessLabelTests: XCTestCase {
         let provider = Provider(id: "devin", displayName: "Devin", icon: "devin")
         let descriptor = WidgetDescriptor(
             id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
-            sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
         let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
                                           snapshot: snapshot(refreshedAt: now))

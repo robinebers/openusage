@@ -65,7 +65,7 @@ final class PaceTests: XCTestCase {
         displayMode: WidgetDisplayMode = .used
     ) -> WidgetData {
         let period = period ?? week
-        var data = WidgetData(title: "Weekly", icon: "codex", kind: .percent,
+        var data = WidgetData(title: "Weekly", kind: .percent,
                               used: used, limit: 100, displayMode: displayMode)
         data.resetsAt = resetsAt(elapsed: elapsed, period: period)
         data.periodDurationMs = Int(period * 1000)
@@ -73,10 +73,10 @@ final class PaceTests: XCTestCase {
     }
 
     func testNoPaceVerdictWithoutAResetWindow() {
-        var data = WidgetData(title: "Credits", icon: "codex", kind: .dollars,
+        var data = WidgetData(title: "Credits", kind: .dollars,
                               used: 12, limit: 20)
-        XCTAssertEqual(WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: 16, limit: 20).meterState(now: now), .level(.warning))
-        XCTAssertEqual(WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: 18, limit: 20).meterState(now: now), .level(.critical))
+        XCTAssertEqual(WidgetData(title: "Credits", kind: .dollars, used: 16, limit: 20).meterState(now: now), .level(.warning))
+        XCTAssertEqual(WidgetData(title: "Credits", kind: .dollars, used: 18, limit: 20).meterState(now: now), .level(.critical))
         XCTAssertEqual(data.meterState(now: now), .level(.normal)) // no reset window at all: the level band
         data.resetsAt = now.addingTimeInterval(week)
         XCTAssertEqual(data.meterState(now: now), .level(.normal)) // reset date but unknown period
@@ -97,14 +97,14 @@ final class PaceTests: XCTestCase {
 
     func testSpentOutranksThePaceVerdict() {
         XCTAssertEqual(pacedData(used: 100).meterState(now: now), .spent)
-        let nearlyEmpty = WidgetData(title: "Credits", icon: "codex", kind: .dollars,
+        let nearlyEmpty = WidgetData(title: "Credits", kind: .dollars,
                                      used: 99.999, limit: 100)
         XCTAssertEqual(nearlyEmpty.meterState(now: now), .spent)
-        let withHeadroom = WidgetData(title: "Credits", icon: "codex", kind: .dollars,
+        let withHeadroom = WidgetData(title: "Credits", kind: .dollars,
                                       used: 99.0, limit: 100)
         XCTAssertEqual(withHeadroom.meterState(now: now), .level(.critical))
 
-        var data = WidgetData(title: "Weekly", icon: "codex", kind: .percent,
+        var data = WidgetData(title: "Weekly", kind: .percent,
                               used: 99.6, limit: 100)
         data.resetsAt = resetsAt(elapsed: 0.997, period: week)
         data.periodDurationMs = Int(week * 1000)

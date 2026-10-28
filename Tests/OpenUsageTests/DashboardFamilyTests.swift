@@ -7,7 +7,7 @@ final class DashboardFamilyTests: XCTestCase {
             Provider(id: id, displayName: "Claude", icon: "claude", accountLabel: id)
         }
         func data(_ title: String, hasData: Bool = true) -> WidgetData {
-            var data = WidgetData(title: title, icon: "claude", kind: .percent, used: 10, limit: 100)
+            var data = WidgetData(title: title, kind: .percent, used: 10, limit: 100)
             data.hasData = hasData
             return data
         }
@@ -44,12 +44,12 @@ final class DashboardFamilyTests: XCTestCase {
 
     func testTheLimitResetsRowShowsOnlyWhileAResetIsAvailable() {
         func resets(_ count: Double) -> WidgetData {
-            var data = WidgetData(title: "Rate Limit Resets", icon: "codex", kind: .count, used: count, limit: nil)
+            var data = WidgetData(title: "Rate Limit Resets", kind: .count, used: count, limit: nil)
             data.values = [MetricValue(number: count, kind: .count, label: "available")]
             data.showsResetExpiries = true
             return data
         }
-        let weekly = WidgetData(title: "Weekly", icon: "codex", kind: .percent, used: 10, limit: 100)
+        let weekly = WidgetData(title: "Weekly", kind: .percent, used: 10, limit: 100)
         func account(resetCount: Double) -> DashboardAccount {
             let samples = ["resets": resets(resetCount), "weekly": weekly]
             let group = ProviderGroup(

@@ -110,7 +110,7 @@ final class RefreshSettingTests: XCTestCase {
             id: "test.session",
             providerID: "test",
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: used, limit: 100)
+            sample: WidgetData(title: "Session", kind: .percent, used: used, limit: 100)
         )
         return StubRuntime(
             provider: provider,

@@ -19,7 +19,7 @@ final class DashboardMenusTests: XCTestCase {
     private func account(resetExpiries: [Date]? = nil) -> DashboardAccount {
         var lines: [DashboardLine] = []
         if let resetExpiries {
-            var data = WidgetData(title: "Limit Resets", icon: "claude", kind: .count, used: 2, limit: nil)
+            var data = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
             data.values = [MetricValue(number: 2, kind: .count, label: "available")]
             data.showsResetExpiries = true
             data.expiriesAt = resetExpiries
@@ -71,7 +71,7 @@ final class DashboardMenusTests: XCTestCase {
     }
 
     func testTheMetricMenuStarsAndHides() {
-        let data = WidgetData(title: "Weekly", icon: "claude", kind: .percent, used: 10, limit: 100)
+        let data = WidgetData(title: "Weekly", kind: .percent, used: 10, limit: 100)
         let descriptor = WidgetDescriptor(id: "claude@1.weekly", providerID: "claude@1", metricLabel: "Weekly", sample: data)
 
         XCTAssertEqual(DashboardMenus.metric(descriptor, isStarred: false), [[

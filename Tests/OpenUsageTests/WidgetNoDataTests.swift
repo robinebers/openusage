@@ -57,7 +57,6 @@ final class WidgetNoDataTests: XCTestCase {
             metricLabel: metric,
             sample: WidgetData(
                 title: metric,
-                icon: provider.icon,
                 kind: .percent,
                 used: sampleUsed,
                 limit: 100

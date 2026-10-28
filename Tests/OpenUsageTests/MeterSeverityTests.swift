@@ -13,7 +13,7 @@ final class MeterSeverityTests: XCTestCase {
 
     private func percentData(used: Double, limit: Double? = 100,
                              displayMode: WidgetDisplayMode = .used) -> WidgetData {
-        WidgetData(title: "Session", icon: "codex", kind: .percent,
+        WidgetData(title: "Session", kind: .percent,
                    used: used, limit: limit, displayMode: displayMode)
     }
 
@@ -85,7 +85,7 @@ final class MeterSeverityTests: XCTestCase {
         // 99.6% used: the 0.4% remaining rounds to "0% left", so the balance reads empty.
         XCTAssertEqual(pacedData(used: 99.6, elapsed: 0.997).meterState(now: now), .spent)
         // A dollar metric one rounding-step from empty ($0.004 of $100 left → "$0.00") reads as spent.
-        let dollars = WidgetData(title: "Credits", icon: "codex", kind: .dollars,
+        let dollars = WidgetData(title: "Credits", kind: .dollars,
                                  used: 99.996, limit: 100)
         XCTAssertEqual(dollars.meterState(now: now), .spent)
     }
@@ -98,14 +98,14 @@ final class MeterSeverityTests: XCTestCase {
     }
 
     func testNonPercentKindsBandOnTheirShareOfTheLimit() {
-        let dollars = WidgetData(title: "Credits", icon: "codex", kind: .dollars,
+        let dollars = WidgetData(title: "Credits", kind: .dollars,
                                  used: 45, limit: 50)
         XCTAssertEqual(severity(dollars), .critical) // $5 of $50 left = 10%
 
-        let counts = WidgetData(title: "Requests", icon: "codex", kind: .count,
+        let counts = WidgetData(title: "Requests", kind: .count,
                                 used: 375, limit: 500)
         XCTAssertEqual(severity(counts), .warning) // 75% used, a quarter left
-        XCTAssertEqual(severity(WidgetData(title: "Requests", icon: "codex", kind: .count,
+        XCTAssertEqual(severity(WidgetData(title: "Requests", kind: .count,
                                            used: 370, limit: 500)), .normal) // 74% used
     }
 

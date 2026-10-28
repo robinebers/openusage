@@ -434,7 +434,6 @@ final class WidgetDataStore {
             let normalizedUsed = format == .percent ? ProviderParse.clampPercent(used) : used
             var result = WidgetData(
                 title: descriptor.sample.title,
-                icon: descriptor.sample.icon,
                 kind: format.metricKind,
                 used: normalizedUsed,
                 limit: limit,

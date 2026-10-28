@@ -20,7 +20,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
     private func descriptor(_ provider: Provider, _ metric: String, _ title: String) -> WidgetDescriptor {
         WidgetDescriptor(
             id: "\(provider.id).\(metric)", providerID: provider.id, metricLabel: title,
-            sample: WidgetData(title: title, icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: title, kind: .percent, used: 0, limit: 100)
         )
     }
 

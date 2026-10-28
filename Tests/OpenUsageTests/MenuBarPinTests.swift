@@ -133,7 +133,6 @@ final class MenuBarPinTests: XCTestCase {
             metricLabel: label,
             sample: WidgetData(
                 title: label,
-                icon: provider.icon,
                 kind: .percent,
                 used: 10,
                 limit: 100

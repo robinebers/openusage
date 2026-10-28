@@ -43,7 +43,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
     private static let headerNameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
 
     private let lines: [DashboardLine] = ["Session", "Weekly", "Fable"].map { title in
-        var data = WidgetData(title: title, icon: "claude", kind: .percent, used: 30, limit: 100)
+        var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
         data.resetsAt = Date().addingTimeInterval(3 * 3600)
         data.periodDurationMs = 5 * 3600 * 1000
         return DashboardLine(descriptor: WidgetDescriptor(id: title, providerID: "claude", metricLabel: title, sample: data), data: data)
@@ -51,7 +51,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
 
     /// The Limit Resets row: "2 available", the one row with a hover.
     private let resets: DashboardLine = {
-        var data = WidgetData(title: "Limit Resets", icon: "claude", kind: .count, used: 2, limit: nil)
+        var data = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
         data.values = [MetricValue(number: 2, kind: .count, label: "available")]
         data.showsResetExpiries = true
         data.expiriesAt = [Date().addingTimeInterval(3 * 86_400), Date().addingTimeInterval(20 * 86_400)]

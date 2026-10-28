@@ -11,7 +11,7 @@ final class WidgetRegistryTests: XCTestCase {
             id: id,
             providerID: provider.id,
             metricLabel: id,
-            sample: WidgetData(title: id, icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: id, kind: .percent, used: 0, limit: 100)
         )
     }
 

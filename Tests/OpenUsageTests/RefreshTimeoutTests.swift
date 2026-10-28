@@ -61,7 +61,7 @@ final class RefreshTimeoutTests: XCTestCase {
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         )
         return (provider, descriptor)
     }

@@ -102,23 +102,23 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     private func percent(_ id: String, _ label: String, _ used: Double) -> WidgetDescriptor {
-        descriptor(id, label, WidgetData(title: label, icon: "cursor", kind: .percent, used: used, limit: 100))
+        descriptor(id, label, WidgetData(title: label, kind: .percent, used: used, limit: 100))
     }
 
     private func boundedDollars(_ id: String, _ label: String, used: Double, limit: Double) -> WidgetDescriptor {
-        descriptor(id, label, WidgetData(title: label, icon: "cursor", kind: .dollars, used: used, limit: limit))
+        descriptor(id, label, WidgetData(title: label, kind: .dollars, used: used, limit: limit))
     }
 
     private func boundedCount(_ id: String, _ label: String, used: Double, limit: Double) -> WidgetDescriptor {
-        descriptor(id, label, WidgetData(title: label, icon: "cursor", kind: .count, used: used, limit: limit))
+        descriptor(id, label, WidgetData(title: label, kind: .count, used: used, limit: limit))
     }
 
     private func unbounded(_ id: String, _ label: String, _ used: Double = 42) -> WidgetDescriptor {
-        descriptor(id, label, WidgetData(title: label, icon: "cursor", kind: .dollars, used: used, limit: nil))
+        descriptor(id, label, WidgetData(title: label, kind: .dollars, used: used, limit: nil))
     }
 
     private func noDataPercent(_ id: String, _ label: String) -> WidgetDescriptor {
-        var sample = WidgetData(title: label, icon: "cursor", kind: .percent, used: 0, limit: 100)
+        var sample = WidgetData(title: label, kind: .percent, used: 0, limit: 100)
         sample.hasData = false
         return descriptor(id, label, sample)
     }

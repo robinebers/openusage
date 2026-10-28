@@ -15,7 +15,7 @@ extension WidgetDescriptor {
         metricLabel: String? = nil,
         sessionStartSignal: WidgetData.SessionStartSignal? = nil
     ) -> WidgetDescriptor {
-        var sample = WidgetData(title: title, icon: provider.icon, kind: .percent, used: 0, limit: 100)
+        var sample = WidgetData(title: title, kind: .percent, used: 0, limit: 100)
         sample.sessionStartSignal = sessionStartSignal
         return make(id: id, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
@@ -32,8 +32,7 @@ extension WidgetDescriptor {
         valueWord: String? = nil
     ) -> WidgetDescriptor {
         make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .dollars, used: 0, limit: limit, unboundedValueWord: valueWord))
+             sample: WidgetData(title: title, kind: .dollars, used: 0, limit: limit, unboundedValueWord: valueWord))
     }
 
     /// Bounded count meter (e.g. requests per billing cycle). `periodDurationMs` is the cycle the pace
@@ -47,8 +46,7 @@ extension WidgetDescriptor {
         periodDurationMs: Int? = nil
     ) -> WidgetDescriptor {
         make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .count, used: 0, limit: limit,
+             sample: WidgetData(title: title, kind: .count, used: 0, limit: limit,
                                 periodDurationMs: periodDurationMs))
     }
 
@@ -63,7 +61,7 @@ extension WidgetDescriptor {
         showsResetExpiries: Bool = false
     ) -> WidgetDescriptor {
         // `kind` is unused for `.values` rendering (each value carries its own).
-        var sample = WidgetData(title: title, icon: provider.icon, kind: .dollars, used: 0, limit: nil,
+        var sample = WidgetData(title: title, kind: .dollars, used: 0, limit: nil,
                                 unboundedValueWord: valueWord)
         sample.traySuffix = traySuffix
         sample.showsResetExpiries = showsResetExpiries
@@ -79,8 +77,7 @@ extension WidgetDescriptor {
         valueWord: String
     ) -> WidgetDescriptor {
         make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .dollars, used: 0, limit: nil, unboundedValueWord: valueWord))
+             sample: WidgetData(title: title, kind: .dollars, used: 0, limit: nil, unboundedValueWord: valueWord))
     }
 
     /// Unbounded count resolved from a provider `.badge` line via `valueTextOverride`
@@ -92,8 +89,7 @@ extension WidgetDescriptor {
         metricLabel: String? = nil
     ) -> WidgetDescriptor {
         make(id: id, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, icon: provider.icon,
-                                kind: .count, used: 0, limit: nil))
+             sample: WidgetData(title: title, kind: .count, used: 0, limit: nil))
     }
 
     private static func make(

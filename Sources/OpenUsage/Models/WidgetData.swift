@@ -11,7 +11,6 @@ struct WidgetData: Hashable {
     static let noDataDetail = "No data"
 
     let title: String          // "Claude 5h", "Cursor credits"
-    let icon: String
     let kind: MetricKind
     let used: Double
     var limit: Double?         // nil => unbounded; cleared when a .values line resolves

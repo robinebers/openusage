@@ -96,7 +96,7 @@ final class DashboardLabelFitTests: XCTestCase {
     }
 
     private func meter(left: Double, limit: Double) -> WidgetData {
-        var data = WidgetData(title: "On-demand", icon: "cursor", kind: .dollars, used: limit - left, limit: limit)
+        var data = WidgetData(title: "On-demand", kind: .dollars, used: limit - left, limit: limit)
         data.displayMode = .remaining
         return data
     }

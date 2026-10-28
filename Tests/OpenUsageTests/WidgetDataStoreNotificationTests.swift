@@ -25,7 +25,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 10, limit: 100)
+            sample: WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
         )
     }
 
@@ -95,7 +95,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
                 id: "\(provider.id).session",
                 providerID: provider.id,
                 metricLabel: "Session",
-                sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 10, limit: 100)
+                sample: WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
             )
         }
         func snapshot(_ provider: Provider, used: Double) -> ProviderSnapshot {

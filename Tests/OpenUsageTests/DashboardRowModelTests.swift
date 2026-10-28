@@ -13,7 +13,7 @@ final class DashboardRowModelTests: XCTestCase {
     /// A weekly percent window with `elapsed` of it gone, showing what is left.
     private func paced(used: Double, elapsed: Double = 0.5, period: TimeInterval? = nil, title: String = "Weekly") -> WidgetData {
         let period = period ?? week
-        var data = WidgetData(title: title, icon: "codex", kind: .percent, used: used, limit: 100)
+        var data = WidgetData(title: title, kind: .percent, used: used, limit: 100)
         data.displayMode = .remaining
         data.resetsAt = now.addingTimeInterval(period * (1 - elapsed))
         data.periodDurationMs = Int(period * 1000)
@@ -25,11 +25,11 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(bar.label, "Weekly")
         XCTAssertEqual(bar.mark, .bar(fill: 0.7, severity: .normal, value: "70%", reset: "3d 12h"))
 
-        var credits = WidgetData(title: "Credits", icon: "codex", kind: .count, used: 452, limit: nil)
+        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
         credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
         XCTAssertEqual(credits.dashboardRow(now: now).mark, .value("452 credits"))
 
-        var resets = WidgetData(title: "Limit Resets", icon: "codex", kind: .count, used: 2, limit: nil)
+        var resets = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
         resets.values = [MetricValue(number: 2, kind: .count, label: "available")]
         resets.showsResetExpiries = true
         XCTAssertEqual(resets.dashboardRow(now: now).mark, .value("2 available"))
@@ -42,7 +42,7 @@ final class DashboardRowModelTests: XCTestCase {
         var badge = paced(used: 30)
         badge.valueTextOverride = "Disabled"
         XCTAssertFalse(badge.hasMeterStyleToggle)
-        var credits = WidgetData(title: "Credits", icon: "codex", kind: .count, used: 452, limit: nil)
+        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
         credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
         XCTAssertFalse(credits.hasMeterStyleToggle)
         var empty = paced(used: 30)
@@ -64,7 +64,7 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(paced(used: 76, elapsed: 0.9).dashboardRow(now: now).mark, .bar(fill: 0.24, severity: .normal, value: "24%", reset: "16h 48m", flame: false))
         XCTAssertEqual(paced(used: 100).dashboardRow(now: now).mark, .bar(fill: 0, severity: .critical, value: "0%", reset: "3d 12h", flame: false))
         for (used, severity) in [(74.0, WidgetData.MeterSeverity.normal), (75, .warning), (89, .warning), (90, .critical)] {
-            var noWindow = WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: used, limit: 100)
+            var noWindow = WidgetData(title: "Credits", kind: .dollars, used: used, limit: 100)
             noWindow.displayMode = .remaining
             XCTAssertEqual(noWindow.dashboardRow(now: now).mark, .bar(fill: (100 - used) / 100, severity: severity, value: "$\(Int(100 - used))", reset: nil, flame: false), "$\(used) of $100")
         }
@@ -86,10 +86,10 @@ final class DashboardRowModelTests: XCTestCase {
         fresh.sessionStartSignal = .zeroUsage
         XCTAssertEqual(fresh.dashboardRow(now: now).mark, .bar(fill: 1, severity: .normal, value: "100%", reset: nil))
 
-        let dollars = WidgetData(title: "On-demand", icon: "cursor", kind: .dollars, used: 12, limit: 20)
+        let dollars = WidgetData(title: "On-demand", kind: .dollars, used: 12, limit: 20)
         XCTAssertEqual(dollars.dashboardRow(now: now).mark, .bar(fill: 0.6, severity: .normal, value: "$12", reset: nil))
 
-        var badge = WidgetData(title: "Status", icon: "grok", kind: .count, used: 0, limit: nil)
+        var badge = WidgetData(title: "Status", kind: .count, used: 0, limit: nil)
         badge.valueTextOverride = "Disabled"
         XCTAssertEqual(badge.dashboardRow(now: now).mark, .value("Disabled"))
     }
@@ -105,7 +105,7 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(paced(used: 50.2).paceTooltip(now: now), "~1% over limit at reset")
         XCTAssertEqual(paced(used: 100).paceTooltip(now: now), "Limit reached")
         XCTAssertNil(paced(used: 4, elapsed: 0.02).paceTooltip(now: now), "a 4% reading early in the window is a level band, not a blow-out")
-        XCTAssertNil(WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: 80, limit: 100).paceTooltip(now: now), "no window, no projection")
+        XCTAssertNil(WidgetData(title: "Credits", kind: .dollars, used: 80, limit: 100).paceTooltip(now: now), "no window, no projection")
         var empty = paced(used: 30)
         empty.hasData = false
         XCTAssertNil(empty.paceTooltip(now: now))
@@ -121,7 +121,7 @@ final class DashboardRowModelTests: XCTestCase {
         var badge = paced(used: 30)
         badge.valueTextOverride = "Disabled"
         XCTAssertNil(badge.meterStyleTooltip)
-        var credits = WidgetData(title: "Credits", icon: "codex", kind: .count, used: 452, limit: nil)
+        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
         credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
         XCTAssertNil(credits.meterStyleTooltip)
 

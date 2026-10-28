@@ -41,7 +41,7 @@ final class WidgetPercentClampTests: XCTestCase {
             id: "test.metric",
             providerID: provider.id,
             metricLabel: "Metric",
-            sample: WidgetData(title: "Metric", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Metric", kind: .percent, used: 0, limit: 100)
         )
         let runtime = StubRuntime(
             provider: provider,

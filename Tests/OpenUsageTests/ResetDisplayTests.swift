@@ -38,7 +38,7 @@ final class ResetDisplayTests: XCTestCase {
 
     func testFreshSessionWindowReadsNotStartedAndSuppressesPacing() {
         let period: TimeInterval = 5 * 3600
-        var data = WidgetData(title: "Session", icon: "codex", kind: .percent, used: 0, limit: 100)
+        var data = WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         data.sessionStartSignal = .zeroUsage
         data.periodDurationMs = Int(period * 1000)
         data.resetsAt = now.addingTimeInterval(period / 2)
@@ -55,7 +55,7 @@ final class ResetDisplayTests: XCTestCase {
         // Claude reports utilization in whole percents, so an in-flight session under 1% reads
         // used == 0 — but its reset date exists precisely because the window started. The row must show
         // the normal countdown, never "not started".
-        var data = WidgetData(title: "Session", icon: "claude", kind: .percent, used: 0, limit: 100)
+        var data = WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         data.sessionStartSignal = .missingResetDate
         data.periodDurationMs = 5 * 3600 * 1000
         data.resetsAt = now.addingTimeInterval(2 * 3600)
@@ -71,7 +71,7 @@ final class ResetDisplayTests: XCTestCase {
 
     func testNonSessionWindowNeverReadsNotStarted() {
         let period: TimeInterval = 7 * 24 * 3600
-        var data = WidgetData(title: "Weekly", icon: "codex", kind: .percent, used: 0, limit: 100)
+        var data = WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         data.periodDurationMs = Int(period * 1000)
         data.resetsAt = now.addingTimeInterval(period / 2)
 
@@ -82,7 +82,7 @@ final class ResetDisplayTests: XCTestCase {
     func testTheResetFollowsTheClockSetting() {
         // Halfway through a 10h window with 90/100 used: a red bar, the flame (projected to run out
         // ~34m out, well before the reset 5h out), and the reset in the clock form under that setting.
-        var data = WidgetData(title: "Session", icon: "codex", kind: .percent, used: 90, limit: 100)
+        var data = WidgetData(title: "Session", kind: .percent, used: 90, limit: 100)
         data.resetsAt = now.addingTimeInterval(5 * 3600)
         data.periodDurationMs = 10 * 3600 * 1000
 
@@ -94,7 +94,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     func testACapWithoutAResetDateHasNoResetUnderEitherClockSetting() {
-        var data = WidgetData(title: "Credits", icon: "codex", kind: .dollars, used: 12, limit: 20)
+        var data = WidgetData(title: "Credits", kind: .dollars, used: 12, limit: 20)
         for mode in [ResetDisplayMode.relative, .absolute] {
             data.resetDisplayMode = mode
             XCTAssertNil(data.compactResetText(now: now))

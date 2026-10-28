@@ -77,7 +77,7 @@ final class IdleCadenceTests: XCTestCase {
         let provider = Provider(id: id, displayName: id, icon: "codex")
         let descriptor = WidgetDescriptor(
             id: "\(id).weekly", providerID: id, metricLabel: "Weekly quota",
-            sample: WidgetData(title: "Weekly", icon: "codex", kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
         return StubRuntime(provider: provider, descriptors: [descriptor]) { _ in
             failure ?? ProviderSnapshot(

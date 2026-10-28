@@ -126,7 +126,7 @@ final class RefreshBackoffTests: XCTestCase {
     private var descriptor: WidgetDescriptor {
         WidgetDescriptor(
             id: "test.weekly", providerID: provider.id, metricLabel: "Weekly quota",
-            sample: WidgetData(title: "Weekly", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
     }
 

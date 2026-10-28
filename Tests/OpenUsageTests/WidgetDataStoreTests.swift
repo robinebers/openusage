@@ -89,7 +89,7 @@ final class WidgetDataStoreTests: XCTestCase {
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
         let runtime = StubRuntime(
             provider: provider,
@@ -128,7 +128,7 @@ final class WidgetDataStoreTests: XCTestCase {
             (0.3915, "0%", 0.0), (0.6, "1%", 0.01), (99.6, "100%", 1.0)
         ] {
             let data = WidgetData(
-                title: "Total usage", icon: "cursor", kind: .percent,
+                title: "Total usage", kind: .percent,
                 used: used, limit: 100
             )
             XCTAssertEqual(data.valueText, value)
@@ -335,7 +335,7 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testCreditValuesFloorAndClampBalance() {
-        var data = WidgetData(title: "Extra Usage", icon: "codex", kind: .dollars, used: 0, limit: nil)
+        var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 820.9)
         XCTAssertEqual(data.unboundedDetail, "820 credits")
         // An exhausted/negative balance clamps to a real, measured zero, not "No data".
@@ -349,7 +349,7 @@ final class WidgetDataStoreTests: XCTestCase {
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let cache = ProviderSnapshotCache(
@@ -388,7 +388,7 @@ final class WidgetDataStoreTests: XCTestCase {
             id: "test.session",
             providerID: provider.id,
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100, displayMode: .remaining)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let defaults = isolatedDefaults()

@@ -30,7 +30,7 @@ final class ProviderHeaderLayoutTests: XCTestCase {
     }
 
     private func percent(_ title: String, used: Double, resetsIn: TimeInterval? = nil) -> WidgetData {
-        var data = WidgetData(title: title, icon: "claude", kind: .percent, used: used, limit: 100)
+        var data = WidgetData(title: title, kind: .percent, used: used, limit: 100)
         data.displayMode = .remaining
         data.resetsAt = resetsIn.map { Date().addingTimeInterval($0) }
         return data
@@ -144,7 +144,7 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         let valueStart = resetStart - DashboardGrid.columnGap - DashboardGrid.valueWidth
         let barEnd = valueStart - DashboardGrid.columnGap
         let full = percent("Weekly", used: 0, resetsIn: 5 * 3600)
-        var credits = WidgetData(title: "Credits", icon: "codex", kind: .count, used: 452, limit: nil)
+        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
         credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
         func row(_ data: WidgetData) -> some View {
             DashboardMetricRow(model: data.dashboardRow()).padding(.horizontal, DashboardGrid.cardPadding)

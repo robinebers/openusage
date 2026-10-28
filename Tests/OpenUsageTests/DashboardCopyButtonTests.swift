@@ -16,7 +16,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
 
     private let provider = Provider(id: "claude@1", displayName: "Claude", icon: "claude", accountLabel: "Personal")
     private let lines: [DashboardLine] = ["Session", "Weekly"].map { title in
-        var data = WidgetData(title: title, icon: "claude", kind: .percent, used: 30, limit: 100)
+        var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
         data.resetsAt = Date().addingTimeInterval(3 * 3600)
         return DashboardLine(descriptor: WidgetDescriptor(id: title, providerID: "claude", metricLabel: title, sample: data), data: data)
     }
@@ -84,7 +84,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let descriptor = WidgetDescriptor(
             id: "claude@1.session", providerID: provider.id, metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: "claude", kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         )
         let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
         let container = await AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)

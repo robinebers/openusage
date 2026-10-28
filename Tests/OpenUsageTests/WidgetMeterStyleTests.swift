@@ -76,7 +76,6 @@ final class WidgetMeterStyleTests: XCTestCase {
             metricLabel: "Today",
             sample: WidgetData(
                 title: "Today",
-                icon: provider.icon,
                 kind: .dollars,
                 used: 0,
                 limit: nil
@@ -162,7 +161,6 @@ final class WidgetMeterStyleTests: XCTestCase {
             metricLabel: "Metric",
             sample: WidgetData(
                 title: "Metric",
-                icon: provider.icon,
                 kind: format.metricKind,
                 used: used,
                 limit: limit,
