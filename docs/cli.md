@@ -64,13 +64,14 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
         }
       }
     }
-  },
-  "errors": []
+  }
 }
 ```
 
-`providers` has one entry per account, keyed by account id; an account the app has not fetched yet
-has no entry. `displayName` is the provider's name and `plan` the plan the provider reports.
+`providers` has one entry per account, keyed by account id, never by provider: read an account as
+`providers["codex@1a2b3c4d"]` (`jq '.providers["codex@1a2b3c4d"]'`). 0.7.x keyed it by provider
+(`providers.codex`); that key no longer exists. An account the app has not fetched yet has no entry.
+`displayName` is the provider's name and `plan` the plan the provider reports.
 `fetchedAt` is when the app last fetched the account, `expiresAt` is when it expects to fetch it
 again (5 minutes after `fetchedAt`), and `stale` says whether that instant has passed at `generatedAt`: a stale
 entry means the app is not running or its refreshes are failing.
@@ -84,8 +85,8 @@ is `percent` on percentage-based plans and `requests` on request-based Enterpris
 `premiumCredits` is `percent` on paid plans and a `credits` count on org-managed seats that only report
 personal usage.
 
-`errors` is always empty. The command reads the last successful fetch; a failed refresh shows in the
-app, with its reason in the account's right-click menu.
+The command reads the last successful fetch; a failed refresh shows in the app, with its reason in
+the account's right-click menu.
 
 ### Resources
 

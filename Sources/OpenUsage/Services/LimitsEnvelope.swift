@@ -28,14 +28,13 @@ enum LimitsEnvelope {
             providers: providers
         )
         return (try? encoder.encode(envelope))
-            ?? Data(#"{"errors":[],"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
+            ?? Data(#"{"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
     }
 
     private struct WireEnvelope: Encodable {
         let schema: String
         let generatedAt: String
         let providers: [String: WireProvider]
-        let errors: [String] = []
     }
 
     private struct WireProvider: Encodable {
