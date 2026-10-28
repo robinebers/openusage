@@ -2,14 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Adds an account: choose a provider, then finish its browser, device-code, or API-key sign-in.
-/// Opened as a sheet on the popover from the Accounts list and the empty dashboard.
+/// Opened as a sheet on the popover from the Accounts list's + and the empty dashboard.
 struct AddAccountSheet: View {
     @State private var flow: AddAccountFlow
     @Environment(\.dismiss) private var dismiss
-
-    init(store: AccountStore) {
-        _flow = State(initialValue: AddAccountFlow(store: store))
-    }
 
     init(flow: AddAccountFlow) {
         _flow = State(initialValue: flow)

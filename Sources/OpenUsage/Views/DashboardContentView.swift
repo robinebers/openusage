@@ -3,15 +3,14 @@ import SwiftUI
 /// The dashboard-only scrolling content. Screen switching, panel sizing, fixed bars, keyboard handling,
 /// and close/reset behavior stay with `DashboardView`.
 struct DashboardContentView: View {
-    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
 
     @Binding var reorderLift: ReorderLift?
     @Binding var scrollPosition: ScrollPosition
 
     @Environment(UpdaterController.self) private var updater
-    @State private var isAddingAccount = false
 
     var body: some View {
         PopoverScrollView {
@@ -30,15 +29,12 @@ struct DashboardContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)
-        .sheet(isPresented: $isAddingAccount) {
-            AddAccountSheet(store: container.accounts)
-        }
     }
 
     @ViewBuilder
     private var widgetContent: some View {
         if layout.displayGroups.isEmpty {
-            EmptyDashboardView { isAddingAccount = true }
+            EmptyDashboardView { popover.isAddingAccount = true }
         } else {
             WidgetGroupedListView(
                 reorderSpaceName: reorderSpaceName,

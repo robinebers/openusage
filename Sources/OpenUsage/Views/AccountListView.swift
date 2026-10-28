@@ -5,7 +5,6 @@ import SwiftUI
 /// Account sheet. Click a row to open that account (L2); drag its grip to reorder the accounts, which
 /// reorders the dashboard too.
 struct AccountListView: View {
-    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
@@ -15,7 +14,6 @@ struct AccountListView: View {
     @State private var activeProviderID: String?
 
     var body: some View {
-        @Bindable var popover = popover
         let providers = layout.orderedProviders()
         Group {
             if providers.isEmpty {
@@ -30,9 +28,6 @@ struct AccountListView: View {
             }
         }
         .animation(Motion.spring, value: providers.map(\.id))
-        .sheet(isPresented: $popover.isAddingAccount) {
-            AddAccountSheet(store: container.accounts)
-        }
     }
 
     private func accountRow(_ provider: Provider) -> some View {

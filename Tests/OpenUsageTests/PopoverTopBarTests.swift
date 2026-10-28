@@ -14,18 +14,18 @@ final class PopoverTopBarTests: QuietWindowTestCase {
             defaults: defaults
         )
         let popover = container.popover
-        popover.screen = .accounts
 
-        let view = VStack(spacing: 0) {
-            PopoverTopBar(screen: .accounts, height: 44, horizontalPadding: PanelMetrics.margin)
-            AccountListView(reorderSpaceName: "reorder", reorderLift: .constant(nil), frameStore: ReorderFrameStore())
-        }
-        .frame(width: PanelMetrics.width)
-        .environment(container)
-        .environment(container.layout)
-        .environment(popover)
-        .environment(container.renaming)
-        let (window, host) = show(view, in: .titled)
+        let view = DashboardView()
+            .environment(\.reduceAnimations, true)
+            .environment(container)
+            .environment(container.layout)
+            .environment(popover)
+            .environment(container.dataStore)
+            .environment(container.renaming)
+            .environment(UpdaterController())
+        let (window, host) = show(view, in: .titled, size: CGSize(width: PanelMetrics.width, height: 300))
+        popover.screen = .accounts
+        try await Task.sleep(for: .milliseconds(300))
         XCTAssertNil(window.attachedSheet)
 
         // The trailing button's center: a large circular glass button inset by the bar's padding.

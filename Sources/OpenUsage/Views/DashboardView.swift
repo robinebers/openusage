@@ -57,7 +57,8 @@ struct DashboardView: View {
     private static let topBarHeight: CGFloat = 44
 
     var body: some View {
-        modeBody
+        @Bindable var popover = popover
+        return modeBody
             .frame(width: PanelMetrics.width)
             // Fill the panel. The panel auto-fits its content (the window height is driven to each
             // screen's measured ideal via `drivesPanelHeight`), so at rest the window is exactly the
@@ -78,6 +79,9 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
+            .sheet(isPresented: $popover.isAddingAccount) {
+                AddAccountSheet(flow: AddAccountFlow(store: container.accounts))
+            }
             .background(
                 // Esc backs out of Accounts / Settings first; only from the dashboard does it close
                 // the popover. Return opens Accounts from the dashboard (the same affordance the
