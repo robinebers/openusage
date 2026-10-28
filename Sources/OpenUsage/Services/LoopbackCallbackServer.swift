@@ -69,15 +69,27 @@ final class LoopbackCallbackServer: @unchecked Sendable {
 
     private func accept(_ connection: NWConnection) {
         connection.start(queue: queue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, error in
+        receive(connection, buffered: Data())
+    }
+
+    /// The browser may deliver the request in pieces, so the header is parsed only once its terminator
+    /// has arrived; a header cut off by the client or still unterminated at 16 KiB is refused.
+    private func receive(_ connection: NWConnection, buffered: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: Self.headerLimit - buffered.count) { [weak self] data, _, isComplete, error in
             guard let self else { connection.cancel(); return }
-            guard error == nil, let data, let request = String(data: data, encoding: .utf8) else {
+            let buffered = buffered + (data ?? Data())
+            if let end = buffered.range(of: Self.headerTerminator) {
+                self.handle(String(decoding: buffered[..<end.lowerBound], as: UTF8.self), connection: connection)
+            } else if error == nil, !isComplete, buffered.count < Self.headerLimit {
+                self.receive(connection, buffered: buffered)
+            } else {
                 self.reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoginError.invalidCallback))
-                return
             }
-            self.handle(request, connection: connection)
         }
     }
+
+    private static let headerLimit = 16_384
+    private static let headerTerminator = Data("\r\n\r\n".utf8)
 
     private func handle(_ request: String, connection: NWConnection) {
         guard let line = request.components(separatedBy: "\r\n").first,
