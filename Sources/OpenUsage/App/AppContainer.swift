@@ -22,16 +22,16 @@ final class AppContainer {
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
-    /// `telemetry` and `telemetryStore` have no defaults on purpose: the PostHog sink starts the
-    /// process-global SDK and the production store writes the bundle's telemetry suite, so only the app
-    /// entry point supplies them and a test cannot build a container that reports anywhere but its own
-    /// fake sink and isolated store.
+    /// `telemetry` and `telemetryDefaults` have no defaults on purpose: the PostHog sink starts the
+    /// process-global SDK and production writes the bundle's telemetry suite, so only the app entry
+    /// point supplies them and a test cannot build a container that reports anywhere but its own fake
+    /// sink and isolated defaults.
     init(
         accounts: AccountStore = AccountStore(),
         defaults: UserDefaults = .standard,
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
-        telemetryStore: TelemetryStore
+        telemetryDefaults: UserDefaults
     ) {
         self.accounts = accounts
         self.http = http
@@ -56,7 +56,7 @@ final class AppContainer {
         // Ids are kind-scoped (`Account.kindScopedID`), so the events name providers, never accounts.
         let telemetry = TelemetryRecorder(
             sink: sink,
-            store: telemetryStore,
+            defaults: telemetryDefaults,
             snapshot: { [accounts, layout] in
                 var kinds: [String] = []
                 for kind in accounts.accounts.map(\.kind.rawValue) where !kinds.contains(kind) {

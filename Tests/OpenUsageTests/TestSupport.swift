@@ -135,7 +135,7 @@ extension AppContainer {
             defaults: defaults,
             http: http,
             telemetry: telemetry,
-            telemetryStore: TelemetryStore(defaults: defaults)
+            telemetryDefaults: defaults
         )
     }
 }

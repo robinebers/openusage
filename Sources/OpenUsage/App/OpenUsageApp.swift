@@ -33,7 +33,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // The one place the PostHog SDK starts and the bundle's telemetry suite is opened. The suite is
         // separate from the app's settings, so a settings change can never re-enable optional analytics
         // the user turned off or mint a new install id.
-        let container = AppContainer(telemetry: PostHogTelemetrySink(), telemetryStore: TelemetryStore())
+        let container = AppContainer(telemetry: PostHogTelemetrySink(), telemetryDefaults: TelemetryRecorder.suite)
         self.container = container
         container.startRefreshing()
         statusItemController = StatusItemController(container: container, updater: updater)

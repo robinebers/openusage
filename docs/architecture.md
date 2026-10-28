@@ -98,7 +98,7 @@ menus are declared as data in `DashboardMenus` and rendered by `ClosureMenuItem`
 `UpdaterController` wraps Sparkle. It starts only when the bundle declares `SUFeedURL`, which only
 `script/release.sh` writes, so the dev build never checks for updates. See [Updates](updates.md).
 
-`PostHogTelemetrySink`, `TelemetryRecorder`, and `TelemetryStore` send the anonymous daily ping,
+`PostHogTelemetrySink` and `TelemetryRecorder` send the anonymous daily ping,
 crash reports, and the optional provider rollups described in [Privacy](privacy.md). Ids are
 kind-scoped (`Account.kindScopedID`), so events name providers, never accounts.
 
