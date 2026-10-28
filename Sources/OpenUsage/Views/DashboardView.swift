@@ -433,9 +433,8 @@ struct DashboardView: View {
 }
 
 /// The popover's opaque backdrop tray, painted behind all content so the popover reads as one solid
-/// panel — the data region never shows the desktop through it. Matches the AppKit panel backdrop
-/// (`PopoverBackdropView`'s `NSBox`): SwiftUI uses `Theme.traySurface` here while AppKit uses the
-/// matching `Theme.trayNSColor`. The footer draws its own frosted glass bar on top of this (in-window),
+/// panel — the data region never shows the desktop through it. Matches the panel's own background:
+/// SwiftUI uses `Theme.traySurface` here while the window uses the matching `Theme.trayNSColor`. The footer draws its own frosted glass bar on top of this (in-window),
 /// so glass stays chrome over solid content. Never hit-tests, so it can't steal clicks from the content
 /// above it.
 private struct PopoverSurface: View {

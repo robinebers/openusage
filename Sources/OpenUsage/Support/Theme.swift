@@ -52,7 +52,7 @@ enum Theme {
 
     /// The popover's opaque backdrop ("tray") behind the grouped cards — `textBackgroundColor`, the
     /// bright page surface document/Notes views use (white in light, near-black in dark; it does not
-    /// pick up desktop wallpaper tint). Exposed as an `NSColor` so the panel's AppKit backdrop
+    /// pick up desktop wallpaper tint). Exposed as an `NSColor` so the panel's window background
     /// (`StatusItemController`) and the SwiftUI surface (`DashboardView.PopoverSurface`) are one color.
     /// The footer's frosted glass bar samples this opaque tray (in-window), so it reads as glass chrome
     /// over solid content, never a hole to the desktop. The grouped cards sit on it (see `cardSurface`).

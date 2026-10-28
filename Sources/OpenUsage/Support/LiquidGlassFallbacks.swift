@@ -10,7 +10,7 @@ import SwiftUI
 /// distinction, the scroll view still scrolls. Nothing here hides a runtime error — each branch is a
 /// compile-time `#available` check, which is the intended way to back-deploy newer-SDK APIs.
 ///
-/// These gate purely on OS version. The popover backdrop is opaque (`PopoverBackdropView`'s tray,
+/// These gate purely on OS version. The popover backdrop is opaque (the panel's tray background,
 /// matching `Theme.traySurface`), and glass stays reserved for the footer chrome — its `.bar`/glass bar
 /// plus the interactive glass controls — never the content cards.
 ///

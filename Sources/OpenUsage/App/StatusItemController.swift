@@ -71,8 +71,6 @@ final class StatusItemController: NSObject {
         onDismiss: { [weak self] in self?.hidePanel() }
     )
     private let hostingController: NSHostingController<AnyView>
-    /// The panel's backdrop, the opaque tray the content sits on.
-    private let backdrop = PopoverBackdropView()
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
@@ -149,41 +147,21 @@ final class StatusItemController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        let container = NSView()
-
-        // Backdrop: an opaque tray so the data region never shows the desktop through it (Liquid Glass
-        // stays reserved for the footer chrome, rendered in-window over this backing). It fills the whole
-        // window, so a screen-switch resize can't reveal a transparent strip, and any region SwiftUI
-        // leaves unpainted shows the backdrop, not a raw hole. Its tray is `Theme.trayNSColor` (tracks
-        // light/dark and the forced appearance override) matching the SwiftUI tray
-        // (`DashboardView.PopoverSurface`).
+        // The window paints an opaque tray so the data region never shows the desktop through it (Liquid
+        // Glass stays reserved for the footer chrome, rendered in-window over this backing). It fills the
+        // whole window, so a screen-switch resize can't reveal a transparent strip, and any region SwiftUI
+        // leaves unpainted shows the tray, not a raw hole. `Theme.trayNSColor` tracks light/dark and the
+        // forced appearance override, matching the SwiftUI tray (`DashboardView.PopoverSurface`).
         // `MenuBarPanel` clips everything to its rounded frame.
+        panel.backgroundColor = Theme.trayNSColor
         let host = hostingController.view
-        host.translatesAutoresizingMaskIntoConstraints = false
         host.wantsLayer = true
         // Redraw the SwiftUI content on every step of a height change instead of stretching the layer's
         // cached contents (the default `.onSetNeedsDisplay`), which keeps cards steady during a morph.
         host.layerContentsRedrawPolicy = .duringViewResize
-
-        container.addSubview(backdrop)
-        container.addSubview(host, positioned: .above, relativeTo: backdrop)
-        NSLayoutConstraint.activate([
-            backdrop.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            backdrop.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            backdrop.topAnchor.constraint(equalTo: container.topAnchor),
-            backdrop.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            host.topAnchor.constraint(equalTo: container.topAnchor),
-            host.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
-        // A plain container VC owns the backdrop; the hosting controller is its child so SwiftUI gets
-        // a proper view-controller hierarchy. Panel placement and height live in `heightController`.
-        let rootVC = NSViewController()
-        rootVC.view = container
-        rootVC.addChild(hostingController)
-        panel.contentViewController = rootVC
+        // SwiftUI never sizes the window: panel placement and height live in `heightController`.
+        hostingController.sizingOptions = []
+        panel.contentViewController = hostingController
     }
 
     private func configureStatusItem() {
