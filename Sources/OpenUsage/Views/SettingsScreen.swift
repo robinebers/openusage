@@ -16,26 +16,23 @@ struct SettingsScreen: View {
 
     var body: some View {
         PopoverScrollView {
-            VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
-                section("General") {
-                    row("Launch at Login") {
-                        Toggle("", isOn: Binding(
-                            get: { launchAtLogin.isEnabled },
-                            set: { launchAtLogin.update(to: $0) }
-                        ))
-                        .settingsSwitchStyle()
-                    }
-                    row("Global Shortcut") {
+            Form {
+                Section("General") {
+                    Toggle("Launch at Login", isOn: Binding(
+                        get: { launchAtLogin.isEnabled },
+                        set: { launchAtLogin.update(to: $0) }
+                    ))
+                    LabeledContent("Global Shortcut") {
                         ShortcutRecorderField(name: .togglePopover, isVisible: popover.screen == .settings)
                     }
                 }
-                section("Appearance") {
-                    row("Theme") {
-                        picker($appearance, options: AppearanceSetting.allCases, label: \.label)
-                            .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(AppearanceSetting.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
-                    row("Time Format") {
-                        picker($timeFormat, options: TimeFormatSetting.allCases, label: \.label)
+                    .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
+                    Picker("Time Format", selection: $timeFormat) {
+                        ForEach(TimeFormatSetting.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
                 }
                 usageDisplaySection
@@ -44,7 +41,7 @@ struct SettingsScreen: View {
                 commandLineSection
                 updatesSection
             }
-            .padding(PanelMetrics.margin)
+            .inlineGroupedForm()
         }
         .scrollPosition($scrollPosition)
         .onChange(of: popover.screen) { _, screen in
@@ -59,46 +56,43 @@ struct SettingsScreen: View {
     /// How every bounded reading and reset time reads, on the dashboard and in the menu bar.
     private var usageDisplaySection: some View {
         @Bindable var dataStore = dataStore
-        return section("Usage Display") {
-            row("Show Usage As") {
-                picker($dataStore.meterStyle, options: WidgetDisplayMode.allCases, label: \.label)
+        return Section("Usage Display") {
+            Picker("Show Usage As", selection: $dataStore.meterStyle) {
+                ForEach(WidgetDisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            row("Reset Times") {
-                picker($dataStore.resetDisplayMode, options: ResetDisplayMode.allCases, label: \.label)
+            Picker("Reset Times", selection: $dataStore.resetDisplayMode) {
+                ForEach(ResetDisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
         }
     }
 
     private var notificationsSection: some View {
-        section("Notifications") {
-            notificationRow("Under 10% Remaining", isOn: $underTenPercent)
-            notificationRow("Healthy Pace Changes", isOn: $healthyToClose)
-            notificationRow("Near-Limit Pace Changes", isOn: $closeToRunningOut)
+        Section("Notifications") {
+            notificationToggle("Under 10% Remaining", isOn: $underTenPercent)
+            notificationToggle("Healthy Pace Changes", isOn: $healthyToClose)
+            notificationToggle("Near-Limit Pace Changes", isOn: $closeToRunningOut)
         }
     }
 
     private var privacySection: some View {
-        section("Privacy") {
-            row("Help Make OpenUsage Better") {
-                Toggle("", isOn: Binding(
-                    get: { container.telemetry.isEnabled },
-                    set: { container.telemetry.setEnabled($0) }
-                ))
-                .settingsSwitchStyle()
-            }
+        Section {
+            Toggle("Help Make OpenUsage Better", isOn: Binding(
+                get: { container.telemetry.isEnabled },
+                set: { container.telemetry.setEnabled($0) }
+            ))
+        } header: {
+            Text("Privacy")
+        } footer: {
             // Daily activity and crash reports are always on; the toggle only gates extra analytics.
             Text("Share additional anonymous usage stats that tell the team where to improve.")
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var commandLineSection: some View {
-        section("Command Line") {
-            row("Terminal Helper") {
+        Section {
+            LabeledContent("Terminal Helper") {
                 switch commandLineTool.status {
                 case .installed:
                     Button("Uninstall") { commandLineTool.uninstall() }
@@ -109,17 +103,21 @@ struct SettingsScreen: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            Text("Adds a global `openusage` command that prints the usage the app last fetched.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if commandLineTool.status == .conflict {
-                inlineNotice("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
-            } else if let errorMessage = commandLineTool.errorMessage {
-                inlineNotice(errorMessage)
+        } header: {
+            Text("Command Line")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Adds a global `openusage` command that prints the usage the app last fetched.")
+                    .foregroundStyle(.secondary)
+                if commandLineTool.status == .conflict {
+                    Text("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
+                        .foregroundStyle(Theme.notice)
+                } else if let errorMessage = commandLineTool.errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(Theme.notice)
+                }
             }
+            .font(.footnote)
         }
     }
 
@@ -129,79 +127,20 @@ struct SettingsScreen: View {
     private var updatesSection: some View {
         @Bindable var updater = updater
         if updater.isActive {
-            section("Updates") {
-                row("Check Automatically") {
-                    Toggle("", isOn: $updater.automaticallyChecksForUpdates)
-                        .settingsSwitchStyle()
-                }
-                row("Beta Updates") {
-                    Toggle("", isOn: $updater.betaChannelEnabled)
-                        .settingsSwitchStyle()
-                }
-                // No version label here; the footer already shows it. The frame goes on the label so
-                // the glass background stretches the full row width instead of hugging the text.
-                Button { updater.checkForUpdates() } label: {
-                    Text("Check for Updates…").frame(maxWidth: .infinity)
-                }
-                .glassButtonStyle()
-                .controlSize(.regular)
-                .disabled(!updater.canCheckForUpdates)
-                .padding(.horizontal, 12)
-                .padding(.vertical, PanelMetrics.controlRowPadding)
+            Section("Updates") {
+                Toggle("Check Automatically", isOn: $updater.automaticallyChecksForUpdates)
+                Toggle("Beta Updates", isOn: $updater.betaChannelEnabled)
+                // No version label here; the footer already shows it.
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
             }
         }
     }
 
-    private func notificationRow(_ title: String, isOn: Binding<Bool>) -> some View {
-        row(title) {
-            Toggle("", isOn: isOn)
-                .settingsSwitchStyle()
-                .onChange(of: isOn.wrappedValue) { _, enabled in
-                    if enabled { AppNotifications.shared.requestAuthorization() }
-                }
-        }
-    }
-
-    private func inlineNotice(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(Theme.notice)
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: PanelMetrics.headerSpacing) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-            VStack(spacing: 0, content: content)
-                .cardSurface()
-        }
-    }
-
-    private func row<Control: View>(_ title: String, @ViewBuilder control: () -> Control) -> some View {
-        HStack(spacing: 10) {
-            Text(title)
-            Spacer(minLength: 8)
-            control()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, PanelMetrics.controlRowPadding)
-    }
-
-    private func picker<Value: Hashable>(
-        _ selection: Binding<Value>,
-        options: [Value],
-        label: @escaping (Value) -> String
-    ) -> some View {
-        Picker("", selection: selection) {
-            ForEach(options, id: \.self) { Text(label($0)).tag($0) }
-        }
-        .pickerStyle(.menu)
-        .labelsHidden()
-        .fixedSize()
+    private func notificationToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .onChange(of: isOn.wrappedValue) { _, enabled in
+                if enabled { AppNotifications.shared.requestAuthorization() }
+            }
     }
 }

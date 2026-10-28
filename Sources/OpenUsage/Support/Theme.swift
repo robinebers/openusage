@@ -77,7 +77,7 @@ enum Theme {
 }
 
 extension View {
-    /// The grouped-card surface used for provider/settings cards, in the shared rounded shape: the
+    /// The grouped-card surface used for provider and account cards, in the shared rounded shape: the
     /// bright page base lifted by the system's `.fill.quaternary` (the System Settings grouped-box
     /// look), borderless — the subtle fill carries the grouping the way Settings does, in both light
     /// and dark. Drawing the opaque page base first keeps a lifted drag preview solid while it floats;
@@ -94,12 +94,15 @@ extension View {
             .overlay { Theme.cardShape.strokeBorder(.separator, lineWidth: 0.5) }
     }
 
-    /// The trailing on/off switch styling shared by every settings + Accounts row toggle: no inline
-    /// label (the row's leading text is the label), the native switch style, small control size.
-    func settingsSwitchStyle() -> some View {
-        labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
+    /// A grouped form laid out inline in a sheet or a popover screen: sized to its rows instead of
+    /// scrolling, and without the extra vertical margin the form adds around itself when it fills a
+    /// window.
+    func inlineGroupedForm() -> some View {
+        formStyle(.grouped)
+            .scrollDisabled(true)
+            .scrollContentBackground(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, -16)
     }
 }
 

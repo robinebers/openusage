@@ -15,7 +15,7 @@ import SwiftUI
 /// plus the interactive glass controls — never the content cards.
 ///
 /// Keeping every `#available(macOS 26, *)` check in this one file means the views (`PopoverFooter`,
-/// `SettingsScreen`, `DashboardView`) stay free of inline availability branches.
+/// `PopoverTopBar`, `DashboardView`) stay free of inline availability branches.
 extension View {
     /// Liquid Glass button style on macOS 26, the matching bordered style on macOS 15.
     ///

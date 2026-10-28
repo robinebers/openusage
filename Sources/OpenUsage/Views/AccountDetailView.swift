@@ -81,7 +81,9 @@ struct AccountDetailView: View {
                     get: { layout.isMetricEnabled(metric.id) },
                     set: { layout.setMetricEnabled(metric.id, $0) }
                 ))
-                .settingsSwitchStyle()
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
             }
         )
         .contentShape(Rectangle())

@@ -325,18 +325,6 @@ private struct ErrorText: View {
     }
 }
 
-private extension View {
-    /// A grouped form laid out inline in the sheet: sized to its rows instead of scrolling, and
-    /// without the extra vertical margin the form adds around itself when it fills a window.
-    func inlineGroupedForm() -> some View {
-        formStyle(.grouped)
-            .scrollDisabled(true)
-            .scrollContentBackground(.hidden)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, -16)
-    }
-}
-
 @MainActor
 private func copy(_ string: String) {
     let pasteboard = NSPasteboard.general
