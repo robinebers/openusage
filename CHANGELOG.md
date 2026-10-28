@@ -37,6 +37,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
+- OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 
 ## v0.7.16
 
