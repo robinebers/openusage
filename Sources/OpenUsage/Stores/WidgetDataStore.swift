@@ -13,10 +13,6 @@ final class WidgetDataStore {
     private let layoutOrderedDescriptors: (@MainActor () -> [WidgetDescriptor])?
     /// Clock for the failure backoff and staleness. Injected so tests can advance time deterministically.
     private let now: () -> Date
-    /// Monotonic clock for refresh durations, kept separate from wall time so a clock adjustment cannot
-    /// produce a negative or wildly inflated provider timing. Tests inject exact ticks.
-    private let monotonicNow: () -> TimeInterval
-    private let slowProviderRefreshThreshold: TimeInterval
     /// See `defaultProviderRefreshTimeout`. Injected so tests can drive the deadline in milliseconds.
     private let providerRefreshTimeout: TimeInterval
     /// The cadence expected after a fetch, stamped on each good snapshot as `nextRefreshAt`. Injected so
@@ -33,7 +29,7 @@ final class WidgetDataStore {
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
-    static let defaultSlowProviderRefreshThreshold: TimeInterval = 10
+    private static let slowProviderRefreshThreshold: TimeInterval = 10
     /// Hard deadline for a single account's `refresh()` call. If it hasn't returned by then
     /// the refresh is cancelled, the spinner stops, and the failure is surfaced like any other error.
     ///
@@ -75,14 +71,11 @@ final class WidgetDataStore {
         didSet { defaults.set(meterStyle.rawValue, forKey: Self.meterStyleKey) }
     }
 
-    /// What a real provider fetch came back with. Cache hits, skips, and backoffs are timer noise and
-    /// never reach `onRefreshOutcome`.
-    enum FetchResult: Sendable, Equatable { case refreshed, failed }
-
-    /// Telemetry hook wired by `AppContainer`: `(providerID, result, manual)`, once per real fetch, so
+    /// Telemetry hook wired by `AppContainer`: `(providerID, outcome, manual)`, once per real fetch
+    /// (`.refreshed` or `.failed`; cache hits, skips, and backoffs are timer noise and never reach it), so
     /// the recorder can roll daily success and failure counts up into one event per provider per day.
     /// `nil` (and so a no-op) in tests and previews. Not observable UI state.
-    @ObservationIgnored var onRefreshOutcome: (@MainActor (String, FetchResult, Bool) -> Void)?
+    @ObservationIgnored var onRefreshOutcome: (@MainActor (String, RefreshOutcome, Bool) -> Void)?
 
     /// Global reset-countdown format: relative ("Resets in 4d 17h") or absolute ("Resets tomorrow at
     /// 9:00 AM"). Persisted across relaunch; defaults to `.relative`. Toggled by clicking a reset label.
@@ -97,14 +90,11 @@ final class WidgetDataStore {
         defaults: UserDefaults = .standard,
         orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
-        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        slowProviderRefreshThreshold: TimeInterval = WidgetDataStore.defaultSlowProviderRefreshThreshold,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
         postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil,
         expectedRefreshInterval: @escaping () -> TimeInterval = { RefreshSetting.interval }
     ) {
-        precondition(slowProviderRefreshThreshold >= 0)
         precondition(providerRefreshTimeout > 0)
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
@@ -112,8 +102,6 @@ final class WidgetDataStore {
         self.defaults = defaults
         self.layoutOrderedDescriptors = orderedDescriptors
         self.now = now
-        self.monotonicNow = monotonicNow
-        self.slowProviderRefreshThreshold = slowProviderRefreshThreshold
         self.providerRefreshTimeout = providerRefreshTimeout
         self.expectedRefreshInterval = expectedRefreshInterval
         self.notificationSettings = notificationSettings
@@ -186,7 +174,7 @@ final class WidgetDataStore {
     }
 
     private func refreshPass(_ providerIDs: [String], force: Bool) async {
-        let start = monotonicNow()
+        let start = ProcessInfo.processInfo.systemUptime
         AppLog.notice(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let outcomes = await refresh(providerIDs: providerIDs, force: force)
         // Stamp the end of the pass so the footer countdown targets the next scheduled refresh
@@ -291,7 +279,7 @@ final class WidgetDataStore {
             AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
             return .skipped
         }
-        let start = monotonicNow()
+        let start = ProcessInfo.processInfo.systemUptime
         lastFetchAt[providerID] = now()
         // A provider that never returns would otherwise hold the in-flight entry — and the spinner —
         // forever. Past the deadline, stop waiting and treat it as any other failed refresh.
@@ -318,10 +306,10 @@ final class WidgetDataStore {
             return .skipped
         }
         let durationMs = durationMilliseconds(since: start)
-        if TimeInterval(durationMs) >= slowProviderRefreshThreshold * 1000 {
+        if TimeInterval(durationMs) >= Self.slowProviderRefreshThreshold * 1000 {
             AppLog.warn(
                 .refresh,
-                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(slowProviderRefreshThreshold * 1000))ms)"
+                "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(Self.slowProviderRefreshThreshold * 1000))ms)"
             )
         }
         if let failure = snapshot.failure {
@@ -355,7 +343,7 @@ final class WidgetDataStore {
     }
 
     private func durationMilliseconds(since start: TimeInterval) -> Int {
-        max(0, Int((monotonicNow() - start) * 1000))
+        max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
     }
 
     /// The provider's latest refresh error, or `nil` when its last refresh succeeded.

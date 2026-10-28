@@ -60,9 +60,9 @@ final class TelemetryRecorder {
         }
     }
 
-    /// Record one real provider fetch. Skipped while optional analytics are off.
-    func record(providerID: String, result: WidgetDataStore.FetchResult, manual: Bool) {
-        guard store.enabled else { return }
+    /// Record one real provider fetch (`.refreshed` or `.failed`). Skipped while optional analytics are off.
+    func record(providerID: String, result: WidgetDataStore.RefreshOutcome, manual: Bool) {
+        guard store.enabled, result == .refreshed || result == .failed else { return }
 
         let today = Self.dayString(now())
         var counters = store.providerCounters()
@@ -72,10 +72,9 @@ final class TelemetryRecorder {
             counters[providerID] = nil
         }
         var counter = counters[providerID] ?? ProviderDailyCounter(day: today)
-        switch result {
-        case .refreshed:
+        if result == .refreshed {
             counter.success += 1
-        case .failed:
+        } else {
             counter.failure += 1
         }
         if manual { counter.manual += 1 }
