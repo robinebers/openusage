@@ -74,12 +74,12 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    func refresh() async -> ProviderSnapshot {
+    func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
-            let result = try await refresh(try await loadCredential())
-            return ProviderSnapshot(provider: provider, plan: result.plan, lines: result.lines)
+            let usage = try await refresh(try await loadCredential())
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines))
         } catch {
-            return ProviderSnapshot(provider: provider, failure: RefreshFailure(error: error))
+            return .failure(RefreshFailure(error: error))
         }
     }
 

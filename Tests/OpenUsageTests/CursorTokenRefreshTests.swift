@@ -100,9 +100,8 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.oldToken]
         )
 
-        let snapshot = await harness.runtime.refresh()
+        let snapshot = try await harness.runtime.refresh().get()
 
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(harness.stored?.expiresAt, Self.expiry)
         XCTAssertEqual(harness.stored?.accessToken, Self.oldToken)
         XCTAssertTrue(harness.refreshRequests.isEmpty)
@@ -116,9 +115,8 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.newToken]
         )
 
-        let snapshot = await harness.runtime.refresh()
+        let snapshot = try await harness.runtime.refresh().get()
 
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(harness.usageTokens, [Self.newToken])
         try assertRefreshedAndSaved(harness)
     }
@@ -131,9 +129,8 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.newToken]
         )
 
-        let snapshot = await harness.runtime.refresh()
+        let snapshot = try await harness.runtime.refresh().get()
 
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(harness.usageTokens, [Self.oldToken, Self.newToken])
         try assertRefreshedAndSaved(harness)
     }
@@ -149,7 +146,7 @@ final class CursorTokenRefreshTests: XCTestCase {
         let snapshot = await harness.runtime.refresh()
 
         XCTAssertEqual(harness.refreshRequests.count, 1)
-        guard let text = snapshot.errorMessage else { return XCTFail("Expected an error snapshot") }
+        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
         XCTAssertEqual(text, "Cursor sign-in expired. Remove the account and add it again.")
         XCTAssertEqual(harness.stored?.accessToken, Self.oldToken)
     }
@@ -162,10 +159,9 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.oldToken]
         )
 
-        let snapshot = await harness.runtime.refresh()
+        let snapshot = try await harness.runtime.refresh().get()
 
         XCTAssertEqual(harness.refreshRequests.count, 1)
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(harness.usageTokens, [Self.oldToken])
         XCTAssertEqual(harness.stored?.accessToken, Self.oldToken)
     }

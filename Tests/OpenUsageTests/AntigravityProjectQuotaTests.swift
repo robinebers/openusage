@@ -22,7 +22,7 @@ final class AntigravityProjectQuotaTests: XCTestCase {
     {"error":{"code":403,"message":"fake","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SUBSCRIPTION_REQUIRED","domain":"cloudaicompanion.googleapis.com"}]}}
     """#
 
-    private func refresh(summaryStatus: Int? = nil) async throws -> ProviderSnapshot {
+    private func refresh(summaryStatus: Int? = nil) async throws -> Result<ProviderSnapshot, RefreshFailure> {
         let account = Account(kind: .antigravity, label: "Google Account")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture)), for: account.id)
@@ -47,9 +47,8 @@ final class AntigravityProjectQuotaTests: XCTestCase {
     }
 
     func testQuotaSummaryNamesTheAccountsProject() async throws {
-        let snapshot = try await refresh()
+        let snapshot = try await refresh().get()
 
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(snapshot.lines.map(\.label), [AntigravityMetric.weeklyLabel, AntigravityMetric.claudeWeeklyLabel])
         XCTAssertEqual(snapshot.plan, "Antigravity Starter Quota")
     }
@@ -57,7 +56,7 @@ final class AntigravityProjectQuotaTests: XCTestCase {
     func testRejectedQuotaCallReadsAsExpiredSignIn() async throws {
         let snapshot = try await refresh(summaryStatus: 403)
 
-        guard let text = snapshot.errorMessage else { return XCTFail("Expected an error snapshot") }
+        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
         XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
     }
 

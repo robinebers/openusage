@@ -17,10 +17,9 @@ final class WidgetDataStore {
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
     var snapshots: [String: ProviderSnapshot] = [:]
-    private var inFlight: [String: Task<ProviderSnapshot?, Never>] = [:]
+    private var inFlight: [String: Task<Result<ProviderSnapshot, RefreshFailure>, Never>] = [:]
     var refreshingProviderIDs: Set<String> { Set(inFlight.keys) }
     var lastRefreshAt: Date?
-    var providerErrors: [String: String] = [:]
 
     private(set) var backoffs: [String: RefreshBackoff] = [:]
 
@@ -71,7 +70,6 @@ final class WidgetDataStore {
         }
         snapshots = next
         if removed { cache.save(next) }
-        providerErrors = providerErrors.filter { ids.contains($0.key) }
         backoffs = backoffs.filter { ids.contains($0.key) }
     }
 
@@ -130,7 +128,7 @@ final class WidgetDataStore {
         if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout] in
-            await ProviderRefreshDeadline.snapshot(from: provider, timeout: providerRefreshTimeout)
+            await ProviderRefreshDeadline.refresh(provider, timeout: providerRefreshTimeout)
         }
         inFlight[providerID] = work
         defer { if inFlight[providerID] == work { inFlight[providerID] = nil } }
@@ -138,10 +136,6 @@ final class WidgetDataStore {
         guard providersByID[providerID] === provider else {
             AppLog.debug(.refresh, "dropped \(providerID) refresh; the account was removed")
             return .skipped
-        }
-        guard let snapshot = result else {
-            let message = "Refresh timed out after \(Int(providerRefreshTimeout))s"
-            return recordFailure(RefreshFailure(message: message, kind: .refused), providerID: providerID, kind: provider.provider.kind, force: force)
         }
         guard !Task.isCancelled else {
             AppLog.debug(.refresh, "cancelled \(providerID) refresh; keeping last-good snapshot")
@@ -154,11 +148,10 @@ final class WidgetDataStore {
                 "\(providerID) slow refresh (\(durationMs)ms, threshold=\(Int(Self.slowProviderRefreshThreshold * 1000))ms)"
             )
         }
-        if let failure = snapshot.failure {
-            return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
-        }
-        if providerErrors[providerID] != nil {
-            providerErrors[providerID] = nil
+        let snapshot: ProviderSnapshot
+        switch result {
+        case .failure(let failure): return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
+        case .success(let refreshed): snapshot = refreshed
         }
         if backoffs[providerID] != nil { backoffs[providerID] = nil }
         snapshots[providerID] = snapshot
@@ -182,10 +175,8 @@ final class WidgetDataStore {
     }
 
     private func recordFailure(_ failure: RefreshFailure, providerID: String, kind: ProviderKind, force: Bool) -> RefreshOutcome {
-        let backoff = RefreshBackoff.after(failure.kind, previous: backoffs[providerID], now: now())
+        let backoff = RefreshBackoff.after(failure, previous: backoffs[providerID], now: now())
         backoffs[providerID] = backoff
-        let notice = backoff.providerAsked ? nil : failure.message
-        if providerErrors[providerID] != notice { providerErrors[providerID] = notice }
         let wait = Int(backoff.retryAt.timeIntervalSince(now()))
         AppLog.warn(.refresh, "\(providerID) failed: \(failure.message) Next try in \(wait)s.")
         onRefreshOutcome?(kind, .failed, force)
@@ -197,9 +188,8 @@ final class WidgetDataStore {
     }
 
     func errorMessage(for providerID: String) -> String? {
-        providerErrors[providerID]
+        backoffs[providerID].flatMap { $0.providerAsked ? nil : $0.message }
     }
-
 
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
         var result: WidgetData

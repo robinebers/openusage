@@ -45,7 +45,7 @@ final class StalenessLabelTests: XCTestCase {
         let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(provider: provider, failure: RefreshFailure(message: "Not logged in", kind: .refused))
+            failure: RefreshFailure(message: "Not logged in", kind: .refused)
         )
         let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime)
         store.snapshots["devin"] = ProviderSnapshot(

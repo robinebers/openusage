@@ -40,9 +40,8 @@ final class CursorCurrentPeriodUsageTests: XCTestCase {
     func testTopLevelUsageFillsEveryCursorTile() async throws {
         let runtime = try runtime(usage: HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.currentPeriodUsage.utf8)))
 
-        let snapshot = await runtime.refresh()
+        let snapshot = try await runtime.refresh().get()
 
-        XCTAssertNil(snapshot.errorMessage, "\(snapshot.lines)")
         XCTAssertEqual(snapshot.plan, "Pro")
         guard case .progress(_, let used, let limit, _, let resetsAt, _)? = snapshot.line(label: "Total usage") else {
             return XCTFail("Missing Total usage in \(snapshot.lines)")
@@ -60,7 +59,7 @@ final class CursorCurrentPeriodUsageTests: XCTestCase {
 
         let snapshot = await runtime.refresh()
 
-        guard let text = snapshot.errorMessage else { return XCTFail("Expected an error snapshot") }
+        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
         XCTAssertEqual(text, ProviderError.signInExpired(.cursor).localizedDescription)
     }
 }

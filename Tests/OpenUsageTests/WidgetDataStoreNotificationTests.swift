@@ -85,7 +85,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     ) async {
         if let used {
             let next = snapshot(used: used, resetsAt: resetsAt)
-            runtime.answer = { _ in next }
+            runtime.answer = { _ in .success(next) }
         }
         await store.refreshAll(force: true)
         await notify(base)
@@ -126,7 +126,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
         for (runtime, provider) in zip(runtimes, providers) {
             let next = snapshot(provider, used: 87)
-            runtime.answer = { _ in next }
+            runtime.answer = { _ in .success(next) }
         }
         await store.refreshAll(force: true)
         await notify(base)

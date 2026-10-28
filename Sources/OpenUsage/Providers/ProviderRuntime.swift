@@ -5,7 +5,7 @@ protocol ProviderRuntime: AnyObject {
     var provider: Provider { get }
     var widgetDescriptors: [WidgetDescriptor] { get }
 
-    func refresh() async -> ProviderSnapshot
+    func refresh() async -> Result<ProviderSnapshot, RefreshFailure>
     func forgetHourlyReads()
     func restore(_ snapshot: ProviderSnapshot)
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot?

@@ -34,6 +34,21 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertNil(store.backoffs["test"])
     }
 
+    func testTheBackoffCarriesTheFailureMessageAndShowsItUnlessTheProviderAsked() async {
+        let clock = TestClock(start)
+        let runtime = makeRuntime([rateLimited(retryAfter: 60), .failure(RefreshFailure(message: "Refused", kind: .refused))])
+        let store = makeStore(runtime, clock: clock)
+
+        await store.refreshAll()
+        XCTAssertEqual(store.backoffs["test"]?.message, ProviderError.rateLimited(retryAfter: 60).localizedDescription)
+        XCTAssertNil(store.errorMessage(for: "test"), "the provider's wait keeps its message for the log, not the row")
+
+        clock.set(start.addingTimeInterval(60))
+        await store.refreshAll()
+        XCTAssertEqual(store.backoffs["test"]?.message, "Refused")
+        XCTAssertEqual(store.errorMessage(for: "test"), "Refused")
+    }
+
     func testRateLimitWithoutRetryAfterDoublesFromFiveMinutesToAnHour() async {
         let clock = TestClock(start)
         let runtime = makeRuntime([rateLimited(retryAfter: nil)])
@@ -47,7 +62,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testAccountThatKeepsFailingBacksOffExponentiallyButManualRefreshRetries() async {
         let clock = TestClock(start)
-        let runtime = makeRuntime([ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.signInExpired(.openrouter)))])
+        let runtime = makeRuntime([.failure(RefreshFailure(error: ProviderError.signInExpired(.openrouter)))])
         let store = makeStore(runtime, clock: clock)
 
         await store.refreshAll()
@@ -63,7 +78,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testSuccessResetsTheBackoff() async {
         let clock = TestClock(start)
-        let failure = ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.requestFailed(500)))
+        let failure = Result<ProviderSnapshot, RefreshFailure>.failure(RefreshFailure(error: ProviderError.requestFailed(500)))
         let runtime = makeRuntime([failure, failure, failure, ok(at: start), failure])
         let store = makeStore(runtime, clock: clock)
 
@@ -82,7 +97,7 @@ final class RefreshBackoffTests: XCTestCase {
 
     func testNoAnswerRetriesEveryPassWithoutGrowingTheWait() async {
         let clock = TestClock(start)
-        let runtime = makeRuntime([ProviderSnapshot(provider: provider, failure: RefreshFailure(error: URLError(.notConnectedToInternet)))])
+        let runtime = makeRuntime([.failure(RefreshFailure(error: URLError(.notConnectedToInternet)))])
         let store = makeStore(runtime, clock: clock)
 
         await store.refreshAll()
@@ -112,8 +127,7 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .claude)) { error in
             XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: 60))
         }
-        let snapshot = ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.rateLimited(retryAfter: 60)))
-        XCTAssertEqual(snapshot.failure?.kind, .rateLimited(retryAfter: 60))
+        XCTAssertEqual(RefreshFailure(error: ProviderError.rateLimited(retryAfter: 60)).kind, .rateLimited(retryAfter: 60))
     }
 
     private let provider = Provider(id: "test", kind: .claude)
@@ -144,20 +158,20 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertEqual(runtime.refreshCount, count + 1, "not asked once the \(Int(wait))s wait ended", file: file, line: line)
     }
 
-    private func ok(at date: Date) -> ProviderSnapshot {
-        ProviderSnapshot(
+    private func ok(at date: Date) -> Result<ProviderSnapshot, RefreshFailure> {
+        .success(ProviderSnapshot(
             providerID: provider.id, displayName: provider.displayName,
             lines: [.progress(label: "Weekly quota", used: 12, limit: 100, format: .percent)],
             refreshedAt: date
-        )
+        ))
     }
 
-    private func rateLimited(retryAfter: TimeInterval?) -> ProviderSnapshot {
-        ProviderSnapshot(provider: provider, failure: RefreshFailure(error: ProviderError.rateLimited(retryAfter: retryAfter)))
+    private func rateLimited(retryAfter: TimeInterval?) -> Result<ProviderSnapshot, RefreshFailure> {
+        .failure(RefreshFailure(error: ProviderError.rateLimited(retryAfter: retryAfter)))
     }
 
-    private func makeRuntime(_ snapshots: [ProviderSnapshot]) -> StubRuntime {
-        StubRuntime(provider: provider, descriptors: [descriptor], snapshots: snapshots)
+    private func makeRuntime(_ results: [Result<ProviderSnapshot, RefreshFailure>]) -> StubRuntime {
+        StubRuntime(provider: provider, descriptors: [descriptor], results: results)
     }
 
     private func makeStore(_ runtime: StubRuntime, clock: TestClock) -> WidgetDataStore {

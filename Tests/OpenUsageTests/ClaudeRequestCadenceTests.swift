@@ -34,14 +34,14 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
         for minutes in stride(from: 0, to: 60, by: 5) {
             clock.set(Self.start.addingTimeInterval(TimeInterval(minutes) * 60))
-            let snapshot = await runtime.refresh()
+            let snapshot = try await runtime.refresh().get()
             clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
             _ = await runtime.refreshHourlyReads(of: snapshot)
         }
         XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants"])
 
         clock.set(Self.start.addingTimeInterval(RefreshSetting.interval / 2 + RefreshSetting.secondaryReadInterval))
-        _ = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
         XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants", "profile", "grants"])
     }
 
@@ -67,7 +67,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         let http = Self.anthropic(grants: { HTTPResponse(statusCode: 429, headers: ["retry-after": "3000"], body: Data()) })
         let runtime = try makeRuntime(http: http, clock: clock)
 
-        _ = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
         clock.set(Self.start.addingTimeInterval(RefreshSetting.interval))
         let gated = await runtime.refresh()
 
@@ -174,9 +174,9 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         let http = Self.anthropic(grants: { Self.grants(resetsLeft: 1, endsAt: deadline) })
         let runtime = try makeRuntime(http: http, clock: clock)
 
-        let first = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        let first = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
         clock.set(Self.start.addingTimeInterval(15 * 60))
-        let later = await runtime.refresh()
+        let later = try await runtime.refresh().get()
 
         XCTAssertEqual(resetsAvailable(first?.lines ?? []), 1)
         XCTAssertEqual(resetsAvailable(later.lines), 0)
@@ -189,15 +189,15 @@ final class ClaudeRequestCadenceTests: XCTestCase {
             down.value ? HTTPResponse(statusCode: 500, headers: [:], body: Data()) : Self.grants(resetsLeft: 1)
         })
         let runtime = try makeRuntime(http: http, clock: clock)
-        _ = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
 
         down.value = true
         clock.set(Self.start.addingTimeInterval(RefreshSetting.secondaryReadInterval))
-        let failed = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        let failed = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
         clock.set(clock.now.addingTimeInterval(RefreshSetting.interval))
-        let next = await runtime.refreshHourlyReads(of: await runtime.refresh())
+        let next = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
 
-        let shown = await runtime.refresh()
+        let shown = try await runtime.refresh().get()
 
         XCTAssertNil(failed, "the row the last good read showed stays")
         XCTAssertNil(next)
@@ -222,7 +222,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
         var rows: [Double?] = []
         for runtime in runtimes {
-            rows.append(resetsAvailable(await runtime.refreshHourlyReads(of: await runtime.refresh())?.lines ?? []))
+            rows.append(resetsAvailable(await runtime.refreshHourlyReads(of: try await runtime.refresh().get())?.lines ?? []))
         }
 
         XCTAssertEqual(rows, [1, 2])

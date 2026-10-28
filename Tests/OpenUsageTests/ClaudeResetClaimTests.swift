@@ -289,7 +289,7 @@ final class ClaudeResetClaimTests: XCTestCase {
     }
 
     private func prime(_ runtime: AccountProviderRuntime) async {
-        let snapshot = await runtime.refresh()
+        guard case .success(let snapshot) = await runtime.refresh() else { return XCTFail("the priming refresh failed") }
         _ = await runtime.refreshHourlyReads(of: snapshot)
     }
 

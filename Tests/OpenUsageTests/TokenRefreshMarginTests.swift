@@ -7,8 +7,7 @@ final class TokenRefreshMarginTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testClaudeTokenExpiringWithinTheMarginIsRefreshedBeforeTheUsageRead() async throws {
-        let (snapshot, http, saved) = try await refreshClaude(expiringIn: 2 * 60)
-        XCTAssertNil(snapshot.errorMessage)
+        let (http, saved) = try await refreshClaude(expiringIn: 2 * 60)
         XCTAssertEqual(http.requests.first?.url.absoluteString, "https://platform.claude.com/v1/oauth/token")
         let usage = try XCTUnwrap(http.requests.first { $0.url.path == "/api/oauth/usage" })
         XCTAssertEqual(usage.headers["Authorization"], "Bearer new-access")
@@ -16,8 +15,7 @@ final class TokenRefreshMarginTests: XCTestCase {
     }
 
     func testClaudeTokenWithTimeToSpareIsNotRefreshed() async throws {
-        let (snapshot, http, _) = try await refreshClaude(expiringIn: 10 * 60)
-        XCTAssertNil(snapshot.errorMessage)
+        let (http, _) = try await refreshClaude(expiringIn: 10 * 60)
         XCTAssertFalse(http.requests.contains { $0.url.host() == "platform.claude.com" })
     }
 
@@ -33,7 +31,7 @@ final class TokenRefreshMarginTests: XCTestCase {
         XCTAssertFalse(http.requests.contains { $0.url == CodexLogin.tokenURL })
     }
 
-    private func refreshClaude(expiringIn seconds: TimeInterval) async throws -> (ProviderSnapshot, RoutingHTTPClient, OAuthTokens) {
+    private func refreshClaude(expiringIn seconds: TimeInterval) async throws -> (RoutingHTTPClient, OAuthTokens) {
         let account = Account(kind: .claude, label: "Claude")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(
@@ -49,9 +47,9 @@ final class TokenRefreshMarginTests: XCTestCase {
                 HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let snapshot = await AccountProviderRuntime(account: account, vault: vault, http: http, now: { [now] in now }).refresh()
+        _ = try await AccountProviderRuntime(account: account, vault: vault, http: http, now: { [now] in now }).refresh().get()
         guard case .oauth(let saved)? = try vault.load(account.id) else { throw XCTSkip("no credential") }
-        return (snapshot, http, saved)
+        return (http, saved)
     }
 
     private func refreshCodex(expiringIn seconds: TimeInterval) async throws -> RoutingHTTPClient {

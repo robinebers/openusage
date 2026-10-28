@@ -25,7 +25,7 @@ final class OpenCodeProviderTests: XCTestCase {
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8)) }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
-        let snapshot = await runtime.refresh()
+        let snapshot = try await runtime.refresh().get()
 
         XCTAssertEqual(snapshot.displayName, "OpenCode")
         XCTAssertEqual(snapshot.plan, "Go")

@@ -9,9 +9,9 @@ final class StaleMarkTests: XCTestCase {
 
     func testAnOldSnapshotHeldByABackoffSetsTheMarkUntilARefreshSucceeds() async {
         let clock = TestClock(start)
-        let failure = ProviderSnapshot(provider: provider, failure: RefreshFailure(message: "Refused", kind: .refused))
+        let failure = RefreshFailure(message: "Refused", kind: .refused)
         let runtime = StubRuntime(provider: provider, descriptors: []) { [self] count in
-            count == 1 ? failure : ok(at: clock.now)
+            count == 1 ? .failure(failure) : .success(ok(at: clock.now))
         }
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
 

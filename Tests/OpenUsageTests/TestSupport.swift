@@ -62,26 +62,36 @@ final class TestSwitch<Value: Sendable>: @unchecked Sendable {
 final class StubRuntime: ProviderRuntime {
     let provider: Provider
     let widgetDescriptors: [WidgetDescriptor]
-    var answer: @MainActor (Int) -> ProviderSnapshot
+    var answer: @MainActor (Int) -> Result<ProviderSnapshot, RefreshFailure>
     private(set) var refreshCount = 0
 
-    init(provider: Provider, descriptors: [WidgetDescriptor], answer: @escaping @MainActor (Int) -> ProviderSnapshot) {
+    init(provider: Provider, descriptors: [WidgetDescriptor], answer: @escaping @MainActor (Int) -> Result<ProviderSnapshot, RefreshFailure>) {
         self.provider = provider
         self.widgetDescriptors = descriptors
         self.answer = answer
     }
 
     convenience init(provider: Provider, descriptors: [WidgetDescriptor], snapshot: ProviderSnapshot) {
-        self.init(provider: provider, descriptors: descriptors) { _ in snapshot }
+        self.init(provider: provider, descriptors: descriptors) { _ in .success(snapshot) }
     }
 
-    convenience init(provider: Provider, descriptors: [WidgetDescriptor], snapshots: [ProviderSnapshot]) {
-        self.init(provider: provider, descriptors: descriptors) { snapshots[min($0, snapshots.count - 1)] }
+    convenience init(provider: Provider, descriptors: [WidgetDescriptor], failure: RefreshFailure) {
+        self.init(provider: provider, descriptors: descriptors) { _ in .failure(failure) }
     }
 
-    func refresh() async -> ProviderSnapshot {
+    convenience init(provider: Provider, descriptors: [WidgetDescriptor], results: [Result<ProviderSnapshot, RefreshFailure>]) {
+        self.init(provider: provider, descriptors: descriptors) { results[min($0, results.count - 1)] }
+    }
+
+    func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         defer { refreshCount += 1 }
         return answer(refreshCount)
+    }
+}
+
+extension Result where Success == ProviderSnapshot, Failure == RefreshFailure {
+    var failure: RefreshFailure? {
+        if case .failure(let failure) = self { failure } else { nil }
     }
 }
 
@@ -96,13 +106,13 @@ final class HangingProviderRuntime: ProviderRuntime {
         self.widgetDescriptors = descriptors
     }
 
-    func refresh() async -> ProviderSnapshot {
+    func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             try await Task.sleep(for: .seconds(60))
         } catch {
             wasCancelled = true
         }
-        return ProviderSnapshot(provider: provider, failure: RefreshFailure(message: "hung", kind: .refused))
+        return .failure(RefreshFailure(message: "hung", kind: .refused))
     }
 }
 

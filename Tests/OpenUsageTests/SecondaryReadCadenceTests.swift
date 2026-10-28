@@ -42,7 +42,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
             _ = await runtime.refresh()
             live.value = entry.live
             clock.set(start.addingTimeInterval(RefreshSetting.interval))
-            let snapshot = await runtime.refresh()
+            let snapshot = try await runtime.refresh().get()
 
             guard case .values(_, let values, let expiries)? = snapshot.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
                 return XCTFail("\(entry.name): no resets row")
@@ -149,7 +149,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
         var lastPlan: String?
         for pass in 0..<12 {
             clock.set(start.addingTimeInterval(TimeInterval(pass) * RefreshSetting.interval))
-            lastPlan = await runtime.refresh().plan
+            lastPlan = (try? await runtime.refresh().get())?.plan
         }
         let hour = http.requests
         clock.set(start.addingTimeInterval(RefreshSetting.secondaryReadInterval))

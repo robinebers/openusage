@@ -4,21 +4,22 @@ struct RefreshBackoff: Equatable {
     var failures: Int
     var retryAt: Date
     var providerAsked: Bool
+    var message: String
 
     func holds(at now: Date, forced: Bool) -> Bool {
         now < retryAt && (providerAsked || !forced)
     }
 
-    static func after(_ failure: RefreshFailure.Kind, previous: RefreshBackoff?, now: Date) -> RefreshBackoff {
+    static func after(_ failure: RefreshFailure, previous: RefreshBackoff?, now: Date) -> RefreshBackoff {
         let failures = previous?.failures ?? 0
-        switch failure {
+        switch failure.kind {
         case .unreachable:
-            return RefreshBackoff(failures: failures, retryAt: now + RefreshSetting.failureBackoffBase, providerAsked: false)
+            return RefreshBackoff(failures: failures, retryAt: now + RefreshSetting.failureBackoffBase, providerAsked: false, message: failure.message)
         case .refused:
-            return RefreshBackoff(failures: failures + 1, retryAt: now + delay(failures: failures + 1), providerAsked: false)
+            return RefreshBackoff(failures: failures + 1, retryAt: now + delay(failures: failures + 1), providerAsked: false, message: failure.message)
         case .rateLimited(let retryAfter):
             let wait = retryAfter ?? delay(failures: failures + 1)
-            return RefreshBackoff(failures: failures + 1, retryAt: now + wait, providerAsked: true)
+            return RefreshBackoff(failures: failures + 1, retryAt: now + wait, providerAsked: true, message: failure.message)
         }
     }
 

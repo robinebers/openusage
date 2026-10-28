@@ -418,14 +418,14 @@ private final class SuspendedProviderRuntime: ProviderRuntime {
     let widgetDescriptors: [WidgetDescriptor] = []
     private let snapshot: ProviderSnapshot
     private(set) var didStart = false
-    private var continuation: CheckedContinuation<ProviderSnapshot, Never>?
+    private var continuation: CheckedContinuation<Result<ProviderSnapshot, RefreshFailure>, Never>?
 
     init(provider: Provider, snapshot: ProviderSnapshot) {
         self.provider = provider
         self.snapshot = snapshot
     }
 
-    func refresh() async -> ProviderSnapshot {
+    func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         didStart = true
         return await withCheckedContinuation { continuation in
             self.continuation = continuation
@@ -433,7 +433,7 @@ private final class SuspendedProviderRuntime: ProviderRuntime {
     }
 
     func complete() {
-        continuation?.resume(returning: snapshot)
+        continuation?.resume(returning: .success(snapshot))
         continuation = nil
     }
 }

@@ -177,7 +177,7 @@ final class CodexResetClaimTests: XCTestCase {
         }
         let runtime = try makeRuntime(http: http)
 
-        let snapshot = await runtime.refresh()
+        let snapshot = try await runtime.refresh().get()
 
         guard case .values(_, let values, let expiries) = snapshot.line(label: "Rate Limit Resets") else {
             return XCTFail("expected the Rate Limit Resets row")
@@ -202,7 +202,7 @@ final class CodexResetClaimTests: XCTestCase {
         }
         let runtime = try makeRuntime(http: http)
 
-        let snapshot = await runtime.refresh()
+        let snapshot = try await runtime.refresh().get()
 
         guard case .values(_, let values, let expiries) = snapshot.line(label: "Rate Limit Resets") else {
             return XCTFail("expected the Rate Limit Resets row")

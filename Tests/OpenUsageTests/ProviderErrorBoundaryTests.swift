@@ -24,7 +24,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
     private func refresh(
         _ kind: ProviderKind, credential: AccountCredential = .apiKey("key"),
         handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
-    ) async throws -> ProviderSnapshot {
+    ) async throws -> Result<ProviderSnapshot, RefreshFailure> {
         let account = Account(kind: kind, label: "Work")
         let vault = InMemoryCredentialVault()
         try vault.save(credential, for: account.id)
@@ -34,8 +34,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
     func testAnUnauthorizedResponseIsAnExpiredSignInWhateverTheBodySays() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(401, openCodeUsage) }
-            XCTAssertEqual(snapshot.errorMessage, ProviderError.signInExpired(kind).localizedDescription, "\(kind)")
-            XCTAssertTrue(snapshot.lines.isEmpty, "\(kind)")
+            XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(kind).localizedDescription, "\(kind)")
         }
     }
 
@@ -45,13 +44,13 @@ final class ProviderErrorBoundaryTests: XCTestCase {
 
         let snapshot = await runtime.refresh()
 
-        XCTAssertEqual(snapshot.errorMessage, ProviderError.signInExpired(.claude).localizedDescription)
+        XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(.claude).localizedDescription)
     }
 
     func testAServerErrorNamesItsStatus() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(503, "<html>down</html>") }
-            XCTAssertEqual(snapshot.errorMessage, ProviderError.requestFailed(503).localizedDescription, "\(kind)")
+            XCTAssertEqual(snapshot.failure?.message, ProviderError.requestFailed(503).localizedDescription, "\(kind)")
         }
     }
 
@@ -59,7 +58,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         let offline = URLError(.notConnectedToInternet)
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in throw offline }
-            XCTAssertEqual(snapshot.errorMessage, offline.localizedDescription, "\(kind)")
+            XCTAssertEqual(snapshot.failure?.message, offline.localizedDescription, "\(kind)")
         }
     }
 
@@ -68,8 +67,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
             request.url.absoluteString.hasSuffix("/api/balance")
                 ? response(200, ollamaBalance)
                 : response(500, #"{"Plan":"pro"}"#)
-        }
-        XCTAssertNil(ollama.errorMessage)
+        }.get()
         XCTAssertNil(ollama.plan)
         XCTAssertEqual(ollama.lines.map(\.label), ["Monthly", "Purchased Credits"])
 
@@ -77,8 +75,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
             request.url.absoluteString.contains("quota")
                 ? response(200, #"{"data":{"limits":[]}}"#)
                 : response(401, #"{"data":{"plan":"GLM Coding Pro"}}"#)
-        }
-        XCTAssertNil(zai.errorMessage)
+        }.get()
         XCTAssertNil(zai.plan)
     }
 
@@ -86,19 +83,18 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         let snapshot = try await refresh(.opencodeGo) { _ in
             response(403, #"{"type":"error","error":{"type":"EntitlementError","message":"no subscription"}}"#)
         }
-        XCTAssertEqual(snapshot.errorMessage, "No OpenCode Go subscription on this account.")
+        XCTAssertEqual(snapshot.failure?.message, "No OpenCode Go subscription on this account.")
     }
 
     func testOpenRouterCallsTheKeyInvalidOnlyWhenBothEndpointsRejectIt() async throws {
         let rejected = try await refresh(.openrouter) { _ in response(401, #"{"error":{"message":"No auth credentials found","code":401}}"#) }
-        XCTAssertEqual(rejected.errorMessage, ProviderError.signInExpired(.openrouter).localizedDescription)
+        XCTAssertEqual(rejected.failure?.message, ProviderError.signInExpired(.openrouter).localizedDescription)
 
         let gated = try await refresh(.openrouter) { request in
             request.url.absoluteString == OpenRouterUsageClient.creditsURL
                 ? response(403, #"{"error":{"message":"forbidden","code":403}}"#)
                 : response(200, openRouterKey)
-        }
-        XCTAssertNil(gated.errorMessage)
+        }.get()
         XCTAssertEqual(gated.lines.map(\.label), ["Today", "This Week", "This Month"])
     }
 
@@ -108,17 +104,16 @@ final class ProviderErrorBoundaryTests: XCTestCase {
                 ? response(503, "<html>down</html>")
                 : response(401, #"{"error":{"message":"No auth credentials found","code":401}}"#)
         }
-        XCTAssertEqual(down.errorMessage, ProviderError.requestFailed(503).localizedDescription)
+        XCTAssertEqual(down.failure?.message, ProviderError.requestFailed(503).localizedDescription)
 
         let partial = try await refresh(.openrouter) { request in
             request.url.absoluteString == OpenRouterUsageClient.creditsURL
                 ? response(200, openRouterCredits)
                 : response(503, "")
-        }
-        XCTAssertNil(partial.errorMessage)
+        }.get()
         XCTAssertEqual(partial.lines.map(\.label), ["Balance"])
 
         let unreadable = try await refresh(.openrouter) { _ in response(200, #"{"ok":true}"#) }
-        XCTAssertEqual(unreadable.errorMessage, ProviderError.invalidResponse.localizedDescription)
+        XCTAssertEqual(unreadable.failure?.message, ProviderError.invalidResponse.localizedDescription)
     }
 }

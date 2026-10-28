@@ -17,7 +17,7 @@ final class OpenRouterProviderTests: XCTestCase {
         try vault.save(.apiKey("key"), for: account.id)
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
-        let snapshot = await runtime.refresh()
+        let snapshot = try await runtime.refresh().get()
 
         XCTAssertEqual(snapshot.lines.map(\.label), Self.cardLabels)
         XCTAssertEqual(runtime.widgetDescriptors.map(\.metricLabel), Self.cardLabels)

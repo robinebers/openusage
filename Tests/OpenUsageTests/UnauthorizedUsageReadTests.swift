@@ -31,10 +31,10 @@ final class UnauthorizedUsageReadTests: XCTestCase {
         for provider in Self.providers {
             for expiresAt in [nil, Date().addingTimeInterval(3600)] {
                 let name = "\(provider.kind) expiring \(expiresAt == nil ? "at an unknown time" : "in an hour")"
-                let (snapshot, http, saved) = try await Self.refresh(provider, expiresAt: expiresAt) { attempt in
+                let (result, http, saved) = try await Self.refresh(provider, expiresAt: expiresAt) { attempt in
                     attempt == 1 ? HTTPResponse(statusCode: 401, headers: [:], body: Data()) : Self.ok(provider.usage)
                 }
-                XCTAssertNil(snapshot.errorMessage, name)
+                XCTAssertNil(result.failure?.message, name)
                 XCTAssertEqual(http.requests.count { $0.url == provider.tokenURL }, 1, name)
                 XCTAssertEqual(
                     http.requests.filter { $0.url == provider.usageURL }.map { $0.headers["Authorization"] },
@@ -48,10 +48,10 @@ final class UnauthorizedUsageReadTests: XCTestCase {
 
     func testASecondUnauthorizedAnswerIsTheExpiredSignIn() async throws {
         for provider in Self.providers {
-            let (snapshot, http, saved) = try await Self.refresh(provider, expiresAt: nil) { _ in
+            let (result, http, saved) = try await Self.refresh(provider, expiresAt: nil) { _ in
                 HTTPResponse(statusCode: 401, headers: [:], body: Data())
             }
-            XCTAssertEqual(snapshot.errorMessage, ProviderError.signInExpired(provider.kind).localizedDescription, "\(provider.kind)")
+            XCTAssertEqual(result.failure?.message, ProviderError.signInExpired(provider.kind).localizedDescription, "\(provider.kind)")
             XCTAssertEqual(http.requests.count { $0.url == provider.tokenURL }, 1, "\(provider.kind): renewed once, never in a loop")
             XCTAssertEqual(http.requests.count { $0.url == provider.usageURL }, 2, "\(provider.kind)")
             XCTAssertEqual(saved?.accessToken, "new-access", "\(provider.kind): the grant the provider gave is kept")
@@ -62,10 +62,10 @@ final class UnauthorizedUsageReadTests: XCTestCase {
         for provider in Self.providers {
             for status in [403, 429, 500] {
                 let name = "\(provider.kind) \(status)"
-                let (snapshot, http, saved) = try await Self.refresh(provider, expiresAt: nil) { _ in
+                let (result, http, saved) = try await Self.refresh(provider, expiresAt: nil) { _ in
                     HTTPResponse(statusCode: status, headers: [:], body: Data())
                 }
-                XCTAssertNotNil(snapshot.errorMessage, name)
+                XCTAssertNotNil(result.failure, name)
                 XCTAssertEqual(http.requests.count { $0.url == provider.tokenURL }, 0, name)
                 XCTAssertEqual(http.requests.count { $0.url == provider.usageURL }, 1, name)
                 XCTAssertEqual(saved?.accessToken, "old-access", name)
@@ -75,7 +75,7 @@ final class UnauthorizedUsageReadTests: XCTestCase {
 
     private static func refresh(
         _ provider: OAuthProvider, expiresAt: Date?, usage: @escaping @Sendable (Int) -> HTTPResponse
-    ) async throws -> (snapshot: ProviderSnapshot, http: RoutingHTTPClient, saved: OAuthTokens?) {
+    ) async throws -> (result: Result<ProviderSnapshot, RefreshFailure>, http: RoutingHTTPClient, saved: OAuthTokens?) {
         let account = Account(kind: provider.kind, label: "Personal")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: expiresAt)), for: account.id)
@@ -87,9 +87,9 @@ final class UnauthorizedUsageReadTests: XCTestCase {
             default: HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let snapshot = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh()
-        guard case .oauth(let saved)? = try vault.load(account.id) else { return (snapshot, http, nil) }
-        return (snapshot, http, saved)
+        let result = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh()
+        guard case .oauth(let saved)? = try vault.load(account.id) else { return (result, http, nil) }
+        return (result, http, saved)
     }
 
     private nonisolated static func ok(_ body: String) -> HTTPResponse {
