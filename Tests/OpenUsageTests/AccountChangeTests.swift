@@ -32,6 +32,45 @@ final class AccountChangeTests: XCTestCase {
         XCTAssertTrue(container.dataStore === dataStore)
     }
 
+    func testReplacingAKeySavesOnlyAKeyTheProviderAcceptsAndKeepsTheAccount() async throws {
+        let defaults = isolatedDefaults()
+        let vault = InMemoryCredentialVault()
+        let accounts = AccountStore(defaults: defaults, vault: vault)
+        let http = RoutingHTTPClient { request in
+            guard request.headers["Authorization"] == "Bearer new-key" else {
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            let body = request.url.absoluteString == OpenRouterUsageClient.creditsURL
+                ? #"{"data":{"total_credits":100,"total_usage":22.23}}"#
+                : #"{"data":{"usage_daily":1.5,"usage_weekly":4,"usage_monthly":12}}"#
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
+        }
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+        let personal = accounts.add(kind: .openrouter, label: "Personal", credential: .apiKey("old-key"))
+        let work = accounts.add(kind: .openrouter, label: "Work", credential: .apiKey("work-key"))
+        let dataStore = container.dataStore
+        try await waitUntil { dataStore.errorMessage(for: personal.cardID) != nil && dataStore.errorMessage(for: work.cardID) != nil }
+        container.layout.togglePin("\(personal.cardID).today")
+        let stars = container.layout.pinnedMetricIDs
+
+        do {
+            try await container.replaceKey("refused-key", for: personal.cardID)
+            XCTFail("a refused key was accepted")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, ProviderError.signInExpired(.openrouter).localizedDescription)
+        }
+        XCTAssertEqual(try vault.load(personal.id), .apiKey("old-key"))
+
+        try await container.replaceKey(" new-key ", for: personal.cardID)
+
+        XCTAssertEqual(try vault.load(personal.id), .apiKey("new-key"))
+        XCTAssertEqual(accounts.accounts.map(\.id), [personal.id, work.id])
+        XCTAssertEqual(accounts.accounts.map(\.label), ["Personal", "Work"])
+        XCTAssertEqual(container.layout.pinnedMetricIDs, stars)
+        XCTAssertNil(dataStore.errorMessage(for: personal.cardID))
+        XCTAssertNotNil(dataStore.snapshots[personal.cardID])
+    }
+
     private func waitUntil(_ condition: () -> Bool) async throws {
         for _ in 0..<200 where !condition() {
             try await Task.sleep(for: .milliseconds(5))

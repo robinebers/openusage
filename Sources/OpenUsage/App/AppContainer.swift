@@ -78,6 +78,12 @@ final class AppContainer {
         }
     }
 
+    func replaceKey(_ key: String, for providerID: String) async throws {
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
+        try await runtime.replaceKey(key)
+        await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
+    }
+
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {

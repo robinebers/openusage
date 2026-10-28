@@ -293,4 +293,12 @@ final class AccountProviderRuntime: ProviderRuntime {
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
     }
+
+    /// Saves a pasted key over the account's own only once the account's usage read accepts it, so a
+    /// refused key never replaces one that works.
+    func replaceKey(_ key: String) async throws {
+        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        _ = try await refresh(credential)
+        try await replaceCredential(credential)
+    }
 }

@@ -21,6 +21,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
+- Accounts: replace an API-key account's key from its page; the new key is saved only once a usage
+  read accepts it.
 - Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
