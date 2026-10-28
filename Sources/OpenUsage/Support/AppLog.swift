@@ -8,7 +8,6 @@ enum LogTag: String, Sendable {
     case cache
     case http
     case auth
-    case menubar
     case updates
     case config
     case statusItem = "statusitem"

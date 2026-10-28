@@ -17,8 +17,8 @@ feed, so the Updates section does not show.
 ## Read the logs
 
 OpenUsage logs through unified logging only, under the subsystem `OpenUsage`, one category per
-subsystem tag (`refresh`, `cache`, `http`, `auth`, `menubar`, `updates`, `config`, `statusitem`,
-`lifecycle`, `notifications`, and `plugin:<id>` and `auth:<id>` per account).
+subsystem tag (`refresh`, `cache`, `http`, `auth`, `updates`, `config`, `statusitem`, `lifecycle`,
+`notifications`, and `plugin:<id>` and `auth:<id>` per account).
 
 ```sh
 log stream --info --predicate 'subsystem == "OpenUsage"'

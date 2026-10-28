@@ -60,9 +60,7 @@ class MenuBarPanel: NSPanel {
 final class StatusItemController: NSObject {
     private let container: AppContainer
     private let statusItem: NSStatusItem
-    /// Owns the menu-bar strip render loop. Its apply closure captures the `NSStatusItem` directly
-    /// (which never retains the controller), so this can be a plain non-optional `let`.
-    private let imageUpdater: StatusItemImageUpdater
+    private var stripGate = StripGate()
     private let panel: MenuBarPanel
     private let heightController: PanelHeightController
     private lazy var outsideClickMonitor = PanelOutsideClickMonitor(
@@ -80,12 +78,6 @@ final class StatusItemController: NSObject {
         self.container = container
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusItem = statusItem
-        // Captures the status item, not `self` — no retain cycle, and no optional property just to
-        // work around `[weak self]` being unavailable before `super.init()`. The button is resolved
-        // lazily at each apply, so a not-yet-configured button is harmless (same as before the split).
-        self.imageUpdater = StatusItemImageUpdater(container: container) { image in
-            statusItem.button?.image = image
-        }
 
         let hosting = NSHostingController(
             rootView: AnyView(
@@ -117,7 +109,7 @@ final class StatusItemController: NSObject {
 
         configurePanel()
         configureStatusItem()
-        imageUpdater.update()
+        updateImage()
 
         // Registered once here; the controller lives for the app's whole life.
         KeyboardShortcuts.onKeyUp(for: .togglePopover) { [weak self] in
@@ -194,6 +186,45 @@ final class StatusItemController: NSObject {
         // Left-click toggles the popover; right-click (or control-click) drops the context menu.
         // Both arrive through `statusButtonClicked`, which branches on the triggering event.
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    // MARK: - Menu-bar strip
+
+    /// Shows a strip only when its content changed: setting even an identical image costs a full
+    /// status-item redraw through WindowServer on macOS 26+.
+    struct StripGate {
+        private var shown: MenuBarContent?
+
+        mutating func show(_ content: MenuBarContent, using show: (MenuBarContent) -> Void) {
+            guard content != shown else { return }
+            shown = content
+            show(content)
+        }
+    }
+
+    /// Renders the pinned-metrics strip, or the app icon when nothing is pinned, and re-renders whenever
+    /// anything it reads changes (pins, live data, meter style, menu-bar style).
+    ///
+    /// `withObservationTracking`'s `onChange` is one-shot, so each render re-arms it. After a change, the
+    /// next render waits briefly so a burst of snapshot writes collapses into one render with the latest
+    /// values — avoiding enough repeated work to make the menu-bar item disappear during a busy refresh.
+    private func updateImage() {
+        let content = withObservationTracking {
+            MenuBarContentBuilder.build(
+                groups: container.layout.pinnedGroups,
+                data: { container.dataStore.data(for: $0) }
+            )
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                self?.updateImage()
+            }
+        }
+        stripGate.show(content) { content in
+            // The brand mark's smaller inset fills the menu-bar slot about as fully as a system glyph.
+            statusItem.button?.image = MenuBarStripRenderer.image(for: content)
+                ?? ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
+        }
     }
 
     // MARK: - Show / hide

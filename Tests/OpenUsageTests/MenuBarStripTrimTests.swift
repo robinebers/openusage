@@ -3,7 +3,7 @@ import XCTest
 
 /// Covers the Text strip's transparent-margin trim: `visibleBounds(of:)` finds the opaque pixel box in
 /// `CGImage.cropping(to:)`'s coordinate space (top-left origin — an off-center mark pins the
-/// orientation), and `textImage(for:)` ships with zero transparent margins so the status item hugs its
+/// orientation), and `image(for:)` ships with zero transparent margins so the status item hugs its
 /// artwork and the menu bar's own padding is the only gap next to neighboring items.
 @MainActor
 final class MenuBarStripTrimTests: XCTestCase {
@@ -44,7 +44,7 @@ final class MenuBarStripTrimTests: XCTestCase {
             ]
         )
 
-        let image = try XCTUnwrap(MenuBarStripRenderer.textImage(for: content))
+        let image = try XCTUnwrap(MenuBarStripRenderer.image(for: content))
         var rect = CGRect(origin: .zero, size: image.size)
         let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: &rect, context: nil, hints: nil))
         let bounds = try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: cgImage))

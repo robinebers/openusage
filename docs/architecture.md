@@ -81,9 +81,8 @@ Settings-side symlink installer.
 ## Views
 
 `StatusItemController` (`App/StatusItemController.swift`) owns the `NSStatusItem` and the
-`MenuBarPanel`, a key-capable `NSPanel` that hosts `DashboardView`. `StatusItemImageUpdater`
-renders the menu-bar strip with `MenuBarStripRenderer`. `PanelHeightController` sizes the panel to
-its content.
+`MenuBarPanel`, a key-capable `NSPanel` that hosts `DashboardView`, and renders the menu-bar strip
+with `MenuBarStripRenderer`. `PanelHeightController` sizes the panel to its content.
 
 `DashboardView` switches between the dashboard (`DashboardContentView` → `WidgetGroupedListView` →
 `DashboardProviderSection` → `DashboardLiveRow` → `DashboardMetricRow`; the share image and the drag

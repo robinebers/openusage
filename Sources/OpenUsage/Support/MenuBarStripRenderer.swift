@@ -7,27 +7,6 @@ import SwiftUI
 /// outside the `label:` view builder (an `ImageRenderer` inline there throws obscure errors).
 @MainActor
 enum MenuBarStripRenderer {
-    /// Last render, memoized on (content, style). The observation loop re-renders on every snapshot
-    /// write — several times per refresh pass — but the strip's visible content rarely changes.
-    /// Returning the same `NSImage` instance lets `StatusItemImageUpdater` skip the status-item set
-    /// (an unconditional set still costs a WindowServer redraw), and keeps `ImageRenderer` (which
-    /// retains a little memory per run on macOS) to actual visual changes.
-    private static var lastRender: (content: MenuBarContent, image: NSImage?)?
-
-    /// The strip image for the given content and style, or `nil` when the content renders nothing
-    /// in that style (caller falls back to the app icon). Memoized: equal inputs return the
-    /// previously rendered instance.
-    static func image(for content: MenuBarContent) -> NSImage? {
-        if let lastRender, lastRender.content == content {
-            AppLog.debug(.menubar, "strip cache hit")
-            return lastRender.image
-        }
-        AppLog.debug(.menubar, "strip cache miss (rendering)")
-        let image = textImage(for: content)
-        lastRender = (content, image)
-        return image
-    }
-
     /// The pinned-metrics strip, or `nil` when nothing is pinned or no pinned metric has data yet
     /// (caller falls back to the app icon).
     ///
@@ -35,7 +14,7 @@ enum MenuBarStripRenderer {
     /// glyph's normalization inset would otherwise ship as transparent margins, widening the status
     /// item past its artwork (the menu bar already pads every item, so baked-in margins read as an
     /// extra-large gap next to neighboring items).
-    static func textImage(for content: MenuBarContent) -> NSImage? {
+    static func image(for content: MenuBarContent) -> NSImage? {
         guard !content.isEmpty else { return nil }
         let renderer = ImageRenderer(content: MenuBarTextStrip(content: content))
         renderer.scale = 2
