@@ -12,6 +12,7 @@ struct SettingsScreen: View {
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
+    @State private var notificationsDenied = false
     @State private var scrollPosition = ScrollPosition(edge: .top)
 
     var body: some View {
@@ -57,6 +58,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
+                if underTenPercent || healthyToClose || closeToRunningOut { checkNotificationPermission() }
             }
         }
     }
@@ -74,10 +76,18 @@ struct SettingsScreen: View {
     }
 
     private var notificationsSection: some View {
-        Section("Notifications") {
+        Section {
             notificationToggle("Under 10% Remaining", isOn: $underTenPercent)
             notificationToggle("Healthy Pace Changes", isOn: $healthyToClose)
             notificationToggle("Near-Limit Pace Changes", isOn: $closeToRunningOut)
+        } header: {
+            Text("Notifications")
+        } footer: {
+            if notificationsDenied {
+                Text("Notifications are off for OpenUsage in [System Settings](x-apple.systempreferences:com.apple.Notifications-Settings.extension).")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.notice)
+            }
         }
     }
 
@@ -146,7 +156,11 @@ struct SettingsScreen: View {
     private func notificationToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         Toggle(title, isOn: isOn)
             .onChange(of: isOn.wrappedValue) { _, enabled in
-                if enabled { AppNotifications.shared.requestAuthorization() }
+                if enabled { checkNotificationPermission() }
             }
+    }
+
+    private func checkNotificationPermission() {
+        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization().value }
     }
 }

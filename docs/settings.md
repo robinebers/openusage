@@ -27,7 +27,8 @@ survives relaunch.
 ## Notifications
 
 Three independent triggers, all off by default. Turning the first one on asks macOS for notification
-permission.
+permission. While macOS has notifications off for OpenUsage, a footer under the switches says so and
+links to System Settings.
 
 | Setting | What it sends |
 |---|---|
