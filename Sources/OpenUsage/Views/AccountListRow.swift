@@ -3,15 +3,15 @@ import SwiftUI
 /// One row in the Accounts list (L1), shaped like a Settings row: the drag grip, the provider mark, the
 /// provider name with the account's name in secondary text (the same pairing as the dashboard header),
 /// and a trailing chevron. Everything but the grip opens the account's detail (L2); the grip only drags.
-struct AccountListRow<Handle: View>: View {
+struct AccountListRow<Grip: View>: View {
     let provider: Provider
-    let handle: (AnyView) -> Handle
+    @ViewBuilder var grip: Grip
     var onOpen: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 10) {
             // Drag handle only — outside the open target so a click on the grip doesn't open L2.
-            handle(AnyView(ReorderGrip()))
+            grip
 
             // Open target, expanding to fill so the gap before the chevron is clickable too.
             // `onTapGesture` on a content-shaped, full-width view is the reliable way to make the whole

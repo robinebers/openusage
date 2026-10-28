@@ -252,10 +252,10 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let log = Log()
         let (renaming, provider) = storedAccount(label: "Work")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
-        let section = DashboardProviderSection(
-            family: family,
-            handle: { AnyView($0.highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })) }
-        ) { account in
+        let section = DashboardProviderSection(family: family) {
+            DashboardProviderHeader(provider: provider)
+                .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })
+        } account: { account in
             VStack(alignment: .leading, spacing: 0) {
                 DashboardAccountCaption(account: account, plan: "Max 5x")
                     .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.accountDrags += 1 })

@@ -37,11 +37,10 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
 
     func testTheHeaderRevealsTheButtonOnHoverAndAClickOnItCopiesOnce() throws {
         let log = Log()
-        let section = DashboardProviderSection(
-            family: family(),
-            handle: { AnyView($0.highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })) },
-            onCopyScreenshot: { log.copies += 1; return true }
-        ) { account in
+        let section = DashboardProviderSection(family: family()) {
+            DashboardProviderHeader(provider: provider, onCopyScreenshot: { log.copies += 1; return true })
+                .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })
+        } account: { account in
             DashboardAccountRows(account: account, plan: "Max 5x")
         }
         let (window, host) = hostView(section)

@@ -70,11 +70,10 @@ struct WidgetGroupedListView: View {
 
     /// A provider with its drag and copy button on the header; the whole section takes its right-click menu.
     private func section(_ family: DashboardFamily) -> some View {
-        DashboardProviderSection(
-            family: family,
-            handle: { AnyView($0.highPriorityGesture(familyDragGesture(for: family))) },
-            onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) }
-        ) { account in
+        DashboardProviderSection(family: family) {
+            DashboardProviderHeader(provider: family.provider, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
+                .highPriorityGesture(familyDragGesture(for: family))
+        } account: { account in
             accountSection(account, in: family)
         }
         .contentShape(Rectangle())

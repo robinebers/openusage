@@ -6,18 +6,16 @@ import SwiftUI
 /// mirrors the provider row's "drag left, toggle right" arrangement. Defining the grip slot once is
 /// what keeps the floating preview pixel-identical to the row the user is dragging.
 ///
-/// `handle` wraps the leading drag grip — the live row threads its reorder gesture through it; the
-/// preview leaves it inert. `trailing` is the star button + toggle (live) or placeholders (preview).
-struct CustomizeMetricRow<Handle: View, Trailing: View>: View {
+/// `grip` is the leading drag grip — the live row attaches its reorder gesture to it; the preview
+/// leaves it inert. `trailing` is the star button + toggle (live) or placeholders (preview).
+struct CustomizeMetricRow<Grip: View, Trailing: View>: View {
     let title: String
-    /// Wraps the leading drag grip. The live row threads its reorder gesture through here; the
-    /// preview leaves it untouched.
-    let handle: (AnyView) -> Handle
+    @ViewBuilder var grip: Grip
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         HStack(spacing: 10) {
-            handle(AnyView(ReorderGrip()))
+            grip
             Text(title)
                 .foregroundStyle(.primary)
             Spacer(minLength: 8)

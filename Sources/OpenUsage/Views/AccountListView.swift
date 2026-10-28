@@ -37,7 +37,7 @@ struct AccountListView: View {
     private func accountRow(_ provider: Provider) -> some View {
         AccountListRow(
             provider: provider,
-            handle: { AnyView($0.highPriorityGesture(accountDragGesture(for: provider))) },
+            grip: { ReorderGrip().highPriorityGesture(accountDragGesture(for: provider)) },
             onOpen: { withAnimation(Motion.spring) { layout.customizeProviderID = provider.id } }
         )
         .opacity(activeProviderID == provider.id ? 0 : 1)
@@ -54,7 +54,7 @@ struct AccountListView: View {
             makeLift: { value in
                 ReorderLift.make(
                     id: provider.id,
-                    preview: AnyView(AccountListRow(provider: provider, handle: { $0 }).liftedRowSurface()),
+                    preview: AnyView(AccountListRow(provider: provider, grip: { ReorderGrip() }).liftedRowSurface()),
                     value: value,
                     frames: frameStore.frames
                 )

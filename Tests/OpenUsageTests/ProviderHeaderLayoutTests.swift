@@ -19,7 +19,7 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         DashboardFamily(id: "claude", provider: accounts[0], accounts: accounts.map { DashboardAccount(provider: $0, lines: lines) })
     }
 
-    private func section(_ family: DashboardFamily, plans: [String: String] = [:]) -> DashboardProviderSection<DashboardAccountRows> {
+    private func section(_ family: DashboardFamily, plans: [String: String] = [:]) -> DashboardProviderSection<DashboardProviderHeader, DashboardAccountRows> {
         DashboardProviderSection(family: family) { account in
             DashboardAccountRows(account: account, plan: plans[account.id])
         }

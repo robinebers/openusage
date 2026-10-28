@@ -3,21 +3,17 @@ import SwiftUI
 /// One provider on the dashboard: its header above its card. Every card is drawn the same way, however
 /// many accounts it holds: the header is the provider's logo and name, and each account in the card is
 /// captioned with its name, status glyph and plan over its rows. Static but for the captions' status
-/// tooltips and the header's copy button, which only the dashboard supplies: it adds menus and drags
-/// around the section, and the share image draws the section as it is.
-struct DashboardProviderSection<Account: View>: View {
+/// tooltips and the header the dashboard supplies, with its copy button and the provider's drag: it
+/// adds menus and drags around the section, and the share image draws the section as it is.
+struct DashboardProviderSection<Header: View, Account: View>: View {
     let family: DashboardFamily
-    /// Wraps the header, so the dashboard can attach the provider's drag gesture to it.
-    var handle: (AnyView) -> AnyView = { $0 }
-    /// Copies a picture of the card, from the header's hover-revealed button; nil leaves the header
-    /// without one, as in the share image and the drag previews.
-    var onCopyScreenshot: (() -> Bool)?
+    @ViewBuilder var header: Header
     /// An account's block in the card: its caption over its rows.
     @ViewBuilder var account: (DashboardAccount) -> Account
 
     var body: some View {
         VStack(alignment: .leading, spacing: DashboardGrid.headerGap) {
-            handle(AnyView(header))
+            header
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
                 ForEach(family.accounts) { account($0) }
             }
@@ -26,9 +22,13 @@ struct DashboardProviderSection<Account: View>: View {
             .cardSurface()
         }
     }
+}
 
-    var header: DashboardProviderHeader {
-        DashboardProviderHeader(provider: family.provider, onCopyScreenshot: onCopyScreenshot)
+extension DashboardProviderSection where Header == DashboardProviderHeader {
+    /// The section with the provider's plain header, without a copy button, as in the share image and
+    /// the drag previews.
+    init(family: DashboardFamily, @ViewBuilder account: @escaping (DashboardAccount) -> Account) {
+        self.init(family: family, header: { DashboardProviderHeader(provider: family.provider) }, account: account)
     }
 }
 

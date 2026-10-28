@@ -73,7 +73,7 @@ struct AccountDetailView: View {
     private func metricRow(_ metric: WidgetDescriptor) -> some View {
         CustomizeMetricRow(
             title: metric.title,
-            handle: { AnyView($0.highPriorityGesture(metricDragGesture(for: metric))) },
+            grip: { ReorderGrip().highPriorityGesture(metricDragGesture(for: metric)) },
             trailing: {
                 StarButton(metric: metric)
                 Toggle("", isOn: Binding(
@@ -99,7 +99,7 @@ struct AccountDetailView: View {
                 ReorderLift.make(
                     id: metric.id,
                     preview: AnyView(
-                        CustomizeMetricRow(title: metric.title, handle: { $0 }) {
+                        CustomizeMetricRow(title: metric.title, grip: { ReorderGrip() }) {
                             CustomizeStarPlaceholder()
                             CustomizeSwitchPlaceholder()
                         }
