@@ -20,10 +20,6 @@ extension ClaudeLogin {
     }
 }
 
-/// The `/api/oauth/profile` payload. Carries the account/organization identity used for multi-account
-/// verification plus the organization's *current* plan (`organization_type`, `rate_limit_tier`). The
-/// stored login only has the plan Claude Code stamped at sign-in, so this is the source that reflects
-/// an upgrade.
 struct ClaudeAccountProfile: Decodable, Hashable, Sendable {
     struct Account: Decodable, Hashable, Sendable {
         var uuid: String
@@ -44,8 +40,6 @@ struct ClaudeAccountProfile: Decodable, Hashable, Sendable {
     var account: Account
     var organization: Organization?
 
-    /// The sign-in's identity for spotting a login added twice (`AccountCredential.identity`): the
-    /// account and the organization, since one person in two organizations has two sets of limits.
     var identity: String { Self.identity(accountUUID: account.uuid, organizationUUID: organization?.uuid) }
 
     static func identity(accountUUID: String, organizationUUID: String?) -> String {
@@ -64,7 +58,6 @@ struct ClaudeUsageClient: Sendable {
         self.httpClient = httpClient
     }
 
-    /// `GET /api/oauth/usage`, the plain read Claude Code makes for its own usage display.
     func fetchUsage(accessToken: String) async throws -> HTTPResponse {
         try await sendUsageRequest(url: Self.usageURL, accessToken: accessToken)
     }
@@ -86,9 +79,6 @@ struct ClaudeUsageClient: Sendable {
         )
     }
 
-    /// `POST /api/organizations/{org}/reset_rate_limits`, the request Claude Code sends to spend one reset
-    /// grant. `request_id` makes a retry idempotent: Anthropic answers a repeated id with `already_used`
-    /// instead of spending a second reset.
     func claimResetGrant(
         accessToken: String, organizationUUID: String, grantID: String, requestID: String
     ) async throws -> HTTPResponse {
@@ -124,8 +114,6 @@ struct ClaudeUsageClient: Sendable {
     /// Tracks Claude Code: Anthropic's grants check rejects old versions (`ineligible_reason: cli_version`).
     static let claudeCodeVersion = "2.1.294"
 
-    /// `GET /api/oauth/profile`. Transport failures surface as `connectionFailed`; the status code is the
-    /// caller's to triage.
     func fetchProfile(accessToken: String) async throws -> HTTPResponse {
         do {
             return try await httpClient.send(HTTPRequest(
@@ -143,7 +131,6 @@ struct ClaudeUsageClient: Sendable {
         }
     }
 
-    /// Decodes a 2xx profile body; a non-2xx status or an undecodable body throws the matching usage error.
     static func decodeProfile(_ response: HTTPResponse) throws -> ClaudeAccountProfile {
         guard (200..<300).contains(response.statusCode) else {
             throw ProviderError.failed(response)

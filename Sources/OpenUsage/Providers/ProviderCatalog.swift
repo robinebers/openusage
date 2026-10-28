@@ -2,8 +2,6 @@ import Foundation
 
 @MainActor
 enum ProviderCatalog {
-    /// One runtime per account, in the order the accounts were added. Runtimes in `existing` are reused
-    /// for accounts that are still present, so an account change never resets the others.
     static func make(
         accounts: [Account],
         vault: any CredentialVault,

@@ -28,15 +28,10 @@ extension CodexLogin {
             case "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated":
                 throw ProviderError.signInExpired(.codex)
             default:
-                // No recognized OAuth error code (often a non-JSON proxy/WAF page) — report the HTTP
-                // status rather than asserting token expiry the user can't fix by re-logging in.
                 throw ProviderError.requestFailed(response.statusCode)
             }
         }
 
-        // A non-2xx that isn't a 400/401 (a 5xx, a gateway error) is a request failure, not an expired
-        // token — surface the status. A 2xx whose body carries no usable access token is treated as a
-        // dead session (re-login is the right remedy).
         guard (200..<300).contains(response.statusCode) else {
             throw ProviderError.failed(response)
         }
@@ -96,10 +91,6 @@ struct CodexUsageClient: Sendable {
         ))
     }
 
-    /// Consumes (claims) one rate-limit reset credit, the request the Codex CLI sends. `redeemRequestID` is
-    /// the caller's idempotency key: minted once per credit and reused on retry, so a retried claim can
-    /// never spend a second credit (the server answers `already_redeemed`). `creditID` targets exactly one
-    /// credit and never lets the server pick. The outcome rides in the 200 body's `code`.
     func consumeResetCredit(
         accessToken: String,
         accountID: String?,

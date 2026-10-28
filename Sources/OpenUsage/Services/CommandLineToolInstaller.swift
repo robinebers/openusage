@@ -2,8 +2,6 @@ import AppKit
 import Foundation
 import Observation
 
-/// Installs the bundled one-shot CLI on the stock macOS PATH without copying it out of the app.
-/// The symlink survives in-place Sparkle updates because its destination path stays stable.
 @MainActor
 @Observable
 final class CommandLineToolInstaller {
@@ -97,8 +95,6 @@ final class CommandLineToolInstaller {
         guard let target = try? fileManager.destinationOfSymbolicLink(atPath: destinationPath) else {
             return fileManager.fileExists(atPath: destinationPath) ? .conflict : .notInstalled
         }
-        // The installer always writes this exact absolute target, and uninstall checks the same string
-        // again under privilege. A manually-created relative/equivalent link is therefore foreign.
         return target == sourcePath ? .installed : .conflict
     }
 

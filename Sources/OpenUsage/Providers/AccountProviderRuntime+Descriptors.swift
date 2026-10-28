@@ -1,8 +1,6 @@
 import Foundation
 
 extension AccountProviderRuntime {
-    /// The account's metrics, each named by its card id. A metric that programs can read carries its
-    /// limit resource for the `openusage` command (`exportingLimit`); the rest stay dashboard-only.
     var widgetDescriptors: [WidgetDescriptor] {
         Self.widgetDescriptors(for: account)
     }
@@ -145,8 +143,6 @@ extension AccountProviderRuntime {
         }
     }
 
-    /// Each Claude and Codex account's Limit Resets row, whose popover is where the account's resets are
-    /// claimed. The snapshot line keeps its "Rate Limit Resets" label.
     private static func rateLimitResets(key: String, provider: Provider) -> WidgetDescriptor {
         .values(key: key, provider: provider, title: "Limit Resets", metricLabel: "Rate Limit Resets",
                 traySuffix: "resets", showsResetExpiries: true)

@@ -1,11 +1,5 @@
 import Foundation
 
-/// Calls Ollama's account endpoints using the key the user entered in the app.
-///
-/// - `GET /api/balance` — the plan's included allowance (monthly credits, or session and weekly limits
-///   on legacy plans) plus purchased credits. Documented at https://docs.ollama.com/api/balance; the
-///   local Ollama server proxies the same endpoint to ollama.com signed with this same key.
-/// - `POST /api/me` — the account's plan name (`free` / `pro` / `max`), used only for the plan badge.
 struct OllamaUsageClient: Sendable {
     static let host = "https://ollama.com"
     static let balancePath = "/api/balance"
@@ -17,12 +11,10 @@ struct OllamaUsageClient: Sendable {
         self.http = http
     }
 
-    /// Included and purchased credits. Required for a usable snapshot.
     func fetchBalance(apiKey: String) async throws -> HTTPResponse {
         try await send(method: "GET", path: Self.balancePath, apiKey: apiKey)
     }
 
-    /// The signed-in account — best-effort, used only to surface the plan name.
     func fetchAccount(apiKey: String) async throws -> HTTPResponse {
         try await send(method: "POST", path: Self.accountPath, apiKey: apiKey)
     }

@@ -1,22 +1,12 @@
 import Foundation
 
-/// The handful of facts the three plan-usage decisions read off Cursor's untyped `usage` payload —
-/// the map guards, the request-based fallback, and the generic fallback. Decoded once here so those
-/// predicates can't drift apart.
 struct CursorPlanUsageFacts {
-    /// `usage.enabled` is only "off" when explicitly `false`; absent reads as enabled.
     let isEnabled: Bool
-    /// A `planUsage` object is present at all.
     let hasPlanUsage: Bool
-    /// `planUsage.limit`, when numeric.
     let limit: Double?
-    /// `planUsage.totalPercentUsed`, when numeric.
     let totalPercentUsed: Double?
-    /// Two usable model-pool percentages, excluding legacy zero placeholders beside positive spend.
     let hasModelPools: Bool
-    /// `spendLimitUsage.limitType`, lowercased.
     let spendLimitType: String?
-    /// `spendLimitUsage.pooledLimit` (0 when absent).
     let pooledLimit: Double
 
     init(usage: [String: Any]) {
@@ -41,13 +31,9 @@ struct CursorPlanUsageFacts {
 
     var hasLimit: Bool { limit != nil }
     var hasTotalUsagePercent: Bool { totalPercentUsed != nil }
-    /// `planUsage` exists but carries no usable limit — the "present but unusable" state the fallbacks key on.
     var planUsageLimitMissing: Bool { hasPlanUsage && !hasLimit }
     var planUsageUnusable: Bool { !hasPlanUsage || (planUsageLimitMissing && !hasModelPools) }
-    /// Team account inferred from the spend-limit shape alone (independent of the plan name).
     var isTeamByShape: Bool { spendLimitType == "team" || pooledLimit > 0 }
-    /// The generic request-based fallback trigger: an enabled account with a `planUsage` that carries
-    /// neither a limit nor a total-percent figure.
     var shouldTryGenericRequestFallback: Bool {
         isEnabled && hasPlanUsage && !hasLimit && !hasTotalUsagePercent && !hasModelPools
     }
@@ -249,7 +235,6 @@ enum CursorUsageMapper {
         )
     }
 
-    /// Membership values that identify an org-billed Cursor seat.
     static let orgMembershipTypes: Set<String> = ["enterprise", "team"]
 
     /// Badge / display plan. Prefer org billing membership over GetPlanInfo when it still says Pro.

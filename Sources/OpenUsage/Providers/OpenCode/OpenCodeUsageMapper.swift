@@ -1,10 +1,6 @@
 import Foundation
 
-/// Turns `GET /zen/go/v1/usage` into the three Go plan meters. The endpoint reports percent used
-/// (same numbers as the OpenCode dashboard) plus an ISO reset time — not dollar spend — so each row
-/// is a `.percent` progress meter.
 enum OpenCodeUsageMapper {
-    /// The account line's plan tag. The usage endpoint only serves Go subscriptions and names no tier.
     static let plan = "Go"
 
     /// Maximum distance from exactly one full period for a zero-usage rolling reset to count as the
@@ -18,9 +14,6 @@ enum OpenCodeUsageMapper {
         guard let body = ProviderParse.jsonObject(response.body) else {
             throw ProviderError.invalidResponse
         }
-        // Compare two server-authored instants when possible. This removes Mac clock skew from the
-        // placeholder test. A missing or unparseable HTTP Date header is allowed by HTTP, so direct
-        // callers and unusual intermediaries fall back to the local response-capture time.
         return try meterLines(body: body, capturedAt: response.date ?? capturedAt)
     }
 
@@ -36,8 +29,6 @@ enum OpenCodeUsageMapper {
         ]
     }
 
-    /// The upstream error discriminator (`AuthError`, `EntitlementError`, …), when the body is the
-    /// documented `{ type, error: { type, message } }` shape. `nil` for HTML/Cloudflare/empty bodies.
     static func errorType(in response: HTTPResponse) -> String? {
         guard let body = ProviderParse.jsonObject(response.body),
               let error = body["error"] as? [String: Any],

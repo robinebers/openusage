@@ -1,18 +1,11 @@
 import Foundation
 
-/// The machine-facing limits JSON the `openusage` command prints (schema `openusage.limits.v1`): one
-/// entry per account keyed by card id, holding only the scalar resources its descriptors declare
-/// through `exportingLimit`. Provider refresh and mapping stay the single source of truth; this edge
-/// selects the declared scalars and gives them stable public names.
 enum LimitsEnvelope {
     static let schema = "openusage.limits.v1"
 
-    /// Everything one envelope needs, captured from the stores into a value.
     struct Input: Sendable {
-        /// The account cards to print, in the user's dashboard order.
         var providerIDs: [String]
         var snapshots: [String: ProviderSnapshot]
-        /// Only descriptors that declare at least one limit resource, by card id.
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]
         var generatedAt = Date()
     }
@@ -42,7 +35,6 @@ enum LimitsEnvelope {
         let schema: String
         let generatedAt: String
         let providers: [String: WireProvider]
-        /// The command reads the last successful fetch, so there is never a failure to list.
         let errors: [String] = []
     }
 
@@ -121,9 +113,6 @@ enum LimitsEnvelope {
             }
         }
 
-        /// A descriptor names the stable resource and supplies a fallback unit for value rows. Progress
-        /// rows carry their actual runtime unit, which can vary by plan (Cursor's Total Usage is percent
-        /// on individual plans and requests on request-based Enterprise plans).
         private static func progressUnit(_ line: MetricLine) -> String? {
             guard case .progress(_, _, _, let format, _, _) = line else { return nil }
             switch format {

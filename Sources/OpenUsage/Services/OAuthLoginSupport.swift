@@ -76,7 +76,6 @@ struct OAuthTokenResponse: Decodable {
     }
 }
 
-/// What a token endpoint answers to a refresh grant. A `nil` refresh token keeps the stored one.
 struct OAuthGrant: Sendable {
     var accessToken: String
     var refreshToken: String?

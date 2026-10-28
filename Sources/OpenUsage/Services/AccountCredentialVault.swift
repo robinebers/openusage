@@ -3,11 +3,7 @@ import Security
 
 protocol CredentialVault: Sendable {
     func load(_ id: UUID) throws -> AccountCredential?
-    /// Stores the credential, creating or replacing the entry. Adding an account uses this.
     func save(_ credential: AccountCredential, for id: UUID) throws
-    /// Replaces an existing credential and throws `CredentialVaultError.missingCredential` when there is
-    /// none. A token refresh uses this, so one that lands after the account was removed cannot recreate
-    /// the credential.
     func update(_ credential: AccountCredential, for id: UUID) throws
     func delete(_ id: UUID) throws
 }

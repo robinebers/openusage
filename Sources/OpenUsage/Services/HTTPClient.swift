@@ -17,13 +17,10 @@ struct HTTPResponse: Sendable {
         headers[name.lowercased()]
     }
 
-    /// The `Date` header as an instant, `nil` when it is absent or not an HTTP date.
     var date: Date? {
         header("Date").flatMap { Self.httpDateFormatter.date(from: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
     }
 
-    /// The wait a `Retry-After` header names, in seconds from `now`: delay-seconds or an HTTP date.
-    /// `nil` when the header is absent or unreadable, or names no wait at all.
     func retryAfter(now: Date = Date()) -> TimeInterval? {
         guard let value = header("Retry-After")?.trimmingCharacters(in: .whitespaces) else { return nil }
         let seconds = TimeInterval(value) ?? Self.httpDateFormatter.date(from: value).map { $0.timeIntervalSince(now) }
@@ -70,10 +67,6 @@ struct URLSessionHTTPClient: HTTPClient {
         return result
     }
 
-    /// The one line the transport logs per exchange: method, host and path, status, and duration.
-    /// It never reads the query, the headers, or either body, so a credential in any of them (an
-    /// `Authorization` header, Cursor's PKCE verifier in the poll query, a token echoed in an error
-    /// body) cannot reach the log.
     static func diagnostic(for request: HTTPRequest, response: HTTPResponse, duration: Duration) -> String {
         let milliseconds = Int((duration / .milliseconds(1)).rounded())
         let endpoint = (request.url.host() ?? "") + request.url.path()

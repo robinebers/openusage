@@ -1,11 +1,6 @@
 import Foundation
 
 extension AccountProviderRuntime {
-    /// Maps a `GetCurrentPeriodUsage` body to Cursor's metrics. Request-based Team and Enterprise seats read the REST usage endpoints instead. Everyone
-    /// else maps the primary body with credits, and team-shaped seats pick up Extra Usage and the billing
-    /// membership from usage-summary. Grok Bot has its own allowance and is added in every case. Every
-    /// request but the primary one is optional: a failure leaves its metric out. The plan name is read
-    /// hourly (`planRead`).
     func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> ProviderUsage {
         if planRead.isDue(at: now()) {
             let fresh = await Self.optionalJSON { try await client.fetchPlan(accessToken: accessToken) }

@@ -1,7 +1,5 @@
 import Foundation
 
-/// A typed read of the usage body's `cedar_ember` block (Anthropic's one-off usage-limit reset grants).
-/// Both the Rate Limit Resets row and the claim read this one model.
 struct ClaudeResetGrantStatus: Equatable, Sendable {
     struct Grant: Equatable, Sendable {
         var id: String
@@ -14,8 +12,6 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
     var grants: [Grant]
     var nextGrantID: String?
 
-    /// `nil` for a missing or `null` block (plans outside the program) and for a block with a malformed
-    /// grant: like Claude Code, a block we can't fully read is rejected rather than half-trusted.
     static func parse(_ value: Any?) -> ClaudeResetGrantStatus? {
         guard let object = value as? [String: Any] else { return nil }
         var grants: [Grant] = []
@@ -42,8 +38,6 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         )
     }
 
-    /// The grant a claim would spend: Anthropic names it in `next_grant_id`, and an ineligible account
-    /// can't claim at all.
     var claimableGrantID: String? {
         guard eligible, let nextGrantID, grants.contains(where: { $0.id == nextGrantID && $0.resetsLeft > 0 }) else {
             return nil
@@ -51,7 +45,6 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         return nextGrantID
     }
 
-    /// The confirm card's line, built from what the next grant refills.
     var confirmDetail: String? {
         guard let id = claimableGrantID, let grant = grants.first(where: { $0.id == id }) else { return nil }
         let names = grant.clears.compactMap { window -> String? in
@@ -67,10 +60,6 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
 
     static let lineLabel = "Rate Limit Resets"
 
-    /// The row reads "N available" and each remaining reset's grant deadline rides along in
-    /// `expiriesAt` for the resets popover; a grant with several resets left contributes one expiry per
-    /// reset. Grants past their deadline or with none left are skipped, and an ineligible account reads
-    /// "0 available". Paused grants still count: they are owned, just not usable this instant.
     func line(now: Date) -> MetricLine {
         var count = 0
         var expiries: [Date] = []

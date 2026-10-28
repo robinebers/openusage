@@ -10,13 +10,10 @@ struct ZAIUsageClient: Sendable {
         self.http = http
     }
 
-    /// The user's active subscription(s) — best-effort, used only to surface the plan name. A failure
-    /// here must not blank out the quota meters, so the provider treats it as optional.
     func fetchSubscription(apiKey: String) async throws -> HTTPResponse {
         try await get(Self.subscriptionURL, apiKey: apiKey)
     }
 
-    /// Session token usage and web-search quotas. Required for a usable snapshot.
     func fetchQuota(apiKey: String) async throws -> HTTPResponse {
         try await get(Self.quotaURL, apiKey: apiKey)
     }

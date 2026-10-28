@@ -24,14 +24,8 @@ enum CodexUsageMapper {
             now: now
         ))
 
-        // Model-specific limits (e.g. GPT-5.3-Codex-Spark) ride in a separate `additional_rate_limits`
-        // array, each entry reusing the primary/secondary window shape. Surfaced as their own Spark /
-        // Spark Weekly meters.
         lines.append(contentsOf: sparkLines(body: body, now: now))
 
-        // On-demand rate-limit reset credits. The row reads "2 available" (the count is carried raw, so
-        // the menu-bar tile reads the same number); each still-available credit's expiry rides along in
-        // `expiriesAt` for the resets popover.
         if let resets = readResetCredits(body: body, resetCredits: resetCredits) {
             lines.append(.values(
                 label: "Rate Limit Resets",
@@ -44,7 +38,6 @@ enum CodexUsageMapper {
             lines.append(.values(label: "Credits", values: creditValues(remaining: remaining)))
         }
 
-        // An empty response yields no usage lines for the account runtime to render.
         return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
@@ -80,13 +73,6 @@ enum CodexUsageMapper {
         }
     }
 
-    /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
-    /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
-    /// the parsing mirrors the core Session/Weekly path exactly. We surface the entry whose
-    /// `limit_name`/`metered_feature` names Spark as the
-    /// `Spark` and `Spark Weekly` meters; a non-dictionary or null array element is skipped rather than
-    /// discarding its valid siblings. Returns an empty list when the field is absent or carries no Spark
-    /// entry (the common case for accounts without the limit), so those rows simply read "No data".
     private static func sparkLines(body: [String: Any], now: Date) -> [MetricLine] {
         guard let rawEntries = body["additional_rate_limits"] as? [Any] else { return [] }
         let entries = rawEntries.compactMap { $0 as? [String: Any] }
@@ -103,9 +89,6 @@ enum CodexUsageMapper {
         )
     }
 
-    /// True when an `additional_rate_limits` entry is the Spark limit — matched on either `limit_name`
-    /// ("GPT-5.3-Codex-Spark") or `metered_feature`, case-insensitively, so a wording change on either
-    /// field still resolves it.
     private static func isSparkEntry(_ entry: [String: Any]) -> Bool {
         [entry["limit_name"], entry["metered_feature"]]
             .compactMap { ($0 as? String)?.lowercased() }
@@ -129,17 +112,11 @@ enum CodexUsageMapper {
         return Int(seconds * 1000)
     }
 
-    /// Codex flex-credit balance as reported by the provider.
     static func creditValues(remaining: Double) -> [MetricValue] {
         let credits = max(0, Int(remaining.rounded(.down)))
         return [MetricValue(number: Double(credits), kind: .count, label: "credits")]
     }
 
-    /// On-demand reset credits: the floored available count plus each still-available credit's expiry,
-    /// sorted soonest-first. Prefers the dedicated `/rate-limit-reset-credits` payload (the only source
-    /// that carries the per-credit expiry list) and falls back to the usage body's embedded
-    /// `rate_limit_reset_credits` object (count only) when that fetch was unavailable. A missing, null, or
-    /// non-numeric count skips the row entirely.
     static func readResetCredits(
         body: [String: Any],
         resetCredits: HTTPResponse?
@@ -168,19 +145,12 @@ enum CodexUsageMapper {
         return body["rate_limit_reset_credits"] as? [String: Any]
     }
 
-    /// The id of the still-available credit whose `expires_at` matches `expiry`, within a second: the
-    /// popover's dates come from the same parsing as this list, so a real match is exact and the tolerance
-    /// only absorbs sub-second truncation.
     static func resetCreditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
         availableResetCredits(in: body).first { credit in
             credit.expiry.map { abs($0.timeIntervalSince(expiry)) < 1 } ?? false
         }?.id
     }
 
-    /// Credits still available to claim. `status` is optional upstream, so a credit with no status counts
-    /// as available and only an explicitly non-available state (`redeeming`, `redeemed`) is dropped.
-    /// `expires_at` is an ISO-8601 string or an epoch number, and may be null for a credit that never
-    /// expires.
     private static func availableResetCredits(in source: [String: Any]) -> [(id: String?, expiry: Date?)] {
         guard let credits = source["credits"] as? [[String: Any]] else { return [] }
         return credits

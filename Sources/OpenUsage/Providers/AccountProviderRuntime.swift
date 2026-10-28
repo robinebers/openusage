@@ -7,17 +7,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     let vault: any CredentialVault
     let http: any HTTPClient
     let now: () -> Date
-    /// The plan name (Grok `/settings`, Cursor `GetPlanInfo`), read hourly rather than every pass.
     var planRead = SecondaryRead<String>()
-    /// The body the plan comes from (Ollama `/api/me`, the Z.ai subscription, Antigravity
-    /// `loadCodeAssist`), read hourly rather than every pass.
     var planBodyRead = SecondaryRead<Data>()
-    /// Codex's reset-credit list, for each credit's expiry, read hourly; the count comes from the usage
-    /// body every pass.
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
-    /// Claude's link to its login's session (see `AccountProviderRuntime+ClaudeUsage`).
     var claude: ClaudeAccountState
-    /// The Codex credit each claim's idempotency key was matched to (see `AccountProviderRuntime+CodexResets`).
     var codexMatchedCreditIDs: [String: String] = [:]
 
     init(
@@ -35,7 +28,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         provider = Self.provider(for: account)
     }
 
-    /// Picks up a rename without replacing the runtime.
     func update(_ account: Account) {
         self.account = account
         provider = Self.provider(for: account)
@@ -52,9 +44,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         Provider(id: account.cardID, kind: account.kind, accountLabel: account.label)
     }
 
-    /// The resets popover's claim seam for this account, or `nil` for providers without reset claims.
-    /// Claude always spends the grant Anthropic names next, so the picked node's expiry only matters to
-    /// Codex.
     func resetClaimService(
         refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
@@ -93,7 +82,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    /// The account's own credential from the vault; the only credential a refresh or claim ever uses.
     func loadCredential() async throws -> AccountCredential {
         guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
             throw ProviderError.signInExpired(account.kind)
@@ -116,8 +104,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    /// The account's OAuth tokens, refreshed through the login's own `grant` and saved back to the vault
-    /// first when they expire within `OAuthTokens.refreshMargin`.
     func freshTokens(
         _ credential: AccountCredential,
         grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
@@ -210,8 +196,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         return ProviderUsage(plan: OpenCodeUsageMapper.plan, lines: try OpenCodeUsageMapper.meterLines(response))
     }
 
-    /// One OpenRouter endpoint's outcome: its `data` object, a rejected key, or the failure the card
-    /// would show.
     private enum OpenRouterEndpoint {
         case data([String: Any])
         case keyRejected
@@ -271,16 +255,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         return try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
     }
 
-    /// The body of a best-effort request, `nil` unless it succeeded: a failed plan lookup costs the
-    /// plan, never the meters, and its error page never reaches a mapper.
     private func successBody(_ response: HTTPResponse?) -> Data? {
         guard let response, (200..<300).contains(response.statusCode) else { return nil }
         return response.body
     }
 
-    /// Replaces the account's stored credential after a token refresh. The vault only replaces an
-    /// existing entry, so a refresh that lands after the account was removed fails here instead of
-    /// recreating the credential.
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
     }

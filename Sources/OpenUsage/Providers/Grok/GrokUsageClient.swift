@@ -25,8 +25,6 @@ struct GrokUsageClient: Sendable {
     static let settingsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/settings")!
     static let tokenAuthHeader = "xai-grok-cli"
 
-    /// The weekly shared-pool data: the billing endpoint with `?format=credits`, which returns
-    /// the `GetGrokCreditsConfig` message as JSON.
     static let creditsConfigURL = URL(string: "https://cli-chat-proxy.grok.com/v1/billing?format=credits")!
 
     var httpClient: HTTPClient

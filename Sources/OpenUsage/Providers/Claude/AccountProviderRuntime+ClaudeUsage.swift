@@ -1,15 +1,9 @@
 import Foundation
 
-/// A Claude account's link to its login's `ClaudeSession`, carried across refreshes.
 struct ClaudeAccountState {
     let sessions: ClaudeSessions
-    /// The session of the login the last refresh signed in as.
     var session: ClaudeSession?
-    /// Set by ⌘R: the next refresh also reads the profile, and the reset grants once the last check is
-    /// older than `RefreshSetting.forcedResetGrantsMinimumAge`.
     var forcedReadsPending = false
-    /// The plan and the Rate Limit Resets row of the snapshot shown before the first refresh, kept until
-    /// the login's own reads answer.
     var restoredPlan: String?
     var restoredResets: MetricLine?
 }
@@ -43,8 +37,6 @@ extension AccountProviderRuntime {
         claude.restoredResets = snapshot.line(label: ClaudeResetGrantStatus.lineLabel)
     }
 
-    /// The secondary-reads slot: the hourly profile and reset-grants reads, so the launch pass and every
-    /// later one cost the login a single usage request.
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? {
         guard account.kind == .claude, let credential = try? await loadCredential() else { return nil }
         let session = claudeSession(for: credential)
@@ -62,9 +54,6 @@ extension AccountProviderRuntime {
         return updated == snapshot ? nil : updated
     }
 
-    /// The login's profile: its plan name, the organization a claim goes to, and the sign-in's identity
-    /// for an account added before sign-ins recorded it, so a later sign-in to the same Claude account is
-    /// caught and its cards share one session. A failed read keeps the last plan for the hour.
     func readClaudeProfile(_ session: ClaudeSession, tokens: OAuthTokens) async throws {
         do {
             let client = ClaudeUsageClient(httpClient: http)
@@ -86,8 +75,6 @@ extension AccountProviderRuntime {
         }
     }
 
-    /// The session of the login `credential` signs in as, or the card's own until a profile read records
-    /// the identity. A new session starts from the restored plan, so the label stays until the slot.
     private func claudeSession(for credential: AccountCredential) -> ClaudeSession {
         let session = claude.sessions.session(for: credential.identity ?? "card:\(account.cardID)")
         if session.planRead.value == nil, let plan = claude.restoredPlan {
@@ -98,7 +85,6 @@ extension AccountProviderRuntime {
         return session
     }
 
-    /// The Rate Limit Resets row from the login's last check, or the restored one before any check.
     private func claudeResetsLine(_ session: ClaudeSession) -> MetricLine? {
         guard let check = session.resetGrants.check else { return claude.restoredResets }
         return check.status?.line(now: now())

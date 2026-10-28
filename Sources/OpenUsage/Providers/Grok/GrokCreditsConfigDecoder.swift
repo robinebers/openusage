@@ -1,15 +1,10 @@
 import Foundation
 
-/// The slice of Grok's credits config OpenUsage renders: the shared-pool usage percent and the
-/// period it applies to. Decoded from `GET /v1/billing?format=credits` (proto-JSON).
 struct GrokCreditsConfig: Equatable, Sendable {
-    /// `USAGE_PERIOD_TYPE_*` enum name; see `GrokCreditsConfigDecoder.weeklyPeriodType`.
     var periodType: String
-    /// Pool usage in 0...100 (validated finite; clamping to range happens at the mapper).
     var usedPercent: Double
     var periodStart: Date
     var periodEnd: Date
-    /// Pay-as-you-go cap in credits; 0 when disabled (proto-JSON also omits the field at 0).
     var onDemandCap: Double
 
     var periodDurationMs: Int {
@@ -17,27 +12,9 @@ struct GrokCreditsConfig: Equatable, Sendable {
     }
 }
 
-/// Shape observed live from `cli-chat-proxy.grok.com/v1/billing?format=credits` (2026-07-06),
-/// matching the provider's credits-config payload:
-///
-///     { "config": {
-///         "creditUsagePercent": 99.0,          // proto-JSON: omitted entirely when 0
-///         "currentPeriod": { "type": "USAGE_PERIOD_TYPE_WEEKLY",
-///                            "start": "2026-07-03T04:01:09.238389+00:00",
-///                            "end":   "2026-07-10T04:01:09.238389+00:00" },
-///         "onDemandCap": { "val": 2500 },      // pay-as-you-go cap; 0/absent when disabled
-///         "isUnifiedBillingUser": true, ... } }
-///
-/// The response is a proto3 message serialized as JSON, so zero-valued fields are dropped:
-/// an absent `creditUsagePercent` means 0, not a schema change. Unknown fields are ignored by
-/// JSON parsing naturally.
 enum GrokCreditsConfigDecoder {
-    /// The shared weekly pool Grok migrated unified-billing users to.
     static let weeklyPeriodType = "USAGE_PERIOD_TYPE_WEEKLY"
 
-    /// Decode the JSON response body. A missing config/period, a non-finite percent, malformed
-    /// timestamps, or a period that doesn't move forward is `invalidResponse` — the server
-    /// answered, but not in the shape we know.
     static func decode(responseBody: Data) throws -> GrokCreditsConfig {
         guard let body = ProviderParse.jsonObject(responseBody),
               let config = body["config"] as? [String: Any],
@@ -63,7 +40,6 @@ enum GrokCreditsConfigDecoder {
             percent = 0
         }
 
-        // Like the percent: absent means 0 (disabled), but a present non-numeric value is drift.
         let onDemandCap: Double
         if let capObject = config["onDemandCap"] {
             guard let object = capObject as? [String: Any] else {

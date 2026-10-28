@@ -5,10 +5,6 @@ extension AccountProviderRuntime {
     /// JWT's `exp`. Refreshing a week early keeps the account alive when the Mac is off around expiry.
     static let cursorRefreshLead: TimeInterval = 7 * 86_400
 
-    /// The account's Cursor tokens. They are refreshed and saved back once they're within
-    /// `cursorRefreshLead` of expiring. A credential saved without an expiry gets one from the JWT
-    /// `exp` here. If an early refresh fails, the token that is still valid is kept, and the next
-    /// refresh tries again.
     func cursorTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
         guard case .oauth(var tokens) = credential else { throw ProviderError.invalidResponse }
         let hadExpiry = tokens.expiresAt != nil

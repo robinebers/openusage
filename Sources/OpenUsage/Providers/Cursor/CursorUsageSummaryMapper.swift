@@ -1,8 +1,5 @@
 import Foundation
 
-/// Combines the two REST payloads used by Cursor Enterprise/team dashboards. The request endpoint
-/// carries the included request allowance, while usage-summary carries structured percentages,
-/// user-scoped on-demand spend, and exact billing-cycle bounds. Neither response is sufficient alone.
 enum CursorUsageSummaryMapper {
     static func hasUsableSummaryPayload(_ summary: [String: Any]) -> Bool {
         let start = (summary["billingCycleStart"] as? String).flatMap(OpenUsageISO8601.date(from:))
@@ -49,9 +46,6 @@ enum CursorUsageSummaryMapper {
         )
     }
 
-    /// The default Total Usage widget must carry the included allowance on request-based Enterprise
-    /// plans. Keep the legacy Requests line too, so users who manually enabled that optional widget do
-    /// not lose it after upgrading.
     private static func appendRequests(
         _ usage: [String: Any]?,
         cycle: BillingCycle,
@@ -82,8 +76,6 @@ enum CursorUsageSummaryMapper {
         return true
     }
 
-    /// Supports both the live `individualUsage.plan` shape and the pooled/overall variants reported by
-    /// other Enterprise accounts. A request allowance wins because it is the dashboard's included cap.
     private static func appendSummaryTotal(
         _ summary: [String: Any]?,
         cycle: BillingCycle,
@@ -122,8 +114,6 @@ enum CursorUsageSummaryMapper {
         }
     }
 
-    /// The dashboard's headline On-Demand card is user-scoped. Only use the organization aggregate
-    /// when Cursor omits the individual bucket for that account shape.
     private static func appendOnDemand(
         _ summary: [String: Any]?,
         cycle: BillingCycle,
@@ -137,8 +127,6 @@ enum CursorUsageSummaryMapper {
         _ = appendOnDemandBucket(team?["onDemand"], cycle: cycle, to: &lines)
     }
 
-    /// Primary `GetCurrentPeriodUsage` mapping can populate model pools while omitting on-demand.
-    /// Merge Extra Usage from usage-summary without replacing the live pool meters.
     static func appendMissingOnDemand(from summary: [String: Any], to lines: inout [MetricLine]) {
         guard !lines.contains(where: { $0.label == "On-demand" }) else { return }
         appendOnDemand(summary, cycle: billingCycle(summary: summary, requestUsage: nil), to: &lines)

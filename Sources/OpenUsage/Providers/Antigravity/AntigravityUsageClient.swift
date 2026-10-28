@@ -1,9 +1,6 @@
 import Foundation
 
 extension AntigravityLogin {
-    /// Exchange a Google refresh token for a fresh access token. A dead refresh token (4xx, e.g.
-    /// `invalid_grant`) reads as an expired sign-in; a transient failure (5xx / network / undecodable)
-    /// as "temporarily unavailable".
     static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
         let unavailable = ProviderError.unavailable(AntigravityUsageClient.unavailableMessage)
         let form = [
@@ -25,22 +22,20 @@ extension AntigravityLogin {
             guard let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body),
                   !token.accessToken.isEmpty
             else {
-                throw unavailable // 2xx but undecodable / empty — treat as transient
+                throw unavailable
             }
             return OAuthGrant(accessToken: token.accessToken, expiresAt: now.addingTimeInterval(token.expiresIn ?? 3600))
         case 408, 429:
-            throw unavailable // request timeout / rate limited — transient, not a revoked token
+            throw unavailable
         case 400..<500:
-            throw ProviderError.signInExpired(.antigravity) // invalid_grant / invalid_client — refresh token revoked or expired
+            throw ProviderError.signInExpired(.antigravity)
         default:
-            throw unavailable // 5xx and anything else — transient
+            throw unavailable
         }
     }
 }
 
-/// Antigravity's usage I/O: the Google Cloud Code endpoints.
 struct AntigravityUsageClient: Sendable {
-    /// The card's message when every host was down or the refresh failed transiently.
     static let unavailableMessage = "Antigravity usage is temporarily unavailable. Try again shortly."
     // The daily endpoint can omit Gemini quotas from a successful response; prefer production.
     static let cloudCodeURLs = [
@@ -78,17 +73,10 @@ struct AntigravityUsageClient: Sendable {
         return "antigravity/2.24.0 (aidev_client; os_type=darwin; arch=\(arch))"
     }()
 
-    /// `ClientMetadata` enum names as they appear in the Antigravity language server's protos.
     static let loadCodeAssistPayload = Data(
         #"{"metadata":{"ideType":"ANTIGRAVITY","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}"#.utf8
     )
 
-    /// `retrieveUserQuotaSummary` on each base URL in order, returning every 2xx body in base-URL order.
-    /// The hosts can disagree: `daily-cloudcode-pa` has answered the quota summary with only the Claude
-    /// group while `cloudcode-pa` also returned Gemini, so the mapper merging by id may need both. Stops
-    /// after the first base when its 2xx body is a complete summary: the mapper merges first-wins, so a
-    /// later answer couldn't change the result. Any 2xx wins; otherwise a 401/403 on any base is an
-    /// expired sign-in, and anything else "unavailable".
     func quotaSummary(token: String, project: String?) async throws -> [Data] {
         let body = project.map { ["project": $0] } ?? [:]
         let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)

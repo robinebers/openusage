@@ -17,7 +17,6 @@ enum ClaudeUsageMapper {
         return lines
     }
 
-    /// The reset-grants request's `cedar_ember` block; `nil` when the account is outside the program.
     static func mapResetGrantStatus(_ response: HTTPResponse) throws -> ClaudeResetGrantStatus? {
         try ProviderError.requireSuccess(response, kind: .claude)
         guard let body = ProviderParse.jsonObject(response.body) else {
@@ -26,8 +25,6 @@ enum ClaudeUsageMapper {
         return ClaudeResetGrantStatus.parse(body["cedar_ember"])
     }
 
-    /// Collapses a reset-claim response to the popover's outcome. Request ids are fresh per confirm, so
-    /// `already_used` can only answer this account's own earlier attempt and counts as claimed.
     static func resetClaimOutcome(from response: HTTPResponse) -> ResetClaimOutcome {
         // Anthropic answers a token whose scopes don't cover an endpoint with a 403 whose message reads
         // "OAuth token does not meet scope requirement …"; that is the sign-in's grant, not an expiry.
@@ -72,9 +69,6 @@ enum ClaudeUsageMapper {
         return "\(base) \(tier[match])"
     }
 
-    /// Plan label from the live profile. `organization_type` arrives as `claude_max` / `claude_pro`; the
-    /// `claude_` prefix is dropped so it title-cases to "Max" / "Pro". `nil` when the profile carries no
-    /// organization.
     static func formatLivePlan(profile: ClaudeAccountProfile) -> String? {
         guard let organization = profile.organization else { return nil }
         let subscriptionType = organization.organizationType.map { type in
@@ -128,8 +122,6 @@ enum ClaudeUsageMapper {
                 format: .dollars
             ))
         } else if used > 0 {
-            // No monthly cap: an unbounded spend, carried raw so it formats through `MetricFormatter`
-            // (compact like the spend tiles, e.g. "$1.2K spent") instead of a baked full-currency string.
             lines.append(.values(label: "Extra usage spent", values: [MetricValue(number: used, kind: .dollars)]))
         }
     }

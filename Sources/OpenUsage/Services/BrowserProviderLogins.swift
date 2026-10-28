@@ -48,8 +48,6 @@ struct CodexLogin: ProviderLogin {
     static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     static let authorizeURL = URL(string: "https://auth.openai.com/oauth/authorize")!
     static let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
-    /// Plain OIDC: `openid` + `email` name the account, `offline_access` is the refresh token. The usage
-    /// endpoint reads the account id from the access token itself, so no API scope is requested.
     static let scopes = "openid profile email offline_access"
     var http: any HTTPClient = URLSessionHTTPClient()
 
@@ -114,7 +112,6 @@ struct CodexLogin: ProviderLogin {
         let accountID = accessClaims?.auth?.chatgptAccountID
         var extras: [String: String] = [:]
         extras["chatgpt_account_id"] = accountID
-        // The workspace alone isn't one person: two people can share a ChatGPT workspace.
         if let accountID, let email = idClaims?.email { extras[OAuthTokens.identityKey] = "\(accountID)/\(email)" }
         return (idClaims?.email ?? "Codex Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
