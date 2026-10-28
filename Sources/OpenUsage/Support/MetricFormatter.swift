@@ -38,7 +38,7 @@ enum MetricFormatter {
             case .row:
                 // Cents below $1k, dropped when they're zero so a whole amount reads "$500".
                 let whole = (value * 100).rounded().truncatingRemainder(dividingBy: 100) == 0
-                return Formatters.currency(value, fractionDigits: whole ? 0 : 2)
+                return value.formatted(.currency(code: "USD").precision(.fractionLength(whole ? 0 : 2)).locale(locale))
             }
         case .count:
             // Abbreviated at the thousands (token counts run into the billions). Below 1,000 keeps up to
