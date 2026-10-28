@@ -94,7 +94,6 @@ final class LimitsEnvelopeTests: XCTestCase {
             key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
         )
         .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits"))
-        .exportingLimit("creditValue", kind: .balance, unit: "usd", source: .value(kind: .dollars))
         let snapshot = ProviderSnapshot(
             providerID: "codex",
             displayName: "ChatGPT",
@@ -105,10 +104,7 @@ final class LimitsEnvelopeTests: XCTestCase {
                     resetsAt: OpenUsageISO8601.date(from: "2026-07-13T06:00:00.000Z"),
                     periodDurationMs: 18_000_000
                 ),
-                .values(label: "Credits", values: [
-                    MetricValue(number: 32.84, kind: .dollars),
-                    MetricValue(number: 821, kind: .count, label: "credits")
-                ]),
+                .values(label: "Credits", values: CodexUsageMapper.creditValues(remaining: 821.6)),
                 .badge(label: "Pay as you go", text: "2500 cap")
             ],
             refreshedAt: fetchedAt
@@ -120,7 +116,6 @@ final class LimitsEnvelopeTests: XCTestCase {
         let resources = try XCTUnwrap(providerJSON["resources"] as? [String: Any])
         let sessionJSON = try XCTUnwrap(resources["session"] as? [String: Any])
         let creditsJSON = try XCTUnwrap(resources["credits"] as? [String: Any])
-        let creditValueJSON = try XCTUnwrap(resources["creditValue"] as? [String: Any])
 
         XCTAssertEqual(root["schema"] as? String, "openusage.limits.v1")
         XCTAssertEqual(root["generatedAt"] as? String, "2026-07-13T01:40:00.000Z")
@@ -137,9 +132,8 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(sessionJSON["windowSeconds"] as? Double, 18_000)
         XCTAssertEqual(creditsJSON["kind"] as? String, "balance")
         XCTAssertEqual(creditsJSON["available"] as? Double, 821)
-        XCTAssertEqual(creditValueJSON["available"] as? Double, 32.84)
-        XCTAssertEqual(creditValueJSON["unit"] as? String, "usd")
-        XCTAssertEqual(Set(resources.keys), ["session", "credits", "creditValue"])
+        XCTAssertEqual(creditsJSON["unit"] as? String, "credits")
+        XCTAssertEqual(Set(resources.keys), ["session", "credits"])
         XCTAssertNil(sessionJSON["label"])
 
         var expired = input
@@ -308,7 +302,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         })
         let expected: [String: Set<String>] = [
             "claude": ["session", "weekly", "sonnet", "fable", "extraUsage", "rateLimitResets"],
-            "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "creditValue", "rateLimitResets"],
+            "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "rateLimitResets"],
             "cursor": ["totalUsage", "grokBot", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "argonWeekly", "nonGeminiSession", "nonGeminiWeekly"],
             "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],

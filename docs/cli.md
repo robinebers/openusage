@@ -92,7 +92,7 @@ app, with its reason in the account's right-click menu.
 | Provider | Resource keys |
 | --- | --- |
 | Claude | `session`, `weekly`, `sonnet`, `fable`, `extraUsage`, `rateLimitResets` |
-| ChatGPT (`codex`) | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `creditValue`, `rateLimitResets` |
+| ChatGPT (`codex`) | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `rateLimitResets` |
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions` |
@@ -102,7 +102,6 @@ app, with its reason in the account's right-click menu.
 | OpenRouter | `balance` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
-ChatGPT's combined Credits row becomes two scalars, `credits` and `creditValue`. Antigravity's
-`argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.
+Antigravity's `argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.
 Charts, colours, subtitles, badges, layout state, and spend periods (OpenRouter's today, week, and
 month) stay out of this output.
