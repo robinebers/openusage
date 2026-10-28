@@ -27,5 +27,4 @@ struct CLIArguments: Equatable, Sendable {
 
 enum CLIError: Error, Equatable {
     case usage(String)
-    case appDefaultsUnavailable
 }
