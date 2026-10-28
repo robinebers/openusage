@@ -6,6 +6,9 @@ import SwiftUI
 /// captioned over its rows. An account named by its email reads as its provider alone, so the email
 /// never leaves the panel. The view takes already-resolved data, so it has no environment dependency
 /// and renders the same way in the app and in tests.
+///
+/// It sets its own width, opaque tray background (an `ImageRenderer` has no window backdrop), forced
+/// appearance, and tooltip suppression (the tooltips' AppKit anchors rasterize as yellow boxes otherwise).
 struct ShareCardView: View {
     let family: DashboardFamily
     /// The plan of an account, by its id.
@@ -15,15 +18,31 @@ struct ShareCardView: View {
     /// Authored card width in points. The renderer multiplies this by `ShareCardRenderer.scale` for the
     /// PNG's pixel width; the height is whatever the rows add up to (flexible).
     static let width: CGFloat = 360
-    /// The chrome's padding around the card, on every side.
+    /// The padding around the card, on every side.
     static let inset: CGFloat = 16
 
     var body: some View {
-        let shown = family.hidingEmails
-        ShareCardChrome(appearance: appearance) {
-            DashboardProviderSection(family: shown) { account in
+        VStack(alignment: .leading, spacing: 12) {
+            DashboardProviderSection(family: family.hidingEmails) { account in
                 DashboardAccountRows(account: account, plan: plans[account.id])
             }
+            watermarkFooter
         }
+        .padding(Self.inset)
+        .frame(width: Self.width, alignment: .topLeading)
+        .background(Theme.traySurface)
+        .environment(\.colorScheme, appearance)
+        .environment(\.hoverTooltipsDisabled, true)
+    }
+
+    /// The brand mark + tagline, centered at the bottom. Quiet (secondary) so it reads as a watermark.
+    private var watermarkFooter: some View {
+        HStack(spacing: 6) {
+            ProviderIcon(id: "openusage", side: 14, inset: 0)
+            Text("Monitor Your AI Subscriptions with OpenUsage")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
