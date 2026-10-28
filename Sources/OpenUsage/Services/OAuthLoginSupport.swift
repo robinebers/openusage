@@ -135,11 +135,35 @@ func waitForAuthorizationInput(
     }
 }
 
-func authorizationCode(
-    from input: AuthorizationInput,
-    expectedState: String,
-    requireState: Bool
-) throws -> String {
+func authorizeInBrowser(
+    _ authorizeURL: URL,
+    clientID: String,
+    scopes: String,
+    state: String,
+    pkce: PKCEPair,
+    server: LoopbackCallbackServer,
+    extraQuery: [URLQueryItem] = [],
+    prompt: @Sendable (LoginPrompt) async -> Void,
+    pastedCode: AsyncStream<String>
+) async throws -> String {
+    defer { server.cancel() }
+    var components = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)!
+    components.queryItems = [
+        URLQueryItem(name: "client_id", value: clientID),
+        URLQueryItem(name: "response_type", value: "code"),
+        URLQueryItem(name: "redirect_uri", value: server.redirectURI),
+        URLQueryItem(name: "scope", value: scopes),
+        URLQueryItem(name: "code_challenge", value: pkce.challenge),
+        URLQueryItem(name: "code_challenge_method", value: "S256"),
+        URLQueryItem(name: "state", value: state)
+    ] + extraQuery
+    guard let url = components.url else { throw LoginError.invalidResponse }
+    await prompt(.browser(url, acceptsPastedCode: true))
+    let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
+    return try authorizationCode(from: input, expectedState: state)
+}
+
+func authorizationCode(from input: AuthorizationInput, expectedState: String) throws -> String {
     switch input {
     case .callback(let code):
         return code
@@ -161,9 +185,7 @@ func authorizationCode(
             parsed = (trimmed, nil)
         }
         guard let code = parsed.code, !code.isEmpty else { throw LoginError.invalidCode }
-        if (requireState && parsed.state == nil) || (parsed.state != nil && parsed.state != expectedState) {
-            throw LoginError.invalidState
-        }
+        guard parsed.state == expectedState else { throw LoginError.invalidState }
         return code
     }
 }

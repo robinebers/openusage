@@ -13,49 +13,34 @@ struct ClaudeLogin: ProviderLogin {
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let pkce = PKCE.generate()
         let server = try await LoopbackCallbackServer.start(state: pkce.verifier)
-        var components = URLComponents(url: Self.authorizeURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "code", value: "true"),
-            URLQueryItem(name: "client_id", value: Self.clientID),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: server.redirectURI),
-            URLQueryItem(name: "scope", value: Self.scopes),
-            URLQueryItem(name: "code_challenge", value: pkce.challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: pkce.verifier)
-        ]
-        guard let authorizeURL = components.url else { throw LoginError.invalidResponse }
-        await prompt(.browser(authorizeURL, acceptsPastedCode: true))
-        do {
-            let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
-            let code = try authorizationCode(from: input, expectedState: pkce.verifier, requireState: true)
-            let response = try await LoginHTTP.postJSON(Self.tokenURL, fields: [
-                "grant_type": "authorization_code",
-                "client_id": Self.clientID,
-                "code": code,
-                "state": pkce.verifier,
-                "redirect_uri": server.redirectURI,
-                "code_verifier": pkce.verifier
-            ], using: http)
-            let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
-            var info: ClaudeProfileResponse?
-            if let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile"),
-               let profile = try? await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http) {
-                info = try? LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
-            }
-            let identity = (info?.account?.uuid).map {
-                ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info?.organization?.uuid)
-            }
-            return (info?.account?.email ?? info?.email ?? "Claude Account", .oauth(OAuthTokens(
-                accessToken: token.accessToken,
-                refreshToken: token.refreshToken,
-                expiresAt: token.expiry,
-                extras: identity.map { [OAuthTokens.identityKey: $0] } ?? [:]
-            )))
-        } catch {
-            server.cancel()
-            throw error
+        let code = try await authorizeInBrowser(
+            Self.authorizeURL, clientID: Self.clientID, scopes: Self.scopes, state: pkce.verifier, pkce: pkce, server: server,
+            extraQuery: [URLQueryItem(name: "code", value: "true")],
+            prompt: prompt, pastedCode: pastedCode
+        )
+        let response = try await LoginHTTP.postJSON(Self.tokenURL, fields: [
+            "grant_type": "authorization_code",
+            "client_id": Self.clientID,
+            "code": code,
+            "state": pkce.verifier,
+            "redirect_uri": server.redirectURI,
+            "code_verifier": pkce.verifier
+        ], using: http)
+        let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
+        var info: ClaudeProfileResponse?
+        if let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile"),
+           let profile = try? await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http) {
+            info = try? LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
         }
+        let identity = (info?.account?.uuid).map {
+            ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info?.organization?.uuid)
+        }
+        return (info?.account?.email ?? info?.email ?? "Claude Account", .oauth(OAuthTokens(
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+            expiresAt: token.expiry,
+            extras: identity.map { [OAuthTokens.identityKey: $0] } ?? [:]
+        )))
     }
 }
 
@@ -71,48 +56,19 @@ struct CodexLogin: ProviderLogin {
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let pkce = PKCE.generate()
         let state = UUID().uuidString
-        let server: LoopbackCallbackServer
-        do {
-            server = try await LoopbackCallbackServer.start(state: state, port: 1455, path: "/auth/callback")
-        } catch let error as LoopbackCallbackError {
-            guard case .listenerFailed = error else { throw error }
-            return try await deviceLogin(prompt: prompt)
-        } catch {
+        guard let server = try? await LoopbackCallbackServer.start(state: state, port: 1455, path: "/auth/callback") else {
             return try await deviceLogin(prompt: prompt)
         }
-        return try await browserLogin(server: server, pkce: pkce, state: state, prompt: prompt, pastedCode: pastedCode)
-    }
-
-    private func browserLogin(
-        server: LoopbackCallbackServer,
-        pkce: PKCEPair,
-        state: String,
-        prompt: @Sendable (LoginPrompt) async -> Void,
-        pastedCode: AsyncStream<String>
-    ) async throws -> (label: String, credential: AccountCredential) {
-        var components = URLComponents(url: Self.authorizeURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "client_id", value: Self.clientID),
-            URLQueryItem(name: "redirect_uri", value: server.redirectURI),
-            URLQueryItem(name: "scope", value: Self.scopes),
-            URLQueryItem(name: "code_challenge", value: pkce.challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "id_token_add_organizations", value: "true"),
-            URLQueryItem(name: "codex_cli_simplified_flow", value: "true"),
-            URLQueryItem(name: "originator", value: "pi")
-        ]
-            guard let url = components.url else { throw LoginError.invalidResponse }
-        await prompt(.browser(url, acceptsPastedCode: true))
-        do {
-            let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
-            let code = try authorizationCode(from: input, expectedState: state, requireState: true)
-            return try await exchange(code: code, verifier: pkce.verifier, redirectURI: server.redirectURI)
-        } catch {
-            server.cancel()
-            throw error
-        }
+        let code = try await authorizeInBrowser(
+            Self.authorizeURL, clientID: Self.clientID, scopes: Self.scopes, state: state, pkce: pkce, server: server,
+            extraQuery: [
+                URLQueryItem(name: "id_token_add_organizations", value: "true"),
+                URLQueryItem(name: "codex_cli_simplified_flow", value: "true"),
+                URLQueryItem(name: "originator", value: "pi")
+            ],
+            prompt: prompt, pastedCode: pastedCode
+        )
+        return try await exchange(code: code, verifier: pkce.verifier, redirectURI: server.redirectURI)
     }
 
     private func deviceLogin(prompt: @Sendable (LoginPrompt) async -> Void) async throws -> (label: String, credential: AccountCredential) {
@@ -185,45 +141,30 @@ struct AntigravityLogin: ProviderLogin {
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let pkce = PKCE.generate()
         let server = try await LoopbackCallbackServer.start(state: pkce.verifier, port: 51121, path: "/oauth-callback")
-        var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
-        components.queryItems = [
-            URLQueryItem(name: "client_id", value: Self.clientID),
-            URLQueryItem(name: "response_type", value: "code"),
-            URLQueryItem(name: "redirect_uri", value: server.redirectURI),
-            URLQueryItem(name: "scope", value: Self.scopes),
-            URLQueryItem(name: "code_challenge", value: pkce.challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256"),
-            URLQueryItem(name: "state", value: pkce.verifier),
-            URLQueryItem(name: "access_type", value: "offline"),
-            URLQueryItem(name: "prompt", value: "consent")
-        ]
-        guard let url = components.url else { throw LoginError.invalidResponse }
-        await prompt(.browser(url, acceptsPastedCode: true))
-        do {
-            let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
-            let code = try authorizationCode(from: input, expectedState: pkce.verifier, requireState: true)
-            let response = try await LoginHTTP.postForm(Self.tokenURL, fields: [
-                "client_id": Self.clientID,
-                "client_secret": Self.clientSecret,
-                "code": code,
-                "grant_type": "authorization_code",
-                "redirect_uri": server.redirectURI,
-                "code_verifier": pkce.verifier
-            ], using: http)
-            let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
-            let userInfoURL = URL(string: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json")!
-            let userInfo = try await LoginHTTP.get(userInfoURL, bearerToken: token.accessToken, using: http)
-            let user = try? LoginHTTP.decode(GoogleUserInfo.self, from: userInfo)
-            return (user?.email ?? "Google Account", .oauth(OAuthTokens(
-                accessToken: token.accessToken,
-                refreshToken: token.refreshToken,
-                expiresAt: token.expiry,
-                extras: (user?.id ?? user?.email).map { [OAuthTokens.identityKey: $0] } ?? [:]
-            )))
-        } catch {
-            server.cancel()
-            throw error
-        }
+        let code = try await authorizeInBrowser(
+            URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
+            clientID: Self.clientID, scopes: Self.scopes, state: pkce.verifier, pkce: pkce, server: server,
+            extraQuery: [URLQueryItem(name: "access_type", value: "offline"), URLQueryItem(name: "prompt", value: "consent")],
+            prompt: prompt, pastedCode: pastedCode
+        )
+        let response = try await LoginHTTP.postForm(Self.tokenURL, fields: [
+            "client_id": Self.clientID,
+            "client_secret": Self.clientSecret,
+            "code": code,
+            "grant_type": "authorization_code",
+            "redirect_uri": server.redirectURI,
+            "code_verifier": pkce.verifier
+        ], using: http)
+        let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
+        let userInfoURL = URL(string: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json")!
+        let userInfo = try await LoginHTTP.get(userInfoURL, bearerToken: token.accessToken, using: http)
+        let user = try? LoginHTTP.decode(GoogleUserInfo.self, from: userInfo)
+        return (user?.email ?? "Google Account", .oauth(OAuthTokens(
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+            expiresAt: token.expiry,
+            extras: (user?.id ?? user?.email).map { [OAuthTokens.identityKey: $0] } ?? [:]
+        )))
     }
 }
 
