@@ -83,57 +83,27 @@ struct DashboardView: View {
                 AddAccountSheet(flow: AddAccountFlow(store: container.accounts))
             }
             .background(
-                // Esc backs out of Accounts / Settings first; only from the dashboard does it close
-                // the popover. Return opens Accounts from the dashboard (the same affordance the
-                // footer's Options ▸ Accounts menu item carries) and returns to the
-                // dashboard from Accounts or Settings — matching Esc and the back navigation,
-                // never jumping Settings → Accounts. Always consumed, so a bare Return can't fall
-                // through and dismiss the popover. Neither reaches here while a rename field edits.
-                PopoverKeyReader(
-                    onEscape: {
-                        // From a provider's L2 detail, back out to the L1 list first; only from L1 /
-                        // Settings drop to the dashboard. Pressing Esc again from L1 closes the popover.
-                        if popover.customizeProviderID != nil {
-                            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
-                            return true
-                        }
-                        guard popover.screen != .dashboard else { return false }
-                        withAnimation(Motion.modeSwitch) { popover.screen = .dashboard }
-                        return true
-                    },
-                    onReturn: {
-                        // From a provider's L2 detail, back out to the L1 list first — matching Esc —
-                        // so Return steps L2 → L1 → dashboard instead of jumping L2 → dashboard.
-                        if popover.customizeProviderID != nil {
-                            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
-                            return true
-                        }
-                        let target: PopoverScreen = popover.screen == .dashboard ? .accounts : .dashboard
-                        withAnimation(Motion.modeSwitch) { popover.screen = target }
-                        return true
-                    },
-                    // ⌘, toggles Settings, on this always-on monitor so it fires from every screen —
-                    // including Settings, whose footer has no Settings action. Handling it here (and
-                    // consuming it) also lets the Options menu's Settings item carry ⌘, as a label
-                    // without a second SwiftUI registration fighting it.
-                    onSettings: {
-                        withAnimation(Motion.modeSwitch) {
-                            popover.screen = popover.screen == .settings ? .dashboard : .settings
-                        }
-                        return true
-                    },
-                    // ⌘Z walks back the last customization step (remove/add, reorder, pin/unpin) —
-                    // app-wide, since Hide and Pin happen via the dashboard's context menus too,
-                    // not only in Accounts. Always consumed here: by the time the monitor calls this it
-                    // has already confirmed the panel owns the keystroke and no text field is editing
-                    // (those keep their own ⌘Z), so returning false would only let AppKit beep on an empty
-                    // undo. With nothing to undo we swallow it silently instead.
-                    onUndo: {
-                        guard layout.canUndo else { return true }
-                        withAnimation(Motion.spring) { _ = layout.undo() }
-                        return true
+                // Esc steps back (L2 → L1 → dashboard) and only from the dashboard closes the popover.
+                // Return opens Accounts from the dashboard (the footer's Options ▸ Accounts) and
+                // otherwise steps back like Esc, never jumping Settings → Accounts; always consumed,
+                // so a bare Return can't fall through and dismiss the popover. ⌘, toggles Settings
+                // from every screen. ⌘Z walks back the last customization step app-wide, since Hide
+                // and Pin happen in the dashboard's menus too; it's consumed even with nothing to
+                // undo, since a text field keeps its own ⌘Z and the alternative is AppKit's beep.
+                PopoverKeyReader { key in
+                    switch key {
+                    case .escape:
+                        return popover.back()
+                    case .return:
+                        guard popover.screen == .dashboard else { return popover.back() }
+                        popover.toggle(.accounts)
+                    case .settings:
+                        popover.toggle(.settings)
+                    case .undo:
+                        if layout.canUndo { withAnimation(Motion.spring) { _ = layout.undo() } }
                     }
-                )
+                    return true
+                }
             )
             // The controller already owns the exact show/hide moments. Reuse that signal here instead
             // of asking AppKit window notifications to rediscover the same state a second time.

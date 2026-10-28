@@ -49,12 +49,12 @@ struct PopoverFooter: View {
     /// can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
     private var optionsMenu: some View {
         Menu {
-            Button { toggle(.accounts) } label: {
+            Button { popover.toggle(.accounts) } label: {
                 Label("Accounts", systemImage: "person.crop.circle")
             }
             .keyboardShortcut(.return, modifiers: [])
 
-            Button { toggle(.settings) } label: {
+            Button { popover.toggle(.settings) } label: {
                 Label("Settings", systemImage: "gearshape")
             }
             .keyboardShortcut(",")
@@ -89,12 +89,6 @@ struct PopoverFooter: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .interactiveGlass(in: Capsule())
-    }
-
-    private func toggle(_ target: PopoverScreen) {
-        withAnimation(Motion.modeSwitch) {
-            popover.screen = popover.screen == target ? .dashboard : target
-        }
     }
 
     private var shareCopiedPill: some View {

@@ -18,13 +18,13 @@ struct PopoverTopBar: View {
             EmptyView()
         case .accounts:
             if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
-                navigationBar(back: accountsBack) {
+                navigationBar(back: { popover.back() }) {
                     AccountTitle(provider: provider)
                 } trailing: {
                     logo(for: provider)
                 }
             } else {
-                navigationBar(back: accountsBack) {
+                navigationBar(back: { popover.back() }) {
                     Text("Accounts")
                 } trailing: {
                     addAccountButton
@@ -32,20 +32,12 @@ struct PopoverTopBar: View {
             }
         case .settings:
             navigationBar {
-                withAnimation(Motion.modeSwitch) { popover.screen = .dashboard }
+                popover.back()
             } title: {
                 Text("Settings")
             } trailing: {
                 EmptyView()
             }
-        }
-    }
-
-    private func accountsBack() {
-        if popover.customizeProviderID != nil {
-            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
-        } else {
-            withAnimation(Motion.modeSwitch) { popover.screen = .dashboard }
         }
     }
 

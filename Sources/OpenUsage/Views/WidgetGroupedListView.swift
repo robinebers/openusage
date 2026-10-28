@@ -143,13 +143,13 @@ struct WidgetGroupedListView: View {
         case .refresh(let accountIDs):
             Task { await dataStore.refresh(providerIDs: accountIDs, force: true) }
         case .manageAccounts:
-            openAccounts(nil)
+            popover.openAccounts(nil)
         case .open(let url):
             NSWorkspace.shared.open(url)
         case .rename(let accountID):
             renaming.begin(accountID)
         case .editAccount(let accountID):
-            openAccounts(accountID)
+            popover.openAccounts(accountID)
         case .shareScreenshot(let accountIDs):
             shareScreenshot(accountIDs)
         case .showHiddenMetrics(let accountID):
@@ -175,14 +175,6 @@ struct WidgetGroupedListView: View {
         guard ShareCardRenderer.share(family: family, plans: plans(for: family), appearance: colorScheme) else { return false }
         popover.shareNotice.present(true)
         return true
-    }
-
-    /// Opens the Accounts screen, on one account's page when `providerID` is set.
-    private func openAccounts(_ providerID: String?) {
-        withAnimation(Motion.modeSwitch) {
-            popover.customizeProviderID = providerID
-            popover.screen = .accounts
-        }
     }
 
     // MARK: - Reordering

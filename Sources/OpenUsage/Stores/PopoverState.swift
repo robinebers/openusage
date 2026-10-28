@@ -1,4 +1,5 @@
 import Observation
+import SwiftUI
 
 /// The screen showing inside the menu-bar popover. Accounts and Settings replace the dashboard
 /// in place (the popover has no window stack); Esc backs out to the dashboard first.
@@ -69,6 +70,32 @@ final class PopoverState {
     let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
     /// The Accounts screen's pill: "Starred for menu bar" in green, or the orange cap denial.
     let accountsNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
+
+    /// One step back: an account's detail (L2) to the list (L1), else Accounts or Settings to the
+    /// dashboard. `false` on the dashboard, where there is nowhere to go back to.
+    @discardableResult
+    func back() -> Bool {
+        if customizeProviderID != nil {
+            withAnimation(Motion.spring) { customizeProviderID = nil }
+            return true
+        }
+        guard screen != .dashboard else { return false }
+        withAnimation(Motion.modeSwitch) { screen = .dashboard }
+        return true
+    }
+
+    /// Opens `target`, or returns to the dashboard when it is already showing.
+    func toggle(_ target: PopoverScreen) {
+        withAnimation(Motion.modeSwitch) { screen = screen == target ? .dashboard : target }
+    }
+
+    /// Opens the Accounts screen, on one account's page when `providerID` is set.
+    func openAccounts(_ providerID: String?) {
+        withAnimation(Motion.modeSwitch) {
+            customizeProviderID = providerID
+            screen = .accounts
+        }
+    }
 
     /// Called when the popover closes: back to the dashboard, and a pill mid-countdown is cleared so
     /// it can't reappear stale on the next open (this state outlives the popover).
