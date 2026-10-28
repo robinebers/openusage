@@ -30,7 +30,7 @@ final class CursorTeamPoolTests: XCTestCase {
         ]
         for name: String? in ["Team", "Enterprise", nil] {
             XCTAssertFalse(CursorUsageMapper.shouldUseRequestBasedFallback(
-                usage: usage, planName: name, planInfoUnavailable: name == nil
+                facts: CursorPlanUsageFacts(usage: usage), planName: name
             ).shouldFallback)
         }
         XCTAssertFalse(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)

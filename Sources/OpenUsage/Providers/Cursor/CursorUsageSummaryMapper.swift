@@ -43,15 +43,8 @@ enum CursorUsageSummaryMapper {
             throw ProviderError.unavailable(unavailableMessage)
         }
 
-        let summaryMembership = summary?["membershipType"] as? String
         return ProviderUsage(
-            plan: CursorUsageMapper.resolvedPlanLabel(
-                planInfoName: planName,
-                membershipType: CursorUsageMapper.preferredMembership(
-                    local: nil,
-                    summary: summaryMembership
-                )
-            ) ?? planLabel(planName) ?? planLabel(summaryMembership),
+            plan: CursorUsageMapper.resolvedPlanLabel(planInfoName: planName, membershipType: summary?["membershipType"] as? String),
             lines: lines
         )
     }
@@ -231,12 +224,6 @@ enum CursorUsageSummaryMapper {
             resetsAt: requestStart?.addingTimeInterval(TimeInterval(CursorUsageMapper.billingPeriodMs) / 1000),
             periodDurationMs: CursorUsageMapper.billingPeriodMs
         )
-    }
-
-    private static func planLabel(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed.titleCased(separator: \.isWhitespace)
     }
 
     private struct BillingCycle {

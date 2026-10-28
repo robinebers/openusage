@@ -211,11 +211,9 @@ enum CursorUsageMapper {
     }
 
     static func shouldUseRequestBasedFallback(
-        usage: [String: Any],
-        planName: String?,
-        planInfoUnavailable: Bool
+        facts: CursorPlanUsageFacts,
+        planName: String?
     ) -> (shouldFallback: Bool, message: String) {
-        let facts = CursorPlanUsageFacts(usage: usage)
         guard facts.isEnabled else {
             return (false, "")
         }
@@ -228,7 +226,7 @@ enum CursorUsageMapper {
         if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan == "team" {
             return (true, "Team request-based usage data unavailable. Try again later.")
         }
-        if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan.isEmpty && planInfoUnavailable {
+        if facts.planUsageUnusable && !facts.hasTotalUsagePercent && normalizedPlan.isEmpty && planName == nil {
             return (true, "Cursor request-based usage data unavailable. Try again later.")
         }
 
@@ -297,20 +295,6 @@ enum CursorUsageMapper {
 
     static func resolvedPlanLabel(planInfoName: String?, membershipType: String?) -> String? {
         planLabel(resolvedPlanName(planInfoName: planInfoName, membershipType: membershipType))
-    }
-
-    /// Prefer local org membership when present; otherwise take a live org membership from
-    /// usage-summary over a stale local personal membership.
-    static func preferredMembership(local: String?, summary: String?) -> String? {
-        let localMembership = normalizedMembership(local)
-        let summaryMembership = normalizedMembership(summary)
-        if let localMembership, orgMembershipTypes.contains(localMembership) {
-            return localMembership
-        }
-        if let summaryMembership, orgMembershipTypes.contains(summaryMembership) {
-            return summaryMembership
-        }
-        return localMembership ?? summaryMembership
     }
 
     private static func normalizedMembership(_ value: String?) -> String? {

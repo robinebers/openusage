@@ -15,9 +15,7 @@ extension AccountProviderRuntime {
         }
         let planName = planRead.value
         let facts = CursorPlanUsageFacts(usage: usage)
-        let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(
-            usage: usage, planName: planName, planInfoUnavailable: planName == nil
-        )
+        let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(facts: facts, planName: planName)
 
         var mapped: ProviderUsage
         if fallback.shouldFallback {
