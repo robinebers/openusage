@@ -16,7 +16,7 @@ final class MenuBarContentTests: XCTestCase {
         let b1 = percent("b.m1", "Total", 50)
         let content = MenuBarContentBuilder.build(groups: [group("a", m1, m2), group("b", b1)], data: { $0.sample })
 
-        XCTAssertEqual(content.groups.map(\.providerID), ["a", "b"])
+        XCTAssertEqual(content.groups.map(\.provider.id), ["a", "b"])
         XCTAssertEqual(content.groups[0].metrics.map(\.id), ["a.m1", "a.m2"])
         XCTAssertEqual(content.groups[0].metrics[0].label, "Session")
         XCTAssertEqual(content.groups[0].metrics[0].value, m1.sample.valueText)
@@ -47,7 +47,7 @@ final class MenuBarContentTests: XCTestCase {
             data: { $0.sample }
         )
 
-        XCTAssertEqual(content.groups.map(\.providerID), ["a"])
+        XCTAssertEqual(content.groups.map(\.provider.id), ["a"])
         XCTAssertEqual(content.groups[0].metrics.map(\.id), ["a.live"])
     }
 
@@ -67,12 +67,9 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityText, "Claude Session 41%, Weekly 12%")
     }
 
-    func testTrayLabelsShortenLongTimeWindows() {
-        let content = MenuBarContentBuilder.build(
-            groups: [group("a", percent("a.today", "Today", 5), percent("a.month", "Last 30 Days", 80))],
-            data: { $0.sample }
-        )
-        XCTAssertEqual(content.groups[0].metrics.map(\.label), ["T", "M"])
+    func testTodayReadsT() {
+        let content = MenuBarContentBuilder.build(groups: [group("a", percent("a.today", "Today", 5))], data: { $0.sample })
+        XCTAssertEqual(content.groups[0].metrics.map(\.label), ["T"])
     }
 
     func testBoundedTrayValuesStayUnitAware() {

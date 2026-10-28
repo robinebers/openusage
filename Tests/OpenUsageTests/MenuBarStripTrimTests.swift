@@ -31,14 +31,10 @@ final class MenuBarStripTrimTests: XCTestCase {
         let content = MenuBarContent(
             groups: [
                 MenuBarContent.Group(
-                    providerID: "claude",
-                    displayName: "Claude",
-                    icon: "claude",
+                    provider: Provider(id: "claude", kind: .claude),
                     metrics: [
-                        MenuBarContent.Metric(id: "claude.session", label: "Session", value: "99%",
-                                              hasData: true),
-                        MenuBarContent.Metric(id: "claude.weekly", label: "Weekly", value: "87%",
-                                              hasData: true)
+                        MenuBarContent.Metric(id: "claude.session", label: "Session", value: "99%"),
+                        MenuBarContent.Metric(id: "claude.weekly", label: "Weekly", value: "87%")
                     ]
                 )
             ]

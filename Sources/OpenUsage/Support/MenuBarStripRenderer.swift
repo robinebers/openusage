@@ -70,9 +70,9 @@ private struct MenuBarTextStrip: View {
 
     var body: some View {
         HStack(spacing: 11) {
-            ForEach(content.groups, id: \.providerID) { group in
+            ForEach(content.groups, id: \.provider.id) { group in
                 HStack(spacing: 4) {
-                    glyph(group.icon)
+                    glyph(group.provider.icon)
                         .overlay(alignment: .bottomTrailing) {
                             if let badge = group.badge {
                                 badgeView(badge)

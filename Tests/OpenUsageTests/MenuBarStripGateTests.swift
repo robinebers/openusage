@@ -23,15 +23,10 @@ final class MenuBarStripGateTests: XCTestCase {
     }
 
     private func makeContent(value: String) -> MenuBarContent {
-        let metric = MenuBarContent.Metric(
-            id: "claude.session", label: "Session", value: value,
-            hasData: true
-        )
+        let metric = MenuBarContent.Metric(id: "claude.session", label: "Session", value: value)
         return MenuBarContent(
             groups: [MenuBarContent.Group(
-                providerID: "claude",
-                displayName: "Claude",
-                icon: "claude",
+                provider: Provider(id: "claude", kind: .claude),
                 metrics: [metric]
             )]
         )
