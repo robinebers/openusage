@@ -1,14 +1,7 @@
 import SwiftUI
 
-/// The "Update Available" banner at the top of the dashboard. Shows while a *scheduled* Sparkle check
-/// has found a new version (`UpdaterController.availableUpdateVersion`): for a menu-bar (dockless)
-/// app macOS keeps Sparkle's own alert window behind everything, so the popover carries the reminder
-/// instead. The install button runs a user-initiated check: if the banner's update is still current,
-/// Sparkle re-presents it frontmost (its window with release notes, download progress, and the install
-/// flow). The close button snoozes the banner; the next scheduled check re-surfaces the update.
 struct UpdateBannerCard: View {
     @Environment(UpdaterController.self) private var updater
-    /// The found update's display version, e.g. "0.8.1".
     let version: String
 
     var body: some View {

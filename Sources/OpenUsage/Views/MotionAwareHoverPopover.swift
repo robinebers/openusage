@@ -38,8 +38,6 @@ private struct MotionAwareHoverPopoverModifier<PopoverContent: View>: ViewModifi
     }
 }
 
-/// An invisible anchor that owns the one AppKit presentation detail SwiftUI does not expose:
-/// `NSPopover.animates`. SwiftUI remains the source of truth through `isPresented`.
 private struct ReducedMotionPopoverPresenter<PopoverContent: View>: NSViewRepresentable {
     @Binding var isPresented: Bool
     let reduceAnimations: Bool
@@ -87,7 +85,6 @@ private struct ReducedMotionPopoverPresenter<PopoverContent: View>: NSViewRepres
     }
 }
 
-/// Owns the AppKit objects and delegate lifecycle outside the generic SwiftUI representable.
 @MainActor
 final class ReducedMotionPopoverController: NSObject, NSPopoverDelegate {
     private static let live = NSHashTable<ReducedMotionPopoverController>.weakObjects()

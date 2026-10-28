@@ -1,19 +1,6 @@
 import SwiftUI
 import os
 
-/// Drives the host panel's height on SwiftUI's animation clock, the one clock for the window and the
-/// screen slide: instead of AppKit running its own `setFrame` animation alongside SwiftUI's (two
-/// clocks fighting, a stutter and a diagonal jank), the window is a passive follower of one
-/// SwiftUI-owned, animated value.
-///
-/// `animatableData == height` is the per-frame interpolation hook: during a `withAnimation`, the
-/// animation system sets `animatableData` once per display refresh with the interpolated height, and
-/// the setter forwards it (via `PanelHeightBridge`) to the panel — so the window frame and the screen
-/// slide ride the *same* spring. `effectValue` also forwards the current value so non-animated height
-/// establishments still resize the panel. A height of 0 is the "not established yet" sentinel (the
-/// panel keeps the size the controller opened it at) and is skipped, so the first render before
-/// measurement lands never pushes a bogus frame.
-///
 /// Built as a `GeometryEffect` (like `DenyShakeEffect`) rather than a plain `ViewModifier`: a custom
 /// `ViewModifier` that implements `body` is inferred `@MainActor` (because `ViewModifier.body` is), which
 /// would make `animatableData` `@MainActor` and violate `Animatable`'s `nonisolated` requirement.
@@ -52,14 +39,8 @@ enum PanelHeightBridge {
         var isScheduled = false
     }
 
-    /// Bumped on every panel open and close. A queued height is applied only if the generation is
-    /// unchanged between when it was scheduled and when it runs — so a spring morph in flight when the
-    /// panel closes can never resize a hidden, or a freshly reopened, panel with a stale height (the
-    /// async hops are otherwise un-cancellable). `OSAllocatedUnfairLock` so the nonisolated `push` and
-    /// the main-actor `invalidate` can touch it safely.
     private static let state = OSAllocatedUnfairLock(initialState: State())
 
-    /// Invalidate every in-flight height. Call on panel open and close.
     nonisolated static func invalidate() {
         state.withLock {
             $0.generation += 1
@@ -95,8 +76,6 @@ enum PanelHeightBridge {
 }
 
 extension View {
-    /// Make this view's enclosing menu-bar panel follow `height` on SwiftUI's animation clock. Attach
-    /// at the body root, outside any `.animation(nil, …)` scope, so the height rides the active spring.
     func drivesPanelHeight(_ height: CGFloat) -> some View {
         modifier(PanelHeightModifier(height: height))
     }

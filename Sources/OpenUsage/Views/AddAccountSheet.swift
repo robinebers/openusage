@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Adds an account: choose a provider, then finish its browser, device-code, or API-key sign-in.
-/// Opened as a sheet on the popover from the Accounts list's + and the empty dashboard.
 struct AddAccountSheet: View {
     @State private var flow: AddAccountFlow
     @Environment(\.dismiss) private var dismiss
@@ -41,8 +39,6 @@ struct AddAccountSheet: View {
     }
 }
 
-/// The provider list, like Internet Accounts' Add Account: one click on a provider goes straight to
-/// its sign-in. The arrow keys move the selection and Return chooses it.
 private struct ProviderChoiceStep: View {
     @Bindable var flow: AddAccountFlow
     let cancel: () -> Void
@@ -83,10 +79,6 @@ private struct ProviderChoiceStep: View {
     }
 }
 
-/// The browser and device-code steps share one layout: the header, the code the user needs (a
-/// box to read from, or a field to paste into), two equal buttons to copy and to open the browser,
-/// and the sign-in's state centred under them. The browser sign-in already opened its page when
-/// the step appeared, so the status line is true from the start.
 private struct BrowserSignInStep: View {
     @Bindable var flow: AddAccountFlow
     let provider: ProviderKind
@@ -209,8 +201,6 @@ private struct APIKeyStep: View {
     }
 }
 
-/// The title block every step opens with, left-aligned like a macOS alert: the provider's mark
-/// once one is chosen, a bold title, and one line of guidance.
 private struct SheetHeader: View {
     let provider: ProviderKind?
     let title: String
@@ -248,8 +238,6 @@ private struct SheetAction {
     let action: () -> Void
 }
 
-/// Two buttons, each half the sheet's width; the primary one is prominent and the default, so Return
-/// presses it.
 private struct SheetButtons: View {
     let secondary: SheetAction
     let primary: SheetAction

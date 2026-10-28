@@ -13,13 +13,8 @@ import SwiftUI
 /// KeyboardShortcuts library (`setShortcut` persists and re-registers automatically).
 struct ShortcutRecorderField: View {
     let name: KeyboardShortcuts.Name
-    /// Settings can remain mounted offscreen, so visibility changes must end an active recording even
-    /// when SwiftUI doesn't remove this field from the view hierarchy.
     var isVisible = true
 
-    /// Read by `EscapeToCloseReader`: while recording, Esc belongs to the recorder (cancel), not
-    /// to popover navigation. The recorder's own monitor consumes the press; this flag keeps the
-    /// popover's Esc handling from also acting on it.
     @MainActor static private(set) var isRecordingActive = false
 
     @State private var isRecording = false
@@ -66,7 +61,6 @@ struct ShortcutRecorderField: View {
         .onChange(of: isVisible) { _, isVisible in
             if !isVisible { stopRecording() }
         }
-        // Covers this field actually unmounting, including resets and host teardown.
         .onDisappear {
             stopRecording()
         }
@@ -103,8 +97,6 @@ struct ShortcutRecorderField: View {
 
     private func startRecording() {
         stopRecording()
-        // Without a monitor there is no recording session — bail before touching any state, or
-        // the UI would sit in "Type Shortcut…" with the hotkey disabled and nothing listening.
         guard let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
             MainActor.assumeIsolated {
                 handleRecorded(event)
@@ -121,8 +113,6 @@ struct ShortcutRecorderField: View {
         // Key events only reach the local monitor while some window is key: make the popover
         // window the chip was clicked in key.
         NSApp.currentEvent?.window?.makeKey()
-        // The combo being recorded may be the current hotkey itself (or contain it) — don't let
-        // the press toggle the popover out from under the recorder.
         KeyboardShortcuts.disable(name)
     }
 
@@ -145,7 +135,6 @@ struct ShortcutRecorderField: View {
         stopRecording()
     }
 
-    /// Global hotkeys need a real modifier; plain keys (or shift-only) would hijack normal typing.
     private func isValid(_ shortcut: KeyboardShortcuts.Shortcut) -> Bool {
         !shortcut.modifiers.intersection([.command, .option, .control]).isEmpty
     }

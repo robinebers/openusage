@@ -1,13 +1,11 @@
 import SwiftUI
 
-/// What a dashboard right-click menu item does. `WidgetGroupedListView` performs it.
 enum DashboardCommand: Equatable {
     case refresh([String])
     case manageAccounts
     case open(URL)
     case rename(String)
     case editAccount(String)
-    /// Copies a picture of these accounts' card: a provider's accounts, or one of them.
     case shareScreenshot([String])
     case showHiddenMetrics(String)
     case toggleStar(String)
@@ -16,14 +14,9 @@ enum DashboardCommand: Equatable {
 
 struct DashboardMenuItem: Equatable {
     let title: String
-    /// `nil` shows the title as a disabled line.
     var command: DashboardCommand?
 }
 
-/// The dashboard's right-click menus, one per thing you can click: a provider's header or card, an
-/// account's caption, and a metric row. Each is a list of sections that render with dividers between
-/// them. Apart from the Limit Resets row's popover and the copy button on a provider's header,
-/// right-click is the only way to act on the dashboard.
 enum DashboardMenus {
     typealias Sections = [[DashboardMenuItem]]
 
@@ -40,7 +33,6 @@ enum DashboardMenus {
         provider.links.map { DashboardMenuItem(title: $0.label, command: .open($0.url)) }
     }
 
-    /// `status` explains the account line's warning or stale icon.
     static func account(
         _ account: DashboardAccount,
         status: String?,
@@ -66,7 +58,6 @@ enum DashboardMenus {
     }
 }
 
-/// Renders a `DashboardMenus` list inside `.contextMenu`.
 struct DashboardMenu: View {
     let sections: DashboardMenus.Sections
     let perform: (DashboardCommand) -> Void

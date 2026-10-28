@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// A screen's footer chrome: app identity, refresh status, dashboard actions, and copy confirmation.
-/// It uses the screen it belongs to, so during a slide each mounted page draws its own footer.
 struct PopoverFooter: View {
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore

@@ -1,75 +1,34 @@
 import SwiftUI
 
-/// The popover content: the provider/metric list (or the Accounts / Settings screen) as a scroll
-/// view between fixed chrome — a top back/title bar on Accounts/Settings and bottom identity/action
-/// chrome on Dashboard and Settings. Accounts uses its top bar and scrolling content without footer
-/// controls.
-///
-/// The chrome belongs to its screen: `screenView` builds each page's top bar and footer from that
-/// page's own screen, so on a switch a screen slides in with its chrome instead of the destination's
-/// bar appearing over the screen being left. Each screen's scroll content underlaps the footer with
-/// the native soft scroll-edge fade (`softScrollEdges` →
-/// `.scrollEdgeEffectStyle(.soft)`, macOS 26+) — Apple's blurred boundary, not a custom gradient or a
-/// material bar. On macOS 15 the footer/top bar still pin via `safeAreaInset`, just without the blur
-/// (content scrolls flush). The panel **auto-fits its content**: each screen's scroll view reports its
-/// content height plus the pinned bars' insets (`onScrollGeometryChange`), and the host window is driven to that on
-/// SwiftUI's animation clock (`drivesPanelHeight` / `PanelHeightModifier`) — so a screen switch morphs
-/// the window height in lockstep with the slide (one spring), and the scroll views only take over once
-/// content exceeds the screen-height cap.
 struct DashboardView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var reorderLift: ReorderLift?
-    /// The panel height SwiftUI drives — the single animation clock. `PanelHeightModifier` follows it
-    /// frame-by-frame onto the AppKit panel, so the window resize rides the same spring as the screen
-    /// slide (no second AppKit animation to fight). 0 means "not established yet": the panel keeps the
-    /// size the controller opened it at until the first measurement lands, then we snap un-animated.
     @State private var animatedHeight: CGFloat = 0
-    /// Whether `animatedHeight` has been seeded for this open. Until then the first measurement (or a
-    /// reopen) establishes it without animation; afterwards, changes spring.
     @State private var didEstablishHeight = false
-    /// The window height each screen wants: its scroll content plus the insets its pinned bars add.
-    /// `heightTarget(for:)` clamps it into the morph target.
     @State private var measuredIdeal: [PopoverScreen: CGFloat] = [:]
-    /// Horizontal screen-switch slide: 0 shows the outgoing screen, 1 the incoming one. Drives the
-    /// page offset so the screens slide between modes on one spring.
     @State private var slideProgress: CGFloat = 1
-    /// The `popover.screenSlideID` whose slide has begun animating. Until it catches up to the store's
-    /// id, a freshly-started transition pins to the outgoing screen so the first frame never flashes
-    /// the destination.
     @State private var animatedSlideID = 0
     /// The `popover.screenSlideID` whose slide has ended. Until the store's id lands here the pager keeps
     /// both screens mounted, so the outgoing one slides away with its chrome. `slideProgress` can't
     /// tell: its model value is 1 from the moment the spring starts, so a pager keyed on it would drop
     /// the outgoing screen on the slide's first frame and leave it fading in place over the incoming one.
     @State private var settledSlideID = 0
-    /// Reset to the top whenever the popover closes, so it never reopens mid-scroll.
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
     /// view tree alive after the first visit so later screen switches don't rebuild those controls.
     @State private var hasVisitedSettings = false
     private static let reorderSpace = "popoverReorderSpace"
-    /// Fixed height of the Accounts / Settings back nav bar — the bar pins itself to exactly this height.
     private static let topBarHeight: CGFloat = 44
 
     var body: some View {
         @Bindable var popover = popover
         return modeBody
             .frame(width: PanelMetrics.width)
-            // Fill the panel. The panel auto-fits its content (the window height is driven to each
-            // screen's measured ideal via `drivesPanelHeight`), so at rest the window is exactly the
-            // content's height and this fill is a no-op; when content exceeds the screen cap the window
-            // clamps and the scroll views inside take the overflow.
             .frame(maxHeight: .infinity, alignment: .top)
-            // Paint the page surface behind all content (and the footer), opaque so the popover reads
-            // as one solid panel. Outermost so the footer, header, and scroll content all sit on it;
-            // separation from the footer comes from the native soft scroll-edge fade (not a distinct bar).
             .background(PopoverSurface())
-            // Drive the host panel's height on SwiftUI's clock. At the body root, OUTSIDE `modeBody`'s
-            // `.animation(nil, value: popover.screenSlideID)`, so the height rides the active spring (the
-            // slide's, during a switch) instead of being snapped.
             .drivesPanelHeight(animatedHeight)
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
@@ -81,13 +40,6 @@ struct DashboardView: View {
                 AddAccountSheet(flow: AddAccountFlow(store: container.accounts))
             }
             .background(
-                // Esc steps back (L2 → L1 → dashboard) and only from the dashboard closes the popover.
-                // Return opens Accounts from the dashboard (the footer's Options ▸ Accounts) and
-                // otherwise steps back like Esc, never jumping Settings → Accounts; always consumed,
-                // so a bare Return can't fall through and dismiss the popover. ⌘, toggles Settings
-                // from every screen. ⌘Z walks back the last customization step app-wide, since Hide
-                // and Pin happen in the dashboard's menus too; it's consumed even with nothing to
-                // undo, since a text field keeps its own ⌘Z and the alternative is AppKit's beep.
                 PopoverKeyReader { key in
                     switch key {
                     case .escape:
@@ -103,13 +55,8 @@ struct DashboardView: View {
                     return true
                 }
             )
-            // The controller already owns the exact show/hide moments. Reuse that signal here instead
-            // of asking AppKit window notifications to rediscover the same state a second time.
             .onChange(of: popover.popoverShown) { _, shown in
                 if shown {
-                    // Reopen: the SwiftUI tree survives a close, so re-seed the height for whatever
-                    // screen we're opening on. Un-animated, and ≈ the controller's opening guess, so
-                    // there's no visible jump. If not yet measured, the measurement onChange seeds it.
                     if let target = heightTarget(for: popover.screen) {
                         didEstablishHeight = true
                         animatedHeight = target
@@ -133,9 +80,6 @@ struct DashboardView: View {
             .onChange(of: popover.screenSlideID) { _, id in
                 guard id != 0 else { return }
                 if reduceAnimations {
-                    // Snap as one structural update. Mounting the normal two-page pager for even one
-                    // frame would pair the destination header with the outgoing screen; scheduling the
-                    // spring would also keep that stale structure alive until its delayed completion.
                     animatedSlideID = id
                     settledSlideID = id
                     slideProgress = 1
@@ -149,19 +93,9 @@ struct DashboardView: View {
                 animatedSlideID = id
                 let destination = popover.screen
                 Task { @MainActor in
-                    // Co-animate the slide and the height on ONE spring → the coordinated morph: the
-                    // panel grows/shrinks to the destination's size as that screen slides in. The
-                    // destination is usually mounted+measured by now (it mounted on the slideProgress=0
-                    // render), so we morph to its ideal. If it ISN'T measured yet and the height was
-                    // never established (animatedHeight still the 0 sentinel — e.g. opening Settings
-                    // straight from the status-item menu), we must NOT morph to a clamped zero, which
-                    // the clamp floors at the screen's minimum and wrongly shrinks the panel: leave the
-                    // height alone and let the completion / measurement establish it once a real ideal lands.
                     let coTarget: CGFloat? = heightTarget(for: destination)
                         ?? (animatedHeight > 0 ? animatedHeight : nil)
                     if coTarget != nil { didEstablishHeight = true }
-                    // `.removed`: the pager collapses to one page only once the spring has settled, so
-                    // the outgoing screen is off the panel by then and the incoming one never snaps.
                     withAnimation(Motion.spring, completionCriteria: .removed) {
                         slideProgress = 1
                         if let coTarget { animatedHeight = coTarget }
@@ -170,17 +104,13 @@ struct DashboardView: View {
                         guard let target = heightTarget(for: popover.screen) else { return }
                         if !didEstablishHeight {
                             didEstablishHeight = true
-                            animatedHeight = target            // un-animated establish — never grow from 0
+                            animatedHeight = target
                         } else if abs(target - animatedHeight) > 1 {
                             withAnimation(Motion.spring) { animatedHeight = target }
                         }
                     }
                 }
             }
-            // In-screen growth/shrink (the footer notice appears, a refresh loads rows): re-target the
-            // height on the same spring. Establishment is allowed even mid-slide (a measurement that
-            // lands during a switch must seed the height — there's nothing to fight yet); the animated
-            // *re-target* defers to the switch path while a slide is in flight.
             .onChange(of: measuredIdeal[popover.screen]) { _, _ in
                 guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
@@ -193,29 +123,16 @@ struct DashboardView: View {
     }
 
     private func resetTransientState() {
-        // Backstop for any popover-close path the status-item controller's hide doesn't cover: clear a
-        // tooltip the cursor was resting on, since the closed popover fires no hover-exit. The resets
-        // popover rides the same backstop.
         HoverTooltips.dismissAll()
         HoverPopoverState.dismissAll()
-        // Closing the popover is a click away from an open rename, so it saves like one.
         container.renaming.commit()
         popover.reset()
         reorderLift = nil
-        // Drop the driven height so the next open re-establishes it (un-animated) from the reopened
-        // screen's measurement instead of springing from this session's last value. Until then the
-        // 0 sentinel keeps `PanelHeightModifier` from pushing, so the controller's opening guess stands.
         animatedHeight = 0
         didEstablishHeight = false
         dashboardScrollPosition.scrollTo(edge: .top)
     }
 
-    /// The popover's screens as a horizontal pager. At rest only the current screen is mounted (one
-    /// page at offset 0), so drag-reorder's coordinate math and the footer's scroll-edge underlap are
-    /// exactly what they'd be with the screen rendered alone. During a switch the outgoing and incoming
-    /// screens are both mounted, ordered left-to-right by `slideRank`, and slid by a pure offset —
-    /// each with its own chrome (top bar + footer), so a page's bar travels with the page.
-    ///
     /// Why an offset and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`
     /// glass. Any transition carrying `.opacity` composites a screen into a transparency layer where
     /// that material has no vibrant backdrop to sample and resolves to its opaque near-white base — a
@@ -259,13 +176,10 @@ struct DashboardView: View {
         .animation(nil, value: popover.screenSlideID)
     }
 
-    /// Include the first render targeting Settings so it mounts directly in its permanent overlay,
-    /// never first inside the pager and then again when the visit flag catches up.
     private var isSettingsKeptAlive: Bool {
         hasVisitedSettings || popover.screen == .settings
     }
 
-    /// Preserve Settings' pager slot without mounting a duplicate of its kept-alive view tree.
     @ViewBuilder
     private func pagerPage(_ screen: PopoverScreen, settingsKeptAlive: Bool) -> some View {
         if screen == .settings && settingsKeptAlive {
@@ -276,8 +190,6 @@ struct DashboardView: View {
         }
     }
 
-    /// Follow the Settings pager slot during its slide, or park safely beyond a Dashboard ↔ Accounts
-    /// transition when Settings isn't one of the visible pages.
     static func settingsOverlayOffset(
         pages: [PopoverScreen],
         slideOffset: CGFloat,
@@ -289,13 +201,10 @@ struct DashboardView: View {
         return pageWidth * 2
     }
 
-    /// Parked Settings must not keep a second footer, keyboard shortcuts, or alert presenter alive.
-    /// Restore its chrome whenever Settings is the current page or participates in a transition.
     static func settingsChromeIsVisible(pages: [PopoverScreen]) -> Bool {
         pages.contains(.settings)
     }
 
-    /// True from the moment `popover.screen` changes until the slide's spring has settled.
     private var isSliding: Bool {
         Self.screenTransitionIsActive(
             reduceAnimations: reduceAnimations,
@@ -304,8 +213,6 @@ struct DashboardView: View {
         )
     }
 
-    /// Reduced motion never mounts the outgoing + incoming pager together: destination chrome and
-    /// content must replace the old screen atomically instead of exposing the pager's setup frame.
     static func screenTransitionIsActive(
         reduceAnimations: Bool,
         screenSlideID: Int,
@@ -316,8 +223,6 @@ struct DashboardView: View {
             && screenSlideID != settledSlideID
     }
 
-    /// One page at rest (the current screen); the two involved screens in left-to-right rank order
-    /// while a switch animates.
     private var slidePages: [PopoverScreen] {
         guard isSliding else { return [popover.screen] }
         let from = popover.screenSlideFrom
@@ -325,9 +230,6 @@ struct DashboardView: View {
         return from.slideRank < to.slideRank ? [from, to] : [to, from]
     }
 
-    /// Horizontal offset that places the outgoing screen at `slideProgress == 0` and the incoming one
-    /// at `1`. Pinned to the outgoing screen until this transition's animation has actually started, so
-    /// the first frame after a switch shows the screen being left — never a flash of the destination.
     private func slideOffset(_ pages: [PopoverScreen]) -> CGFloat {
         guard isSliding, pages.count > 1 else { return 0 }
         let fromOffset = -CGFloat(pages.firstIndex(of: popover.screenSlideFrom) ?? 0) * PanelMetrics.width
@@ -336,18 +238,9 @@ struct DashboardView: View {
         return fromOffset + progress * (toOffset - fromOffset)
     }
 
-    /// Builds one screen: its scroll body wrapped in its own chrome. The chrome (top bar + footer) is
-    /// keyed off the per-page `screen`, not `popover.screen`, so a page always draws the bar its content
-    /// belongs to: the dashboard never grows a nav bar on its way out, and an incoming screen's title
-    /// arrives with it rather than a slide ahead of it. The soft scroll-edge styles and the pinned bars
-    /// attach to each page's scroll view (`PopoverScrollView`), the documented place for them. Identity
-    /// stays stable across the slide via the `ForEach` key in `modeBody`.
     @ViewBuilder
     private func screenView(_ screen: PopoverScreen, includeChrome: Bool = true) -> some View {
         scrollBody(for: screen)
-            // Auto-fit: the scroll view's content height (invariant to the viewport) plus the insets the
-            // pinned bars add is this screen's ideal window height. Keyed by the per-page `screen`, so
-            // during a slide each mounted page measures its own content; parked Settings has no bars.
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
             } action: { _, height in
@@ -370,13 +263,10 @@ struct DashboardView: View {
             }
     }
 
-    /// A screen's clamped morph target, or `nil` until it has been measured.
     private func heightTarget(for screen: PopoverScreen) -> CGFloat? {
         measuredIdeal[screen].map { MenuBarPopover.clampHeight?($0) ?? $0 }
     }
 
-    /// The scrolling content for a screen, without chrome — this is the part that slides during a
-    /// switch (its `screen` is the per-page one, so each mounted page shows its own content).
     @ViewBuilder
     private func scrollBody(for screen: PopoverScreen) -> some View {
         switch screen {
@@ -397,11 +287,6 @@ struct DashboardView: View {
     }
 }
 
-/// The popover's opaque backdrop tray, painted behind all content so the popover reads as one solid
-/// panel — the data region never shows the desktop through it. Matches the panel's own background:
-/// SwiftUI uses `Theme.traySurface` here while the window uses the matching `Theme.trayNSColor`. The footer draws its own frosted glass bar on top of this (in-window),
-/// so glass stays chrome over solid content. Never hit-tests, so it can't steal clicks from the content
-/// above it.
 private struct PopoverSurface: View {
     var body: some View {
         Theme.traySurface.allowsHitTesting(false)

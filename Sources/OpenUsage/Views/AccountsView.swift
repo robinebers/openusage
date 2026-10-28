@@ -1,15 +1,5 @@
 import SwiftUI
 
-/// The Accounts screen, a two-level master/detail: the account list (L1) or, when
-/// `popover.customizeProviderID` is set, that account's detail (L2). The two slide horizontally — L2
-/// enters from the trailing edge, L1 returns from the leading edge — on the same spring. The back
-/// chevron (handled in `PopoverTopBar`) is context-aware: L2 → L1, L1 → dashboard.
-///
-/// Reordering uses `DragGesture` plus local row geometry, kept inside the menu-bar popover instead
-/// of SwiftUI's pasteboard-backed drag/drop (unreliable here). The router owns the scroll view and
-/// the reorder-frame map; L1 and L2 read it for their drag hit-testing and emit frames via
-/// `.reorderFrame`. The `customizeProviderID` route lives in `PopoverState` so the popover-closed
-/// reset and the Esc handler drive the same state.
 struct AccountsView: View {
     @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
@@ -24,9 +14,6 @@ struct AccountsView: View {
                 .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
-        // The transient star/denial pill floats above the detail content — the same capsule style as
-        // the dashboard's "Copied to clipboard" share pill. Green for a successful star/unstar, orange
-        // for the per-provider cap denial.
         .overlay(alignment: .bottom) {
             if popover.accountsNotice.value != nil {
                 customizationNoticePill
@@ -48,8 +35,6 @@ struct AccountsView: View {
         )
     }
 
-    /// Both levels share one ZStack so the outgoing and incoming level overlap while they slide instead
-    /// of stacking.
     private var content: some View {
         ZStack(alignment: .top) {
             level

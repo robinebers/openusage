@@ -1,15 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The text field an account's name turns into while `AccountRenameStore` has an edit open for it. It
-/// takes the keyboard as it appears: it makes its panel key, which the non-activating panel isn't
-/// always, and takes focus, which selects the whole name, so typing replaces it.
-/// Return, a click anywhere else in the panel, or focus moving away commits the edit; Esc cancels it.
-/// `PopoverKeyReader` leaves Return and Esc alone while a text field is editing, so they reach this
-/// field instead of navigating the popover.
-///
-/// The field's background is drawn outside its frame, so swapping it in for the label it replaces
-/// doesn't shift anything around it. Callers set the font and text alignment.
 struct InlineRenameField: View {
     @Bindable var renaming: AccountRenameStore
     let edit: AccountRenameStore.Edit

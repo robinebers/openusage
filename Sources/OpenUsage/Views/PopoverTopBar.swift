@@ -1,12 +1,8 @@
 import SwiftUI
 
-/// A screen's navigation chrome. It reads the screen it belongs to, not the destination, so during a
-/// slide each mounted page carries its own bar and the bar travels with its content.
 struct PopoverTopBar: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
-    /// The screen this bar belongs to — the page that hosts it, so a switch can't put the incoming
-    /// screen's bar over the outgoing one.
     let screen: PopoverScreen
     let height: CGFloat
     let horizontalPadding: CGFloat
@@ -50,7 +46,6 @@ struct PopoverTopBar: View {
             title()
                 .font(.headline)
                 .lineLimit(1)
-                // Keeps a long title, or the rename field that replaces it, clear of the buttons.
                 .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity)
 
@@ -79,15 +74,12 @@ struct PopoverTopBar: View {
         .accessibilityLabel("Back")
     }
 
-    /// The account's provider mark, filling the back button's footprint on the other side so the
-    /// title stays centred. Decoration only: the title already names the account.
     private func logo(for provider: Provider) -> some View {
         ProviderIcon(id: provider.icon, side: 22, inset: 0.04)
             .frame(width: 28, height: 28)
             .accessibilityHidden(true)
     }
 
-    /// Opens the account list's Add Account sheet.
     private var addAccountButton: some View {
         Button {
             popover.isAddingAccount = true
@@ -105,8 +97,6 @@ struct PopoverTopBar: View {
     }
 }
 
-/// The Accounts detail title: the account's name, which a click turns into an inline rename field
-/// (`AccountRenameStore`). A hover highlight marks it as clickable.
 private struct AccountTitle: View {
     let provider: Provider
 

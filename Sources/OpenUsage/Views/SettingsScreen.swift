@@ -53,7 +53,6 @@ struct SettingsScreen: View {
         }
     }
 
-    /// How every bounded reading and reset time reads, on the dashboard and in the menu bar.
     private var usageDisplaySection: some View {
         @Bindable var dataStore = dataStore
         return Section("Usage Display") {
@@ -83,7 +82,6 @@ struct SettingsScreen: View {
         } header: {
             Text("Privacy")
         } footer: {
-            // Daily activity and crash reports are always on; the toggle only gates extra analytics.
             Text("Share additional anonymous usage stats that tell the team where to improve.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -121,8 +119,6 @@ struct SettingsScreen: View {
         }
     }
 
-    /// Visible whenever the updater is active (only the signed release build ships a feed; the dev
-    /// build and a bare `swift run`, with no feed, hide this).
     @ViewBuilder
     private var updatesSection: some View {
         @Bindable var updater = updater
@@ -130,7 +126,6 @@ struct SettingsScreen: View {
             Section("Updates") {
                 Toggle("Check Automatically", isOn: $updater.automaticallyChecksForUpdates)
                 Toggle("Beta Updates", isOn: $updater.betaChannelEnabled)
-                // No version label here; the footer already shows it.
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
             }

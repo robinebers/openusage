@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// The copy button on a provider's dashboard header. A compact glyph with a 28 pt pointer target; a
-/// successful copy swaps it for a green, bouncing checkmark for 1.4 s before the copy symbol returns
-/// (no bounce under Reduce Motion). Shown while `isRevealed`, and while the checkmark is up.
 struct CopyFeedbackButton: View {
     let accessibilityLabel: String
     var isRevealed = true
@@ -32,7 +29,6 @@ struct CopyFeedbackButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // A 16 pt layout slot under the 28 pt hit rectangle, so the glyph sits on the header's line.
         .padding(-6)
         .opacity(isRevealed || copied ? 1 : 0)
         .allowsHitTesting(isRevealed || copied)

@@ -2,19 +2,14 @@ import AppKit
 import Foundation
 import Observation
 
-/// The Add Account sheet's state: the provider being chosen, the running sign-in, and its outcome.
-/// It owns the sign-in task so a failed attempt can be retried and a cancelled sheet stops the login.
 @MainActor
 @Observable
 final class AddAccountFlow {
-    /// The highlighted row in the provider list; the arrow keys move it.
     var selection: ProviderKind?
     var apiKey = ""
     var accountName = ""
     var pastedCode = ""
-    /// The provider being signed in to; nil while the user is still choosing one.
     private(set) var provider: ProviderKind?
-    /// What the provider's sign-in asked the user to do; nil until it asks.
     private(set) var prompt: LoginPrompt?
     private(set) var isWorking = false
     private(set) var errorMessage: String?
@@ -39,17 +34,14 @@ final class AddAccountFlow {
     var canAddKey: Bool { !apiKey.trimmed.isEmpty && !isWorking }
     var hasPastedCode: Bool { !pastedCode.trimmed.isEmpty }
     var canSubmitCode: Bool { hasPastedCode && codeInput != nil }
-    /// A pasted code was handed to the sign-in, which is now exchanging it.
     var isCodeSubmitted: Bool { isWorking && prompt != nil && codeInput == nil }
 
-    /// Goes to the provider's step, starting its browser or device-code sign-in right away.
     func choose(_ kind: ProviderKind) {
         selection = kind
         provider = kind
         if case .oauth = kind.authMethod { signIn() }
     }
 
-    /// Starts the provider's browser or device-code sign-in, or starts it again after a failure.
     func signIn() {
         guard let provider else { return }
         let (input, continuation) = AsyncStream.makeStream(of: String.self)
@@ -58,8 +50,6 @@ final class AddAccountFlow {
         run(provider, input: input)
     }
 
-    /// Opens the page the sign-in is waiting on: the browser sign-in again, or the device-code
-    /// verification page, which only opens on request because the user has to read the code first.
     func openBrowser() {
         switch prompt {
         case .browser(let url, _): openURL(url)
@@ -68,7 +58,6 @@ final class AddAccountFlow {
         }
     }
 
-    /// Hands a code the user pasted from the browser to the waiting sign-in.
     func submitCode() {
         guard canSubmitCode else { return }
         codeInput?.yield(pastedCode)
@@ -84,8 +73,6 @@ final class AddAccountFlow {
         run(provider, input: input)
     }
 
-    /// Returns from the provider's step to the provider list, stopping its sign-in and keeping that
-    /// provider selected.
     func back() {
         cancel()
         provider = nil
@@ -125,8 +112,6 @@ final class AddAccountFlow {
         }
     }
 
-    /// A browser sign-in opens its page as soon as it asks for it, once per attempt, so the sheet
-    /// waits for a browser that is actually open.
     private func show(_ prompt: LoginPrompt) {
         guard !Task.isCancelled else { return }
         self.prompt = prompt

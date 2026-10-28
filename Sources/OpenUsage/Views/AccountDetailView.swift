@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// The Accounts detail for one account (L2). The title bar carries the account's name, which renames
-/// in place (`PopoverTopBar`). Below it is one card with every metric the account supports, in its
-/// saved order, and a destructive Remove Account row that asks for confirmation. Each metric row is
-/// grip · name · star · toggle: drag the grip to reorder, flip the toggle to show or hide the metric on
-/// the dashboard. The star is always visible: outline when not starred, filled accent when starred;
-/// tapping it pops a transient confirmation pill (and an orange denial pill over the per-provider cap).
 struct AccountDetailView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
@@ -31,12 +25,9 @@ struct AccountDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            // Unknown account — L1 only lists known accounts, and removing one returns to L1 first.
             EmptyView()
         }
     }
-
-    // MARK: - Remove
 
     private func removeAccountRow(_ provider: Provider) -> some View {
         Button(role: .destructive) {
@@ -62,14 +53,11 @@ struct AccountDetailView: View {
         }
     }
 
-    /// Back to the list first, so the removed row animates out of L1 instead of the detail vanishing.
     private func removeAccount() {
         guard let account = container.accounts.account(cardID: providerID) else { return }
         withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         container.accounts.remove(account.id)
     }
-
-    // MARK: - Metrics
 
     private func metricRow(_ metric: WidgetDescriptor) -> some View {
         CustomizeMetricRow(
@@ -118,10 +106,6 @@ struct AccountDetailView: View {
     }
 }
 
-/// The star (menu-bar pin) control on a metric row — always visible: an outline star when not
-/// starred, a filled accent star when starred. Tapping it pops a transient confirmation pill (green
-/// "Starred for menu bar" / "Removed from menu bar"); a denied tap over the per-provider cap shakes
-/// the star and pops an orange denial pill. No tooltips.
 private struct StarButton: View {
     let metric: WidgetDescriptor
     @Environment(LayoutStore.self) private var layout

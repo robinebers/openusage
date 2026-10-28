@@ -7,9 +7,6 @@ struct ReorderLift {
     let touchOffset: CGPoint
     var location: CGPoint
 
-    /// The one place a lift is built from a drag value. Every reorder site (dashboard/Accounts ×
-    /// provider/metric) differs only in the `preview`; the frame lookup and touch-offset math are
-    /// identical, so they live here once. Returns `nil` when the dragged row has no recorded frame.
     static func make(
         id: String,
         preview: AnyView,
@@ -30,8 +27,6 @@ struct ReorderLift {
     }
 }
 
-/// The previews are deliberately the same views the live screens render (shared row/card builders), so a
-/// lifted row matches the row it came from.
 struct ReorderLiftPreview: View {
     let lift: ReorderLift
 
@@ -49,11 +44,6 @@ struct ReorderLiftPreview: View {
     }
 }
 
-/// Lightweight in-view geometry used for reordering inside the menu-bar popover.
-///
-/// This deliberately avoids SwiftUI's pasteboard-backed `.draggable` / `.dropDestination` APIs, which are
-/// unreliable in this popover. A plain `DragGesture` stays inside the SwiftUI view tree: we record row frames,
-/// compare the pointer location to those frames, and then mutate `LayoutStore` directly.
 struct ReorderFramePreferenceKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
 
@@ -82,10 +72,6 @@ extension View {
     }
 }
 
-/// The shared drag-to-reorder gesture used by both the dashboard list and the Accounts screen, for both
-/// provider headers and metric rows. The gesture body (lift tracking, target hit-testing, spring + haptic)
-/// lives here once; each caller supplies only what differs: the active-row binding, the lift builder, the
-/// current ordered ids, and the reorder action.
 @MainActor
 func reorderDragGesture(
     id: String,
@@ -138,8 +124,6 @@ func reorderTarget(
 
         guard frame.insetBy(dx: 0, dy: -2).contains(location) else { continue }
 
-        // Reorder only after crossing partway into the target row. This avoids the jumpy feel where a row moves
-        // as soon as the pointer barely enters a neighbor, while still feeling less delayed than the midpoint.
         if to > from {
             return location.y >= frame.minY + frame.height * crossingThreshold ? id : nil
         } else {

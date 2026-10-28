@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The dashboard-only scrolling content. Screen switching, panel sizing, fixed bars, keyboard handling,
-/// and close/reset behavior stay with `DashboardView`.
 struct DashboardContentView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover

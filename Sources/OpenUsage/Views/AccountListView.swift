@@ -1,9 +1,5 @@
 import SwiftUI
 
-/// The Accounts list (L1): every account in the user's saved order, grouped in one card the way
-/// Settings groups its rows, or "No Accounts" where the card would be; the top bar's + opens the Add
-/// Account sheet. Click a row to open that account (L2); drag its grip to reorder the accounts, which
-/// reorders the dashboard too.
 struct AccountListView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover

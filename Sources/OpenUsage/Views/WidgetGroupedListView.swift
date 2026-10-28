@@ -1,19 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The dashboard display: one provider after another (`DashboardFamily`), each a header above a card
-/// of its accounts, every account one row per metric that has data, fed by the same `WidgetDataStore`
-/// the menu bar uses. Every row shows its label, bar, value and reset at rest and draws the same under
-/// the pointer; resting it on the bar, the value or the reset opens a tooltip with the figure the row
-/// doesn't show, and on the Limit Resets row's count the resets timeline after a dwell. A click on a
-/// value flips every row between used and left, a click on a reset between countdown and exact time.
-/// A double-click on an account's name on its caption renames it, the same as the menu's Rename.
-///
-/// Right-click a provider's header or card, an account's caption, or a metric row for its menu
-/// (`DashboardMenus`). Share Screenshot there copies a picture: the provider's with all its accounts, or
-/// one account's; the copy button a provider's header reveals on hover copies the same picture of the
-/// provider. Everything reorders by dragging: a provider by its header, an account by its caption
-/// within its card, a metric row within its account.
 struct WidgetGroupedListView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
@@ -66,9 +53,6 @@ struct WidgetGroupedListView: View {
         )
     }
 
-    // MARK: - Sections
-
-    /// A provider with its drag and copy button on the header; the whole section takes its right-click menu.
     private func section(_ family: DashboardFamily) -> some View {
         DashboardProviderSection(family: family) {
             DashboardProviderHeader(provider: family.provider, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
@@ -79,7 +63,6 @@ struct WidgetGroupedListView: View {
         .contentShape(Rectangle())
     }
 
-    /// An account: its caption over its rows, with the account's menu and the caption's drag.
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
@@ -100,8 +83,6 @@ struct WidgetGroupedListView: View {
         .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
 
-    /// The account's rows, one under the other with nothing between, each with its right-click menu
-    /// and drag. One view, so the card's account spacing never lands between two rows.
     private func rows(of account: DashboardAccount) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(account.lines) { line in
@@ -124,19 +105,15 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    /// Why the account shows a warning or stale icon.
     private func statusReason(for accountID: String) -> String? {
         dataStore.errorMessage(for: accountID) ?? dataStore.stalenessHint(for: accountID)
     }
 
-    /// Metrics the user hid from this account that have something to show.
     private func hiddenMetricIDs(for accountID: String) -> [String] {
         layout.orderedSupportedMetrics(for: accountID)
             .filter { !layout.isMetricEnabled($0.id) && dataStore.data(for: $0).hasData }
             .map(\.id)
     }
-
-    // MARK: - Menu commands
 
     private func perform(_ command: DashboardCommand) {
         switch command {
@@ -165,8 +142,6 @@ struct WidgetGroupedListView: View {
         }
     }
 
-    /// Copies a picture of these accounts' card to the clipboard: the menu's Share Screenshot and the
-    /// header's copy button, through one path.
     @discardableResult
     private func shareScreenshot(_ accountIDs: [String]) -> Bool {
         guard let live = liveFamilies().first(where: { $0.accounts.contains { accountIDs.contains($0.id) } }) else { return false }
@@ -177,9 +152,6 @@ struct WidgetGroupedListView: View {
         return true
     }
 
-    // MARK: - Reordering
-
-    /// The account's visible line ids, read live so a drag sees each reorder it has already made.
     private func visibleLineIDs(for accountID: String) -> [String] {
         liveFamilies().flatMap(\.accounts).first { $0.id == accountID }?.lines.map(\.id) ?? []
     }
