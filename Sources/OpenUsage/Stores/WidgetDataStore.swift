@@ -61,13 +61,8 @@ final class WidgetDataStore {
         let ids = Set(providersByID.keys)
         for (id, task) in inFlight where !ids.contains(id) { task.cancel() }
         inFlight = inFlight.filter { ids.contains($0.key) }
-        var next = snapshots.filter { ids.contains($0.key) }
+        let next = snapshots.filter { ids.contains($0.key) }
         let removed = next.count < snapshots.count
-        let added = ids.subtracting(next.keys)
-        for (cardID, snapshot) in cache.load() where added.contains(cardID) {
-            next[cardID] = snapshot
-            providersByID[cardID]?.restore(snapshot)
-        }
         snapshots = next
         if removed { cache.save(next) }
         backoffs = backoffs.filter { ids.contains($0.key) }
