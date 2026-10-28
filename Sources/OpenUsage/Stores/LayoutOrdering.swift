@@ -1,6 +1,5 @@
 import Foundation
 
-/// Pure metric-order helpers for loading and reordering the layout.
 enum LayoutOrdering {
     static func defaultMetricOrder(registry: WidgetRegistry) -> [String: [String]] {
         var result: [String: [String]] = [:]

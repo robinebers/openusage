@@ -13,7 +13,6 @@ import os
 /// cancellation-aware). What the deadline guarantees is that the *store* stops waiting.
 @MainActor
 enum ProviderRefreshDeadline {
-    /// The refreshed snapshot, or `nil` if `timeout` elapsed first.
     static func snapshot(from provider: ProviderRuntime, timeout: TimeInterval) async -> ProviderSnapshot? {
         let work = Task { @MainActor in
             await provider.refresh()
@@ -21,7 +20,6 @@ enum ProviderRefreshDeadline {
         let claim = ContinuationClaim()
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<ProviderSnapshot?, Never>) in
-                // Detached, so a busy MainActor can't delay the one thing that bounds the wait.
                 let deadline = Task.detached {
                     try? await Task.sleep(for: .seconds(timeout))
                     guard !Task.isCancelled, claim.claim() else { return }
@@ -30,8 +28,6 @@ enum ProviderRefreshDeadline {
                 }
                 Task { @MainActor in
                     let snapshot = await work.value
-                    // Cancel the deadline the moment the snapshot lands, so a fast refresh doesn't leave
-                    // a timer sleeping per provider until it expires.
                     deadline.cancel()
                     guard claim.claim() else { return }
                     continuation.resume(returning: snapshot)
@@ -45,10 +41,6 @@ enum ProviderRefreshDeadline {
     }
 }
 
-/// The one-shot right to resume a `CheckedContinuation` two tasks are racing for: the first `claim()`
-/// returns true and every later one returns false. The racers run on different executors, so the
-/// check-and-set has to be atomic — with a plain `Bool` both can read it as unclaimed and resume, and a
-/// second resume is a fatal error, not a caught one.
 private struct ContinuationClaim: Sendable {
     private let claimed = OSAllocatedUnfairLock(initialState: false)
 

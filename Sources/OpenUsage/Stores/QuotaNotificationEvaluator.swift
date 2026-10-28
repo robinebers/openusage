@@ -1,16 +1,8 @@
 import Foundation
 
-/// Owns the quota pace-notification subsystem: the per-metric dedup state and the fire/deliver/commit
-/// decision. `AppContainer`'s loop calls `evaluate` after each pass with the shown metrics in layout
-/// order and the data store's values for them.
-///
-/// Deduped per metric per reset window. No-data metrics never fire; bounded level-only metrics can fire
-/// Almost Out, but not pace-based milestones. State for metrics not passed this pass is pruned, so
-/// re-enabling/re-adding a metric starts fresh rather than carrying a stale "already fired" flag.
 @MainActor
 final class QuotaNotificationEvaluator {
     private var notificationState: [String: NotificationState] = [:]
-    /// Delivers one notification (id-prefix, title, subtitle, body) and says whether it was delivered.
     private let post: @MainActor (String, String, String, String) async -> Bool
 
     init(
@@ -21,11 +13,6 @@ final class QuotaNotificationEvaluator {
         self.post = post
     }
 
-    /// Evaluate every shown metric for a quota pace milestone and deliver a notification for any that
-    /// just crossed one. Unbounded rows and charts have no pace story, so they're skipped. The pass
-    /// decides from the values `data` gives before the first delivery `await`, so a refresh landing
-    /// mid-pass can't change a later metric's inputs. `providerName` maps a provider id to its display
-    /// name for the subtitle.
     func evaluate(
         _ descriptors: [WidgetDescriptor],
         data: (WidgetDescriptor) -> WidgetData,
@@ -45,11 +32,6 @@ final class QuotaNotificationEvaluator {
                 resetsAt: data.resetsAt,
                 previous: previous
             )
-            // Deliver each fired milestone whose trigger is on, then commit dedup state only for the ones
-            // that actually delivered. The logic doesn't mark milestones fired — that's done here, after
-            // delivery succeeds, so an undelivered one (trigger off, not authorized, or `add` errored)
-            // leaves the milestone un-marked and its edge signal put back, re-firing on the next pass
-            // instead of being lost for the rest of the reset window.
             var next = result.newState
             var paceDelivered = false
             var underDelivered = false
@@ -77,9 +59,6 @@ final class QuotaNotificationEvaluator {
         notificationState = nextState
     }
 
-    /// Build and post one milestone notification. The title is the trigger name (matches the Settings
-    /// row), the subtitle is "Provider Metric" so the user knows which quota worsened, and the body is
-    /// the plain-language verdict. Title Case per AGENTS.md. Returns whether delivery succeeded.
     private func deliver(
         _ milestone: PaceMilestone,
         data: WidgetData,

@@ -3,7 +3,6 @@ import Foundation
 
 enum ProviderAuthMethod: Sendable, Equatable {
     case oauth
-    /// Signs in with a pasted API key, created on the provider's `keyPage`.
     case apiKey(keyPage: URL)
 }
 
@@ -34,8 +33,6 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    /// The provider's quick links, in its card's right-click menu on the dashboard. The same links
-    /// OpenUsage ships.
     var links: [ProviderLink] {
         switch self {
         case .claude: [.init(label: "Status Page", url: URL(string: "https://status.claude.com/")!),
@@ -99,16 +96,10 @@ struct OAuthTokens: Codable, Sendable, Equatable {
         self.extras = extras
     }
 
-    /// The `extras` key for the provider account a sign-in belongs to (see `AccountCredential.identity`).
     static let identityKey = "account_identity"
 
-    /// How long before `expiresAt` a token is refreshed: Claude Code's own margin (its
-    /// `isOAuthTokenExpired` treats a token as expired 5 minutes early), so a pass that lands just before
-    /// expiry never sends a token that dies on the way and shows "sign-in expired" until the next pass.
     static let refreshMargin: TimeInterval = 5 * 60
 
-    /// Whether to refresh before use: there is a refresh token and the provider's expiry is within
-    /// `refreshMargin` of `now`. `expiresAt` is always the provider's own expiry, never shortened.
     func needsRefresh(at now: Date) -> Bool {
         guard refreshToken != nil, let expiresAt else { return false }
         return expiresAt <= now.addingTimeInterval(Self.refreshMargin)
@@ -119,9 +110,6 @@ enum AccountCredential: Codable, Sendable, Equatable {
     case oauth(OAuthTokens)
     case apiKey(String)
 
-    /// Who this credential signs in as, so a login that's already added is spotted: the provider account
-    /// a sign-in recorded in `OAuthTokens.identityKey` (Cursor's older sign-ins kept it as `userID`), or
-    /// a fingerprint of the API key. `nil` for a sign-in that recorded none.
     var identity: String? {
         switch self {
         case .oauth(let tokens):

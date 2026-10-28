@@ -1,7 +1,5 @@
 import Foundation
 
-/// The saved half of `LayoutStore`. It owns the key names, encoding, and UserDefaults access so the
-/// live store can focus on layout rules and user actions.
 @MainActor
 final class LayoutPersistence {
     private let defaults: UserDefaults
@@ -26,7 +24,6 @@ final class LayoutPersistence {
 
     func savePins(_ value: Set<String>) { defaults.set(Array(value), forKey: keys.pins) }
 
-    /// Fail loudly: a swallowed encode would silently lose a layout change with no signal.
     private func encode<T: Encodable>(_ value: T, forKey key: String) {
         do {
             defaults.set(try JSONEncoder().encode(value), forKey: key)
@@ -35,8 +32,6 @@ final class LayoutPersistence {
         }
     }
 
-    /// Missing data is a normal first launch. Present-but-unreadable data is logged before startup uses
-    /// its normal fallback, so a damaged saved layout is never silently hidden.
     private func decode<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
         guard let data = defaults.data(forKey: key) else { return nil }
         do {

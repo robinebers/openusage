@@ -1,23 +1,11 @@
 import Foundation
 
-/// Read-only catalog of providers and the widgets they register, built from the live
-/// `ProviderRuntime`s at launch.
-///
-/// The registry is immutable once built, and its lookups are read on every render through
-/// `LayoutStore`'s `@Observable` computed properties (display groups, metric order, pin counts).
-/// So the three accessors are backed by lookup maps precomputed once at construction — O(1)/O(k)
-/// instead of linear scans of every descriptor on every call.
 struct WidgetRegistry: Sendable {
     let providers: [Provider]
     let descriptors: [WidgetDescriptor]
 
-    /// Descriptor by id — backs `descriptor(id:)`.
     private let descriptorsByID: [String: WidgetDescriptor]
-    /// Provider by id — backs `provider(id:)`.
     private let providersByID: [String: Provider]
-    /// Per-provider descriptor lists, preserving the original `descriptors` order within each provider
-    /// (a stable `filter` walk), so `descriptors(for:)` returns the exact sequence the UI metric order
-    /// depends on.
     private let descriptorsByProvider: [String: [WidgetDescriptor]]
 
     init(providers: [Provider], descriptors: [WidgetDescriptor]) {
@@ -44,9 +32,6 @@ struct WidgetRegistry: Sendable {
         descriptorsByProvider[providerID] ?? []
     }
 
-    /// The user's saved order filtered to current accounts. Each account not in it yet, taken in the order
-    /// the accounts were added, goes right after the last account of its provider, or to the bottom when
-    /// it is that provider's first.
     func orderedProviderIDs(savedOrder: [String]) -> [String] {
         let known = Set(providers.map(\.id))
         var ordered = savedOrder.filter { known.contains($0) }

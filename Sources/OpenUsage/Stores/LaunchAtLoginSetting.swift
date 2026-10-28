@@ -1,8 +1,6 @@
 import Observation
 import ServiceManagement
 
-/// Keeps the Launch at Login switch aligned with macOS without treating a failed rollback as a
-/// second user action.
 @MainActor
 @Observable
 final class LaunchAtLoginSetting {
@@ -29,7 +27,6 @@ final class LaunchAtLoginSetting {
         self.isEnabled = currentStatus()
     }
 
-    /// Reconcile changes made in System Settings without registering or unregistering the login item.
     func refreshStatus() {
         let enabled = currentStatus()
         guard enabled != isEnabled else { return }

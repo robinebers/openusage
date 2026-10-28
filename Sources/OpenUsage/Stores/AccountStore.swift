@@ -8,9 +8,6 @@ final class AccountStore {
 
     private(set) var accounts: [Account]
     private(set) var lastError: String?
-    /// Runs synchronously after every committed change to `accounts`, before control returns to the
-    /// caller. `AppContainer` swaps runtimes and cancels a removed account's work in it, so by the
-    /// time `remove` returns nothing can still commit on that account's behalf.
     @ObservationIgnored var didChange: (() -> Void)?
     private let defaults: UserDefaults
     let credentialVault: any CredentialVault
@@ -21,7 +18,6 @@ final class AccountStore {
         accounts = Self.load(from: defaults)
     }
 
-    /// The persisted accounts in the order they were added; empty when nothing is stored yet.
     static func load(from defaults: UserDefaults) -> [Account] {
         guard let data = defaults.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([Account].self, from: data) else { return [] }
@@ -90,8 +86,6 @@ final class AccountStore {
         try credentialVault.load(id)
     }
 
-    /// The `kind` account already signed in as the same provider account as `credential`, if any. An
-    /// account whose sign-in recorded no identity never matches.
     func account(kind: ProviderKind, signedInAs credential: AccountCredential) -> Account? {
         guard let identity = credential.identity else { return nil }
         return accounts.first { account in
@@ -99,7 +93,6 @@ final class AccountStore {
         }
     }
 
-    /// The account behind a dashboard card, by its `Account.cardID` (the card's `Provider.id`).
     func account(cardID: String) -> Account? {
         accounts.first { $0.cardID == cardID }
     }

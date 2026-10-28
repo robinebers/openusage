@@ -5,25 +5,16 @@ extension LayoutStore {
         !hiddenMetricIDs.contains(descriptorID)
     }
 
-    /// The shown metrics in the user's order: provider order, then each provider's metric order.
     var visibleDescriptors: [WidgetDescriptor] { displayGroups.flatMap(\.metrics) }
 
-    // MARK: - Provider grouping
-
-    /// Accounts in the user's saved order. A new account joins the bottom of its provider's accounts, and
-    /// a provider's first account goes to the bottom of the list.
     func orderedProviderIDs() -> [String] {
         registry.orderedProviderIDs(savedOrder: providerOrder)
     }
 
-    /// Every account's provider in the user's saved order. Also the Accounts list (L1).
     func orderedProviders() -> [Provider] {
         orderedProviderIDs().compactMap { registry.provider(id: $0) }
     }
 
-    /// Shown metrics grouped by provider, in the user's provider order, each provider's metrics kept in
-    /// the provider's custom metric order. Drives the grouped dashboard list; providers with no shown
-    /// metric are dropped so the dashboard only shows groups that have something to show.
     var displayGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
             let metrics = orderedSupportedMetrics(for: provider.id).filter { !hiddenMetricIDs.contains($0.id) }
@@ -31,21 +22,16 @@ extension LayoutStore {
         }
     }
 
-    /// The Accounts detail (L2) for one account: every metric it supports, in its saved metric order.
-    /// Nil for an unknown provider or one with no metrics.
     func customizeDetail(for providerID: String) -> ProviderMetrics? {
         guard let provider = registry.provider(id: providerID) else { return nil }
         let metrics = orderedSupportedMetrics(for: providerID)
         return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
     }
 
-    /// A provider's supported metrics in custom order, independent of whether each metric is enabled.
     func orderedSupportedMetrics(for providerID: String) -> [WidgetDescriptor] {
         metricOrder(for: providerID).compactMap { registry.descriptor(id: $0) }
     }
 
-    /// Pinned metrics grouped by provider, in the user's saved order (provider order, then each
-    /// provider's metric order). Drives the menu-bar strip.
     var pinnedGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
             let metrics = orderedSupportedMetrics(for: provider.id).filter { pinnedMetricIDs.contains($0.id) }
@@ -53,8 +39,6 @@ extension LayoutStore {
         }
     }
 
-    /// Reorder whole providers when `dragged`'s header is dropped onto `target`'s.
-    /// Returns whether the order actually changed — the drag gestures key haptics off it.
     @discardableResult
     func reorderProvider(dragged: String, target: String) -> Bool {
         recordingUndoStep {
@@ -66,8 +50,6 @@ extension LayoutStore {
         }
     }
 
-    /// Move a whole provider card: every account of `dragged`'s provider family moves, in its own order,
-    /// to `target`'s place. Accounts of one family stay together in the saved order afterwards.
     @discardableResult
     func reorderFamily(dragged: String, target: String) -> Bool {
         recordingUndoStep {
@@ -85,9 +67,6 @@ extension LayoutStore {
         }
     }
 
-    /// Reorder metrics within one provider when `dragged` is dropped onto `target` (both descriptor ids of
-    /// that provider). Operates on the provider's full metric order so disabled metrics keep their place too.
-    /// Returns whether the order actually changed — the drag gestures key haptics off it.
     @discardableResult
     func reorderMetric(dragged: String, target: String, in providerID: String) -> Bool {
         recordingUndoStep {

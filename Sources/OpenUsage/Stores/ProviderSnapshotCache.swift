@@ -1,8 +1,5 @@
 import Foundation
 
-/// The last good snapshot of every account, saved in the app's defaults under one key so a relaunch and
-/// the `openusage` command show it before the first fetch. `WidgetDataStore` owns the snapshots and
-/// decides which are fresh; this only reads and writes them.
 struct ProviderSnapshotCache {
     private struct Payload: Codable {
         var snapshots: [String: ProviderSnapshot]
@@ -16,8 +13,6 @@ struct ProviderSnapshotCache {
         self.storageKey = storageKey
     }
 
-    /// Every saved snapshot, expired ones included. Saved data that no longer decodes (a schema change, a
-    /// half-written blob, a manual `defaults` edit) is logged and read as empty.
     func load() -> [String: ProviderSnapshot] {
         guard let data = userDefaults.data(forKey: storageKey) else { return [:] }
         let decoder = JSONDecoder()
