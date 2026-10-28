@@ -11,14 +11,8 @@ enum GrokUsageMapper {
 
         var lines: [MetricLine] = []
         if config.periodType == GrokCreditsConfigDecoder.weeklyPeriodType {
-            lines.append(.progress(
-                label: "Weekly limit",
-                used: ProviderParse.clampPercent(config.usedPercent),
-                limit: 100,
-                format: .percent,
-                resetsAt: config.periodEnd,
-                periodDurationMs: config.periodDurationMs
-            ))
+            let used = ProviderParse.clampPercent(config.usedPercent)
+            lines.append(.percent("Weekly limit", used, resetsAt: config.periodEnd, periodMs: config.periodDurationMs))
         }
         // A missing `onDemandCap` means no pay-as-you-go (proto-JSON also drops a 0 cap) → the
         // Disabled badge, same as a present cap of 0.

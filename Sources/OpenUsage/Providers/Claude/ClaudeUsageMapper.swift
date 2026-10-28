@@ -92,14 +92,7 @@ enum ClaudeUsageMapper {
         else {
             return
         }
-        lines.append(.progress(
-            label: label,
-            used: used,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetDate(object["resets_at"]),
-            periodDurationMs: periodDurationMs
-        ))
+        lines.append(.percent(label, used, resetsAt: resetDate(object["resets_at"]), periodMs: periodDurationMs))
     }
 
     /// A model-scoped weekly limit from the `limits` array — `kind: "weekly_scoped"` with
@@ -116,14 +109,7 @@ enum ClaudeUsageMapper {
                   model["display_name"] as? String == modelName,
                   let used = ProviderParse.number(object["percent"])
             else { continue }
-            lines.append(.progress(
-                label: label,
-                used: used,
-                limit: 100,
-                format: .percent,
-                resetsAt: resetDate(object["resets_at"]),
-                periodDurationMs: weeklyPeriodMs
-            ))
+            lines.append(.percent(label, used, resetsAt: resetDate(object["resets_at"]), periodMs: weeklyPeriodMs))
             return
         }
     }

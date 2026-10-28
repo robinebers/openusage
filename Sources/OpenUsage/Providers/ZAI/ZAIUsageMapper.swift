@@ -137,14 +137,7 @@ enum ZAIUsageMapper {
         }
         let percentage = ProviderParse.clampPercent(rawPercentage)
         let resetsAt = ProviderParse.number(entry["nextResetTime"]).map { epochMsToDate($0) }
-        return .progress(
-            label: label,
-            used: percentage,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetsAt,
-            periodDurationMs: periodMs
-        )
+        return .percent(label, percentage, resetsAt: resetsAt, periodMs: periodMs)
     }
 
     /// TIME_LIMIT → a count meter (used / limit) for monthly web-search/reader calls.

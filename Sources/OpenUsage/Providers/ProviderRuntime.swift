@@ -33,6 +33,13 @@ struct ProviderUsage: Equatable, Sendable {
     var lines: [MetricLine]
 }
 
+extension MetricLine {
+    /// A percent-used meter out of 100.
+    static func percent(_ label: String, _ used: Double, resetsAt: Date? = nil, periodMs: Int? = nil) -> MetricLine {
+        .progress(label: label, used: used, limit: 100, format: .percent, resetsAt: resetsAt, periodDurationMs: periodMs)
+    }
+}
+
 /// Run a blocking, `Sendable` credential load off the MainActor.
 ///
 /// Credential vault reads block the calling thread for as long as a Keychain prompt waits for the user.

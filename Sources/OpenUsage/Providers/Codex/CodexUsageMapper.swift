@@ -50,23 +50,6 @@ enum CodexUsageMapper {
         return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
-    private static func progress(
-        label: String,
-        used: Double,
-        resetWindow: [String: Any]?,
-        now: Date,
-        periodDurationMs: Int
-    ) -> MetricLine {
-        .progress(
-            label: label,
-            used: used,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetDate(resetWindow, now: now),
-            periodDurationMs: periodDurationMs
-        )
-    }
-
     /// One rate-limit window → a percent-used meter, or `nil` when `usedPercent` is absent. Resolves the
     /// window's own period (falling back to `defaultPeriodMs`) while preserving the percentage reported
     /// by Codex, so all Session/Weekly/Spark paths share one construction.
@@ -78,14 +61,7 @@ enum CodexUsageMapper {
         now: Date
     ) -> MetricLine? {
         guard let usedPercent else { return nil }
-        let periodDurationMs = readPeriodMs(window) ?? defaultPeriodMs
-        return progress(
-            label: label,
-            used: usedPercent,
-            resetWindow: window,
-            now: now,
-            periodDurationMs: periodDurationMs
-        )
+        return .percent(label, usedPercent, resetsAt: resetDate(window, now: now), periodMs: readPeriodMs(window) ?? defaultPeriodMs)
     }
 
     private enum WindowKind {

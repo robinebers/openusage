@@ -77,14 +77,7 @@ enum CursorUsageMapper {
             periodDurationMs = MetricPeriod.weekMs
         }
 
-        return .progress(
-            label: "Grok Bot usage",
-            used: ProviderParse.clampPercent(percent),
-            limit: 100,
-            format: .percent,
-            resetsAt: reset,
-            periodDurationMs: periodDurationMs
-        )
+        return .percent("Grok Bot usage", ProviderParse.clampPercent(percent), resetsAt: reset, periodMs: periodDurationMs)
     }
 
     static func mapUsage(
@@ -125,10 +118,7 @@ enum CursorUsageMapper {
             // Modern Teams seats still report the old $20 allowance. Structured pool data wins;
             // never synthesize a total from stale dollars when Cursor omits totalPercentUsed.
             if let percent = facts.totalPercentUsed {
-                lines.append(.progress(
-                    label: "Total usage", used: percent, limit: 100, format: .percent,
-                    resetsAt: cycle.resetsAt, periodDurationMs: cycle.periodDurationMs
-                ))
+                lines.append(.percent("Total usage", percent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
             }
         } else if isTeamAccount {
             if let limitCents = facts.limit {
@@ -141,44 +131,20 @@ enum CursorUsageMapper {
                     periodDurationMs: cycle.periodDurationMs
                 ))
             } else if let percent = facts.totalPercentUsed {
-                lines.append(.progress(
-                    label: "Total usage", used: percent, limit: 100, format: .percent,
-                    resetsAt: cycle.resetsAt, periodDurationMs: cycle.periodDurationMs
-                ))
+                lines.append(.percent("Total usage", percent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
             } else {
                 throw ProviderError.unavailable("Cursor request-based usage data unavailable. Try again later.")
             }
         } else {
-            lines.append(.progress(
-                label: "Total usage",
-                used: totalUsagePercent,
-                limit: 100,
-                format: .percent,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
+            lines.append(.percent("Total usage", totalUsagePercent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
         }
 
         if let autoPercentUsed = ProviderParse.number(planUsage["autoPercentUsed"]) {
-            lines.append(.progress(
-                label: "Cursor Models",
-                used: autoPercentUsed,
-                limit: 100,
-                format: .percent,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
+            lines.append(.percent("Cursor Models", autoPercentUsed, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
         }
 
         if let apiPercentUsed = ProviderParse.number(planUsage["apiPercentUsed"]) {
-            lines.append(.progress(
-                label: "Other Models",
-                used: apiPercentUsed,
-                limit: 100,
-                format: .percent,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
+            lines.append(.percent("Other Models", apiPercentUsed, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
         }
 
         if let spendLimitUsage {

@@ -74,14 +74,8 @@ enum OllamaUsageMapper {
               let remaining = ProviderParse.number(entry["remaining_percent"]) else { return nil }
         // The period only pairs with a real reset; alone it would render a static "Resets in 5h".
         let resetsAt = date(entry["resets_at"])
-        return .progress(
-            label: label,
-            used: ProviderParse.clampPercent(100 - remaining),
-            limit: 100,
-            format: .percent,
-            resetsAt: resetsAt,
-            periodDurationMs: resetsAt == nil ? nil : periodMs
-        )
+        let used = ProviderParse.clampPercent(100 - remaining)
+        return .percent(label, used, resetsAt: resetsAt, periodMs: resetsAt == nil ? nil : periodMs)
     }
 
     /// The monthly allowance → a dollar meter: used = allowance − balance, resetting at `period.until`.

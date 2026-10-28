@@ -141,15 +141,8 @@ enum AntigravityUsageMapper {
 
     static func line(pool: String, fraction: Double, resetTime: Date?, periodMs: Int) -> MetricLine {
         let clamped = max(0, min(1, fraction))
-        let used = (1 - clamped) * 100
-        return .progress(
-            label: pool,
-            used: used.rounded(), // keep whole percents so a fresh window reads 0 and the fresh-window treatment applies
-            limit: 100,
-            format: .percent,
-            resetsAt: resetTime,
-            periodDurationMs: periodMs
-        )
+        let used = ((1 - clamped) * 100).rounded() // keep whole percents so a fresh window reads 0 and the fresh-window treatment applies
+        return .percent(pool, used, resetsAt: resetTime, periodMs: periodMs)
     }
 
     /// Normalize a raw plan/tier string to the name Google sells the subscription as: "Google AI Pro",

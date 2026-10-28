@@ -84,14 +84,7 @@ enum OpenCodeUsageMapper {
                 resetsAt = nil
             }
         }
-        return .progress(
-            label: label,
-            used: used,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetsAt,
-            periodDurationMs: periodMs
-        )
+        return .percent(label, used, resetsAt: resetsAt, periodMs: periodMs)
     }
 }
 

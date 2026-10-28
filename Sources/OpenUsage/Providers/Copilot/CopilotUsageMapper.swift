@@ -99,14 +99,7 @@ enum CopilotUsageMapper {
             return nil
         }
 
-        return .progress(
-            label: label,
-            used: usedPercent,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetsAt,
-            periodDurationMs: periodMs
-        )
+        return .percent(label, usedPercent, resetsAt: resetsAt, periodMs: periodMs)
     }
 
     /// Personal `credits_used` on an org-managed zero-entitlement placeholder. Used only after the
@@ -147,14 +140,7 @@ enum CopilotUsageMapper {
             return nil
         }
         let used = max(0, total - remaining)
-        return .progress(
-            label: label,
-            used: ProviderParse.clampPercent((used / total) * 100),
-            limit: 100,
-            format: .percent,
-            resetsAt: resetsAt,
-            periodDurationMs: periodMs
-        )
+        return .percent(label, ProviderParse.clampPercent((used / total) * 100), resetsAt: resetsAt, periodMs: periodMs)
     }
 
     private static func appendIfPresent(_ lines: inout [MetricLine], _ line: MetricLine?) {

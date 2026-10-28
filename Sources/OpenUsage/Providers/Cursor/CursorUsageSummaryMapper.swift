@@ -105,14 +105,7 @@ enum CursorUsageSummaryMapper {
             return
         }
         if let percent = ProviderParse.number((individual?["plan"] as? [String: Any])?["totalPercentUsed"]) {
-            lines.append(.progress(
-                label: "Total usage",
-                used: percent,
-                limit: 100,
-                format: .percent,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
+            lines.append(.percent("Total usage", percent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
             return
         }
         if let overall = dollarMeter(individual?["overall"]) {
@@ -132,14 +125,7 @@ enum CursorUsageSummaryMapper {
         let plan = ((summary?["individualUsage"] as? [String: Any])?["plan"] as? [String: Any])
         for (key, label) in [("autoPercentUsed", "Cursor Models"), ("apiPercentUsed", "Other Models")] {
             guard let percent = ProviderParse.number(plan?[key]) else { continue }
-            lines.append(.progress(
-                label: label,
-                used: percent,
-                limit: 100,
-                format: .percent,
-                resetsAt: cycle.resetsAt,
-                periodDurationMs: cycle.periodDurationMs
-            ))
+            lines.append(.percent(label, percent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
         }
     }
 
