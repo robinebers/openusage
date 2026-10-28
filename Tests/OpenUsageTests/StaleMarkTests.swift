@@ -18,12 +18,19 @@ final class StaleMarkTests: XCTestCase {
         await store.refreshAll()
         XCTAssertFalse(store.hasStaleAccount, "current numbers")
 
+        clock.set(start.addingTimeInterval(60))
         await store.refreshAll(force: true)
         XCTAssertNotNil(store.backoffs["test"])
         XCTAssertFalse(store.hasStaleAccount, "a failure on current numbers is not stale yet")
 
+        let redrawn = TestSwitch(false)
+        withObservationTracking { _ = store.hasStaleAccount } onChange: { redrawn.value = true }
         clock.set(start.addingTimeInterval(RefreshSetting.interval))
+        XCTAssertFalse(store.hasStaleAccount, "the mark follows the refresh passes, not the clock")
+        await store.refreshAll()
+        XCTAssertNotNil(store.backoffs["test"], "the pass backed off and wrote no snapshot")
         XCTAssertTrue(store.hasStaleAccount, "the numbers outlived their slot while the backoff holds")
+        XCTAssertTrue(redrawn.value, "the backed-off pass still re-evaluates the strip")
 
         clock.set(store.backoffs["test"]!.retryAt)
         await store.refreshAll()

@@ -83,7 +83,7 @@ final class WidgetDataStore {
         let start = ProcessInfo.processInfo.systemUptime
         AppLog.notice(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
         let outcomes = await refresh(providerIDs: providerIDs, force: force)
-        lastRefreshAt = Date()
+        lastRefreshAt = now()
         let durationMs = durationMilliseconds(since: start)
         let refreshed = outcomes.count { $0 == .refreshed }
         let failed = outcomes.count { $0 == .failed }
@@ -237,8 +237,9 @@ final class WidgetDataStore {
     }
 
     var hasStaleAccount: Bool {
-        snapshots.contains { id, snapshot in
-            backoffs[id] != nil && now().timeIntervalSince(snapshot.refreshedAt) >= RefreshSetting.interval
+        guard let lastRefreshAt else { return false }
+        return snapshots.contains { id, snapshot in
+            backoffs[id] != nil && lastRefreshAt.timeIntervalSince(snapshot.refreshedAt) >= RefreshSetting.interval
         }
     }
 
