@@ -1,14 +1,14 @@
 import SwiftUI
 import Observation
 
-/// Mutable layout: which widgets are enabled, provider order, and each provider's metric order.
-/// `placed` is the enabled set (with stable widget ids); `metricOrderByProvider` is the user's custom order.
+/// Mutable layout: which metrics are hidden, provider order, and each provider's metric order.
 @MainActor
 @Observable
 final class LayoutStore {
     // Swift's private access is file-scoped. Members shared with `LayoutStore+Customization.swift`
     // stay module-internal below; implementation details used only here remain private.
-    var placed: [PlacedWidget] = []
+    /// The metrics the user turned off. Every other metric of every account shows.
+    private(set) var hiddenMetricIDs: Set<String> = []
 
     /// In-popover navigation (screen, Accounts master/detail, screen-switch slide). Its own store so
     /// screen routing isn't tangled with layout state; the `screen`/`isEditing`/`customizeProviderID`/
@@ -95,86 +95,71 @@ final class LayoutStore {
     /// The accounts' providers and metrics. Replaced in place by `apply(registry:)` when accounts change.
     private(set) var registry: WidgetRegistry
     private let persistence: LayoutPersistence
-    /// Provider-family defaults ("codex.session"); `DefaultLayout.expandingAccounts` maps them onto
-    /// every account card in the current registry.
-    private let familyDefaults: LayoutDefaultSet
-
-    private var defaultMetricIDs: [String] { forAccounts(familyDefaults.metricIDs) }
-    private var defaultPinnedMetricIDs: [String] { forAccounts(familyDefaults.pinnedMetricIDs) }
-
-    private func forAccounts(_ metricIDs: [String]) -> [String] {
-        DefaultLayout.expandingAccounts(metricIDs, providerIDs: registry.providers.map(\.id))
-    }
+    /// Provider-family default stars ("codex.session"), given to an account the first time it shows up.
+    private let defaultPinnedMetricIDs: [String]
 
     init(
         registry: WidgetRegistry,
         defaults: UserDefaults = .standard,
         storageKey: String = "openusage.layout.v1",
-        defaultMetricIDs: [String] = DefaultLayout.metricIDs,
-        migrationBaselineMetricIDs: [String] = DefaultLayout.migrationBaselineMetricIDs,
         defaultPinnedMetricIDs: [String] = DefaultLayout.pinnedMetricIDs
     ) {
         self.registry = registry
-        let persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
-        self.persistence = persistence
-        self.familyDefaults = LayoutDefaultSet(
-            metricIDs: defaultMetricIDs,
-            migrationBaselineMetricIDs: migrationBaselineMetricIDs,
-            pinnedMetricIDs: defaultPinnedMetricIDs
-        )
-        loadLayout()
+        self.persistence = LayoutPersistence(defaults: defaults, storageKey: storageKey)
+        self.defaultPinnedMetricIDs = defaultPinnedMetricIDs
+        loadLayout(newCardIDs: [])
     }
 
     /// Adopts a new set of accounts without rebuilding anything. Every layout change is persisted as it
-    /// happens, so reloading from storage against the new registry keeps the user's arrangement, seeds
-    /// defaults for a new account, and drops a removed account's metrics, pins, and order.
+    /// happens, so reloading from storage against the new registry keeps the user's arrangement, stars
+    /// a new account's defaults, and drops a removed account's hidden metrics, pins, and order.
     func apply(registry: WidgetRegistry) {
         undoHistory.clear()
+        let knownCardIDs = Set(self.registry.providers.map(\.id))
         self.registry = registry
         if let customizeProviderID, registry.provider(id: customizeProviderID) == nil {
             self.customizeProviderID = nil
         }
-        loadLayout()
+        loadLayout(newCardIDs: registry.providers.map(\.id).filter { !knownCardIDs.contains($0) })
     }
 
-    private func loadLayout() {
-        let initial = LayoutBootstrap.load(
-            registry: registry,
-            persistence: persistence,
-            defaults: LayoutDefaultSet(
-                metricIDs: defaultMetricIDs,
-                migrationBaselineMetricIDs: familyDefaults.migrationBaselineMetricIDs,
-                pinnedMetricIDs: defaultPinnedMetricIDs
-            )
-        )
-        placed = initial.placed
-        providerOrder = initial.providerOrder
-        metricOrderByProvider = initial.metricOrderByProvider
-        pinnedMetricIDs = initial.pinnedMetricIDs
+    /// Reads the saved layout against the current accounts. Saved stars, including none at all, are the
+    /// user's choice for the accounts they were made on; an account in `newCardIDs` gets its default stars,
+    /// and with no stars saved yet every account has its defaults. Only shown metrics keep a star.
+    private func loadLayout(newCardIDs: [String]) {
+        hiddenMetricIDs = Set(persistence.loadHidden() ?? []).filter { registry.descriptor(id: $0) != nil }
+        providerOrder = persistence.loadProviderOrder() ?? []
+        metricOrderByProvider = persistence.loadMetricOrder().map {
+            LayoutOrdering.normalizedMetricOrder($0, registry: registry)
+        } ?? LayoutOrdering.defaultMetricOrder(registry: registry)
 
-        if let seededDefaults = initial.seededDefaultsToPersist { persistSeededDefaults(seededDefaults) }
-        if initial.shouldPersistPins { persistPins() }
-        syncPlacedOrder(persistChanges: initial.shouldPersistPlaced)
+        let savedPins = persistence.loadPins().map { Set($0).filter { registry.descriptor(id: $0) != nil } }
+        let pins = savedPins.map { $0.union(newCardIDs.flatMap(defaultPins(forCard:))) }
+            ?? Set(registry.providers.flatMap { defaultPins(forCard: $0.id) })
+        pinnedMetricIDs = pins.filter { registry.descriptor(id: $0) != nil && !hiddenMetricIDs.contains($0) }
+        if let savedPins, pinnedMetricIDs != savedPins { persistPins() }
+    }
+
+    /// `defaultPinnedMetricIDs` on one account: "claude.session" is "claude@1a2b3c4d.session" on
+    /// "claude@1a2b3c4d".
+    private func defaultPins(forCard cardID: String) -> [String] {
+        let family = DashboardFamily.familyID(of: cardID)
+        return defaultPinnedMetricIDs.compactMap { $0.hasPrefix("\(family).") ? cardID + $0.dropFirst(family.count) : nil }
     }
 
     // MARK: - Layout mutations
 
-    /// Toggle a metric on (add to the placed list) or off (remove it). The single seam the Accounts
-    /// screen's switches drive, so on/off goes through the same add/remove path the rest of the app uses.
+    /// Turn a metric on or off: the Accounts screen's switches.
     func setMetricEnabled(_ descriptorID: String, _ enabled: Bool) {
         recordingUndoStep {
-            if enabled {
-                add(descriptorID)
-            } else if let widget = placed.first(where: { $0.descriptorID == descriptorID }) {
-                remove(widget.id)
-            }
+            if enabled { show(descriptorID) } else { hide(descriptorID) }
         }
     }
 
     /// Turn several metrics back on as one undoable step: the dashboard's Show Hidden Metrics.
     func showMetrics(_ descriptorIDs: [String]) {
         recordingUndoStep {
-            for id in descriptorIDs { add(id) }
+            for id in descriptorIDs { show(id) }
         }
     }
 
@@ -186,7 +171,7 @@ final class LayoutStore {
     /// A snapshot of the current undoable layout state.
     private func currentSnapshot() -> LayoutSnapshot {
         LayoutSnapshot(
-            placed: placed,
+            hiddenMetricIDs: hiddenMetricIDs,
             providerOrder: providerOrder,
             metricOrderByProvider: metricOrderByProvider,
             pinnedMetricIDs: pinnedMetricIDs
@@ -226,11 +211,11 @@ final class LayoutStore {
 
     /// Restore every undoable field from a snapshot and persist the result. Called by `undo()`.
     private func restore(_ snapshot: LayoutSnapshot) {
-        placed = snapshot.placed
+        hiddenMetricIDs = snapshot.hiddenMetricIDs
         providerOrder = snapshot.providerOrder
         metricOrderByProvider = snapshot.metricOrderByProvider
         pinnedMetricIDs = snapshot.pinnedMetricIDs
-        persist()
+        persistHidden()
         persistProviderOrder()
         persistMetricOrder()
         persistPins()
@@ -311,7 +296,7 @@ final class LayoutStore {
             if pinned {
                 guard canPin(descriptorID), registry.descriptor(id: descriptorID) != nil else { return }
                 guard pinnedMetricIDs.insert(descriptorID).inserted else { return }
-                add(descriptorID)
+                show(descriptorID)
             } else {
                 guard pinnedMetricIDs.remove(descriptorID) != nil else { return }
             }
@@ -329,24 +314,21 @@ final class LayoutStore {
 
     // MARK: - Mutations
 
-    func add(_ descriptorID: String) {
-        guard registry.descriptor(id: descriptorID) != nil else { return }
-        guard !placed.contains(where: { $0.descriptorID == descriptorID }) else { return }
-        placed.append(PlacedWidget(descriptorID: descriptorID))
-        syncPlacedOrder()
+    func show(_ descriptorID: String) {
+        guard hiddenMetricIDs.remove(descriptorID) != nil else { return }
+        persistHidden()
     }
 
     /// Hide a metric. Hiding also takes its star off, so the menu bar drops it too; showing it again
     /// doesn't put the star back.
-    func remove(_ id: UUID) {
-        guard let index = placed.firstIndex(where: { $0.id == id }) else { return }
-        let descriptorID = placed.remove(at: index).descriptorID
-        persist()
+    func hide(_ descriptorID: String) {
+        guard registry.descriptor(id: descriptorID) != nil, hiddenMetricIDs.insert(descriptorID).inserted else { return }
+        persistHidden()
         if pinnedMetricIDs.remove(descriptorID) != nil { persistPins() }
     }
 
-    func persist() {
-        persistence.savePlaced(placed)
+    func persistHidden() {
+        persistence.saveHidden(hiddenMetricIDs)
     }
 
     func persistProviderOrder() {
@@ -357,29 +339,9 @@ final class LayoutStore {
         persistence.saveMetricOrder(metricOrderByProvider)
     }
 
-    private func persistSeededDefaults(_ ids: Set<String>) {
-        persistence.saveSeededDefaults(ids)
-    }
-
     func metricOrder(for providerID: String) -> [String] {
         let valid = registry.descriptors(for: providerID).map(\.id)
         let saved = metricOrderByProvider[providerID] ?? []
         return LayoutOrdering.normalizedMetricIDs(saved, validIDs: valid)
     }
-
-    func syncPlacedOrder(persistChanges: Bool = true) {
-        let byDescriptor = Dictionary(
-            placed.map { ($0.descriptorID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var ordered: [PlacedWidget] = []
-        for providerID in orderedProviderIDs() {
-            ordered.append(contentsOf: metricOrder(for: providerID).compactMap { byDescriptor[$0] })
-        }
-        let orderedIDs = Set(ordered.map(\.id))
-        ordered.append(contentsOf: placed.filter { !orderedIDs.contains($0.id) })
-        placed = ordered
-        if persistChanges { persist() }
-    }
-
 }

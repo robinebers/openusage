@@ -1,19 +1,12 @@
 extension LayoutStore {
     func provider(id: String) -> Provider? { registry.provider(id: id) }
 
-    func descriptor(for widget: PlacedWidget) -> WidgetDescriptor? {
-        registry.descriptor(id: widget.descriptorID)
-    }
-
-    var visiblePlaced: [PlacedWidget] { placed }
-
-    private func providerID(of widget: PlacedWidget) -> String? {
-        registry.descriptor(id: widget.descriptorID)?.providerID
-    }
-
     func isMetricEnabled(_ descriptorID: String) -> Bool {
-        placed.contains { $0.descriptorID == descriptorID }
+        !hiddenMetricIDs.contains(descriptorID)
     }
+
+    /// The shown metrics in the user's order: provider order, then each provider's metric order.
+    var visibleDescriptors: [WidgetDescriptor] { displayGroups.flatMap(\.metrics) }
 
     // MARK: - Provider grouping
 
@@ -28,19 +21,13 @@ extension LayoutStore {
         orderedProviderIDs().compactMap { registry.provider(id: $0) }
     }
 
-    /// Enabled widgets grouped by provider, in the user's provider order, each
-    /// provider's metrics kept in the provider's custom metric order. Drives the grouped dashboard list; providers with
-    /// no visible metric are dropped so the dashboard only shows groups that have something to show.
-    var displayGroups: [ProviderGroup] {
+    /// Shown metrics grouped by provider, in the user's provider order, each provider's metrics kept in
+    /// the provider's custom metric order. Drives the grouped dashboard list; providers with no shown
+    /// metric are dropped so the dashboard only shows groups that have something to show.
+    var displayGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
-            let widgetsByDescriptor = Dictionary(
-                visiblePlaced
-                    .filter { providerID(of: $0) == provider.id }
-                    .map { ($0.descriptorID, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let widgets = metricOrder(for: provider.id).compactMap { widgetsByDescriptor[$0] }
-            return widgets.isEmpty ? nil : ProviderGroup(provider: provider, widgets: widgets)
+            let metrics = orderedSupportedMetrics(for: provider.id).filter { !hiddenMetricIDs.contains($0.id) }
+            return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
         }
     }
 
@@ -75,7 +62,6 @@ extension LayoutStore {
             guard let next = Self.reordered(ordered, dragged: dragged, target: target) else { return false }
             providerOrder = next
             persistProviderOrder()
-            syncPlacedOrder()
             return true
         }
     }
@@ -95,7 +81,6 @@ extension LayoutStore {
             guard let next = Self.reordered(families, dragged: dragged, target: target) else { return false }
             providerOrder = next.flatMap { members[$0] ?? [] }
             persistProviderOrder()
-            syncPlacedOrder()
             return true
         }
     }
@@ -111,7 +96,6 @@ extension LayoutStore {
             }
             metricOrderByProvider[providerID] = next
             persistMetricOrder()
-            syncPlacedOrder()
             return true
         }
     }

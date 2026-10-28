@@ -108,11 +108,8 @@ final class MenuBarPinTests: XCTestCase {
         makeStore(defaults: isolatedDefaults())
     }
 
-    /// Every metric starts shown, since only a shown metric can keep a star.
     private func makeStore(defaults: UserDefaults) -> LayoutStore {
-        let registry = makeRegistry()
-        return LayoutStore(registry: registry, defaults: defaults, storageKey: "layout",
-                           defaultMetricIDs: registry.descriptors.map(\.id))
+        LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
     }
 
     /// Two providers, each with three percent metrics, are sufficient to exercise provider-local caps.

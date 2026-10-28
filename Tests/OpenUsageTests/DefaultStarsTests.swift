@@ -28,16 +28,12 @@ final class DefaultStarsTests: XCTestCase {
 
     func testPinsSavedUnderTheOldFamilyIDsDoNotStandInForAnAccountsOwn() {
         let defaults = isolatedDefaults()
-        let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
-        persistence.savePlaced([PlacedWidget(descriptorID: "claude.session"), PlacedWidget(descriptorID: "claude.weekly")])
-        persistence.saveSeededDefaults(["claude.session", "claude.weekly"])
-        persistence.savePins(["claude.session", "claude.weekly"])
-        let account = Account(kind: .claude, label: "Work")
-        let providers = ProviderCatalog.make(accounts: [account], vault: InMemoryCredentialVault())
+        LayoutPersistence(defaults: defaults, storageKey: "openusage.layout.v1").savePins(["claude.session", "claude.weekly"])
+        let app = StarsApp(defaults: defaults)
 
-        let store = LayoutStore(registry: WidgetRegistry.from(providers), defaults: defaults, storageKey: "layout")
+        let account = app.add(.claude)
 
-        XCTAssertEqual(store.pinnedMetricIDs, ["\(account.cardID).session", "\(account.cardID).weekly"])
+        XCTAssertEqual(app.layout.pinnedMetricIDs, ["\(account.cardID).session", "\(account.cardID).weekly"])
     }
 
     private func makeApp() -> StarsApp {

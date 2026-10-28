@@ -38,8 +38,8 @@ refresh, add it as an extension in the provider folder, as `AccountProviderRunti
 
 ## 4. Defaults
 
-Add the metrics that should be on by default to `DefaultLayout.metricIDs`, and the one or two that
-should start in the menu bar to `DefaultLayout.pinnedMetricIDs`. Confirm both with the owner.
+Every metric starts shown. Add the one or two that should start in the menu bar to
+`DefaultLayout.pinnedMetricIDs`, and confirm them with the owner.
 
 ## 5. Test
 

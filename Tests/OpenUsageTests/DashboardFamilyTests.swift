@@ -12,15 +12,14 @@ final class DashboardFamilyTests: XCTestCase {
             return data
         }
         let samples = ["session": data("Session"), "fable": data("Fable"), "weekly": data("Weekly", hasData: false)]
-        let groups = [
-            ProviderGroup(provider: provider("claude@1"), widgets: ["session", "fable", "weekly"].map { PlacedWidget(descriptorID: $0) }),
-            ProviderGroup(provider: provider("claude@2"), widgets: [PlacedWidget(descriptorID: "fable")]),
-        ]
-        let families = DashboardFamily.make(groups: groups) { widget in
-            samples[widget.descriptorID].map {
-                DashboardLine(descriptor: WidgetDescriptor(id: widget.descriptorID, providerID: "claude", metricLabel: $0.title, sample: $0), data: $0)
-            }
+        func descriptor(_ id: String) -> WidgetDescriptor {
+            WidgetDescriptor(id: id, providerID: "claude", metricLabel: samples[id]!.title, sample: samples[id]!)
         }
+        let groups = [
+            ProviderMetrics(provider: provider("claude@1"), metrics: ["session", "fable", "weekly"].map(descriptor)),
+            ProviderMetrics(provider: provider("claude@2"), metrics: [descriptor("fable")]),
+        ]
+        let families = DashboardFamily.make(groups: groups) { DashboardLine(descriptor: $0, data: $0.sample) }
         XCTAssertEqual(families.map(\.id), ["claude"])
         XCTAssertEqual(families[0].accounts.map { $0.lines.map(\.id) }, [["session", "fable"], ["fable"]])
     }
@@ -52,15 +51,11 @@ final class DashboardFamilyTests: XCTestCase {
         let weekly = WidgetData(title: "Weekly", kind: .percent, used: 10, limit: 100)
         func account(resetCount: Double) -> DashboardAccount {
             let samples = ["resets": resets(resetCount), "weekly": weekly]
-            let group = ProviderGroup(
+            let group = ProviderMetrics(
                 provider: Provider(id: "codex@1", displayName: "Codex", icon: "codex"),
-                widgets: ["resets", "weekly"].map { PlacedWidget(descriptorID: $0) }
+                metrics: ["resets", "weekly"].map { WidgetDescriptor(id: $0, providerID: "codex", metricLabel: samples[$0]!.title, sample: samples[$0]!) }
             )
-            return DashboardFamily.make(groups: [group]) { widget in
-                samples[widget.descriptorID].map {
-                    DashboardLine(descriptor: WidgetDescriptor(id: widget.descriptorID, providerID: "codex", metricLabel: $0.title, sample: $0), data: $0)
-                }
-            }[0].accounts[0]
+            return DashboardFamily.make(groups: [group]) { DashboardLine(descriptor: $0, data: $0.sample) }[0].accounts[0]
         }
         XCTAssertEqual(account(resetCount: 2).lines.map(\.id), ["resets", "weekly"])
         XCTAssertEqual(account(resetCount: 0).lines.map(\.id), ["weekly"])

@@ -55,8 +55,8 @@ the hourly plan and reset-grant reads), and the reset-claim services live in its
 `Providers/<Name>/`. Each provider folder holds a `<Name>UsageClient` (HTTP) and a
 `<Name>UsageMapper` (pure response-to-metrics mapping).
 
-`WidgetRegistry.from(providers)` collects every descriptor. `LayoutStore` decides which are placed and
-in what order; `WidgetDataStore` turns snapshots into `WidgetData` for the views.
+`WidgetRegistry.from(providers)` collects every descriptor. `LayoutStore` keeps which ones the user hid
+and their order; `WidgetDataStore` turns snapshots into `WidgetData` for the views.
 
 ## Refresh loop
 

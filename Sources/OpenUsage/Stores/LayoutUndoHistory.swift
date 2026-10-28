@@ -8,7 +8,7 @@ import Foundation
 ///
 /// Equatable so the store can skip pushing a snapshot when an action turned out to be a no-op.
 struct LayoutSnapshot: Equatable {
-    let placed: [PlacedWidget]
+    let hiddenMetricIDs: Set<String>
     let providerOrder: [String]
     let metricOrderByProvider: [String: [String]]
     let pinnedMetricIDs: Set<String>

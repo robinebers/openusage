@@ -61,11 +61,10 @@ Provider sign-in and usage code lives under `Sources/OpenUsage/Providers/<Name>/
 account-scoped refresh. Provider API failures should surface as friendly account-specific errors
 without logging credentials or response bodies. See `docs/adding-a-provider.md`.
 
-**Metric placement defaults:** when adding or changing a metric, confirm its three defaults with the
-owner before choosing — never pick silently:
-1. enabled on/off (`DefaultLayout.metricIDs`),
-2. starred into the menu bar (`DefaultLayout.pinnedMetricIDs`),
-3. order (within an account, the `widgetDescriptors` declaration order).
+**Metric placement defaults:** every metric starts shown. When adding or changing a metric, confirm its
+two defaults with the owner before choosing — never pick silently:
+1. starred into the menu bar (`DefaultLayout.pinnedMetricIDs`),
+2. order (within an account, the `widgetDescriptors` declaration order).
 
 ## Running / Testing Changes
 

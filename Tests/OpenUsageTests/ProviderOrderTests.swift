@@ -135,7 +135,7 @@ private final class OrderingApp {
     }
 
     var dashboard: [[String: [String]]] {
-        DashboardFamily.make(groups: layout.displayGroups, line: { _ in nil })
+        DashboardFamily.make(groups: layout.displayGroups) { DashboardLine(descriptor: $0, data: $0.sample) }
             .map { [$0.id: $0.accounts.map(\.id)] }
     }
 

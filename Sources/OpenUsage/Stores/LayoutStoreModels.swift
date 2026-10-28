@@ -1,12 +1,5 @@
-/// A provider and its enabled widgets in the provider's metric order. Drives the grouped dashboard list.
-struct ProviderGroup: Identifiable {
-    let provider: Provider
-    let widgets: [PlacedWidget]
-    var id: String { provider.id }
-}
-
-/// A provider and a list of its metrics in the provider's custom order. Drives the Accounts detail and
-/// the menu-bar pin grouping.
+/// A provider and a list of its metrics in the provider's custom order. Drives the grouped dashboard
+/// list, the Accounts detail and the menu-bar pin grouping.
 struct ProviderMetrics: Identifiable {
     let provider: Provider
     let metrics: [WidgetDescriptor]

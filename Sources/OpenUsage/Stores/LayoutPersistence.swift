@@ -12,26 +12,17 @@ final class LayoutPersistence {
         self.keys = Keys(storageKey: storageKey)
     }
 
-    /// Presence is separate from successful decoding. Existing-but-unreadable data is still an existing
-    /// layout, so startup must not mistake corruption for a fresh install and apply fresh-only defaults.
-    var hasStoredLayout: Bool { defaults.data(forKey: keys.placed) != nil }
-    var hasStoredSeededDefaults: Bool { defaults.data(forKey: keys.seededDefaults) != nil }
-
-    func loadPlaced() -> [PlacedWidget]? { decode([PlacedWidget].self, forKey: keys.placed) }
+    func loadHidden() -> [String]? { defaults.stringArray(forKey: keys.hidden) }
     func loadProviderOrder() -> [String]? { decode([String].self, forKey: keys.providerOrder) }
     func loadMetricOrder() -> [String: [String]]? {
         decode([String: [String]].self, forKey: keys.metricOrder)
     }
-    func loadSeededDefaults() -> [String]? { decode([String].self, forKey: keys.seededDefaults) }
 
     func loadPins() -> [String]? { defaults.stringArray(forKey: keys.pins) }
 
-    func savePlaced(_ value: [PlacedWidget]) { encode(value, forKey: keys.placed) }
+    func saveHidden(_ value: Set<String>) { defaults.set(value.sorted(), forKey: keys.hidden) }
     func saveProviderOrder(_ value: [String]) { encode(value, forKey: keys.providerOrder) }
     func saveMetricOrder(_ value: [String: [String]]) { encode(value, forKey: keys.metricOrder) }
-    func saveSeededDefaults(_ value: Set<String>) {
-        encode(Array(value).sorted(), forKey: keys.seededDefaults)
-    }
 
     func savePins(_ value: Set<String>) { defaults.set(Array(value), forKey: keys.pins) }
 
@@ -57,17 +48,15 @@ final class LayoutPersistence {
     }
 
     private struct Keys {
-        let placed: String
+        let hidden: String
         let providerOrder: String
         let metricOrder: String
-        let seededDefaults: String
         let pins: String
 
         init(storageKey: String) {
-            placed = storageKey
+            hidden = "\(storageKey).hiddenMetrics"
             providerOrder = "\(storageKey).providerOrder"
             metricOrder = "\(storageKey).metricOrderByProvider"
-            seededDefaults = "\(storageKey).seededDefaults"
             pins = "\(storageKey).menuBarPins"
         }
     }

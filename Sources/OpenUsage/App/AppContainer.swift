@@ -47,7 +47,7 @@ final class AppContainer {
             providers: providers,
             cache: ProviderSnapshotCache(userDefaults: defaults),
             defaults: defaults,
-            orderedDescriptors: { [layout] in layout.visiblePlaced.compactMap { layout.descriptor(for: $0) } },
+            orderedDescriptors: { [layout] in layout.visibleDescriptors },
             notificationSettings: { notificationSettings }
         )
         self.providers = providers
@@ -66,7 +66,7 @@ final class AppContainer {
                 }
                 return TelemetryConfigSnapshot(
                     enabledProviders: kinds,
-                    enabledMetricIDs: layout.placed.map { Account.kindScopedID($0.descriptorID) },
+                    enabledMetricIDs: layout.visibleDescriptors.map { Account.kindScopedID($0.id) },
                     pinnedMetricIDs: layout.pinnedMetricIDs.map(Account.kindScopedID).sorted()
                 )
             }

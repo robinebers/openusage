@@ -43,9 +43,8 @@ struct WidgetGroupedListView: View {
         .animation(Motion.spring, value: families.map(\.id))
     }
 
-    private func resolveLine(_ widget: PlacedWidget) -> DashboardLine? {
-        guard let descriptor = layout.descriptor(for: widget) else { return nil }
-        return DashboardLine(descriptor: descriptor, data: dataStore.data(for: descriptor))
+    private func resolveLine(_ descriptor: WidgetDescriptor) -> DashboardLine {
+        DashboardLine(descriptor: descriptor, data: dataStore.data(for: descriptor))
     }
 
     private func liveFamilies() -> [DashboardFamily] {

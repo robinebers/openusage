@@ -43,10 +43,10 @@ extension DashboardFamily {
 
     /// Groups accounts under their provider in order of first appearance. Every enabled metric that
     /// has data is a line; nothing is tucked behind a click.
-    static func make(groups: [ProviderGroup], line: (PlacedWidget) -> DashboardLine?) -> [DashboardFamily] {
+    static func make(groups: [ProviderMetrics], line: (WidgetDescriptor) -> DashboardLine) -> [DashboardFamily] {
         var families: [DashboardFamily] = []
         for group in groups {
-            let lines = group.widgets.compactMap(line).filter {
+            let lines = group.metrics.map(line).filter {
                 $0.data.hasData && (!$0.data.showsResetExpiries || $0.data.resetCreditCount > 0)
             }
             let account = DashboardAccount(provider: group.provider, lines: lines)

@@ -9,7 +9,7 @@ final class WidgetDataStore {
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
     /// The user's widget order that drives the menu-bar value. Injected
-    /// so the store reads `LayoutStore.visiblePlaced` without owning it; defaults to registry order.
+    /// so the store reads `LayoutStore.visibleDescriptors` without owning it; defaults to registry order.
     private let layoutOrderedDescriptors: (@MainActor () -> [WidgetDescriptor])?
     /// Clock for the failure backoff and staleness. Injected so tests can advance time deterministically.
     private let now: () -> Date
@@ -345,7 +345,7 @@ final class WidgetDataStore {
            let data = resolve(line, descriptor: descriptor) {
             result = data
         } else {
-            // No real metric line backs this placed row, so the sample's numbers are placeholders.
+            // No real metric line backs this shown row, so the sample's numbers are placeholders.
             // Flag it as no-data; the row renders "No data" instead of inventing usage.
             result = descriptor.sample
             result.hasData = false

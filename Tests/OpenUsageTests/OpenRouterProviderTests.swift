@@ -41,9 +41,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let registry = WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors)
         let defaults = isolatedDefaults()
         let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
-        persistence.savePlaced(["credits", "balance", "today", "week", "month", "keyLimit"].map {
-            PlacedWidget(descriptorID: "\(card).\($0)")
-        })
+        persistence.saveHidden(["\(card).credits", "\(card).keyLimit"])
         persistence.savePins(["\(card).credits", "\(card).keyLimit", "\(card).balance"])
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
         cache.store(ProviderSnapshot(providerID: card, displayName: "OpenRouter", lines: [
@@ -58,11 +56,10 @@ final class OpenRouterProviderTests: XCTestCase {
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
         let data = WidgetDataStore.forTesting([runtime], registry: registry, cache: cache, defaults: defaults)
 
-        XCTAssertEqual(layout.placed.map(\.descriptorID), ["balance", "today", "week", "month"].map { "\(card).\($0)" })
+        XCTAssertEqual(layout.visibleDescriptors.map(\.id), ["balance", "today", "week", "month"].map { "\(card).\($0)" })
         XCTAssertEqual(layout.pinnedMetricIDs, ["\(card).balance"])
-        for widget in layout.placed {
-            let descriptor = registry.descriptor(id: widget.descriptorID)!
-            XCTAssertTrue(data.data(for: descriptor).hasData, widget.descriptorID)
+        for descriptor in layout.visibleDescriptors {
+            XCTAssertTrue(data.data(for: descriptor).hasData, descriptor.id)
         }
     }
 
