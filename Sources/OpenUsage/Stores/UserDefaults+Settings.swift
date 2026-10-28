@@ -17,21 +17,3 @@ extension UserDefaults {
         object(forKey: key) as? Bool ?? fallback
     }
 }
-
-/// A `String`-raw enum persisted under a fixed `UserDefaults.standard` key, with a default for when the
-/// key is unset. Conformers get a free `current` accessor, removing the per-enum copy of the
-/// read-with-default idiom. Stores that read from an injected (non-standard) `UserDefaults` or an
-/// instance-scoped key use `UserDefaults.enumValue(forKey:default:)` directly instead.
-protocol UserDefaultsBacked: RawRepresentable where RawValue == String {
-    /// The `UserDefaults.standard` key this setting persists under.
-    static var key: String { get }
-    /// The value used when the key is unset or holds an unrecognized raw value.
-    static var fallback: Self { get }
-}
-
-extension UserDefaultsBacked {
-    /// The stored choice, read live from `UserDefaults.standard` (falls back to `fallback`).
-    static var current: Self {
-        UserDefaults.standard.enumValue(forKey: key, default: fallback)
-    }
-}

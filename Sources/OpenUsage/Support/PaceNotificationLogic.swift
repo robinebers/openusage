@@ -12,6 +12,10 @@ enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
 }
 
 extension PaceMilestone {
+    /// The `UserDefaults` key of this milestone's Settings trigger. Every trigger starts off, so a fresh
+    /// install stays quiet until the user opts in.
+    var settingKey: String { "openusage.notifications.\(rawValue)" }
+
     /// Notification title, the same as the Settings row so a tapped alert maps back to one row.
     var notificationTitle: String {
         switch self {

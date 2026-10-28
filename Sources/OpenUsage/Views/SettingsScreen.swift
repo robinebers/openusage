@@ -7,6 +7,9 @@ struct SettingsScreen: View {
     @Environment(UpdaterController.self) private var updater
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
+    @AppStorage(PaceMilestone.underTenPercent.settingKey) private var underTenPercent = false
+    @AppStorage(PaceMilestone.healthyToClose.settingKey) private var healthyToClose = false
+    @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
     @State private var scrollPosition = ScrollPosition(edge: .top)
@@ -67,11 +70,10 @@ struct SettingsScreen: View {
     }
 
     private var notificationsSection: some View {
-        @Bindable var notifications = container.notificationSettings
-        return section("Notifications") {
-            notificationRow("Under 10% Remaining", isOn: $notifications.underTenPercent)
-            notificationRow("Healthy Pace Changes", isOn: $notifications.healthyToClose)
-            notificationRow("Near-Limit Pace Changes", isOn: $notifications.closeToRunningOut)
+        section("Notifications") {
+            notificationRow("Under 10% Remaining", isOn: $underTenPercent)
+            notificationRow("Healthy Pace Changes", isOn: $healthyToClose)
+            notificationRow("Near-Limit Pace Changes", isOn: $closeToRunningOut)
         }
     }
 

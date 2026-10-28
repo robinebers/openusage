@@ -8,7 +8,6 @@ import Observation
 @Observable
 final class AppContainer {
     let accounts: AccountStore
-    let notificationSettings: NotificationSettingsStore
     let layout: LayoutStore
     let dataStore: WidgetDataStore
     let renaming: AccountRenameStore
@@ -19,6 +18,7 @@ final class AppContainer {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     @ObservationIgnored private let http: any HTTPClient
+    @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
@@ -35,13 +35,13 @@ final class AppContainer {
     ) {
         self.accounts = accounts
         self.http = http
+        self.defaults = defaults
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
             accounts: accounts.accounts, vault: accounts.credentialVault, http: http, claudeSessions: claudeSessions
         )
         let registry = WidgetRegistry.from(providers)
-        let notificationSettings = NotificationSettingsStore(defaults: defaults)
         let layout = LayoutStore(registry: registry, defaults: defaults)
         let dataStore = WidgetDataStore(
             registry: registry,
@@ -50,7 +50,6 @@ final class AppContainer {
             defaults: defaults
         )
         self.providers = providers
-        self.notificationSettings = notificationSettings
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
@@ -100,7 +99,7 @@ final class AppContainer {
                 await quotaNotifications.evaluate(
                     layout.visibleDescriptors,
                     data: dataStore.data(for:),
-                    isOn: notificationSettings.isOn,
+                    isOn: { [defaults] in defaults.bool(forKey: $0.settingKey) },
                     now: Date(),
                     providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
                 )

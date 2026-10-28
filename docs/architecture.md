@@ -18,8 +18,7 @@ environment:
 |---|---|
 | `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `addedAt`), persisted under `accounts.v1`, and the `CredentialVault`. |
 | `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history. It forwards screen routing to `PopoverNavigationStore`. |
-| `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, staleness, and the notification evaluator. |
-| `NotificationSettingsStore` | The three notification toggles. |
+| `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
 | `AccountRenameStore` | Which account name is being edited. |
 | `TelemetryRecorder` | The daily ping and per-provider rollups (see `Services/Telemetry.swift`). |
 

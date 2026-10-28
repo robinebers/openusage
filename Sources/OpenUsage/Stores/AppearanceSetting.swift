@@ -4,13 +4,15 @@ import AppKit
 /// `NSApp.appearance` — the panel hosting ignores SwiftUI's `preferredColorScheme`, so the override
 /// has to happen at the AppKit level, and the menu-bar panel inherits it. The menu-bar label is
 /// unaffected (template image).
-enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBacked {
+enum AppearanceSetting: String, Hashable, Sendable, CaseIterable {
     case system
     case light
     case dark
 
     static let key = "appearance"
-    static var fallback: AppearanceSetting { .system }
+
+    /// The stored choice, read live; `.system` when unset.
+    static var current: AppearanceSetting { UserDefaults.standard.enumValue(forKey: key, default: .system) }
 
     var label: String {
         switch self {
@@ -29,8 +31,6 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
         case .dark: return NSAppearance(named: .darkAqua)
         }
     }
-
-    // `current` (the stored choice, `.system` when unset) comes from `UserDefaultsBacked`.
 
     /// Reads the stored choice and applies it app-wide. Call once at launch and again whenever
     /// the setting changes — app windows, the menu-bar panel included, restyle immediately.

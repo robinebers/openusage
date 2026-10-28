@@ -28,7 +28,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         _ store: WidgetDataStore,
         descriptors: [WidgetDescriptor],
         providers: [Provider],
-        settings: NotificationSettingsStore,
+        settings: UserDefaults,
         recorder: Recorder,
         delivered: @escaping @MainActor () -> Bool = { true }
     ) -> @MainActor (Date) async -> Void {
@@ -40,7 +40,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             await evaluator.evaluate(
                 descriptors,
                 data: store.data(for:),
-                isOn: settings.isOn,
+                isOn: { settings.bool(forKey: $0.settingKey) },
                 now: now,
                 providerName: { id in providers.first { $0.id == id }?.fullName ?? id }
             )
@@ -67,7 +67,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     private func makeStore(
         used: Double,
-        settings: NotificationSettingsStore,
+        settings: UserDefaults,
         recorder: Recorder,
         delivered: @escaping @MainActor () -> Bool = { true }
     ) -> (WidgetDataStore, StubRuntime, WidgetDescriptor) {
@@ -83,10 +83,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     /// All three triggers on; the store defaults to off, so tests opt in explicitly.
-    private func allOn(_ settings: NotificationSettingsStore) {
-        settings.underTenPercent = true
-        settings.healthyToClose = true
-        settings.closeToRunningOut = true
+    private func allOn(_ settings: UserDefaults) {
+        for milestone in PaceMilestone.allCases { settings.set(true, forKey: milestone.settingKey) }
     }
 
     private func evaluate(
@@ -106,7 +104,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     /// Two accounts of one provider name themselves in the subtitle ("Claude · Personal Session",
     /// "Claude · Work Session"), never "Claude Session" twice.
     func testTwoAccountsOfOneProviderNameThemselvesInTheSubtitle() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         let providers = [("claude@aaaa", "Personal"), ("claude@bbbb", "Work")].map {
@@ -149,7 +147,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testHealthyToCloseFiresOnceThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         // 80% used at ~90% elapsed → projected ~89% → healthy.
@@ -169,7 +167,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testCloseToRunningOutFiresThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 87, settings: settings, recorder: recorder)
@@ -184,7 +182,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testResetJitterDoesNotRefireRunningOutThroughTheStore() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
@@ -199,10 +197,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testAllTogglesOffSuppressesAllPosts() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
-        settings.underTenPercent = false
-        settings.healthyToClose = false
-        settings.closeToRunningOut = false
+        let settings = isolatedDefaults()
+        settings.set(false, forKey: PaceMilestone.underTenPercent.settingKey)
+        settings.set(false, forKey: PaceMilestone.healthyToClose.settingKey)
+        settings.set(false, forKey: PaceMilestone.closeToRunningOut.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
@@ -213,23 +211,23 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     /// A worsening while its trigger is off doesn't consume the crossing: turning the trigger on while the
     /// quota is still in the worse bucket fires on the next pass.
     func testAnOffTriggerDoesNotConsumeTheEdge() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
-        settings.closeToRunningOut = true
+        let settings = isolatedDefaults()
+        settings.set(true, forKey: PaceMilestone.closeToRunningOut.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 87)
         XCTAssertTrue(recorder.posts.isEmpty)
 
-        settings.healthyToClose = true
+        settings.set(true, forKey: PaceMilestone.healthyToClose.settingKey)
         await notify(base)
         XCTAssertEqual(recorder.posts.map(\.0), ["test.healthyToClose"])
     }
 
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
-        settings.healthyToClose = false   // turn off "Cutting It Close" only
+        settings.set(false, forKey: PaceMilestone.healthyToClose.settingKey)   // turn off "Cutting It Close" only
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
@@ -246,7 +244,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         // here), so a `< 0.10` check on it would not fire "Almost Out" despite only 5% remaining.
         // `remainingFraction` fires it regardless of the used/remaining display choice. Prime from
         // healthy first so the under-10% edge is a real transition, not a cold start.
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
@@ -263,7 +261,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         // If delivery fails (not authorized, or scheduling errored), the milestone must not
         // be marked fired — the edge stays un-consumed so it re-fires on the next evaluation instead of
         // being lost for the rest of the reset window.
-        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder,
