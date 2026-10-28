@@ -15,15 +15,9 @@ struct ProviderIcon: View {
     var inset: CGFloat = 0.14
 
     var body: some View {
-        if let image = ProviderMarks.image(for: id, side: side, inset: inset) {
-            Image(nsImage: image)
-                .renderingMode(.template)
-                .foregroundStyle(Theme.iconGray)
-        } else {
-            Image(systemName: ProviderMarks.symbolFallback(for: id))
-                .foregroundStyle(Theme.iconGray)
-                .frame(width: side, height: side)
-        }
+        Image(nsImage: ProviderMarks.image(for: id, side: side, inset: inset))
+            .renderingMode(.template)
+            .foregroundStyle(Theme.iconGray)
     }
 }
 
@@ -86,37 +80,24 @@ struct ProviderMark {
 /// The bundled provider marks, each loaded once, with a fitted template image cached per size and inset.
 @MainActor
 enum ProviderMarks {
-    private static var marks: [String: ProviderMark?] = [:]
+    private static var marks: [String: ProviderMark] = [:]
     private static var images: [String: NSImage] = [:]
 
-    static func mark(for id: String) -> ProviderMark? {
+    static func mark(for id: String) -> ProviderMark {
         if let cached = marks[id] { return cached }
-        let url = Bundle.openUsageResources.url(forResource: id, withExtension: "svg", subdirectory: "ProviderIcons")
-        let mark = url.flatMap(ProviderMark.init(contentsOf:))
+        guard
+            let url = Bundle.openUsageResources.url(forResource: id, withExtension: "svg", subdirectory: "ProviderIcons"),
+            let mark = ProviderMark(contentsOf: url)
+        else { preconditionFailure("The bundled mark \(id).svg failed to load") }
         marks[id] = mark
         return mark
     }
 
-    static func image(for id: String, side: CGFloat, inset: CGFloat) -> NSImage? {
+    static func image(for id: String, side: CGFloat, inset: CGFloat) -> NSImage {
         let key = "\(id)@\(side)@\(inset)"
         if let cached = images[key] { return cached }
-        guard let image = mark(for: id)?.fitted(side: side, inset: inset) else { return nil }
+        let image = mark(for: id).fitted(side: side, inset: inset)
         images[key] = image
         return image
-    }
-
-    static func symbolFallback(for id: String) -> String {
-        switch id {
-        case "antigravity": return "paperplane"
-        case "claude": return "sparkle"
-        case "codex": return "circle.hexagongrid"
-        case "cursor": return "cube"
-        case "grok": return "bolt.fill"
-        case "ollama": return "cloud"
-        case "opencode": return "chevron.left.forwardslash.chevron.right"
-        case "openrouter": return "point.3.connected.trianglepath.dotted"
-        case "zai": return "z.signal"
-        default: return "app.dashed"
-        }
     }
 }

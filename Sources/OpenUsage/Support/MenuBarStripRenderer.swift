@@ -84,16 +84,6 @@ enum MenuBarStripRenderer {
         guard maxX >= minX else { return nil }
         return CGRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
     }
-
-    /// Last-resort icon if the brand mark fails to load.
-    static let fallbackIcon: NSImage = {
-        let image = NSImage(
-            systemSymbolName: "gauge.with.dots.needle.bottom.50percent",
-            accessibilityDescription: "OpenUsage"
-        ) ?? NSImage()
-        image.isTemplate = true
-        return image
-    }()
 }
 
 private struct MenuBarTextStrip: View {
@@ -171,14 +161,9 @@ private struct MenuBarTextStrip: View {
         .fixedSize()
     }
 
-    @ViewBuilder
     private func glyph(_ icon: String) -> some View {
-        if let image = ProviderMarks.image(for: icon, side: Self.glyphSide, inset: 0.04) {
-            Image(nsImage: image)
-                .renderingMode(.template)
-                .foregroundStyle(Color.black)
-        } else {
-            Circle().fill(Color.black).frame(width: Self.glyphSide - 1, height: Self.glyphSide - 1)
-        }
+        Image(nsImage: ProviderMarks.image(for: icon, side: Self.glyphSide, inset: 0.04))
+            .renderingMode(.template)
+            .foregroundStyle(Color.black)
     }
 }

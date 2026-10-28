@@ -4,8 +4,7 @@ import AppKit
 /// the same bundled SVG as the provider tiles.
 @MainActor
 enum MenuBarIcon {
-    /// Cached template image, or `nil` if the brand mark fails to load. Smaller inset than the
-    /// provider default: the tall U mark should fill the menu-bar slot about as fully as a system
-    /// status item glyph.
-    static let image: NSImage? = ProviderMarks.mark(for: "openusage")?.fitted(side: 18, inset: 0.08)
+    /// Cached template image. Smaller inset than the provider default: the tall U mark should fill
+    /// the menu-bar slot about as fully as a system status item glyph.
+    static let image: NSImage = ProviderMarks.mark(for: "openusage").fitted(side: 18, inset: 0.08)
 }

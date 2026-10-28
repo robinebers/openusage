@@ -62,8 +62,6 @@ final class StatusItemImageUpdater {
             groups: container.layout.pinnedGroups,
             data: { container.dataStore.data(for: $0) }
         )
-        return MenuBarStripRenderer.image(for: content)
-            ?? MenuBarIcon.image
-            ?? MenuBarStripRenderer.fallbackIcon
+        return MenuBarStripRenderer.image(for: content) ?? MenuBarIcon.image
     }
 }
