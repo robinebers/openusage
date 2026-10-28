@@ -9,7 +9,7 @@ import XCTest
 final class AccountListEmptyStateTests: QuietWindowTestCase {
     func testAnEmptyListReadsNoAccountsUntilAnAccountIsAdded() async throws {
         let defaults = isolatedDefaults()
-        let container = await AppContainer.forTesting(
+        let container = AppContainer.forTesting(
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
             defaults: defaults
         )

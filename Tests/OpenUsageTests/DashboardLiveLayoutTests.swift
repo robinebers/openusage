@@ -36,7 +36,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
                 descriptor(work, "session", "Session"), descriptor(work, "weekly", "Weekly"),
             ]
         )
-        let container = await AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
+        let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
         let dataStore = WidgetDataStore.forTesting([], registry: registry, defaults: defaults)
         for provider in [codex, personal, work] {

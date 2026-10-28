@@ -70,7 +70,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         try QuietTestProcess.requireFocus()
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
+        let container = AppContainer.forTesting(accounts: store, defaults: defaults)
         var accounts: [String: String] = [:]
         for label in ["Personal", "Work"] {
             accounts[label] = store.add(kind: .claude, label: label, credential: .apiKey("key")).cardID

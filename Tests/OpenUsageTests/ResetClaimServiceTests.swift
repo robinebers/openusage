@@ -84,7 +84,7 @@ final class ResetClaimServiceTests: XCTestCase {
     func testContainerServesTheCardsClaimAndForcesItsRefreshPastTheBackoff() async throws {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults)
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults)
         // An API-key credential fails a Codex refresh before any request, so nothing reaches the network.
         let codex = accounts.add(kind: .codex, label: "Work", credential: .apiKey("key"))
         var backedOff = false

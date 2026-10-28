@@ -101,7 +101,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
     private func hostPopover() async throws -> Hosted {
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
+        let container = AppContainer.forTesting(accounts: store, defaults: defaults)
         let id = store.add(kind: .claude, label: "Personal", credential: .apiKey("key")).cardID
         for _ in 0..<400 where container.layout.displayGroups.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
         container.dataStore.snapshots[id] = ProviderSnapshot(

@@ -9,7 +9,7 @@ import XCTest
 final class PopoverTopBarTests: QuietWindowTestCase {
     func testTheAccountsBarsTrailingButtonOpensAddAccount() async throws {
         let defaults = isolatedDefaults()
-        let container = await AppContainer.forTesting(
+        let container = AppContainer.forTesting(
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
             defaults: defaults
         )
@@ -53,7 +53,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     func testTheAccountPagesBarMirrorsTheProviderMarkIntoTheBackButtonsFootprint() async throws {
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let container = await AppContainer.forTesting(accounts: store, defaults: defaults)
+        let container = AppContainer.forTesting(accounts: store, defaults: defaults)
         let id = store.add(kind: .claude, label: "Personal", credential: .apiKey("key")).cardID
         for _ in 0..<200 where container.layout.displayGroups.isEmpty {
             try await Task.sleep(for: .milliseconds(5))

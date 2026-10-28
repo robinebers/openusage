@@ -11,7 +11,7 @@ final class ContainerTelemetryTests: XCTestCase {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let sink = RecordingTelemetrySink()
-        let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults, telemetry: sink)
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, telemetry: sink)
 
         // An API-key credential fails a Claude refresh before any request, so nothing reaches the network.
         let claude = accounts.add(kind: .claude, label: "Home", credential: .apiKey("key"))

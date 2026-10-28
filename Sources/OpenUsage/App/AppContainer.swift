@@ -30,7 +30,7 @@ final class AppContainer {
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
         telemetryStore: TelemetryStore
-    ) async {
+    ) {
         self.accounts = accounts
         self.http = http
         let providers = ProviderCatalog.make(accounts: accounts.accounts, vault: accounts.credentialVault, http: http)

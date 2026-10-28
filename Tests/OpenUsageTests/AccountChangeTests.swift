@@ -7,7 +7,7 @@ final class AccountChangeTests: XCTestCase {
     func testAccountChangesUpdateTheDashboardInPlace() async throws {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let container = await AppContainer.forTesting(accounts: accounts, defaults: defaults)
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults)
         let layout = container.layout
         let dataStore = container.dataStore
         XCTAssertTrue(layout.displayGroups.isEmpty)

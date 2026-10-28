@@ -129,8 +129,8 @@ extension AppContainer {
         defaults: UserDefaults,
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry: RecordingTelemetrySink = RecordingTelemetrySink()
-    ) async -> AppContainer {
-        await AppContainer(
+    ) -> AppContainer {
+        AppContainer(
             accounts: accounts,
             defaults: defaults,
             http: http,
