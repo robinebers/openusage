@@ -189,6 +189,36 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(creditsRequest.headers["ChatGPT-Account-Id"], "acct-456")
     }
 
+    func testAClaimThatFindsNoCreditMakesItsRefreshReadTheListAgain() async throws {
+        let spent = TestSwitch(false)
+        let http = RoutingHTTPClient { request in
+            switch request.url {
+            case CodexUsageClient.usageURL:
+                let count = spent.value ? 0 : 1
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"rate_limit_reset_credits":{"available_count":\#(count)}}"#.utf8))
+            case CodexUsageClient.resetCreditsURL:
+                let body = spent.value ? Data(#"{"credits": [], "available_count": 0}"#.utf8) : Self.listBody()
+                return HTTPResponse(statusCode: 200, headers: [:], body: body)
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let runtime = try makeRuntime(http: http)
+        _ = try await runtime.refresh().get()
+        spent.value = true
+
+        let outcome = await runtime.claimCodexResetCredit(expiringAt: Self.expiry, redeemRequestID: "redeem-1")
+        let snapshot = try await runtime.refresh().get()
+
+        XCTAssertEqual(outcome, .noCredit)
+        XCTAssertEqual(http.requests.count { $0.url == CodexUsageClient.resetCreditsURL }, 3, "the pass, the claim, and the claim's refresh")
+        guard case .values(_, let values, let expiries) = snapshot.line(label: "Rate Limit Resets") else {
+            return XCTFail("expected the Rate Limit Resets row")
+        }
+        XCTAssertEqual(values, [MetricValue(number: 0, kind: .count, label: "available")])
+        XCTAssertTrue(expiries.isEmpty)
+    }
+
     func testRefreshFallsBackToTheUsageCountWhenTheCreditListFails() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url {

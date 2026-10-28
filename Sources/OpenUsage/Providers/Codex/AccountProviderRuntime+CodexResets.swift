@@ -29,6 +29,7 @@ extension AccountProviderRuntime {
         }
         let client = CodexUsageClient(http: http)
         let accountID = tokens.extras["chatgpt_account_id"]
+        codexResetCreditsRead.forget()
 
         // A retry of a key that already matched replays the same (key, credit) pair instead of matching
         // again: after a consume whose answer was lost, the credit is gone from the list, and only the
@@ -71,7 +72,6 @@ extension AccountProviderRuntime {
             return .failed(ResetClaimFailure(error))
         }
         let outcome = CodexUsageMapper.resetClaimOutcome(from: response)
-        codexResetCreditsRead.forget()
         if outcome == .success {
             AppLog.info(tag, "\(cardID) reset claim: claimed (HTTP \(response.statusCode))")
         } else {
