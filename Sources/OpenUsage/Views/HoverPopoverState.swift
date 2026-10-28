@@ -17,7 +17,6 @@ final class HoverPopoverState {
     private(set) var overInline = false
     @ObservationIgnored private var overDetail = false
     @ObservationIgnored private var pinned = false
-    var isPinned: Bool { pinned }
     @ObservationIgnored private var showTask: Task<Void, Never>?
     @ObservationIgnored private var hideTask: Task<Void, Never>?
 

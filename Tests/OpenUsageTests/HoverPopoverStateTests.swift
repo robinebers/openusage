@@ -12,11 +12,9 @@ final class HoverPopoverStateTests: XCTestCase {
         state.inlineHover(false)
         try await Task.sleep(for: .milliseconds(30))
         XCTAssertTrue(state.isPresented, "a pinned popover survives the pointer leaving its row")
-        XCTAssertTrue(state.isPinned)
 
         state.dismiss()
         XCTAssertFalse(state.isPresented)
-        XCTAssertFalse(state.isPinned)
     }
 
     func testUnpinningAfterHoverOutHidesThePopover() async throws {

@@ -87,6 +87,36 @@ final class DashboardSectionTests: QuietWindowTestCase {
         HoverPopoverState.dismissAll()
     }
 
+    func testTheResetsPopoverStaysOpenWhenARefreshChangesTheExpiries() throws {
+        let live = LiveLine(resets)
+        let (renaming, provider) = storedAccount(label: "Personal")
+        let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
+        let view = DashboardProviderSection(family: family) { account in
+            VStack(alignment: .leading, spacing: 0) {
+                DashboardAccountCaption(account: account, plan: "Max 5x")
+                ForEach(account.lines) { DashboardLiveRow(line: $0) }
+                DashboardLiveRow(line: live.line)
+            }
+        }
+        let (window, host) = hostView(view, renaming: renaming)
+        let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
+        func opened() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
+        let resetsRowY = Self.firstRowY + 3 * DashboardGrid.rowHeight
+        let figureX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.labelWidth + DashboardGrid.columnGap + 12
+
+        try hover(CGPoint(x: figureX, y: resetsRowY), window, host)
+        XCTAssertEqual(opened().count, 1, "hovering the resets count opens no popover")
+
+        var data = resets.data
+        data.expiriesAt = Array(data.expiriesAt.dropLast())
+        data.values = [MetricValue(number: 1, kind: .count, label: "available")]
+        live.line = DashboardLine(descriptor: resets.descriptor, data: data)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        XCTAssertEqual(opened().count, 1, "a refresh after a claim closed the popover under the pointer")
+        HoverPopoverState.dismissAll()
+    }
+
     func testHoveringTheWarningShowsTheNoticeAndHoveringTheNameShowsNothing() throws {
         let notice = "Refresh failed: the token has expired."
         let (renaming, provider) = storedAccount(label: "Work")
@@ -318,4 +348,9 @@ final class DashboardSectionTests: QuietWindowTestCase {
             .environment(\.colorScheme, .light)
         return show(view)
     }
+}
+
+@MainActor @Observable private final class LiveLine {
+    var line: DashboardLine
+    init(_ line: DashboardLine) { self.line = line }
 }

@@ -19,9 +19,6 @@ struct DashboardLiveRow: View {
                 row(now: Date())
             }
         }
-        .onChange(of: line.data.expiriesAt) { _, _ in
-            if !hover.isPinned { hover.dismiss() }
-        }
         .onDisappear { hover.dismiss() }
     }
 
