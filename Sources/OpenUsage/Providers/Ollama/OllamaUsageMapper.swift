@@ -20,10 +20,10 @@ enum OllamaUsageMapper {
     static let sessionPeriodMs = 5 * 60 * 60 * 1000
     static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
 
-    /// `(plan, lines)` from the balance payload plus the optional account payload. `accountBody` may be
+    /// The plan and lines from the balance payload plus the optional account payload. `accountBody` may be
     /// `nil` — the plan request is best-effort and must never blank out the meters.
-    static func map(balanceBody: Data, accountBody: Data?) throws -> (plan: String?, lines: [MetricLine]) {
-        (accountBody.flatMap(plan(from:)), try balanceLines(balanceBody))
+    static func map(balanceBody: Data, accountBody: Data?) throws -> ProviderUsage {
+        ProviderUsage(plan: accountBody.flatMap(plan(from:)), lines: try balanceLines(balanceBody))
     }
 
     /// Session and Weekly (legacy plans) or Monthly (current plans), then Purchased Credits.

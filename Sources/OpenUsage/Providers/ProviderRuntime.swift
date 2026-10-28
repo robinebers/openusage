@@ -27,6 +27,12 @@ extension ProviderRuntime {
     func forgetHourlyReads() {}
 }
 
+/// What one refresh read: the plan name, if the provider reports one, and the account's metric lines.
+struct ProviderUsage: Equatable, Sendable {
+    var plan: String?
+    var lines: [MetricLine]
+}
+
 /// Run a blocking, `Sendable` credential load off the MainActor.
 ///
 /// Credential vault reads block the calling thread for as long as a Keychain prompt waits for the user.

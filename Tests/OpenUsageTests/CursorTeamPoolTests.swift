@@ -86,7 +86,7 @@ final class CursorTeamPoolTests: XCTestCase {
         XCTAssertNotNil(mapped.lines.first { $0.label == "Credits" })
     }
 
-    private func map(_ plan: [String: Any]) throws -> CursorMappedUsage {
+    private func map(_ plan: [String: Any]) throws -> ProviderUsage {
         try CursorUsageMapper.mapUsage(
             usage: [
                 "enabled": true, "planUsage": plan,
@@ -97,7 +97,7 @@ final class CursorTeamPoolTests: XCTestCase {
         )
     }
 
-    private func assertPercent(_ mapped: CursorMappedUsage, _ label: String, _ expected: Double,
+    private func assertPercent(_ mapped: ProviderUsage, _ label: String, _ expected: Double,
                                file: StaticString = #filePath, line: UInt = #line) {
         guard case .progress(_, let used, let limit, let format, _, _) =
             mapped.lines.first(where: { $0.label == label }) else {

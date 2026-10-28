@@ -1,10 +1,5 @@
 import Foundation
 
-struct CursorMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
 /// The handful of facts the three plan-usage decisions read off Cursor's untyped `usage` payload —
 /// the map guards, the request-based fallback, and the generic fallback. Decoded once here so those
 /// predicates can't drift apart.
@@ -97,7 +92,7 @@ enum CursorUsageMapper {
         planName: String?,
         creditGrants: [String: Any]?,
         stripeBalanceCents: Double
-    ) throws -> CursorMappedUsage {
+    ) throws -> ProviderUsage {
         let facts = CursorPlanUsageFacts(usage: usage)
         guard facts.isEnabled,
               let planUsage = usage["planUsage"] as? [String: Any]
@@ -205,7 +200,7 @@ enum CursorUsageMapper {
             }
         }
 
-        return CursorMappedUsage(plan: planLabel(planName), lines: lines)
+        return ProviderUsage(plan: planLabel(planName), lines: lines)
     }
 
     private static func onDemandSpendCents(from spendLimitUsage: [String: Any], limit: Double, remaining: Double) -> Double {
@@ -225,7 +220,7 @@ enum CursorUsageMapper {
         _ usage: [String: Any]?,
         planName: String?,
         unavailableMessage: String
-    ) throws -> CursorMappedUsage {
+    ) throws -> ProviderUsage {
         var lines: [MetricLine] = []
         if let gpt4 = usage?["gpt-4"] as? [String: Any],
            let limit = ProviderParse.number(gpt4["maxRequestUsage"]),
@@ -246,7 +241,7 @@ enum CursorUsageMapper {
             throw ProviderError.unavailable(unavailableMessage)
         }
 
-        return CursorMappedUsage(plan: planLabel(planName), lines: lines)
+        return ProviderUsage(plan: planLabel(planName), lines: lines)
     }
 
     static func shouldUseRequestBasedFallback(

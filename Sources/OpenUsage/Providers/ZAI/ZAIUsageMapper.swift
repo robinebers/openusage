@@ -18,13 +18,12 @@ enum ZAIUsageMapper {
     /// fallback for the web-search line and the widget-descriptor default.
     static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
 
-    /// `(plan, lines)` from the quota + subscription payloads. `subscription` may be `nil` (the
+    /// The plan and lines from the quota + subscription payloads. `subscription` may be `nil` (the
     /// request is best-effort) and the quota's `limits` array may carry one to three entries — only
     /// what's present is mapped, so a plan without web searches still shows the session meter.
-    static func map(quotaBody: Data, subscriptionBody: Data?) throws -> (plan: String?, lines: [MetricLine]) {
+    static func map(quotaBody: Data, subscriptionBody: Data?) throws -> ProviderUsage {
         let plan = subscriptionBody.flatMap { planName(from: $0) }
-        let lines = try mapQuota(quotaBody)
-        return (plan, lines)
+        return ProviderUsage(plan: plan, lines: try mapQuota(quotaBody))
     }
 
     /// Session + weekly + web-search meters from the quota payload. Missing required values are an

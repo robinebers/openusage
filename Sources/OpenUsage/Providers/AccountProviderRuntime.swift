@@ -105,7 +105,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         return credential
     }
 
-    private func refresh(_ credential: AccountCredential) async throws -> (plan: String?, lines: [MetricLine]) {
+    private func refresh(_ credential: AccountCredential) async throws -> ProviderUsage {
         switch account.kind {
         case .claude: try await refreshClaude(credential)
         case .codex: try await refreshCodex(credential)
@@ -136,14 +136,14 @@ final class AccountProviderRuntime: ProviderRuntime {
         return tokens
     }
 
-    private func refreshClaude(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshClaude(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
         let response = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: tokens.accessToken)
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         if let resets = await claudeResetGrantsLine(accessToken: tokens.accessToken) {
             lines.append(resets)
         }
-        return (await claudeLivePlan(tokens), lines)
+        return ProviderUsage(plan: await claudeLivePlan(tokens), lines: lines)
     }
 
     /// Read hourly (`planRead`). Also records the sign-in's identity on an account added before sign-ins
@@ -166,24 +166,22 @@ final class AccountProviderRuntime: ProviderRuntime {
         return planRead.value
     }
 
-    private func refreshCodex(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshCodex(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: CodexLogin.refresh)
         let accountID = tokens.extras["chatgpt_account_id"]
         let response = try await CodexUsageClient(http: http).fetchUsage(accessToken: tokens.accessToken, accountID: accountID)
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
-        let mapped = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
-        return (mapped.plan, mapped.lines)
+        return try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
     }
 
-    private func refreshCopilot(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .oauth(let tokens) = credential else { throw LoginError.invalidResponse }
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
         try ProviderError.requireSuccess(response, kind: .copilot)
-        let mapped = try CopilotUsageMapper.map(response)
-        return (mapped.plan, mapped.lines)
+        return try CopilotUsageMapper.map(response)
     }
 
-    private func refreshGrok(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: GrokLogin.refresh)
         let client = GrokUsageClient(httpClient: http)
         let usage = try await client.fetchCreditsConfig(accessToken: tokens.accessToken)
@@ -192,10 +190,10 @@ final class AccountProviderRuntime: ProviderRuntime {
             let settings = try? await client.fetchSettings(accessToken: tokens.accessToken)
             planRead.record(settings.flatMap(GrokUsageMapper.planName(from:)), at: now())
         }
-        return (planRead.value, mapped.lines)
+        return ProviderUsage(plan: planRead.value, lines: mapped.lines)
     }
 
-    private func refreshCursor(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshCursor(_ credential: AccountCredential) async throws -> ProviderUsage {
         var tokens = try await cursorTokens(credential)
         let client = CursorUsageClient(http: http)
         var usageResponse = try await client.fetchUsage(accessToken: tokens.accessToken)
@@ -207,11 +205,10 @@ final class AccountProviderRuntime: ProviderRuntime {
         guard let usage = ProviderParse.jsonObject(usageResponse.body) else {
             throw ProviderError.invalidResponse
         }
-        let mapped = try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
-        return (mapped.plan, mapped.lines)
+        return try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
     }
 
-    private func refreshAntigravity(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshAntigravity(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: AntigravityLogin.refresh)
         let client = AntigravityUsageClient(http: http)
         if planBodyRead.isDue(at: now()) {
@@ -223,10 +220,10 @@ final class AccountProviderRuntime: ProviderRuntime {
             project: codeAssist.flatMap(AntigravityUsageMapper.parseProject)
         )
         guard let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) else { throw ProviderError.invalidResponse }
-        return (codeAssist.flatMap(AntigravityUsageMapper.parseLoadCodeAssistPlan), lines)
+        return ProviderUsage(plan: codeAssist.flatMap(AntigravityUsageMapper.parseLoadCodeAssistPlan), lines: lines)
     }
 
-    private func refreshOllama(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshOllama(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let client = OllamaUsageClient(http: http)
         let balance = try await client.fetchBalance(apiKey: key)
@@ -234,18 +231,17 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchAccount(apiKey: key)), at: now())
         }
-        let mapped = try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
-        return (mapped.plan, mapped.lines)
+        return try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
     }
 
-    private func refreshOpenCode(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshOpenCode(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let response = try await OpenCodeUsageClient(http: http).fetchUsage(apiKey: key)
         if response.statusCode == 403, OpenCodeUsageMapper.errorType(in: response) == "EntitlementError" {
             throw ProviderError.unavailable("No OpenCode Go subscription on this account.")
         }
         try ProviderError.requireSuccess(response, kind: .opencodeGo)
-        return (OpenCodeUsageMapper.plan, try OpenCodeUsageMapper.meterLines(response))
+        return ProviderUsage(plan: OpenCodeUsageMapper.plan, lines: try OpenCodeUsageMapper.meterLines(response))
     }
 
     /// One OpenRouter endpoint's outcome: its `data` object, a rejected key, or the failure the card
@@ -270,7 +266,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    private func refreshOpenRouter(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshOpenRouter(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let client = OpenRouterUsageClient(http: http)
         let credits = await openRouterEndpoint { try await client.fetchCredits(apiKey: key) }
@@ -285,7 +281,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             plan = mapped.plan
             lines += mapped.lines
         }
-        if !lines.isEmpty { return (plan, lines) }
+        if !lines.isEmpty { return ProviderUsage(plan: plan, lines: lines) }
         // The key is only invalid when both endpoints reject it: OpenRouter gates some endpoints to
         // specific key types, so a lone 403 is a valid key that cannot read that endpoint.
         if case .keyRejected = credits, case .keyRejected = keyInfo {
@@ -298,7 +294,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         throw failures.first ?? ProviderError.invalidResponse
     }
 
-    private func refreshZAI(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
+    private func refreshZAI(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
         let client = ZAIUsageClient(http: http)
         let quota = try await client.fetchQuota(apiKey: key)
@@ -306,8 +302,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchSubscription(apiKey: key)), at: now())
         }
-        let mapped = try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
-        return (mapped.plan, mapped.lines)
+        return try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
     }
 
     /// The body of a best-effort request, `nil` unless it succeeded: a failed plan lookup costs the

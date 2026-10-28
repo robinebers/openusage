@@ -1,10 +1,5 @@
 import Foundation
 
-struct CopilotMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
 /// Normalizes the `/copilot_internal/user` response into meters. Since 2026-06-01 every plan is on
 /// usage-based billing (AI Credits), so the `premium_interactions` bucket is surfaced as **Credits**
 /// (used % of the monthly allotment), with **Extra Usage** carrying overage beyond it (emitted only
@@ -18,14 +13,14 @@ struct CopilotMappedUsage: Equatable, Sendable {
 enum CopilotUsageMapper {
     static let periodMs = MetricPeriod.monthMs
 
-    static func map(_ response: HTTPResponse) throws -> CopilotMappedUsage {
+    static func map(_ response: HTTPResponse) throws -> ProviderUsage {
         guard let body = ProviderParse.jsonObject(response.body) else {
             throw ProviderError.invalidResponse
         }
         return try map(body: body)
     }
 
-    static func map(body: [String: Any]) throws -> CopilotMappedUsage {
+    static func map(body: [String: Any]) throws -> ProviderUsage {
         let plan = planLabel(body["copilot_plan"])
         let resetsAt = parseResetDate(body["quota_reset_date"])
             ?? parseResetDate(body["limited_user_reset_date"])
@@ -70,10 +65,10 @@ enum CopilotUsageMapper {
             guard ProviderParse.bool(body["token_based_billing"]) == true else {
                 throw ProviderError.unavailable("Copilot usage data is unavailable for this account.")
             }
-            return CopilotMappedUsage(plan: plan, lines: personalCreditsLines(premium))
+            return ProviderUsage(plan: plan, lines: personalCreditsLines(premium))
         }
 
-        return CopilotMappedUsage(plan: plan, lines: lines)
+        return ProviderUsage(plan: plan, lines: lines)
     }
 
     // MARK: - Lines

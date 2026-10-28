@@ -1,15 +1,11 @@
 import Foundation
 
-struct GrokMappedUsage: Equatable, Sendable {
-    var lines: [MetricLine]
-}
-
 enum GrokUsageMapper {
     /// Map the credits-format billing response into the provider's remote lines: the Weekly meter
     /// plus the pay-as-you-go badge. The Weekly line is omitted (the tile reads "No data") when the
     /// account's current period isn't weekly — an account still on the old monthly-only billing has
     /// no weekly pool, and mislabeling its monthly percent would be worse than an honest blank.
-    static func mapCreditsConfig(_ response: HTTPResponse) throws -> GrokMappedUsage {
+    static func mapCreditsConfig(_ response: HTTPResponse) throws -> ProviderUsage {
         try ProviderError.requireSuccess(response, kind: .grok)
         let config = try GrokCreditsConfigDecoder.decode(responseBody: response.body)
 
@@ -30,7 +26,7 @@ enum GrokUsageMapper {
             label: "Pay as you go",
             text: config.onDemandCap > 0 ? "\(formatUnits(config.onDemandCap)) cap" : "Disabled"
         ))
-        return GrokMappedUsage(lines: lines)
+        return ProviderUsage(lines: lines)
     }
 
     static func planName(from response: HTTPResponse) -> String? {

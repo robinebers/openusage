@@ -6,7 +6,7 @@ extension AccountProviderRuntime {
     /// membership from usage-summary. Grok Bot has its own allowance and is added in every case. Every
     /// request but the primary one is optional: a failure leaves its metric out. The plan name is read
     /// hourly (`planRead`).
-    func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> CursorMappedUsage {
+    func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> ProviderUsage {
         if planRead.isDue(at: now()) {
             let fresh = await Self.optionalJSON { try await client.fetchPlan(accessToken: accessToken) }
                 .flatMap { ($0["planInfo"] as? [String: Any])?["planName"] as? String }
@@ -19,7 +19,7 @@ extension AccountProviderRuntime {
             usage: usage, planName: planName, planInfoUnavailable: planName == nil
         )
 
-        var mapped: CursorMappedUsage
+        var mapped: ProviderUsage
         if fallback.shouldFallback {
             mapped = try CursorUsageSummaryMapper.map(
                 summary: await Self.optionalJSON { try await client.fetchUsageSummary(accessToken: accessToken) },

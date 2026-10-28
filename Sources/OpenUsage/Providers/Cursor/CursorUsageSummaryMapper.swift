@@ -28,7 +28,7 @@ enum CursorUsageSummaryMapper {
         requestUsage: [String: Any]?,
         planName: String?,
         unavailableMessage: String
-    ) throws -> CursorMappedUsage {
+    ) throws -> ProviderUsage {
         let cycle = billingCycle(summary: summary, requestUsage: requestUsage)
         var lines: [MetricLine] = []
 
@@ -44,7 +44,7 @@ enum CursorUsageSummaryMapper {
         }
 
         let summaryMembership = summary?["membershipType"] as? String
-        return CursorMappedUsage(
+        return ProviderUsage(
             plan: CursorUsageMapper.resolvedPlanLabel(
                 planInfoName: planName,
                 membershipType: CursorUsageMapper.preferredMembership(

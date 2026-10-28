@@ -1,10 +1,5 @@
 import Foundation
 
-struct CodexMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
 enum CodexUsageMapper {
     static let sessionPeriodMs = MetricPeriod.sessionMs
     static let weeklyPeriodMs = MetricPeriod.weekMs
@@ -12,7 +7,7 @@ enum CodexUsageMapper {
         _ response: HTTPResponse,
         resetCredits: HTTPResponse? = nil,
         now: Date = Date()
-    ) throws -> CodexMappedUsage {
+    ) throws -> ProviderUsage {
         try ProviderError.requireSuccess(response, kind: .codex)
 
         guard let body = ProviderParse.jsonObject(response.body) else {
@@ -52,7 +47,7 @@ enum CodexUsageMapper {
         }
 
         // An empty response yields no usage lines for the account runtime to render.
-        return CodexMappedUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
+        return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
     private static func progress(

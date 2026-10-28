@@ -22,7 +22,7 @@ enum OpenRouterUsageMapper {
     }
 
     /// Period spend from `/key`, plus the tier surfaced as the plan name.
-    static func keyMetrics(from data: [String: Any]) -> (plan: String?, lines: [MetricLine]) {
+    static func keyMetrics(from data: [String: Any]) -> ProviderUsage {
         var lines: [MetricLine] = []
 
         // Period spend straight from the API (not a local log scan), so a real zero is a measured zero.
@@ -31,7 +31,7 @@ enum OpenRouterUsageMapper {
         appendSpend(data["usage_monthly"], label: "This Month", into: &lines)
 
         let plan = (data["is_free_tier"] as? Bool).map { $0 ? "Free" : "Pay-as-you-go" }
-        return (plan, lines)
+        return ProviderUsage(plan: plan, lines: lines)
     }
 
     private static func appendSpend(_ value: Any?, label: String, into lines: inout [MetricLine]) {
