@@ -2,6 +2,10 @@ import Foundation
 
 enum GrokUsageMapper {
     static func mapCreditsConfig(_ response: HTTPResponse) throws -> ProviderUsage {
+        if response.statusCode == 412,
+           (ProviderParse.jsonObject(response.body)?["error"] as? String)?.localizedCaseInsensitiveContains("no personal team") == true {
+            throw ProviderError.unavailable("Grok team accounts have no personal quota.")
+        }
         try ProviderError.requireSuccess(response, kind: .grok)
         let config = try GrokCreditsConfigDecoder.decode(responseBody: response.body)
 
