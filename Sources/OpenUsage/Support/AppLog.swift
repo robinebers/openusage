@@ -50,7 +50,7 @@ enum AppLog {
 
     /// Emit one startup line. Call first at launch, before any other subsystem logs.
     static func bootstrap() {
-        info(.config, "OpenUsage v\(AppInfo.version) starting")
+        info(.config, "OpenUsage \(AppInfo.version) starting")
     }
 
     /// `@autoclosure` defers the interpolation, so a dropped debug line never builds its message.

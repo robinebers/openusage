@@ -22,10 +22,12 @@ TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
 MIN_SYSTEM_VERSION="15.0"
-APP_VERSION="0.7.0"
-APP_BUILD="0.7.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The dev build is labelled by its commit ("dev (abc1234)" in the footer and About panel), so it never
+# carries a stale release number. Releases take their version from the tag; see script/release.sh.
+APP_VERSION="dev ($(git -C "$ROOT_DIR" rev-parse --short HEAD))"
+APP_BUILD="$(git -C "$ROOT_DIR" rev-list --count HEAD)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_DISPLAY.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -110,7 +112,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>$APP_VERSION-dev</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>$APP_BUILD</string>
   <key>LSMinimumSystemVersion</key>
