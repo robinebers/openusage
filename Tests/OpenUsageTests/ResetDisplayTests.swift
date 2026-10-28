@@ -165,6 +165,18 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(entries.count, 1)
     }
 
+    func testClaimingOneOfTwoResetsWithOneExpiryLeavesTheOtherOnTheTimeline() {
+        let shared = now.addingTimeInterval(4 * 24 * 3600)
+        let later = now.addingTimeInterval(6 * 24 * 3600)
+
+        let visible = RateLimitResetsDetail.visibleExpiries([shared, shared, later], claimed: [shared: 1])
+        XCTAssertEqual(visible, [shared, later])
+        XCTAssertEqual(RateLimitResetsDetail.visibleExpiries([shared, shared], claimed: [shared: 2]), [])
+
+        let content = RateLimitResetsDetail.content(count: 1, expiries: visible, now: now)
+        XCTAssertEqual(content.entries.map(\.key), [.init(date: shared, ordinal: 0), .init(date: later, ordinal: 0)])
+    }
+
     func testCompactDurationAlwaysShowsHoursAtDayScale() {
         XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h")
         XCTAssertEqual(Formatters.compactDuration(7 * 24 * 3600), "7d 0h")

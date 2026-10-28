@@ -14,21 +14,24 @@ struct RateLimitResetsDetail: View {
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
     var confirmDetail: String?
 
-    @State private var claimedExpiries: Set<Date> = []
+    @State private var claimedCounts: [Date: Int] = [:]
     @State private var expiriesVersion = 0
-    @State private var confirmingExpiry: Date?
-    @State private var claimingExpiry: Date?
-    @State private var hoveredExpiry: Date?
+    @State private var confirming: Entry.Key?
+    @State private var claiming: Entry.Key?
+    @State private var hovered: Entry.Key?
     @State private var redeemRequestIDs: [Date: String] = [:]
     @State private var banner: Banner?
     @State private var nothingToReset = false
 
     private static let width: CGFloat = 250
 
-    private var claimInProgress: Bool { confirmingExpiry != nil || claimingExpiry != nil }
+    private var claimInProgress: Bool { confirming != nil || claiming != nil }
 
-    private var visibleExpiries: [Date] {
-        expiries.filter { !claimedExpiries.contains($0) }
+    private var content: Content {
+        Self.content(
+            count: count - claimedCounts.values.reduce(0, +),
+            expiries: Self.visibleExpiries(expiries, claimed: claimedCounts)
+        )
     }
 
     var body: some View {
@@ -37,13 +40,13 @@ struct RateLimitResetsDetail: View {
                 bannerView(banner)
                     .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
             }
-            if let claimingExpiry, !visibleExpiries.contains(claimingExpiry) {
+            if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
-                if case .timeline(let entries) = Self.content(count: count - claimedExpiries.count, expiries: visibleExpiries) {
+                if case .timeline(let entries) = content {
                     timeline(entries)
                 }
             } else {
-                switch Self.content(count: count - claimedExpiries.count, expiries: visibleExpiries) {
+                switch content {
                 case .timeline(let entries): timeline(entries)
                 case .unknownExpiries(let count): unknownExpiriesState(count)
                 case .empty: emptyState
@@ -64,8 +67,8 @@ struct RateLimitResetsDetail: View {
         }
         .onChange(of: expiries) { _, newValue in
             expiriesVersion += 1
-            claimedExpiries = []
-            if let confirming = confirmingExpiry, !newValue.contains(confirming) {
+            claimedCounts = [:]
+            if let confirming, !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
                 cancelConfirm()
             }
         }
@@ -119,7 +122,7 @@ struct RateLimitResetsDetail: View {
     }
 
     private func dotCenterY(for entry: Entry) -> CGFloat {
-        confirmingExpiry == entry.date ? confirmCardPadding + 9 : nodeHeight / 2
+        confirming == entry.key ? confirmCardPadding + 9 : nodeHeight / 2
     }
 
     /// The connector rail: a hairline in two segments — a fixed-height top segment (row top → dot
@@ -153,10 +156,10 @@ struct RateLimitResetsDetail: View {
 
     @ViewBuilder
     private func node(_ entry: Entry) -> some View {
-        if confirmingExpiry == entry.date {
+        if confirming == entry.key {
             confirmRow(entry)
                 .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
-        } else if claimingExpiry == entry.date {
+        } else if claiming == entry.key {
             claimingRow()
                 .transition(.opacity)
         } else {
@@ -182,8 +185,8 @@ struct RateLimitResetsDetail: View {
         .frame(height: nodeHeight)
         .contentShape(Rectangle())
         .onHover { inside in
-            if inside { hoveredExpiry = entry.date }
-            else if hoveredExpiry == entry.date { hoveredExpiry = nil }
+            if inside { hovered = entry.key }
+            else if hovered == entry.key { hovered = nil }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(entry.accessibilityLabel)
@@ -192,8 +195,8 @@ struct RateLimitResetsDetail: View {
     @ViewBuilder
     private func trailing(_ entry: Entry) -> some View {
         Group {
-            if claim != nil, hoveredExpiry == entry.date, !claimInProgress {
-                Button("Use") { beginConfirm(entry.date) }
+            if claim != nil, hovered == entry.key, !claimInProgress {
+                Button("Use") { beginConfirm(entry) }
                     .controlSize(.small)
                     .disabled(nothingToReset)
                     .hoverTooltip(nothingToReset ? "Nothing to reset right now" : nil)
@@ -207,7 +210,7 @@ struct RateLimitResetsDetail: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.12), value: hoveredExpiry)
+        .animation(.easeOut(duration: 0.12), value: hovered)
     }
 
     private func confirmRow(_ entry: Entry) -> some View {
@@ -220,7 +223,7 @@ struct RateLimitResetsDetail: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button { runClaim(entry.date) } label: {
+                Button { runClaim(entry) } label: {
                     Text("Reset").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -270,38 +273,38 @@ struct RateLimitResetsDetail: View {
 
     private static let flowAnimation: Animation = .snappy(duration: 0.25)
 
-    private func beginConfirm(_ date: Date) {
-        if redeemRequestIDs[date] == nil {
-            redeemRequestIDs[date] = UUID().uuidString
+    private func beginConfirm(_ entry: Entry) {
+        if redeemRequestIDs[entry.date] == nil {
+            redeemRequestIDs[entry.date] = UUID().uuidString
         }
         withAnimation(Self.flowAnimation) {
             banner = nil
-            hoveredExpiry = nil
-            confirmingExpiry = date
+            hovered = nil
+            confirming = entry.key
         }
         onPinChange?(true)
     }
 
     private func cancelConfirm() {
         withAnimation(Self.flowAnimation) {
-            confirmingExpiry = nil
+            confirming = nil
         }
         onPinChange?(false)
     }
 
-    private func runClaim(_ date: Date) {
+    private func runClaim(_ entry: Entry) {
         guard let claim else { return }
-        let redeemRequestID = redeemRequestIDs[date] ?? UUID().uuidString
+        let redeemRequestID = redeemRequestIDs[entry.date] ?? UUID().uuidString
         withAnimation(Self.flowAnimation) {
-            confirmingExpiry = nil
-            claimingExpiry = date
+            confirming = nil
+            claiming = entry.key
         }
         let versionAtClaim = expiriesVersion
         Task {
-            let outcome = await claim(date, redeemRequestID)
+            let outcome = await claim(entry.date, redeemRequestID)
             withAnimation(Self.flowAnimation) {
-                claimingExpiry = nil
-                apply(outcome, for: date, refreshed: expiriesVersion != versionAtClaim)
+                claiming = nil
+                apply(outcome, for: entry.date, refreshed: expiriesVersion != versionAtClaim)
             }
             onPinChange?(false)
         }
@@ -310,12 +313,12 @@ struct RateLimitResetsDetail: View {
     private func apply(_ outcome: ResetClaimOutcome, for date: Date, refreshed: Bool) {
         switch outcome {
         case .success:
-            if !refreshed { claimedExpiries.insert(date) }
+            if !refreshed { claimedCounts[date, default: 0] += 1 }
             nothingToReset = true
         case .nothingToReset:
             nothingToReset = true
         case .noCredit:
-            if !refreshed { claimedExpiries.insert(date) }
+            if !refreshed { claimedCounts[date, default: 0] += 1 }
         case .unconfirmed, .unavailableNow, .failed:
             break
         }

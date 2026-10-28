@@ -5,6 +5,10 @@ extension RateLimitResetsDetail {
         case timeline([Entry])
         case unknownExpiries(count: Int)
         case empty
+
+        var entries: [Entry] {
+            if case .timeline(let entries) = self { entries } else { [] }
+        }
     }
 
     nonisolated static func content(count: Int, expiries: [Date], now: Date = Date()) -> Content {
@@ -12,6 +16,17 @@ extension RateLimitResetsDetail {
         if !entries.isEmpty { return .timeline(entries) }
         if count > 0 { return .unknownExpiries(count: count) }
         return .empty
+    }
+
+    /// The expiries still on the timeline once `claimed` resets have been used: one occurrence of a
+    /// date per claim, since a login that repeats one expiry per reset left shares it between nodes.
+    nonisolated static func visibleExpiries(_ expiries: [Date], claimed: [Date: Int]) -> [Date] {
+        var remaining = claimed
+        return expiries.filter { date in
+            guard let left = remaining[date], left > 0 else { return true }
+            remaining[date] = left - 1
+            return false
+        }
     }
 
     struct Entry: Identifiable, Equatable {
