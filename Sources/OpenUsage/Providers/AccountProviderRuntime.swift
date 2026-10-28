@@ -96,7 +96,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// The account's own credential from the vault; the only credential a refresh or claim ever uses.
     func loadCredential() async throws -> AccountCredential {
         guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw LoginError.cancelled
+            throw ProviderError.signInExpired(account.kind)
         }
         return credential
     }
@@ -122,7 +122,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         _ credential: AccountCredential,
         grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
-        guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
+        guard case .oauth(var tokens) = credential else { throw ProviderError.invalidResponse }
         guard tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken else { return tokens }
         let granted = try await grant(refreshToken, http, now())
         tokens.accessToken = granted.accessToken
@@ -141,7 +141,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .oauth(let tokens) = credential else { throw LoginError.invalidResponse }
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
         try ProviderError.requireSuccess(response, kind: .copilot)
         return try CopilotUsageMapper.map(response)
@@ -190,7 +190,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshOllama(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
+        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
         let client = OllamaUsageClient(http: http)
         let balance = try await client.fetchBalance(apiKey: key)
         try ProviderError.requireSuccess(balance, kind: .ollama)
@@ -201,7 +201,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshOpenCode(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
+        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
         let response = try await OpenCodeUsageClient(http: http).fetchUsage(apiKey: key)
         if response.statusCode == 403, OpenCodeUsageMapper.errorType(in: response) == "EntitlementError" {
             throw ProviderError.unavailable("No OpenCode Go subscription on this account.")
@@ -233,7 +233,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshOpenRouter(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
+        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
         let client = OpenRouterUsageClient(http: http)
         let credits = await openRouterEndpoint { try await client.fetchCredits(apiKey: key) }
         let keyInfo = await openRouterEndpoint { try await client.fetchKey(apiKey: key) }
@@ -261,7 +261,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshZAI(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw LoginError.invalidResponse }
+        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
         let client = ZAIUsageClient(http: http)
         let quota = try await client.fetchQuota(apiKey: key)
         try ProviderError.requireSuccess(quota, kind: .zai)

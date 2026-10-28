@@ -29,20 +29,10 @@ enum DeviceCodePoller {
             case .complete(let value):
                 return value
             case .failed(let message):
-                throw DeviceCodeError(message)
+                throw LoginError.failed(message)
             }
             try await sleep(min(delay, max(0, deadline.timeIntervalSince(now()))))
         }
-        throw DeviceCodeError("Device sign-in expired.")
+        throw LoginError.failed("Device sign-in expired.")
     }
-}
-
-struct DeviceCodeError: LocalizedError, Sendable {
-    let message: String
-
-    init(_ message: String) {
-        self.message = message
-    }
-
-    var errorDescription: String? { message }
 }

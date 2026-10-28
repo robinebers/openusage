@@ -42,6 +42,15 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         }
     }
 
+    func testAMissingKeychainItemIsAnExpiredSignIn() async {
+        let account = Account(kind: .claude, label: "Work")
+        let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault(), http: RoutingHTTPClient { _ in response(200) })
+
+        let snapshot = await runtime.refresh()
+
+        XCTAssertEqual(snapshot.errorMessage, ProviderError.signInExpired(.claude).localizedDescription)
+    }
+
     func testAServerErrorNamesItsStatus() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(503, "<html>down</html>") }

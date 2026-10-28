@@ -10,7 +10,7 @@ extension AccountProviderRuntime {
     /// `exp` here. If an early refresh fails, the token that is still valid is kept, and the next
     /// refresh tries again.
     func cursorTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
-        guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
+        guard case .oauth(var tokens) = credential else { throw ProviderError.invalidResponse }
         let hadExpiry = tokens.expiresAt != nil
         tokens.expiresAt = tokens.expiresAt ?? ProviderParse.jwtExpiry(tokens.accessToken)
         guard let expiresAt = tokens.expiresAt else { return tokens }

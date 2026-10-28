@@ -96,7 +96,6 @@ final class ResetClaimServiceTests: XCTestCase {
     func testErrorsMapToTheAdviceTheMessageGives() {
         XCTAssertEqual(ResetClaimFailure(ProviderError.signInExpired(.claude)), .signInExpired)
         XCTAssertEqual(ResetClaimFailure(ProviderError.signInExpired(.codex)), .signInExpired)
-        XCTAssertEqual(ResetClaimFailure(LoginError.cancelled), .signInExpired)
         XCTAssertEqual(ResetClaimFailure(URLError(.timedOut)), .connection)
         XCTAssertEqual(ResetClaimFailure(ProviderError.connectionFailed), .connection)
         XCTAssertEqual(ResetClaimFailure(ProviderError.connectionFailed), .connection)

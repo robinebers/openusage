@@ -96,6 +96,10 @@ enum LoginError: LocalizedError, Sendable {
     case requestFailed(Int)
     case invalidState
     case invalidCode
+    case listenerFailed(String)
+    case invalidCallback
+    case authorizationFailed(String)
+    case failed(String)
 
     var errorDescription: String? {
         switch self {
@@ -104,6 +108,10 @@ enum LoginError: LocalizedError, Sendable {
         case .requestFailed(let status): "Sign-in failed with HTTP \(status)."
         case .invalidState: "The sign-in response did not match this request."
         case .invalidCode: "The authorization code was invalid."
+        case .listenerFailed(let detail): "Could not start the sign-in callback: \(detail)"
+        case .invalidCallback: "The sign-in callback request was invalid."
+        case .authorizationFailed(let error): "Authorization failed: \(error)"
+        case .failed(let message): message
         }
     }
 }

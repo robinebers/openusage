@@ -32,14 +32,14 @@ final class LoopbackCallbackServer: @unchecked Sendable {
                 case .ready:
                     listener.stateUpdateHandler = nil
                     guard let port = listener.port?.rawValue else {
-                        continuation.resume(throwing: LoopbackCallbackError.listenerFailed("No local port was assigned."))
+                        continuation.resume(throwing: LoginError.listenerFailed("No local port was assigned."))
                         return
                     }
                     server.redirectURI = "http://localhost:\(port)\(path)"
                     continuation.resume()
                 case .failed(let error):
                     listener.stateUpdateHandler = nil
-                    continuation.resume(throwing: LoopbackCallbackError.listenerFailed(error.localizedDescription))
+                    continuation.resume(throwing: LoginError.listenerFailed(error.localizedDescription))
                 default:
                     break
                 }
@@ -63,7 +63,7 @@ final class LoopbackCallbackServer: @unchecked Sendable {
     }
 
     func cancel() {
-        finish(.failure(LoopbackCallbackError.cancelled))
+        finish(.failure(LoginError.cancelled))
         listener.cancel()
     }
 
@@ -72,7 +72,7 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, error in
             guard let self else { connection.cancel(); return }
             guard error == nil, let data, let request = String(data: data, encoding: .utf8) else {
-                self.reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoopbackCallbackError.invalidRequest))
+                self.reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoginError.invalidCallback))
                 return
             }
             self.handle(request, connection: connection)
@@ -83,25 +83,25 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         guard let line = request.components(separatedBy: "\r\n").first,
               let target = line.split(separator: " ").dropFirst().first,
               line.hasPrefix("GET ") else {
-            reply(connection, status: 405, body: "Only GET is supported.", result: .failure(LoopbackCallbackError.invalidRequest))
+            reply(connection, status: 405, body: "Only GET is supported.", result: .failure(LoginError.invalidCallback))
             return
         }
         guard let url = URL(string: "http://localhost\(target)"), url.path == path else {
-            reply(connection, status: 404, body: "Sign-in callback not found.", result: .failure(LoopbackCallbackError.invalidRequest))
+            reply(connection, status: 404, body: "Sign-in callback not found.", result: .failure(LoginError.invalidCallback))
             return
         }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let value = { (name: String) in query.first { $0.name == name }?.value }
         guard value("state") == state else {
-            reply(connection, status: 400, body: "Sign-in state did not match.", result: .failure(LoopbackCallbackError.stateMismatch))
+            reply(connection, status: 400, body: "Sign-in state did not match.", result: .failure(LoginError.invalidState))
             return
         }
         if let error = value("error") {
-            reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoopbackCallbackError.authorization(error)))
+            reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoginError.authorizationFailed(error)))
             return
         }
         guard let code = value("code"), !code.isEmpty else {
-            reply(connection, status: 400, body: "Authorization code was missing.", result: .failure(LoopbackCallbackError.invalidRequest))
+            reply(connection, status: 400, body: "Authorization code was missing.", result: .failure(LoginError.invalidCallback))
             return
         }
         reply(connection, status: 200, body: "Sign-in complete. You may close this page.", result: .success(code))
@@ -127,23 +127,5 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         continuation = nil
         lock.unlock()
         pending?.resume(with: result)
-    }
-}
-
-enum LoopbackCallbackError: LocalizedError, Sendable {
-    case listenerFailed(String)
-    case invalidRequest
-    case stateMismatch
-    case cancelled
-    case authorization(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .listenerFailed(let detail): "Could not start the sign-in callback: \(detail)"
-        case .invalidRequest: "The sign-in callback request was invalid."
-        case .stateMismatch: "The sign-in response did not match this request."
-        case .cancelled: "Sign-in was cancelled."
-        case .authorization(let error): "Authorization failed: \(error)"
-        }
     }
 }
