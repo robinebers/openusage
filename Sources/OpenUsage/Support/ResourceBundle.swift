@@ -18,9 +18,9 @@ extension Bundle {
             .flatMap(ContainingAppBundle.url(for:))?
             .appendingPathComponent("Contents/Resources", isDirectory: true)
         let searchBases: [URL?] = [
-            Bundle.main.resourceURL,                          // packaged .app: Contents/Resources
-            Bundle.main.bundleURL,                            // bundle beside the app root
-            containingAppResources,                          // executable inside the app bundle
+            Bundle.main.resourceURL,
+            Bundle.main.bundleURL,
+            containingAppResources,
             Bundle(for: ResourceBundleToken.self).resourceURL,
             Bundle(for: ResourceBundleToken.self).bundleURL
         ]

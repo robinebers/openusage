@@ -1,10 +1,5 @@
 import Foundation
 
-/// The redaction every `AppLog` line passes through before it reaches unified logging: JWTs, bare API
-/// keys, `account=` values, and home or system paths are masked.
-///
-/// This is the last line of defence, not permission to log a credential. Nothing logs a URL's query,
-/// a header, or a response body in the first place.
 enum LogRedaction {
     static func redactLogMessage(_ message: String) -> String {
         message

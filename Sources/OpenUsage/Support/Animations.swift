@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shared motion vocabulary so every transition feels consistent and "Apple-native".
 enum Motion {
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.80)
     static let modeSwitch = Animation.easeInOut(duration: 0.18)
@@ -26,26 +25,14 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Applies macOS Reduce Motion at the popover root. The transaction catches explicit and implicit
-    /// SwiftUI animations.
     func reduceAnimationsWhenRequested() -> some View {
         modifier(ReduceAnimationsModifier())
     }
 
-    /// Applies an already-resolved motion policy. Separate SwiftUI hosts (for example AppKit-owned
-    /// hover popovers) use this to receive the same environment value and transaction clamp as the
-    /// dashboard root.
     func animationReduction(_ enabled: Bool) -> some View {
         modifier(AnimationReductionModifier(enabled: enabled))
     }
 
-    /// The macOS "denied" idiom: a brief horizontal shake, like the login window on a wrong
-    /// password. Increment `trigger` to play one shake; repeats re-shake so a second blocked
-    /// click still gets feedback while the label is already showing.
-    ///
-    /// `shakeOnAppear` is for labels *inserted by* the denial itself (their `onChange` never sees
-    /// the first bump). Leave it off for persistent labels that merely mount on mode switches —
-    /// otherwise they replay an old shake every time they appear.
     func denyShake(trigger: Int, shakeOnAppear: Bool = false) -> some View {
         modifier(DenyShakeModifier(trigger: trigger, shakeOnAppear: shakeOnAppear))
     }
@@ -71,8 +58,6 @@ private struct AnimationReductionModifier: ViewModifier {
     }
 }
 
-/// Keeps an in-flight status visible without mounting an indeterminate spinner clock when motion is
-/// reduced. The static symbol matches the app's static status treatment.
 struct MotionAwareProgressView: View {
     var controlSize: ControlSize = .small
 
@@ -92,7 +77,6 @@ struct MotionAwareProgressView: View {
     }
 }
 
-/// Horizontal sine shake driven by an animatable phase (0→1 plays `shakes` full oscillations).
 private struct DenyShakeEffect: GeometryEffect {
     var phase: CGFloat
     var travel: CGFloat = 5
@@ -126,7 +110,6 @@ private struct DenyShakeModifier: ViewModifier {
     }
 
     private func shake() {
-        // Restart from zero so back-to-back triggers each play a full shake.
         phase = 0
         withAnimation(.linear(duration: 0.4)) {
             phase = 1

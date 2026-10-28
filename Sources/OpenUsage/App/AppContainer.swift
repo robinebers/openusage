@@ -1,9 +1,6 @@
 import Foundation
 import Observation
 
-/// Owns the app's long-lived stores. Accounts are the source of truth: when they change, the container
-/// updates the runtimes, layout, and data store in place, synchronously, so the status item, panel, and
-/// every other account's data stay as they are.
 @MainActor
 @Observable
 final class AppContainer {
@@ -12,8 +9,6 @@ final class AppContainer {
     let dataStore: WidgetDataStore
     let renaming: AccountRenameStore
     let popover = PopoverState()
-    /// Anonymous usage telemetry (mandatory daily activity and crashes, optional provider rollups).
-    /// Exposed so Settings can toggle extra analytics and termination can flush queued events.
     let telemetry: TelemetryRecorder
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -23,10 +18,6 @@ final class AppContainer {
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
-    /// `telemetry` and `telemetryDefaults` have no defaults on purpose: the PostHog sink starts the
-    /// process-global SDK and production writes the bundle's telemetry suite, so only the app entry
-    /// point supplies them and a test cannot build a container that reports anywhere but its own fake
-    /// sink and isolated defaults.
     init(
         accounts: AccountStore = AccountStore(),
         defaults: UserDefaults = .standard,
@@ -54,7 +45,6 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
-        // The events name providers and their metrics, never accounts.
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,
@@ -81,8 +71,6 @@ final class AppContainer {
         refreshTask?.cancel()
     }
 
-    /// The resets popover's claim seam for one account card, or `nil` when the account has no reset claims.
-    /// A claim that changed anything refreshes that account, so its meters and reset count catch up.
     func resetClaim(for providerID: String) -> ResetClaimService? {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return nil }
         return runtime.resetClaimService { [dataStore] in
@@ -90,8 +78,6 @@ final class AppContainer {
         }
     }
 
-    /// Runs a pass at launch and then every `RefreshSetting.interval`, so the menu bar keeps updating, with
-    /// the secondary-reads slot halfway between passes.
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {
@@ -104,8 +90,6 @@ final class AppContainer {
                     now: Date(),
                     providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
                 )
-                // Day-rollover beat: emits `app_daily_active` once per local day and flushes prior-day
-                // provider rollups while optional analytics are on.
                 telemetry.tick()
                 try? await Task.sleep(for: .seconds(RefreshSetting.interval / 2))
                 guard !Task.isCancelled else { return }
@@ -115,9 +99,6 @@ final class AppContainer {
         }
     }
 
-    /// Runs synchronously inside every `AccountStore` change. A removed account's runtime leaves
-    /// `providers` and the data store cancels its refresh before the store's call returns, so a response
-    /// that lands later finds no account to commit to.
     private func syncAccounts() {
         let previousIDs = Set(providers.map(\.provider.id))
         providers = ProviderCatalog.make(

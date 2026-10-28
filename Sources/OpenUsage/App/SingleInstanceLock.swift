@@ -14,8 +14,6 @@ enum SingleInstanceLock {
         case failed(String)
     }
 
-    /// Owns the lock for the process lifetime — keeps the descriptor open so the kernel keeps the
-    /// `flock` held. Dropping the token unlocks and closes the descriptor.
     final class Token {
         private let fd: CInt
 
@@ -29,8 +27,6 @@ enum SingleInstanceLock {
         }
     }
 
-    /// Locks `Application Support/OpenUsage/<bundle id>.lock` — a directory the app already uses
-    /// for its own state, and stable no matter where the app bundle itself lives.
     static func acquire(bundleIdentifier: String) -> Acquisition {
         guard let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
@@ -44,7 +40,6 @@ enum SingleInstanceLock {
         return acquire(at: lockURL)
     }
 
-    /// Split out from the well-known-path entry point so tests can aim the lock at a temp file.
     static func acquire(at lockURL: URL) -> Acquisition {
         do {
             try FileManager.default.createDirectory(

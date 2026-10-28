@@ -1,13 +1,6 @@
 import Foundation
 
-/// Shared, behavior-free parsing chores used by more than one provider. Consolidated here so a new
-/// provider reuses the same JSON/number/percent handling instead of copying it.
 enum ProviderParse {
-    /// Decode a top-level JSON object from raw response data. An empty body is a silent `nil` (the
-    /// common no-content case callers tolerate); a non-empty body that fails to parse is logged at
-    /// the boundary so a malformed external-API response (HTML error page, truncated/garbled JSON)
-    /// leaves a diagnostic instead of vanishing into an indistinguishable `nil`. A valid-but-non-object
-    /// payload (e.g. a JSON array) returns `nil` without a log — it parsed fine, it just isn't an object.
     static func jsonObject(_ data: Data) -> [String: Any]? {
         guard !data.isEmpty else { return nil }
         do {
@@ -34,10 +27,6 @@ enum ProviderParse {
         return nil
     }
 
-    /// Permissive boolean read for `JSONSerialization` output: accepts real `Bool`s, numeric `NSNumber`s
-    /// (nonzero → true, via `boolValue`), and the strings "true"/"1"/"false"/"0" (case-insensitive).
-    /// Returns `nil` for anything else, so an absent or unrecognized field stays distinguishable from an
-    /// explicit false. `Bool` is tried before `NSNumber` so a JSON `0`/`1` bridges the same way either path.
     static func bool(_ value: Any?) -> Bool? {
         if let bool = value as? Bool { return bool }
         if let number = value as? NSNumber { return number.boolValue }
@@ -51,25 +40,20 @@ enum ProviderParse {
         return nil
     }
 
-    /// Clamp a percentage into 0...100, treating non-finite input as 0.
     static func clampPercent(_ value: Double) -> Double {
         guard value.isFinite else { return 0 }
         return min(max(value, 0), 100)
     }
 
-    /// Convert integer cents to dollars: snap to whole cents, then scale. Inputs are already integer
-    /// cents from the providers' APIs; rounding guards against float drift before the divide.
     static func centsToDollars(_ cents: Double) -> Double {
         cents.rounded() / 100
     }
 
-    /// Decode a JWT's payload (the middle dot-separated segment) as a JSON object.
     static func jwtPayload(_ token: String) -> [String: Any]? {
         guard let data = jwtPayloadData(token) else { return nil }
         return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 
-    /// A JWT's payload bytes. Base64url is translated to standard base64 and padded before decoding.
     static func jwtPayloadData(_ token: String) -> Data? {
         let parts = token.split(separator: ".")
         guard parts.count >= 2 else { return nil }
@@ -82,8 +66,6 @@ enum ProviderParse {
         return Data(base64Encoded: payload)
     }
 
-    /// A JWT's `exp` claim as a date, read without verifying the signature. Use it only for the
-    /// account's own stored token.
     static func jwtExpiry(_ token: String) -> Date? {
         number(jwtPayload(token)?["exp"]).map(Date.init(timeIntervalSince1970:))
     }
@@ -108,14 +90,10 @@ extension String {
         return encoded
     }
 
-    /// `nil` when the string is empty, otherwise the string itself — for treating "" as "missing".
     var nilIfEmpty: String? {
         isEmpty ? nil : self
     }
 
-    /// Title-case a provider plan name: split on `isSeparator`, upper-case each word's first character,
-    /// and re-join with single spaces. When `lowercasingTail` is true the rest of each word is
-    /// lower-cased (e.g. "PRO PLAN" → "Pro Plan"); otherwise it's preserved (e.g. "pro_plus" → "Pro Plus").
     func titleCased(separator isSeparator: (Character) -> Bool, lowercasingTail: Bool = false) -> String {
         split(whereSeparator: isSeparator)
             .map { word in

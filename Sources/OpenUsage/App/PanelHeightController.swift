@@ -1,8 +1,5 @@
 import AppKit
 
-/// Owns the menu-bar panel's placement and content-driven height changes. The status-item controller
-/// still owns panel creation and show/hide; this type owns only the height boundary between SwiftUI and
-/// AppKit.
 @MainActor
 final class PanelHeightController {
     static let defaultHeight: CGFloat = 800
@@ -15,8 +12,6 @@ final class PanelHeightController {
     private var anchorTopLeft: NSPoint?
     private var morphSettleTask: Task<Void, Never>?
     private(set) var isMorphing = false
-    /// The last height the SwiftUI content asked for, so an attached sheet can raise the panel and the
-    /// panel can settle back to its content once the sheet ends.
     private var contentHeight: CGFloat?
     private var sheetObservers: [NSObjectProtocol] = []
 
@@ -30,8 +25,6 @@ final class PanelHeightController {
         self.currentScreen = currentScreen
     }
 
-    /// Installs the two narrow callbacks SwiftUI uses: apply one animated frame and clamp a target to
-    /// the available display height.
     func installBridge() {
         MenuBarPopover.applyHeight = { [weak self] height in
             self?.applyMorphHeight(height)
@@ -55,9 +48,6 @@ final class PanelHeightController {
         })
     }
 
-    /// Clears the previous session, captures the display, and opens at the remembered guess. This must
-    /// happen before SwiftUI sees the popover as shown, because that signal immediately asks the clamp
-    /// hook for this display's real maximum height.
     func prepareForOpening(below buttonRect: NSRect) {
         morphSettleTask?.cancel()
         isMorphing = false
@@ -81,13 +71,11 @@ final class PanelHeightController {
         panel.invalidateShadow()
     }
 
-    /// Saves before the caller changes screens or orders the panel out.
     func saveBeforeClosing() {
         guard panel.isVisible else { return }
         saveHeight(panel.frame.height, for: currentScreen())
     }
 
-    /// Clears all opening-session state after the panel is ordered out.
     func finishClosing() {
         anchorTopLeft = nil
         anchorScreen = nil
@@ -124,8 +112,6 @@ final class PanelHeightController {
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled, let self, self.panel.isVisible else { return }
             self.isMorphing = false
-            // Rebuilding the shadow for every interpolated frame competes with the page animation.
-            // Refresh it once after the window reaches its final shape instead.
             self.panel.invalidateShadow()
             self.saveHeight(self.panel.frame.height, for: self.currentScreen())
         }
@@ -160,14 +146,10 @@ final class PanelHeightController {
     }
 }
 
-/// Pure panel geometry, kept separate so display clamping can be tested without opening a window.
 enum PanelGeometry {
     static let topGap: CGFloat = 4
     static let screenMargin: CGFloat = 8
 
-    /// The least a screen's panel may be. The dashboard hugs its content, so its floor sits under the
-    /// smallest dashboard with a card (one account with one row is 146 pt, footer included); Accounts
-    /// and Settings keep the height a short list or form reads well at.
     static func minimumHeight(for screen: PopoverScreen) -> CGFloat {
         screen == .dashboard ? 100 : 200
     }
@@ -189,12 +171,8 @@ enum PanelGeometry {
         return max(1, min(roomBelowAnchor, aestheticCap))
     }
 
-    /// Extra height an attached sheet needs. AppKit centers a sheet vertically in this title-less
-    /// panel, so this leaves 10pt above and below it, matching its inset from the panel's sides.
     static let sheetMargin: CGFloat = 20
 
-    /// The panel's height for its content, raised while a sheet is attached so the sheet (which hangs
-    /// from the panel's top edge) never runs past the panel's bottom edge.
     static func height(content: CGFloat, attachedSheet: CGFloat?) -> CGFloat {
         guard let attachedSheet else { return content }
         return max(content, attachedSheet + sheetMargin)

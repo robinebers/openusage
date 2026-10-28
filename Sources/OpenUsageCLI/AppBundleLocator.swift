@@ -1,8 +1,6 @@
 import Foundation
 import OpenUsage
 
-/// The app whose settings and cache the command reads: the `.app` containing the helper, found through
-/// the `PATH` symlink, so a dev bundle reads its own domain and a shipped one reads the release's.
 struct AppBundleLocator: Sendable {
     let bundleIdentifier: String
     let version: String?

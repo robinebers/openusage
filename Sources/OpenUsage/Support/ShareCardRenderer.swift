@@ -1,17 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Renders a `ShareCardView` into a PNG and copies it to the clipboard: `ImageRenderer` → `cgImage`
-/// (×4 for a crisp, large export) → PNG, written to the pasteboard.
 @MainActor
 enum ShareCardRenderer {
-    /// Off-screen render scale. ×4 turns the popover-scale card into a crisp, large PNG — a 360pt card
-    /// ships as a 1440px image — without authoring a separate large-format layout.
     static let scale: CGFloat = 4
 
-    /// The card as PNG data, or `nil` if `ImageRenderer` produces no CGImage. Its point size is the
-    /// card's natural (flexible) size and its pixel size that times `scale`, so the PNG records the
-    /// matching resolution.
     static func png<Card: View>(for view: Card) -> Data? {
         let renderer = ImageRenderer(content: view)
         renderer.scale = scale
@@ -21,9 +14,6 @@ enum ShareCardRenderer {
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// The one "Share Screenshot": a picture of this card — a provider's accounts from its header's
-    /// right-click, one account from its caption's — drawn as the dashboard draws them, copied to the
-    /// clipboard. Returns whether the copy landed; a failure beeps and logs.
     @discardableResult
     static func share(
         family: DashboardFamily,

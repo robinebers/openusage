@@ -1,17 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// Draws a provider mark in monochrome (`Theme.iconGray`): on the glass popover, icon color
-/// reads as noise (WWDC25 — monochrome reduces it), and provider identity comes from the name
-/// beside the mark.
 struct ProviderIcon: View {
-    /// The mark's provider id (`ProviderKind.rawValue`), which names its SVG in `ProviderIcons/`.
     let id: String
-    /// Side length of the square the mark is drawn in.
     let side: CGFloat
-    /// Fraction of the side kept as margin all round. The default is the breathing room of list
-    /// contexts (e.g. Settings); a mark that should fill its box, like the section header matching
-    /// the menu-bar strip glyph, passes less.
     var inset: CGFloat = 0.14
 
     var body: some View {
@@ -21,14 +13,8 @@ struct ProviderIcon: View {
     }
 }
 
-/// A provider's SVG as AppKit loads it, with the box its artwork covers.
-///
-/// The source SVGs disagree about whitespace: Claude, Codex and Cursor sit about 10% inside their
-/// viewBox while Grok runs edge to edge. Fitting the artwork's own box gives every mark the same
-/// optical weight, and one shared `inset` then adds the same breathing room to each.
 struct ProviderMark {
     let rep: NSImageRep
-    /// The artwork's bounds in the SVG's own points, found by rasterizing it once.
     let bounds: CGRect
 
     init?(contentsOf url: URL) {
@@ -57,9 +43,6 @@ struct ProviderMark {
         )
     }
 
-    /// A template image of `side` points with the artwork fitted and centered, `inset` of the side
-    /// kept as margin all round. The handler draws the SVG under a transform, so AppKit and SwiftUI
-    /// get vector output at whatever scale they draw the image.
     func fitted(side: CGFloat, inset: CGFloat) -> NSImage {
         let fitted = NSImage(size: NSSize(width: side, height: side), flipped: false) { square in
             guard let context = NSGraphicsContext.current?.cgContext else { return false }
@@ -77,7 +60,6 @@ struct ProviderMark {
     }
 }
 
-/// The bundled provider marks, each loaded once, with a fitted template image cached per size and inset.
 @MainActor
 enum ProviderMarks {
     private static var marks: [String: ProviderMark] = [:]

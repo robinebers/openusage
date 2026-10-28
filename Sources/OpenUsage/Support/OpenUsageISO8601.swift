@@ -1,16 +1,10 @@
 import Foundation
 
-/// Shared ISO-8601 date parsing/formatting for the providers. Normalizes
-/// the various timestamp shapes providers return (space-separated, " UTC" suffix, variable fractional
-/// digits) before parsing.
 enum OpenUsageISO8601 {
     static func string(from date: Date) -> String {
         formatter(fractionalSeconds: true).string(from: date)
     }
 
-    /// Swaps a " UTC" suffix for "Z", takes a space or "T" between date and time, pads or truncates the
-    /// fraction to milliseconds, and assumes UTC when the zone is missing. A timestamp that doesn't fit
-    /// that shape goes to the formatters as is, with only its date-time separator made a "T".
     static func date(from value: String) -> Date? {
         var s = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasSuffix(" UTC") { s = s.dropLast(4) + "Z" }
