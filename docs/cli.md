@@ -68,9 +68,9 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
 }
 ```
 
-`providers` has one entry per account, keyed by account id, never by provider: read an account as
-`providers["codex@1a2b3c4d"]` (`jq '.providers["codex@1a2b3c4d"]'`). 0.7.x keyed it by provider
-(`providers.codex`); that key no longer exists. An account the app has not fetched yet has no entry.
+`providers` has one entry per account, keyed by account id (`jq '.providers["codex@1a2b3c4d"]'`;
+`openusage codex | jq '.providers[]'` for every ChatGPT account). An account the app has not fetched
+yet has no entry.
 `displayName` is the provider's name and `plan` the plan the provider reports.
 `fetchedAt` is when the app last fetched the account, `expiresAt` is when it expects to fetch it
 again (5 minutes after `fetchedAt`), and `stale` says whether that instant has passed at `generatedAt`: a stale
