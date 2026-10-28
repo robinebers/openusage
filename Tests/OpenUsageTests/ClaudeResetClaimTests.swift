@@ -19,8 +19,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
         _ = try await ClaudeUsageClient(httpClient: http).claimResetGrant(
             accessToken: "token-a", organizationUUID: Self.orgUUID,
-            grantID: "opus55-launch-promax-20260921", requestID: Self.requestID,
-            config: AccountProviderRuntime.claudeConfig
+            grantID: "opus55-launch-promax-20260921", requestID: Self.requestID
         )
 
         let request = try XCTUnwrap(http.requests.first)

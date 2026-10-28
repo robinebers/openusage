@@ -73,18 +73,14 @@ final class ClaudeResetGrantsTests: XCTestCase {
         }
     }
 
-    func testResetGrantsRequestMatchesClaudeCode() {
-        let url = ClaudeUsageClient.resetGrantsURL(URL(string: "https://api.anthropic.com/api/oauth/usage")!)
-        XCTAssertEqual(url.absoluteString, "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")
-    }
-
     func testResetGrantsRequestIdentifiesAsClaudeCode() async throws {
         // Anthropic gates reset grants by client surface: an unrecognized User-Agent comes back
         // `eligible: false, ineligible_reason: "surface"` with no grants.
         let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
         _ = try await ClaudeUsageClient(httpClient: http)
-            .fetchResetGrants(accessToken: "token", config: AccountProviderRuntime.claudeConfig)
+            .fetchResetGrants(accessToken: "token")
         let request = try XCTUnwrap(http.requests.first)
+        XCTAssertEqual(request.url.absoluteString, "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")
         XCTAssertEqual(request.headers["Authorization"], "Bearer token")
         let userAgent = try XCTUnwrap(request.headers["User-Agent"])
         XCTAssertTrue(userAgent.hasPrefix("claude-cli/"), userAgent)

@@ -46,24 +46,28 @@ struct ClaudeAccountProfile: Decodable, Hashable, Sendable {
 }
 
 struct ClaudeUsageClient: Sendable {
+    static let usageURL = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
+    static let resetGrantsURL = URL(string: "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")!
+
     var httpClient: HTTPClient
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
         self.httpClient = httpClient
     }
 
-    func refreshToken(_ refreshToken: String, config: ClaudeOAuthConfig) async throws -> HTTPResponse {
+    func refreshToken(_ refreshToken: String) async throws -> HTTPResponse {
         let body: [String: Any] = [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
-            "client_id": config.clientID,
+            "client_id": ClaudeLogin.clientID,
             "scope": ClaudeLogin.scopes
         ]
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         return try await httpClient.send(
             HTTPRequest(
                 method: "POST",
-                url: config.refreshURL,
+                url: ClaudeLogin.tokenURL,
                 headers: ["Content-Type": "application/json"],
                 body: bodyData,
                 timeout: 15
@@ -72,8 +76,8 @@ struct ClaudeUsageClient: Sendable {
     }
 
     /// `GET /api/oauth/usage`, the plain read Claude Code makes for its own usage display.
-    func fetchUsage(accessToken: String, config: ClaudeOAuthConfig) async throws -> HTTPResponse {
-        try await sendUsageRequest(url: config.usageURL, accessToken: accessToken)
+    func fetchUsage(accessToken: String) async throws -> HTTPResponse {
+        try await sendUsageRequest(url: Self.usageURL, accessToken: accessToken)
     }
 
     /// `GET /api/oauth/usage?cedar_ember=1&skip_spend=1`, the exact request Claude Code makes when it checks
@@ -83,17 +87,8 @@ struct ClaudeUsageClient: Sendable {
     /// runtime asks at most once an hour. Anthropic also decides grant eligibility by client surface: a
     /// User-Agent it doesn't recognize as Claude Code comes back `eligible: false,
     /// ineligible_reason: "surface"` with no grants.
-    func fetchResetGrants(accessToken: String, config: ClaudeOAuthConfig) async throws -> HTTPResponse {
-        try await sendUsageRequest(url: Self.resetGrantsURL(config.usageURL), accessToken: accessToken)
-    }
-
-    static func resetGrantsURL(_ usageURL: URL) -> URL {
-        guard var components = URLComponents(url: usageURL, resolvingAgainstBaseURL: false) else { return usageURL }
-        components.queryItems = (components.queryItems ?? []) + [
-            URLQueryItem(name: "cedar_ember", value: "1"),
-            URLQueryItem(name: "skip_spend", value: "1")
-        ]
-        return components.url ?? usageURL
+    func fetchResetGrants(accessToken: String) async throws -> HTTPResponse {
+        try await sendUsageRequest(url: Self.resetGrantsURL, accessToken: accessToken)
     }
 
     private func sendUsageRequest(url: URL, accessToken: String) async throws -> HTTPResponse {
@@ -106,21 +101,21 @@ struct ClaudeUsageClient: Sendable {
     /// grant. `request_id` makes a retry idempotent: Anthropic answers a repeated id with `already_used`
     /// instead of spending a second reset.
     func claimResetGrant(
-        accessToken: String, organizationUUID: String, grantID: String, requestID: String, config: ClaudeOAuthConfig
+        accessToken: String, organizationUUID: String, grantID: String, requestID: String
     ) async throws -> HTTPResponse {
         let body = try JSONSerialization.data(withJSONObject: [
             "program": "cedar_ember", "grant_id": grantID, "request_id": requestID
         ])
         return try await httpClient.send(HTTPRequest(
             method: "POST",
-            url: Self.resetClaimURL(config.usageURL, organizationUUID: organizationUUID),
+            url: Self.resetClaimURL(organizationUUID: organizationUUID),
             headers: Self.claudeCodeHeaders(accessToken),
             body: body,
             timeout: 25
         ))
     }
 
-    static func resetClaimURL(_ usageURL: URL, organizationUUID: String) -> URL {
+    static func resetClaimURL(organizationUUID: String) -> URL {
         usageURL.deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("organizations")
             .appendingPathComponent(organizationUUID)
@@ -139,11 +134,11 @@ struct ClaudeUsageClient: Sendable {
 
     /// `GET /api/oauth/profile`. Transport failures surface as `connectionFailed`; the status code is the
     /// caller's to triage.
-    func fetchProfile(accessToken: String, config: ClaudeOAuthConfig) async throws -> HTTPResponse {
+    func fetchProfile(accessToken: String) async throws -> HTTPResponse {
         do {
             return try await httpClient.send(HTTPRequest(
                 method: "GET",
-                url: config.usageURL.deletingLastPathComponent().appendingPathComponent("profile"),
+                url: Self.profileURL,
                 headers: [
                     "Authorization": "Bearer \(accessToken.trimmingCharacters(in: .whitespacesAndNewlines))",
                     "Accept": "application/json",

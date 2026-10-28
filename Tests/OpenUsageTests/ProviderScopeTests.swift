@@ -8,13 +8,8 @@ import XCTest
 final class ProviderScopeTests: XCTestCase {
     func testClaudeRefreshAsksForTheSignInScopes() async throws {
         let http = Self.tokenEndpoint()
-        let config = ClaudeOAuthConfig(
-            usageURL: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
-            refreshURL: ClaudeLogin.tokenURL,
-            clientID: ClaudeLogin.clientID
-        )
 
-        _ = try await ClaudeUsageClient(httpClient: http).refreshToken("refresh", config: config)
+        _ = try await ClaudeUsageClient(httpClient: http).refreshToken("refresh")
 
         let request = try XCTUnwrap(http.requests.first)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? [String: Any])

@@ -116,18 +116,12 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    static let claudeConfig = ClaudeOAuthConfig(
-        usageURL: URL(string: "https://api.anthropic.com/api/oauth/usage")!,
-        refreshURL: URL(string: "https://platform.claude.com/v1/oauth/token")!,
-        clientID: ClaudeLogin.clientID
-    )
-
     /// The account's Claude tokens, refreshed and saved back to the vault first when they expire within
     /// `OAuthTokens.refreshMargin`.
     func claudeTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
         guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
         if tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken {
-            let response = try await ClaudeUsageClient(httpClient: http).refreshToken(refreshToken, config: Self.claudeConfig)
+            let response = try await ClaudeUsageClient(httpClient: http).refreshToken(refreshToken)
             guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
             let refreshed = try JSONDecoder().decode(ClaudeRefreshResponse.self, from: response.body)
             tokens.accessToken = refreshed.accessToken
@@ -140,42 +134,36 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     private func refreshClaude(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
         let tokens = try await claudeTokens(credential)
-        let config = Self.claudeConfig
-        let response = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: tokens.accessToken, config: config)
-        let oauth = ClaudeOAuth(
-            accessToken: tokens.accessToken, refreshToken: tokens.refreshToken,
-            expiresAt: tokens.expiresAt?.timeIntervalSince1970,
-            subscriptionType: tokens.extras["subscription_type"], rateLimitTier: tokens.extras["rate_limit_tier"]
-        )
-        var mapped = try ClaudeUsageMapper.mapUsageResponse(response, credentials: oauth)
+        let response = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: tokens.accessToken)
+        var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         if let resets = await claudeResetGrantsLine(accessToken: tokens.accessToken) {
-            mapped.lines.append(resets)
+            lines.append(resets)
         }
-        return (await claudeLivePlan(oauth, tokens: tokens, config: config) ?? mapped.plan, mapped.lines)
+        return (await claudeLivePlan(tokens), lines)
     }
 
     /// Also records the sign-in's identity on an account added before sign-ins recorded it, so a later
     /// sign-in to the same Claude account is caught.
-    private func claudeLivePlan(_ oauth: ClaudeOAuth, tokens: OAuthTokens, config: ClaudeOAuthConfig) async -> String? {
+    private func claudeLivePlan(_ tokens: OAuthTokens) async -> String? {
         let cached = claudePlan
-        if let cached, cached.accessToken == oauth.accessToken,
+        if let cached, cached.accessToken == tokens.accessToken,
            cached.plan != nil || now().timeIntervalSince(cached.readAt) < RefreshSetting.secondaryReadInterval {
             return cached.plan
         }
         do {
-            let response = try await ClaudeUsageClient(httpClient: http).fetchProfile(accessToken: oauth.accessToken, config: config)
+            let response = try await ClaudeUsageClient(httpClient: http).fetchProfile(accessToken: tokens.accessToken)
             let profile = try ClaudeUsageClient.decodeProfile(response)
             if tokens.extras[OAuthTokens.identityKey] == nil {
                 var identified = tokens
                 identified.extras[OAuthTokens.identityKey] = profile.identity
                 try? await replaceCredential(.oauth(identified))
             }
-            let plan = ClaudeUsageMapper.formatLivePlan(profile: profile, credentials: oauth)
-            claudePlan = (oauth.accessToken, plan, now())
+            let plan = ClaudeUsageMapper.formatLivePlan(profile: profile)
+            claudePlan = (tokens.accessToken, plan, now())
             return plan
         } catch {
             AppLog.warn(LogTag.plugin("claude"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
-            claudePlan = (oauth.accessToken, cached?.plan, now())
+            claudePlan = (tokens.accessToken, cached?.plan, now())
             return cached?.plan
         }
     }

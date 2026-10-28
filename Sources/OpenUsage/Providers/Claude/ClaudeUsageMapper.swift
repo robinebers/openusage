@@ -1,15 +1,10 @@
 import Foundation
 
-struct ClaudeMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
 enum ClaudeUsageMapper {
     static let sessionPeriodMs = MetricPeriod.sessionMs
     static let weeklyPeriodMs = MetricPeriod.weekMs
 
-    static func mapUsageResponse(_ response: HTTPResponse, credentials: ClaudeOAuth, now: Date = Date()) throws -> ClaudeMappedUsage {
+    static func mapUsageResponse(_ response: HTTPResponse) throws -> [MetricLine] {
         try ProviderAuthRetry.requireSuccess(response, kind: .claude)
 
         guard let body = ProviderParse.jsonObject(response.body) else {
@@ -22,11 +17,7 @@ enum ClaudeUsageMapper {
         appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
         appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
-
-        return ClaudeMappedUsage(
-            plan: formatPlan(subscriptionType: credentials.subscriptionType, rateLimitTier: credentials.rateLimitTier),
-            lines: lines
-        )
+        return lines
     }
 
     /// The reset-grants request's `cedar_ember` block; `nil` when the account is outside the program.
@@ -84,20 +75,15 @@ enum ClaudeUsageMapper {
         return "\(base) \(tier[match])"
     }
 
-    /// Plan label from the live profile, formatted like the stored one so the badge reads the same either
-    /// way. `organization_type` arrives as `claude_max` / `claude_pro`; the `claude_` prefix is dropped so it
-    /// title-cases to "Max" / "Pro". Fields the profile omits fall back to the stored login so a partial
-    /// payload still corrects whatever it does report. `nil` when the profile carries no organization —
-    /// the caller keeps the stored plan.
-    static func formatLivePlan(profile: ClaudeAccountProfile, credentials: ClaudeOAuth) -> String? {
+    /// Plan label from the live profile. `organization_type` arrives as `claude_max` / `claude_pro`; the
+    /// `claude_` prefix is dropped so it title-cases to "Max" / "Pro". `nil` when the profile carries no
+    /// organization.
+    static func formatLivePlan(profile: ClaudeAccountProfile) -> String? {
         guard let organization = profile.organization else { return nil }
         let subscriptionType = organization.organizationType.map { type in
             type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type
         }
-        return formatPlan(
-            subscriptionType: subscriptionType ?? credentials.subscriptionType,
-            rateLimitTier: organization.rateLimitTier ?? credentials.rateLimitTier
-        )
+        return formatPlan(subscriptionType: subscriptionType, rateLimitTier: organization.rateLimitTier)
     }
 
     private static func appendUsageWindow(_ value: Any?, label: String, periodDurationMs: Int, to lines: inout [MetricLine]) {

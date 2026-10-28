@@ -40,7 +40,7 @@ extension AccountProviderRuntime {
         let epoch = claudeResetGrants.claimEpoch
         do {
             let response = try await ClaudeUsageClient(httpClient: http)
-                .fetchResetGrants(accessToken: accessToken, config: Self.claudeConfig)
+                .fetchResetGrants(accessToken: accessToken)
             let status = try ClaudeUsageMapper.mapResetGrantStatus(response)
             // A claim that landed while this read was in flight makes it a pre-claim answer, so the cache
             // stays empty for the post-claim refresh to fill.
@@ -96,7 +96,7 @@ extension AccountProviderRuntime {
         do {
             response = try await ClaudeUsageClient(httpClient: http).claimResetGrant(
                 accessToken: tokens.accessToken, organizationUUID: organizationUUID,
-                grantID: grantID, requestID: requestID, config: Self.claudeConfig
+                grantID: grantID, requestID: requestID
             )
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: request failed: \(error.localizedDescription)")
@@ -131,7 +131,7 @@ extension AccountProviderRuntime {
     /// The id goes into the claim's URL path, so anything that isn't a UUID is refused.
     private func claudeOrganizationUUID(accessToken: String) async throws -> String {
         let response = try await ClaudeUsageClient(httpClient: http)
-            .fetchProfile(accessToken: accessToken, config: Self.claudeConfig)
+            .fetchProfile(accessToken: accessToken)
         if ProviderAuthRetry.isAuthFailure(response) { throw ProviderError.signInExpired(.claude) }
         guard let uuid = try ClaudeUsageClient.decodeProfile(response).organization?.uuid,
               UUID(uuidString: uuid) != nil
