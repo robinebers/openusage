@@ -8,7 +8,7 @@ import SwiftUI
 /// The chrome belongs to its screen: `screenView` builds each page's top bar and footer from that
 /// page's own screen, so on a switch a screen slides in with its chrome instead of the destination's
 /// bar appearing over the screen being left. Each screen's scroll content underlaps the footer with
-/// the native soft scroll-edge fade (`softBottomScrollEdge` →
+/// the native soft scroll-edge fade (`softScrollEdges` →
 /// `.scrollEdgeEffectStyle(.soft)`, macOS 26+) — Apple's blurred boundary, not a custom gradient or a
 /// material bar. On macOS 15 the footer/top bar still pin via `safeAreaInset`, just without the blur
 /// (content scrolls flush). The panel **auto-fits its content**: each screen publishes its intrinsic
@@ -383,9 +383,8 @@ struct DashboardView: View {
             .onPreferenceChange(ScrollContentHeightKey.self) { height in
                 heightCoordinator.setScrollContent(height, for: screen)
             }
-            .softTopScrollEdge()
-            .softBottomScrollEdge()
-            .pinnedTopBar(spacing: 0) {
+            .softScrollEdges()
+            .pinnedBar(.top, spacing: 0) {
                 if includeChrome {
                     PopoverTopBar(
                         layout: layout,
@@ -395,7 +394,7 @@ struct DashboardView: View {
                     )
                 }
             }
-            .pinnedFooter(spacing: 0) {
+            .pinnedBar(.bottom, spacing: 0) {
                 if includeChrome {
                     PopoverFooter(
                         screen: screen,

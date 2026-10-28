@@ -65,50 +65,28 @@ extension View {
         }
     }
 
-    /// Pins a bottom bar below scrolling content. On macOS 26 this uses `safeAreaBar`, which also
-    /// feeds the native scroll-edge blur as content passes under it; on macOS 15 it uses
-    /// `safeAreaInset` (macOS 12+), which pins the bar identically but without the blur.
+    /// Pins a bar to the top (the Accounts / Settings back nav bar) or bottom (the footer) of scrolling
+    /// content. On macOS 26 this uses `safeAreaBar`, which also feeds the native scroll-edge blur as
+    /// content passes under it; on macOS 15 it uses `safeAreaInset` (macOS 12+), which pins the bar
+    /// identically but without the blur.
     @ViewBuilder
-    func pinnedFooter<Footer: View>(spacing: CGFloat, @ViewBuilder content: () -> Footer) -> some View {
+    func pinnedBar<Bar: View>(_ edge: VerticalEdge, spacing: CGFloat, @ViewBuilder content: () -> Bar) -> some View {
         if #available(macOS 26, *) {
-            safeAreaBar(edge: .bottom, spacing: spacing, content: content)
+            safeAreaBar(edge: edge, spacing: spacing, content: content)
         } else {
-            safeAreaInset(edge: .bottom, spacing: spacing, content: content)
+            safeAreaInset(edge: edge, spacing: spacing, content: content)
         }
     }
 
-    /// Pins a bar above scrolling content (the Accounts / Settings back nav bar). On macOS 26 this
-    /// uses `safeAreaBar`, which also feeds the native scroll-edge blur as content passes under it; on
-    /// macOS 15 it uses `safeAreaInset` (macOS 12+), which pins the bar identically but without the blur.
+    /// Applies the soft scroll-edge effect to both edges on macOS 26 — the subtle blurred fade of
+    /// content passing under the pinned bars (Apple's `.soft` `ScrollEdgeEffectStyle`, vs the
+    /// `.hard`/default "linear, nearly opaque" bar); no custom gradient or material bar. On macOS 15
+    /// there's no equivalent, so it's a no-op — the bars still pin via `safeAreaInset`, content just
+    /// scrolls flush to them.
     @ViewBuilder
-    func pinnedTopBar<Bar: View>(spacing: CGFloat, @ViewBuilder content: () -> Bar) -> some View {
+    func softScrollEdges() -> some View {
         if #available(macOS 26, *) {
-            safeAreaBar(edge: .top, spacing: spacing, content: content)
-        } else {
-            safeAreaInset(edge: .top, spacing: spacing, content: content)
-        }
-    }
-
-    /// Applies the soft top scroll-edge effect on macOS 26. On macOS 15 there is no equivalent, so
-    /// this is a no-op — the scroll view still scrolls and clips correctly, it just loses the blur.
-    @ViewBuilder
-    func softTopScrollEdge() -> some View {
-        if #available(macOS 26, *) {
-            scrollEdgeEffectStyle(.soft, for: .top)
-        } else {
-            self
-        }
-    }
-
-    /// Applies the soft *bottom* scroll-edge effect on macOS 26 — the subtle blurred fade of content
-    /// passing under the pinned footer (Apple's `.soft` `ScrollEdgeEffectStyle`, vs the `.hard`/default
-    /// "linear, nearly opaque" bar). This is the native way to get the early-0.7 fade-into-footer look;
-    /// no custom gradient or material bar. On macOS 15 there's no equivalent, so it's a no-op — the
-    /// footer still pins via `safeAreaInset`, content just scrolls flush to it.
-    @ViewBuilder
-    func softBottomScrollEdge() -> some View {
-        if #available(macOS 26, *) {
-            scrollEdgeEffectStyle(.soft, for: .bottom)
+            scrollEdgeEffectStyle(.soft, for: .vertical)
         } else {
             self
         }
