@@ -92,7 +92,9 @@ struct SettingsScreen: View {
     }
 
     private var privacySection: some View {
-        Section {
+        @Bindable var hideFromScreenShare = container.hideFromScreenShare
+        return Section {
+            Toggle("Hide From Screen Share", isOn: $hideFromScreenShare.isEnabled)
             Toggle("Help Make OpenUsage Better", isOn: Binding(
                 get: { container.telemetry.isEnabled },
                 set: { container.telemetry.setEnabled($0) }
@@ -100,9 +102,12 @@ struct SettingsScreen: View {
         } header: {
             Text("Privacy")
         } footer: {
-            Text("Share additional anonymous usage stats that tell the team where to improve.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("While your screen is shared or recorded, the menu bar shows the OpenUsage mark instead of your usage.")
+                Text("Share additional anonymous usage stats that tell the team where to improve.")
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
     }
 

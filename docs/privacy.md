@@ -13,6 +13,13 @@ the last fetched usage live in the app's own preferences. Nothing is synced to i
 [`openusage` command](cli.md) reads that last fetched usage and nothing else: no Keychain item, no
 network request.
 
+## Screen sharing
+
+With **Settings → Privacy → Hide From Screen Share** on, the menu bar shows the OpenUsage mark instead
+of your usage while your screen is shared or recorded. It is off by default and does not hide the
+panel. To tell that a capture is running, OpenUsage asks the macOS window server whether anything is
+watching the screen.
+
 ## Anonymous telemetry
 
 OpenUsage always sends an anonymous daily active ping and anonymous crash reports so the team can count
