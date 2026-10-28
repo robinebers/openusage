@@ -17,9 +17,6 @@ import Foundation
 /// See https://docs.ollama.com/api/balance. The mapper is pure — no I/O — so it tests directly against
 /// sample payloads.
 enum OllamaUsageMapper {
-    static let sessionPeriodMs = 5 * 60 * 60 * 1000
-    static let weeklyPeriodMs = 7 * 24 * 60 * 60 * 1000
-
     /// The plan and lines from the balance payload plus the optional account payload. `accountBody` may be
     /// `nil` — the plan request is best-effort and must never blank out the meters.
     static func map(balanceBody: Data, accountBody: Data?) throws -> ProviderUsage {
@@ -37,10 +34,10 @@ enum OllamaUsageMapper {
         }
 
         var lines: [MetricLine] = []
-        if let session = legacyLine(included["session"], label: "Session", periodMs: sessionPeriodMs) {
+        if let session = legacyLine(included["session"], label: "Session", periodMs: MetricPeriod.sessionMs) {
             lines.append(session)
         }
-        if let weekly = legacyLine(included["weekly"], label: "Weekly", periodMs: weeklyPeriodMs) {
+        if let weekly = legacyLine(included["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs) {
             lines.append(weekly)
         }
         if let monthly = monthlyLine(included) {

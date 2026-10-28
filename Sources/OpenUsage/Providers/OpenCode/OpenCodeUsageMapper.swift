@@ -21,9 +21,7 @@ enum OpenCodeUsageMapper {
         // Compare two server-authored instants when possible. This removes Mac clock skew from the
         // placeholder test. A missing or unparseable HTTP Date header is allowed by HTTP, so direct
         // callers and unusual intermediaries fall back to the local response-capture time.
-        let referenceDate = response.header("date")
-            .flatMap(OpenCodeHTTPDateFormatter.date(from:)) ?? capturedAt
-        return try meterLines(body: body, capturedAt: referenceDate)
+        return try meterLines(body: body, capturedAt: response.date ?? capturedAt)
     }
 
     static func meterLines(body: [String: Any], capturedAt: Date = Date()) throws -> [MetricLine] {
@@ -85,15 +83,5 @@ enum OpenCodeUsageMapper {
             }
         }
         return .percent(label, used, resetsAt: resetsAt, periodMs: periodMs)
-    }
-}
-
-private enum OpenCodeHTTPDateFormatter {
-    static func date(from value: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss zzz"
-        return formatter.date(from: value.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

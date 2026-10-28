@@ -17,6 +17,11 @@ struct HTTPResponse: Sendable {
         headers[name.lowercased()]
     }
 
+    /// The `Date` header as an instant, `nil` when it is absent or not an HTTP date.
+    var date: Date? {
+        header("Date").flatMap { Self.httpDateFormatter.date(from: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
     /// The wait a `Retry-After` header names, in seconds from `now`: delay-seconds or an HTTP date.
     /// `nil` when the header is absent or unreadable, or names no wait at all.
     func retryAfter(now: Date = Date()) -> TimeInterval? {

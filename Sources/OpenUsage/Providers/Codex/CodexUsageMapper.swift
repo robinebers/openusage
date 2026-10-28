@@ -1,8 +1,6 @@
 import Foundation
 
 enum CodexUsageMapper {
-    static let sessionPeriodMs = MetricPeriod.sessionMs
-    static let weeklyPeriodMs = MetricPeriod.weekMs
     static func mapUsageResponse(
         _ response: HTTPResponse,
         resetCredits: HTTPResponse? = nil,
@@ -69,7 +67,7 @@ enum CodexUsageMapper {
             guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
             return (window, ProviderParse.number(window["used_percent"]) ?? headerPercent)
         }
-        let meters = [(label: labels.session, periodMs: sessionPeriodMs), (label: labels.weekly, periodMs: weeklyPeriodMs)]
+        let meters = [(label: labels.session, periodMs: MetricPeriod.sessionMs), (label: labels.weekly, periodMs: MetricPeriod.weekMs)]
         let familiarPeriods = meters.map(\.periodMs)
         return meters.enumerated().compactMap { slot, meter in
             let exact = slots.compactMap { $0 }.first { readPeriodMs($0.window) == meter.periodMs }

@@ -1,9 +1,6 @@
 import Foundation
 
 enum ClaudeUsageMapper {
-    static let sessionPeriodMs = MetricPeriod.sessionMs
-    static let weeklyPeriodMs = MetricPeriod.weekMs
-
     static func mapUsageResponse(_ response: HTTPResponse) throws -> [MetricLine] {
         try ProviderError.requireSuccess(response, kind: .claude)
 
@@ -12,9 +9,9 @@ enum ClaudeUsageMapper {
         }
 
         var lines: [MetricLine] = []
-        appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: sessionPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: weeklyPeriodMs, to: &lines)
-        appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: weeklyPeriodMs, to: &lines)
+        appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: MetricPeriod.sessionMs, to: &lines)
+        appendUsageWindow(body["seven_day"], label: "Weekly", periodDurationMs: MetricPeriod.weekMs, to: &lines)
+        appendUsageWindow(body["seven_day_sonnet"], label: "Sonnet", periodDurationMs: MetricPeriod.weekMs, to: &lines)
         appendScopedWeeklyLimit(body["limits"], modelName: "Fable", label: "Fable", to: &lines)
         appendExtraUsage(body["extra_usage"], to: &lines)
         return lines
@@ -109,7 +106,7 @@ enum ClaudeUsageMapper {
                   model["display_name"] as? String == modelName,
                   let used = ProviderParse.number(object["percent"])
             else { continue }
-            lines.append(.percent(label, used, resetsAt: resetDate(object["resets_at"]), periodMs: weeklyPeriodMs))
+            lines.append(.percent(label, used, resetsAt: resetDate(object["resets_at"]), periodMs: MetricPeriod.weekMs))
             return
         }
     }

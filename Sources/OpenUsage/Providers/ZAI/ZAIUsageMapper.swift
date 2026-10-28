@@ -12,12 +12,6 @@ import Foundation
 /// shapes are stable in practice. The mapper is pure (no I/O) so it tests cleanly against sample
 /// payloads.
 enum ZAIUsageMapper {
-    /// One monthly web-search cycle, in milliseconds (Z.ai reports `unit: 5, number: 1`). The session
-    /// and weekly meters instead carry the *payload's* actual window (see `classifyTokenWindow`), so
-    /// their cadence tracks the plan rather than a hardcoded assumption; this monthly constant is only a
-    /// fallback for the web-search line and the widget-descriptor default.
-    static let monthlyPeriodMs = 30 * 24 * 60 * 60 * 1000
-
     /// The plan and lines from the quota + subscription payloads. `subscription` may be `nil` (the
     /// request is best-effort) and the quota's `limits` array may carry one to three entries — only
     /// what's present is mapped, so a plan without web searches still shows the session meter.
@@ -157,7 +151,7 @@ enum ZAIUsageMapper {
             limit: limit,
             format: .count(suffix: "searches"),
             resetsAt: resetsAt,
-            periodDurationMs: monthlyPeriodMs
+            periodDurationMs: MetricPeriod.monthMs
         )
     }
 
