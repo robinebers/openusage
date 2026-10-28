@@ -91,10 +91,11 @@ final class AppContainer {
                     providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
                 )
                 telemetry.tick()
-                try? await Task.sleep(for: .seconds(RefreshSetting.interval / 2))
+                let next = ContinuousClock.now + .seconds(RefreshSetting.interval)
+                try? await Task.sleep(until: next - .seconds(RefreshSetting.interval / 2), clock: .continuous)
                 guard !Task.isCancelled else { return }
                 await dataStore.refreshHourlyReads()
-                try? await Task.sleep(for: .seconds(RefreshSetting.interval / 2))
+                try? await Task.sleep(until: next, clock: .continuous)
             }
         }
     }

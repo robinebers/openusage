@@ -5,7 +5,7 @@
 | Trigger | What refreshes |
 | --- | --- |
 | Launch | Every account whose saved values are 5 minutes old or more |
-| Every 5 minutes | Every account, whatever you are doing, so the menu bar stays current |
+| Every 5 minutes | Every account, whatever you are doing, so the menu bar stays current; a pass whose time came while the Mac slept runs as soon as it wakes |
 | Adding an account | That account |
 | **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure, never a wait the provider asked for |
 | An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
