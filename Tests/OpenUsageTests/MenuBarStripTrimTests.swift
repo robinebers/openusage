@@ -3,13 +3,11 @@ import XCTest
 
 /// Covers the Text strip's transparent-margin trim: `visibleBounds(of:)` finds the opaque pixel box in
 /// `CGImage.cropping(to:)`'s coordinate space (top-left origin — an off-center mark pins the
-/// orientation), and `textImage(for:)` ships with zero transparent margins so the status item hugs its
+/// orientation), and `image(for:)` ships with zero transparent margins so the status item hugs its
 /// artwork and the menu bar's own padding is the only gap next to neighboring items.
 @MainActor
 final class MenuBarStripTrimTests: XCTestCase {
     func testVisibleBoundsFindsOffCenterContent() throws {
-        // A 3x2 opaque block near the top-left of a 20x10 canvas: rows 1...2 from the top, columns
-        // 4...6. If the scan or the crop were vertically flipped, the trim would land on empty pixels.
         let image = try makeImage(width: 20, height: 10, opaqueRect: CGRect(x: 4, y: 1, width: 3, height: 2))
 
         let bounds = try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: image))
@@ -31,21 +29,16 @@ final class MenuBarStripTrimTests: XCTestCase {
         let content = MenuBarContent(
             groups: [
                 MenuBarContent.Group(
-                    providerID: "claude",
-                    displayName: "Claude",
-                    icon: .providerMark("claude"),
+                    provider: Provider(id: "claude", kind: .claude),
                     metrics: [
-                        MenuBarContent.Metric(id: "claude.session", label: "Session", value: "99%",
-                                              fraction: 0.01, isBounded: true, hasData: true),
-                        MenuBarContent.Metric(id: "claude.weekly", label: "Weekly", value: "87%",
-                                              fraction: 0.13, isBounded: true, hasData: true)
+                        MenuBarContent.Metric(id: "claude.session", label: "Session", value: "99%"),
+                        MenuBarContent.Metric(id: "claude.weekly", label: "Weekly", value: "87%")
                     ]
                 )
-            ],
-            bars: []
+            ]
         )
 
-        let image = try XCTUnwrap(MenuBarStripRenderer.textImage(for: content))
+        let image = try XCTUnwrap(MenuBarStripRenderer.image(for: content))
         var rect = CGRect(origin: .zero, size: image.size)
         let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: &rect, context: nil, hints: nil))
         let bounds = try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: cgImage))

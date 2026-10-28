@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Runs the test suite without letting it take the keyboard. The tests host real windows in the
+# xctest process on this Mac while its owner works in another app; this script watches the frontmost
+# app throughout the run and fails when a test process ever came to the front. It also notes when the
+# frontmost app at the end is not the one at the start, which is the owner switching apps as often as
+# not, so that alone fails nothing. It is the only way to run tests on a Mac someone is using.
+# Arguments go to `swift test` (for example --filter DashboardSectionTests).
+#
+# Usage: script/test_quiet.sh [swift test arguments]
+set -uo pipefail
+
+front_app() {
+  lsappinfo info -only name "$(lsappinfo front)" | head -1 | sed -E 's/^"([^"]*)".*$/\1/'
+}
+
+before="$(front_app)"
+seen="$(mktemp -t test_quiet)"
+is_test_process() {
+  case "$1" in
+    xctest|OpenUsage*|swift-*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+(
+  trap 'kill $! 2>/dev/null; exit 0' TERM
+  while true; do
+    app="$(front_app)"
+    is_test_process "$app" && echo "$app" >> "$seen"
+    sleep 0.2 & wait $!
+  done
+) 2>/dev/null &
+watcher=$!
+disown "$watcher"
+trap 'kill "$watcher" 2>/dev/null; rm -f "$seen"' EXIT
+
+nice -n 19 swift test -j 2 "$@"
+status=$?
+
+after="$(front_app)"
+if [ -s "$seen" ] || is_test_process "$after"; then
+  echo "test_quiet: the suite took the keyboard: $(sort -u "$seen" | tr '\n' ' ')came to the front during the run" >&2
+  exit 2
+fi
+if [ "$before" != "$after" ]; then
+  echo "test_quiet: the frontmost app changed from '$before' to '$after' during the run, with no test process in front"
+else
+  echo "test_quiet: the frontmost app stayed '$before'"
+fi
+exit $status

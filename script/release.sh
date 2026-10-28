@@ -9,13 +9,12 @@ set -euo pipefail
 #
 # Required env:
 #   CODESIGN_IDENTITY     Developer ID Application identity (name or hash)
-#   ICLOUD_PROVISIONING_PROFILE  Developer ID provisioning profile with the production iCloud container
 #   SPARKLE_PUBLIC_KEY    base64 EdDSA public key -> baked into Info.plist (SUPublicEDKey). generate_appcast
 #                         only signs the DMG if this matches the private key it signs with.
 #   OPENUSAGE_VERSION     human version, e.g. 0.7.0 (CFBundleShortVersionString)
-#   OPENUSAGE_TEAM_ID     Apple Developer team id (defaults to NOTARY_TEAM_ID when notarizing)
 # Optional env:
 #   OPENUSAGE_BUILD       CFBundleVersion (monotonic). Default: git commit count.
+#   OPENUSAGE_TEAM_ID     Apple Developer team id; defaults to NOTARY_TEAM_ID
 #   FEED_URL              appcast URL baked into the app. Default: GitHub Pages project URL.
 #   NOTARY_APPLE_ID / NOTARY_APP_PASSWORD / NOTARY_TEAM_ID   Apple ID, app-specific password, and team
 #                         ID for notarytool. When all three are set, the app and DMG are notarized + stapled.
@@ -26,7 +25,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 : "${CODESIGN_IDENTITY:?set CODESIGN_IDENTITY to your Developer ID Application identity}"
-: "${ICLOUD_PROVISIONING_PROFILE:?set ICLOUD_PROVISIONING_PROFILE to the iCloud provisioning profile path}"
 : "${SPARKLE_PUBLIC_KEY:?set SPARKLE_PUBLIC_KEY to your base64 EdDSA public key}"
 : "${OPENUSAGE_VERSION:?set OPENUSAGE_VERSION, e.g. 0.7.0}"
 OPENUSAGE_TEAM_ID="${OPENUSAGE_TEAM_ID:-${NOTARY_TEAM_ID:-}}"
@@ -61,8 +59,6 @@ DMG_PATH="$DIST_DIR/$DMG_NAME"
 # `dsym upload --directory` and Sparkle both want a directory of bundles, not a single path.
 DSYM_DIR="$DIST_DIR/dSYMs"
 APP_DSYM="$DSYM_DIR/$APP_NAME.app.dSYM"
-ENTITLEMENTS_TEMPLATE="$ROOT_DIR/script/OpenUsage.release.entitlements.plist"
-ENTITLEMENTS="$DIST_DIR/OpenUsage.release.resolved.entitlements.plist"
 
 # Decide notarization up front. CI always supplies the notarization login; a local dry run can
 # opt out with ALLOW_UNNOTARIZED=1 (the build will then be Gatekeeper-blocked on other Macs). Missing
@@ -105,6 +101,8 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 cp "$BUILD_CLI_BINARY" "$CLI_BINARY"
 chmod +x "$APP_BINARY"
 chmod +x "$CLI_BINARY"
+# The shared module links Sparkle even though the one-shot CLI never initializes the updater. Helpers
+# sit one directory below Contents, so give dyld the same embedded-framework location as the app binary.
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$CLI_BINARY"
 # Fail loudly if the build ever silently regresses to a single arch (e.g. a dropped --arch flag): a
 # fat binary is the whole point, and generate_appcast derives Sparkle's hardwareRequirements from it.
@@ -199,66 +197,39 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
       <key>CFBundleURLSchemes</key><array><string>$OPENUSAGE_URL_SCHEME</string></array>
     </dict>
   </array>
-  <key>NSUbiquitousContainers</key>
-  <dict>
-    <key>iCloud.com.robinebers.openusage</key>
-    <dict>
-      <key>NSUbiquitousContainerIsDocumentScopePublic</key><false/>
-      <key>NSUbiquitousContainerName</key><string>OpenUsage</string>
-      <key>NSUbiquitousContainerSupportedFolderLevels</key><string>None</string>
-    </dict>
-  </dict>
 </dict>
 </plist>
 PLIST
 
-cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
-"$ROOT_DIR/script/render_icloud_entitlements.sh" \
-  "$ENTITLEMENTS_TEMPLATE" "$ICLOUD_PROVISIONING_PROFILE" "$ENTITLEMENTS" \
-  "iCloud.com.robinebers.openusage"
-/usr/libexec/PlistBuddy \
-  -c 'Add :com.apple.security.application-groups array' \
-  -c "Add :com.apple.security.application-groups:0 string $OPENUSAGE_APP_GROUP" \
-  "$ENTITLEMENTS"
-
-APP_BUNDLE="$APP_BUNDLE" \
-WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
-OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" \
-OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
-OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" \
-WIDGET_VERSION="$VERSION" \
-WIDGET_BUILD="$BUILD" \
-WIDGET_ARCHS="arm64 x86_64" \
-WIDGET_CONFIGURATION=Release \
+APP_BUNDLE="$APP_BUNDLE" WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
+OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
+OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" WIDGET_VERSION="$VERSION" WIDGET_BUILD="$BUILD" \
+WIDGET_ARCHS="arm64 x86_64" WIDGET_CONFIGURATION=Release \
   "$ROOT_DIR/script/build_widget_extension.sh"
 
 # Embed + sign Sparkle (Developer ID, hardened runtime, secure timestamp).
 "$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime --timestamp"
-codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$CLI_BINARY"
 
 echo "==> signing app (Developer ID, hardened runtime)"
-WIDGET_ENTITLEMENTS="$DIST_DIR/OpenUsage.widget.entitlements.plist"
-cat >"$WIDGET_ENTITLEMENTS" <<PLIST
+codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$CLI_BINARY"
+HOST_ENTITLEMENTS="$DIST_DIR/OpenUsage.host.entitlements.plist"
+cat >"$HOST_ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.application-groups</key>
   <array><string>$OPENUSAGE_APP_GROUP</string></array>
 </dict></plist>
 PLIST
-
-# Sign nested code explicitly, then seal the outer app. Do not use --deep for signing: it can replace
-# the extension/framework entitlements that WidgetKit and Sparkle require.
-codesign --force --options runtime --timestamp \
-  --sign "$CODESIGN_IDENTITY" \
-  --entitlements "$WIDGET_ENTITLEMENTS" \
-  "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex"
-codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" \
-  --sign "$CODESIGN_IDENTITY" "$APP_BUNDLE"
+WIDGET_ENTITLEMENTS="$DIST_DIR/OpenUsage.widget.entitlements.plist"
+cp "$HOST_ENTITLEMENTS" "$WIDGET_ENTITLEMENTS"
+/usr/libexec/PlistBuddy -c 'Add :com.apple.security.app-sandbox bool true' "$WIDGET_ENTITLEMENTS"
+# Sign nested code first, keeping the extension's sandbox and the host's App Group entitlements.
+codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" \
+  --entitlements "$WIDGET_ENTITLEMENTS" "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex"
+codesign --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" \
+  --entitlements "$HOST_ENTITLEMENTS" "$APP_BUNDLE"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
-codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "iCloud.com.robinebers.openusage" \
-  || { echo "signed app is missing the production iCloud entitlement" >&2; exit 1; }
 codesign -d --entitlements :- "$APP_BUNDLE" 2>&1 | grep -q "$OPENUSAGE_APP_GROUP" \
   || { echo "signed app is missing the production App Group entitlement" >&2; exit 1; }
 

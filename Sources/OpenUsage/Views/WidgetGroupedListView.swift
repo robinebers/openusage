@@ -1,378 +1,219 @@
+import AppKit
 import SwiftUI
 
-/// The dashboard display: one inset group per provider (System Settings style). A provider's icon + name
-/// sits above a rounded container holding its metric rows, so heterogeneous metric sets read as belonging
-/// to their provider. Rows are the shared `WidgetRowView`, fed by the same `WidgetDataStore` the menu bar
-/// uses.
-///
-/// Reordering works here directly (no Customize needed): drag any metric row to reorder it within its
-/// provider, or drag a provider's header line to reorder whole providers. Customize stays the discoverable,
-/// obvious place to do the same plus toggle metrics on/off. Both surfaces use the same local gesture/geometry
-/// helper so they work inside the menu-bar popover without a system drag/drop session.
 struct WidgetGroupedListView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(AccountRenameStore.self) private var renaming
+    @Environment(PopoverState.self) private var popover
     @Environment(\.colorScheme) private var colorScheme
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
     @State private var frameStore = ReorderFrameStore()
-    @State private var activeProviderID: String?
     @State private var activeMetricID: String?
-    @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-
-    @Environment(\.resetClaims) private var resetClaims
+    @State private var activeAccountID: String?
+    @State private var activeFamilyID: String?
 
     var body: some View {
-        // Provider-section spacing is noticeably wider than the in-card row rhythm (so groups
-        // still read as groups); the exact step comes from the density setting.
-        VStack(alignment: .leading, spacing: density.sectionSpacing) {
-            ForEach(layout.displayGroups) { group in
-                section(group)
+        let families = liveFamilies()
+        VStack(alignment: .leading, spacing: DashboardGrid.sectionSpacing) {
+            ForEach(families) { family in
+                section(family)
+                    .contextMenu { DashboardMenu(sections: DashboardMenus.provider(family), perform: perform) }
+                    .opacity(activeFamilyID == Self.familyFrameID(family.id) ? 0 : 1)
+                    .reorderFrame(id: Self.familyFrameID(family.id), in: .named(reorderSpaceName))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
-        .animation(Motion.spring, value: layout.displayGroups.map(\.provider.id))
+        .animation(Motion.spring, value: families.map(\.id))
     }
 
-    private func section(_ group: ProviderGroup) -> some View {
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            header(group)
-            container(group)
-        }
-        .opacity(activeProviderID == group.provider.id ? 0 : 1)
-        .reorderFrame(id: group.provider.id, in: .named(reorderSpaceName))
-        // Stable target consumed by DashboardView's ScrollPosition when a widget deep link opens this
-        // provider. Provider ids come exclusively from the registry, never directly from URL text.
-        .id(group.provider.id)
+    private func resolveLine(_ descriptor: WidgetDescriptor) -> DashboardLine {
+        DashboardLine(descriptor: descriptor, data: dataStore.data(for: descriptor))
     }
 
-    private func header(_ group: ProviderGroup) -> some View {
-        ProviderSectionHeader(
-            provider: group.provider,
-            plan: dataStore.plan(for: group.provider.id),
-            warning: dataStore.headerNotice(for: group.provider.id),
-            refreshing: dataStore.refreshingProviderIDs.contains(group.provider.id),
-            staleness: dataStore.stalenessHint(for: group.provider.id),
-            onCopyScreenshot: { shareCard(group) }
+    private func liveFamilies() -> [DashboardFamily] {
+        DashboardFamily.make(groups: layout.displayGroups, line: resolveLine)
+    }
+
+    private func plans(for family: DashboardFamily) -> [String: String] {
+        Dictionary(uniqueKeysWithValues: family.accounts.compactMap { account in
+            dataStore.plan(for: account.id).map { (account.id, $0) }
+        })
+    }
+
+    private func status(for accountID: String) -> AccountStatus {
+        AccountStatus(
+            refreshing: dataStore.refreshingProviderIDs.contains(accountID),
+            notice: dataStore.errorMessage(for: accountID),
+            staleness: dataStore.stalenessHint(for: accountID)
         )
-        // Keep the provider mark and hover-revealed copy control aligned with the card's content edges.
-        .padding(.horizontal, 8)
-        .highPriorityGesture(providerDragGesture(for: group))
+    }
+
+    private func section(_ family: DashboardFamily) -> some View {
+        DashboardProviderSection(family: family) {
+            DashboardProviderHeader(provider: family.provider, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
+                .highPriorityGesture(familyDragGesture(for: family))
+        } account: { account in
+            accountSection(account, in: family)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
+                .highPriorityGesture(accountDragGesture(for: account, in: family))
+            rows(of: account)
+        }
         .contextMenu {
-            // Hides the whole provider section (the Customize provider list brings it back). Mirrors
-            // the per-metric "Hide" but one level up, so the verb order reads the same on a header as a row.
-            Button("Hide \(group.provider.displayName)") {
-                container.enablement.setEnabled(false, for: group.provider.id)
-            }
-            Divider()
-            Button("Refresh \(group.provider.displayName)") {
-                Task { await dataStore.refreshOnUserRequest(providerID: group.provider.id) }
-            }
-            Button("Customize…") {
-                openCustomize(for: group.provider.id)
-            }
-            Divider()
-            Button("Share Screenshot") { _ = shareCard(group) }
+            DashboardMenu(
+                sections: DashboardMenus.account(
+                    account,
+                    status: statusReason(for: account.id),
+                    hasHiddenMetrics: !hiddenMetricIDs(for: account.id).isEmpty
+                ),
+                perform: perform
+            )
         }
+        .opacity(activeAccountID == account.id ? 0 : 1)
+        .id(account.id)
+        .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
 
-    /// Renders the provider's branded share card and copies the PNG to the clipboard. The appearance is
-    /// taken from the popover's own `colorScheme` — this view is hosted in the popover panel, whose
-    /// appearance is `AppearanceSetting.current` (explicit for Light/Dark, the menu bar for System) — so
-    /// the export matches the card on screen instead of guessing from `NSApp.effectiveAppearance`. The
-    /// same render path backs the footer's "Share Screenshot" submenu, which reaches it without a
-    /// right-click.
-    private func shareCard(_ group: ProviderGroup) -> Bool {
-        ShareCardRenderer.share(
-            group: group,
-            dataStore: dataStore,
-            layout: layout,
-            appearance: colorScheme
-        )
-    }
-
-    /// A row's placed widget paired with its resolved descriptor + data, so each `dataStore.data(for:)`
-    /// is computed once per render and reused by both the condensing rule and the row. Keyed off the
-    /// `PlacedWidget` so `ForEach` identity stays exactly what it was before this was precomputed.
-    private struct ResolvedRow: Identifiable {
-        let widget: PlacedWidget
-        let descriptor: WidgetDescriptor
-        let data: WidgetData
-        var id: PlacedWidget.ID { widget.id }
-    }
-
-    private enum DashboardMetricCardRow: Identifiable {
-        case metric(ResolvedRow)
-        case separator
-        case toggle
-        /// #596: the provider's quick-link buttons (Status / Console / Dashboard ...), pinned at the
-        /// bottom of the collapsible expanded section. They collapse with the caret — part of the
-        /// expander, not always-visible chrome.
-        case links([ProviderLink])
-
-        var id: String {
-            switch self {
-            case .metric(let row):
-                "metric:\(row.descriptor.id)"
-            case .separator:
-                "expanded-separator"
-            case .toggle:
-                "expand-toggle"
-            case .links:
-                "provider-links"
-            }
-        }
-    }
-
-    private func container(_ group: ProviderGroup) -> some View {
-        // Resolve each row's descriptor + data exactly once per render, then reuse it for both the
-        // neighbor-aware condensing rule and the row itself — `dataStore.data(for:)` used to be
-        // recomputed several times per row (twice per adjacent pair plus once in `row`).
-        let providerID = group.provider.id
-        let isExpanded = layout.isProviderExpanded(providerID)
-        let alwaysRows = resolvedRows(group.alwaysShownWidgets)
-        let expandedRows = resolvedRows(group.expandedWidgets)
-        // Text-row condensing stays within Always Visible and On Demand groups; it never crosses
-        // their separator. While collapsed, only the Always Visible group is passed through.
-        let condensedIDs = visibleCondensedTextRowIDs(alwaysRows: alwaysRows, expandedRows: isExpanded ? expandedRows : [])
-        let cardRows = metricCardRows(
-            alwaysRows: alwaysRows,
-            expandedRows: expandedRows,
-            hasExpandedMetrics: group.hasExpandedMetrics,
-            isExpanded: isExpanded,
-            links: group.provider.visibleLinks
-        )
-        // Same card builder the lifted preview uses, so the floating chip can't drift from the live card.
-        return DashboardMetricCard {
-            // One stable list keeps the drag-owning metric row alive when it crosses the separator.
-            // Separate always-shown/expanded loops can tear that source view down before `onEnded` fires,
-            // leaving the lift overlay visible until another drag forces a reset.
-            ForEach(cardRows) { cardRow in
-                switch cardRow {
-                case .metric(let entry):
-                    row(entry.descriptor, data: entry.data, in: providerID,
-                        condensedTop: condensedIDs.contains(entry.descriptor.id))
-                case .links(let links):
-                    ProviderLinksView(links: links)
-                case .separator:
-                    DashboardMetricCardSeparator()
-                        .reorderFrame(
-                            id: expandedDividerID(for: providerID),
-                            in: .named(reorderSpaceName)
+    private func rows(of account: DashboardAccount) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(account.lines) { line in
+                DashboardLiveRow(
+                    line: line,
+                    resetClaim: container.resetClaim(for: account.id),
+                    onToggleMeterStyle: { dataStore.meterStyle.toggle() },
+                    onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
+                )
+                    .opacity(activeMetricID == line.id ? 0 : 1)
+                    .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
+                    .contextMenu {
+                        DashboardMenu(
+                            sections: DashboardMenus.metric(line.descriptor, isStarred: layout.isPinned(line.descriptor.id)),
+                            perform: perform
                         )
-                case .toggle:
-                    expandToggle(providerID: providerID, isExpanded: isExpanded)
-                }
+                    }
+                    .reorderFrame(id: line.id, in: .named(reorderSpaceName))
             }
         }
     }
 
-    private func resolvedRows(_ widgets: [PlacedWidget]) -> [ResolvedRow] {
-        widgets.compactMap { widget -> ResolvedRow? in
-            guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return ResolvedRow(widget: widget, descriptor: descriptor, data: dataStore.data(for: descriptor))
-        }
+    private func statusReason(for accountID: String) -> String? {
+        dataStore.errorMessage(for: accountID) ?? dataStore.stalenessHint(for: accountID)
     }
 
-    private func metricCardRows(
-        alwaysRows: [ResolvedRow],
-        expandedRows: [ResolvedRow],
-        hasExpandedMetrics: Bool,
-        isExpanded: Bool,
-        links: [ProviderLink]
-    ) -> [DashboardMetricCardRow] {
-        // #596: provider quick-link buttons live INSIDE the collapsible expanded section, pinned at its
-        // bottom, so collapsing the caret hides them along with the expanded metrics — they're part of
-        // the expander, not always-visible chrome. The caret shows for any provider with expanded
-        // content (metrics OR links), so a links-only provider still gets a caret to reveal its buttons.
-        let hasLinks = !links.isEmpty
-        let hasExpandedContent = hasExpandedMetrics || hasLinks
-        let always = alwaysRows.map(DashboardMetricCardRow.metric)
-        guard hasExpandedContent else { return always }
-        guard isExpanded else { return always + [.toggle] }
-        return always
-            + [.separator]
-            + expandedRows.map(DashboardMetricCardRow.metric)
-            + (hasLinks ? [.links(links)] : [])
-            + [.toggle]
+    private func hiddenMetricIDs(for accountID: String) -> [String] {
+        layout.orderedSupportedMetrics(for: accountID)
+            .filter { !layout.isMetricEnabled($0.id) && dataStore.data(for: $0).hasData }
+            .map(\.id)
     }
 
-    /// The centered caret at the bottom of a provider card that reveals or hides its On Demand metrics
-    /// and quick links. It stays below the Always Visible rows when collapsed and slides below all
-    /// expanded content when open.
-    private func expandToggle(providerID: String, isExpanded: Bool) -> some View {
-        DashboardMetricCardCaret(isExpanded: isExpanded) {
-            withAnimation(Motion.spring) {
-                _ = layout.setProviderExpanded(!isExpanded, for: providerID)
+    private func perform(_ command: DashboardCommand) {
+        switch command {
+        case .refresh(let accountIDs):
+            Task { await dataStore.refresh(providerIDs: accountIDs, force: true) }
+        case .manageAccounts:
+            popover.openAccounts(nil)
+        case .open(let url):
+            NSWorkspace.shared.open(url)
+        case .rename(let accountID):
+            renaming.begin(accountID)
+        case .editAccount(let accountID):
+            popover.openAccounts(accountID)
+        case .shareScreenshot(let accountIDs):
+            shareScreenshot(accountIDs)
+        case .showHiddenMetrics(let accountID):
+            layout.showMetrics(hiddenMetricIDs(for: accountID))
+        case .toggleStar(let descriptorID):
+            if layout.isPinned(descriptorID) || layout.canPin(descriptorID) {
+                layout.togglePin(descriptorID)
+            } else if let reason = layout.pinDenialReason(descriptorID) {
+                popover.pinNotice.present(reason)
             }
+        case .hide(let descriptorID):
+            layout.setMetricEnabled(descriptorID, false)
         }
     }
 
-    private func expandedDividerID(for providerID: String) -> String {
-        "\(providerID)::dashboard-expanded-divider"
+    @discardableResult
+    private func shareScreenshot(_ accountIDs: [String]) -> Bool {
+        guard let live = liveFamilies().first(where: { $0.accounts.contains { accountIDs.contains($0.id) } }) else { return false }
+        let accounts = live.accounts.filter { accountIDs.contains($0.id) }
+        let family = DashboardFamily(id: live.id, provider: accounts[0].provider, accounts: accounts)
+        guard ShareCardRenderer.share(family: family, plans: plans(for: family), appearance: colorScheme) else { return false }
+        popover.shareNotice.present(true)
+        return true
     }
 
-    private func visibleCondensedTextRowIDs(alwaysRows: [ResolvedRow], expandedRows: [ResolvedRow]) -> Set<String> {
-        condensedTextRowIDs(alwaysRows).union(condensedTextRowIDs(expandedRows))
+    private func visibleLineIDs(for accountID: String) -> [String] {
+        liveFamilies().flatMap(\.accounts).first { $0.id == accountID }?.lines.map(\.id) ?? []
     }
 
-    /// Neighbor-aware rule (shared with the share-card export via `WidgetData.condensedTextRowOffsets`):
-    /// IDs of text-only rows sitting directly under another text-only row. Rows can't see their
-    /// neighbors, so the list computes the pairs; Compact density pulls these rows up so a run of
-    /// one-liners reads as one cluster. Called per segment (always-shown / expanded), so the expand
-    /// separator is never crossed.
-    private func condensedTextRowIDs(_ rows: [ResolvedRow]) -> Set<String> {
-        let offsets = WidgetData.condensedTextRowOffsets(in: rows.map(\.data))
-        return Set(offsets.map { rows[$0].descriptor.id })
-    }
-
-    private func row(_ descriptor: WidgetDescriptor, data: WidgetData, in providerID: String,
-                     condensedTop: Bool) -> some View {
-        return WidgetRowView(
-            data: data,
-            onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
-            onToggleMeterStyle: { dataStore.meterStyle.toggle() },
-            condensedTop: condensedTop
-        )
-            .environment(\.resetClaim, resetClaims[providerID])
-            .contentShape(Rectangle())
-            .opacity(activeMetricID == descriptor.id ? 0 : 1)
-            .highPriorityGesture(metricDragGesture(for: descriptor, providerID: providerID))
-            .contextMenu { rowMenu(descriptor, providerID: providerID) }
-            .reorderFrame(id: descriptor.id, in: .named(reorderSpaceName))
-    }
-
-    /// Desktop-native management for a single metric: hide it, pin/unpin it, refresh its provider, or jump
-    /// into Customize — without a trip through Customize first. Hide leads (the most-reached-for verb), then
-    /// star, then a divider before the two provider-/app-level actions.
-    @ViewBuilder
-    private func rowMenu(_ descriptor: WidgetDescriptor, providerID: String) -> some View {
-        Button("Hide") {
-            layout.setMetricEnabled(descriptor.id, false)
-        }
-        if descriptor.pinnable {
-            Button(layout.isPinned(descriptor.id) ? "Unstar" : "Star for menu bar") {
-                if layout.isPinned(descriptor.id) {
-                    layout.setPinned(false, for: descriptor.id)
-                } else if layout.canPin(descriptor.id) {
-                    layout.setPinned(true, for: descriptor.id)
-                } else {
-                    layout.notePinDenied(descriptor.id)
-                }
-            }
-        }
-        Divider()
-        if let provider = layout.provider(id: providerID) {
-            Button("Refresh \(provider.displayName)") {
-                Task { await dataStore.refreshOnUserRequest(providerID: providerID) }
-            }
-        }
-        Button("Customize…") {
-            openCustomize(for: providerID)
-        }
-    }
-
-    /// From the dashboard, jump straight into this provider's Customize metrics (L2), not the provider list.
-    private func openCustomize(for providerID: String) {
-        withAnimation(Motion.modeSwitch) {
-            layout.customizeProviderID = providerID
-            layout.isEditing = true
-        }
-    }
-
-    private func providerDragGesture(for group: ProviderGroup) -> some Gesture {
+    private func metricDragGesture(for line: DashboardLine, accountID: String) -> some Gesture {
         reorderDragGesture(
-            id: group.provider.id,
-            coordinateSpaceName: reorderSpaceName,
-            frameStore: frameStore,
-            active: $activeProviderID,
-            lift: $reorderLift,
-            makeLift: { makeProviderLift(for: group, value: $0) },
-            orderedIDs: { layout.displayGroups.map(\.provider.id) },
-            reorder: { layout.reorderProvider(dragged: group.provider.id, target: $0) }
-        )
-    }
-
-    private func metricDragGesture(for descriptor: WidgetDescriptor, providerID: String) -> some Gesture {
-        reorderDragGesture(
-            id: descriptor.id,
+            id: line.id,
             coordinateSpaceName: reorderSpaceName,
             frameStore: frameStore,
             active: $activeMetricID,
             lift: $reorderLift,
-            makeLift: { makeMetricLift(for: descriptor, value: $0) },
-            orderedIDs: { metricTargetIDs(for: providerID) },
-            reorder: { target in
-                let current = metricTargetIDs(for: providerID)
-                if current.contains(expandedDividerID(for: providerID)) {
-                    guard let next = LayoutStore.reordered(current, dragged: descriptor.id, target: target) else {
-                        return false
-                    }
-                    return layout.applyMetricDividerOrder(
-                        next,
-                        dragged: descriptor.id,
-                        dividerID: expandedDividerID(for: providerID),
-                        in: providerID
-                    )
+            makeLift: { value in
+                let preview = DashboardMetricRow(model: line.data.dashboardRow())
+                    .padding(.horizontal, DashboardGrid.cardPadding)
+                    .liftedRowSurface()
+                return ReorderLift.make(id: line.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
+            },
+            orderedIDs: { visibleLineIDs(for: accountID) },
+            reorder: { layout.reorderMetric(dragged: line.id, target: $0, in: accountID) }
+        )
+    }
+
+    private static func familyFrameID(_ familyID: String) -> String { "family:\(familyID)" }
+
+    private func accountDragGesture(for account: DashboardAccount, in family: DashboardFamily) -> some Gesture {
+        reorderDragGesture(
+            id: account.id,
+            coordinateSpaceName: reorderSpaceName,
+            frameStore: frameStore,
+            active: $activeAccountID,
+            lift: $reorderLift,
+            makeLift: { value in
+                let preview = DashboardAccountRows(account: account, plan: dataStore.plan(for: account.id))
+                    .padding(DashboardGrid.cardPadding)
+                    .liftedRowSurface()
+                return ReorderLift.make(id: account.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
+            },
+            orderedIDs: { liveFamilies().first { $0.id == family.id }?.accounts.map(\.id) ?? [] },
+            reorder: { layout.reorderProvider(dragged: account.id, target: $0) }
+        )
+    }
+
+    private func familyDragGesture(for family: DashboardFamily) -> some Gesture {
+        let frameID = Self.familyFrameID(family.id)
+        return reorderDragGesture(
+            id: frameID,
+            coordinateSpaceName: reorderSpaceName,
+            frameStore: frameStore,
+            active: $activeFamilyID,
+            lift: $reorderLift,
+            makeLift: { value in
+                let plans = plans(for: family)
+                let preview = DashboardProviderSection(family: family) { account in
+                    DashboardAccountRows(account: account, plan: plans[account.id])
                 }
-                return layout.reorderMetric(dragged: descriptor.id, target: target, in: providerID)
+                return ReorderLift.make(id: frameID, preview: AnyView(preview), value: value, frames: frameStore.frames)
+            },
+            orderedIDs: { liveFamilies().map { Self.familyFrameID($0.id) } },
+            reorder: { target in
+                layout.reorderFamily(dragged: family.id, target: String(target.dropFirst("family:".count)))
             }
-        )
-    }
-
-    private func metricTargetIDs(for providerID: String) -> [String] {
-        guard let group = layout.displayGroups.first(where: { $0.provider.id == providerID }) else {
-            return []
-        }
-        let alwaysShown = group.alwaysShownWidgets.compactMap { layout.descriptor(for: $0)?.id }
-        // The separator is a drop target whenever the expanded section is open — including a links-only
-        // section (buttons but no expanded metrics), so a metric can be dragged across the boundary
-        // even when only buttons are showing below it.
-        let hasExpandedContent = group.hasExpandedMetrics || !group.provider.visibleLinks.isEmpty
-        guard hasExpandedContent, layout.isProviderExpanded(providerID) else { return alwaysShown }
-        let expanded = group.expandedWidgets.compactMap { layout.descriptor(for: $0)?.id }
-        return alwaysShown + [expandedDividerID(for: providerID)] + expanded
-    }
-
-    private func makeProviderLift(for group: ProviderGroup, value: DragGesture.Value) -> ReorderLift? {
-        let isExpanded = layout.isProviderExpanded(group.provider.id)
-        let alwaysRows = group.alwaysShownWidgets.compactMap { widget -> WidgetData? in
-            guard let descriptor = layout.descriptor(for: widget) else { return nil }
-            return dataStore.data(for: descriptor)
-        }
-        let expandedRows = isExpanded
-            ? group.expandedWidgets.compactMap { widget -> WidgetData? in
-                guard let descriptor = layout.descriptor(for: widget) else { return nil }
-                return dataStore.data(for: descriptor)
-            }
-            : []
-        let links = group.provider.visibleLinks
-        let hasExpandedContent = group.hasExpandedMetrics || !links.isEmpty
-        return ReorderLift.make(
-            id: group.provider.id,
-            payload: .dashboardProvider(
-                provider: group.provider,
-                plan: dataStore.plan(for: group.provider.id),
-                rows: alwaysRows + expandedRows,
-                dividerIndex: isExpanded && hasExpandedContent ? alwaysRows.count : nil,
-                links: links,
-                showsCaret: hasExpandedContent,
-                isExpanded: isExpanded
-            ),
-            value: value,
-            frames: frameStore.frames
-        )
-    }
-
-    private func makeMetricLift(for descriptor: WidgetDescriptor, value: DragGesture.Value) -> ReorderLift? {
-        ReorderLift.make(
-            id: descriptor.id,
-            payload: .dashboardMetric(data: dataStore.data(for: descriptor)),
-            value: value,
-            frames: frameStore.frames
         )
     }
 }

@@ -3,138 +3,86 @@ import XCTest
 
 @MainActor
 final class UsageReaderTests: XCTestCase {
-    private final class StubProvider: ProviderRuntime {
-        let provider: Provider
-        var widgetDescriptors: [WidgetDescriptor] {
-            [WidgetDescriptor.percent(id: "\(provider.id).weekly", provider: provider, title: "Weekly")
-                .exportingLimit("weekly", unit: "percent")]
-        }
-        var refreshCount = 0
-        var refreshError: String?
-        var refreshedAt = Date()
-
-        init(id: String = "stub") {
-            self.provider = Provider(id: id, displayName: id.capitalized, icon: .providerMark(id))
-        }
-
-        func hasLocalCredentials() async -> Bool { true }
-
-        func refresh() async -> ProviderSnapshot {
-            refreshCount += 1
-            if let refreshError {
-                return .error(provider: provider, message: refreshError)
-            }
-            return ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Weekly", used: 20, limit: 100, format: .percent)],
-                refreshedAt: refreshedAt
-            )
-        }
+    private func cache(_ snapshot: ProviderSnapshot, in defaults: UserDefaults) {
+        let cache = ProviderSnapshotCache(userDefaults: defaults)
+        cache.save(cache.load().merging([snapshot.providerID: snapshot]) { $1 })
     }
 
-    private func defaults() -> UserDefaults {
-        let suite = "UsageReaderTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
+    private func weekly(_ account: Account, used: Double) -> ProviderSnapshot {
+        ProviderSnapshot(
+            providerID: account.cardID,
+            displayName: account.kind.displayName,
+            lines: [.progress(label: "Weekly", used: used, limit: 100, format: .percent)]
+        )
     }
 
-    func testReadsSharedSnapshotCacheWithoutRefreshing() async throws {
-        let defaults = defaults()
-        let provider = StubProvider()
-        ProviderSnapshotCache(userDefaults: defaults).store(await provider.refresh())
-        provider.refreshCount = 0
-
-        let result = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "stub")
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
-
-        XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
-        XCTAssertEqual(provider.refreshCount, 0)
-        XCTAssertTrue(result.warnings.isEmpty)
-    }
-
-    func testForceUsesSharedProviderAndStoresResult() async throws {
-        let defaults = defaults()
-        let provider = StubProvider()
-        let reader = UsageReader(userDefaults: defaults, providers: [provider])
-
-        let result = try await reader.read(providerID: "stub", force: true)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
-        let cached = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: ["stub"])
-
-        XCTAssertEqual(provider.refreshCount, 1)
-        XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
-        XCTAssertEqual(cached["stub"]?.line(label: "Weekly"), .progress(
-            label: "Weekly", used: 20, limit: 100, format: .percent
-        ))
-    }
-
-    func testRefreshAllPersistsSnapshotsBeforeOneShotReaderReturns() async throws {
-        let defaults = defaults()
-        defaults.set(["alpha", "beta"], forKey: "openusage.enabledProviders.v1")
-        let providers = [StubProvider(id: "alpha"), StubProvider(id: "beta")]
-
-        _ = try await UsageReader(userDefaults: defaults, providers: providers).read(force: true)
-
-        let persisted = ProviderSnapshotCache(userDefaults: defaults).loadSnapshots(providerIDs: ["alpha", "beta"])
-        XCTAssertEqual(Set(persisted.keys), Set(["alpha", "beta"]))
-    }
-
-    func testStalePersistedSnapshotRefreshesBeforeReading() async throws {
-        let defaults = defaults()
-        let provider = StubProvider()
-        provider.refreshedAt = Date().addingTimeInterval(-RefreshSetting.interval - 1)
-        ProviderSnapshotCache(userDefaults: defaults).store(await provider.refresh())
-        provider.refreshCount = 0
-        provider.refreshedAt = Date()
-
-        let result = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "stub")
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
-
-        XCTAssertNotNil((object["providers"] as? [String: Any])?["stub"])
-        XCTAssertEqual(provider.refreshCount, 1)
-    }
-
-    func testForcedProviderReadRefreshesOnlyRequestedProvider() async throws {
-        let defaults = defaults()
-        let requested = StubProvider(id: "requested")
-        let other = StubProvider(id: "other")
-
-        _ = try await UsageReader(userDefaults: defaults, providers: [requested, other])
-            .read(providerID: "requested", force: true)
-
-        XCTAssertEqual(requested.refreshCount, 1)
-        XCTAssertEqual(other.refreshCount, 0)
-    }
-
-    func testUnknownProviderFailsBeforeRefresh() async {
-        let defaults = defaults()
-        let provider = StubProvider()
-
-        do {
-            _ = try await UsageReader(userDefaults: defaults, providers: [provider]).read(providerID: "missing", force: true)
-            XCTFail("Expected unknown provider error")
-        } catch UsageReaderError.unknownProvider(let providerID) {
-            XCTAssertEqual(providerID, "missing")
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-        XCTAssertEqual(provider.refreshCount, 0)
-    }
-
-    func testFailedForceWithoutCacheReturnsMachineReadableError() async throws {
-        let defaults = defaults()
-        let provider = StubProvider()
-        provider.refreshError = "Not logged in"
-
-        let result = try await UsageReader(userDefaults: defaults, providers: [provider])
-            .read(providerID: "stub", force: true)
+    private func providers(in result: UsageReadResult) throws -> [String: [String: Any]] {
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: result.data) as? [String: Any])
-        let errors = try XCTUnwrap(root["errors"] as? [[String: Any]])
+        return try XCTUnwrap(root["providers"] as? [String: [String: Any]])
+    }
 
-        XCTAssertEqual(result.warnings, ["stub: Not logged in"])
-        XCTAssertEqual(errors.first?["providerId"] as? String, "stub")
-        XCTAssertEqual(errors.first?["message"] as? String, "Not logged in")
+    func testPrintsEveryCachedAccountFromTheAppDomain() throws {
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let codex = store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
+        let claude = store.add(kind: .claude, label: "Claude", credential: .apiKey("k"))
+        let pending = store.add(kind: .codex, label: "Home", credential: .apiKey("k"))
+        cache(weekly(codex, used: 20), in: defaults)
+        cache(weekly(claude, used: 30), in: defaults)
+
+        let result = try UsageReader.read(defaults)
+        let providers = try providers(in: result)
+
+        XCTAssertTrue(result.hasSnapshots)
+        XCTAssertEqual(Set(providers.keys), [codex.cardID, claude.cardID])
+        XCTAssertNil(providers[pending.cardID])
+        let resources = try XCTUnwrap(providers[codex.cardID]?["resources"] as? [String: Any])
+        XCTAssertEqual((resources["weekly"] as? [String: Any])?["used"] as? Double, 20)
+        XCTAssertEqual(providers[codex.cardID]?["displayName"] as? String, "ChatGPT")
+    }
+
+    func testProviderKindNamesEveryAccountOfThatKindAndCardIDNamesOne() throws {
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let first = store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
+        let second = store.add(kind: .codex, label: "Home", credential: .apiKey("k"))
+        let claude = store.add(kind: .claude, label: "Claude", credential: .apiKey("k"))
+        for account in [first, second, claude] {
+            cache(weekly(account, used: 10), in: defaults)
+        }
+
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "codex")).keys), [first.cardID, second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "Codex")).keys), [first.cardID, second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: second.cardID)).keys), [second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "claude")).keys), [claude.cardID])
+    }
+
+    func testUnknownProviderThrowsEvenWhenNothingIsCached() {
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
+
+        XCTAssertThrowsError(try UsageReader.read(defaults, providerID: "cursor")) { error in
+            guard case UsageReaderError.unknownProvider(let token) = error else {
+                return XCTFail("unexpected error \(error)")
+            }
+            XCTAssertEqual(token, "cursor")
+        }
+        XCTAssertThrowsError(try UsageReader.read(defaults, providerID: "codex@00000000"))
+    }
+
+    func testNothingFetchedYetPrintsTheEmptyEnvelope() throws {
+        let defaults = isolatedDefaults()
+        let empty = try UsageReader.read(defaults)
+        XCTAssertFalse(empty.hasSnapshots)
+        XCTAssertTrue(try providers(in: empty).isEmpty)
+
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
+        let unfetched = try UsageReader.read(defaults, providerID: "codex")
+        XCTAssertFalse(unfetched.hasSnapshots)
+        XCTAssertTrue(try providers(in: unfetched).isEmpty)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: unfetched.data) as? [String: Any])
+        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v1")
     }
 }

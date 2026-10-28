@@ -19,10 +19,10 @@ final class AntigravityArgonQuotaTests: XCTestCase {
     }
 
     private func assertSharedPoolsOnly(_ data: Data, file: StaticString = #filePath, line: UInt = #line) {
-        let lines = AntigravityUsageMapper.parseQuotaSummary(data)
+        let lines = AntigravityUsageMapper.parseQuotaSummaries([data])
         XCTAssertEqual(lines?.map(\.label), ["Session", "Weekly", "Claude", "Claude Weekly"], file: file, line: line)
         XCTAssertEqual(lines?.map { metric -> Double? in
-            guard case .progress(_, let used, _, _, _, _, _) = metric else { return nil }
+            guard case .progress(_, let used, _, _, _, _) = metric else { return nil }
             return used
         }, [20, 30, 40, 50], file: file, line: line)
     }
@@ -70,9 +70,9 @@ final class AntigravityArgonQuotaTests: XCTestCase {
         }
 
         for field in ["", #", "disabled":null"#, #", "disabled":false"#] {
-            let lines = AntigravityUsageMapper.parseQuotaSummary(summary(buckets: """
+            let lines = AntigravityUsageMapper.parseQuotaSummaries([summary(buckets: """
             {"bucketId":"test-id","window":"weekly","remainingFraction":0.5\(field)}
-            """))
+            """)])
             XCTAssertEqual(lines?.first { $0.label == "Argon Weekly" }, .progress(
                 label: "Argon Weekly", used: 50, limit: 100, format: .percent,
                 resetsAt: nil, periodDurationMs: MetricPeriod.weekMs
@@ -88,10 +88,10 @@ final class AntigravityArgonQuotaTests: XCTestCase {
     }
 
     func testArgonFiveHourBucketDoesNotOverrideItsWeeklyQuota() {
-        let lines = AntigravityUsageMapper.parseQuotaSummary(summary(buckets: """
+        let lines = AntigravityUsageMapper.parseQuotaSummaries([summary(buckets: """
         {"bucketId":"test-session","window":"5h","remainingFraction":0},
         {"bucketId":"test-weekly","window":"weekly","remainingFraction":0.5}
-        """))
+        """)])
         XCTAssertEqual(lines?.map(\.label), ["Session", "Weekly", "Argon Weekly", "Claude", "Claude Weekly"])
         XCTAssertEqual(lines?.first { $0.label == "Argon Weekly" }, .progress(
             label: "Argon Weekly", used: 50, limit: 100, format: .percent,
@@ -101,7 +101,7 @@ final class AntigravityArgonQuotaTests: XCTestCase {
 
     func testArgonOnlySummaryUsesWeeklyPeriodAndPreservesZeroRemaining() {
         let data = Data(#"{"groups":[{"displayName":"Gemini 4 Argon","buckets":[{"bucketId":"test-id","window":"weekly","remainingFraction":0,"disabled":false}]}]}"#.utf8)
-        let lines = AntigravityUsageMapper.parseQuotaSummary(data)
+        let lines = AntigravityUsageMapper.parseQuotaSummaries([data])
         XCTAssertEqual(lines?.count, 1)
         XCTAssertEqual(lines?.first, .progress(
             label: "Argon Weekly", used: 100, limit: 100, format: .percent,
@@ -122,31 +122,13 @@ final class AntigravityArgonQuotaTests: XCTestCase {
             resetsAt: reset, periodDurationMs: MetricPeriod.weekMs
         )
         for json in ["{\"groups\":[\(group)]}", "{\"response\":{\"groups\":[\(group)]}}"] {
-            XCTAssertEqual(AntigravityUsageMapper.parseQuotaSummary(Data(json.utf8)), [expected])
+            XCTAssertEqual(AntigravityUsageMapper.parseQuotaSummaries([Data(json.utf8)]), [expected])
         }
     }
 
     func testMalformedGroupNameDoesNotInvalidateSharedBuckets() {
         let data = Data(#"{"groups":[{"displayName":42,"buckets":[{"bucketId":"gemini-5h","remainingFraction":0.8}]}]}"#.utf8)
-        let lines = AntigravityUsageMapper.parseQuotaSummary(data)
+        let lines = AntigravityUsageMapper.parseQuotaSummaries([data])
         XCTAssertEqual(lines?.map(\.label), ["Session"])
-    }
-
-    func testLegacyArgonModelsNeverJoinTheSharedSessionEvenWithNumericQuota() {
-        let json = """
-        {"models":{
-          "argon":{"model":"MODEL_PLACEHOLDER_M421","displayName":"Gemini 4 Argon","quotaInfo":{}},
-          "argon-low":{"model":"gemini-4-argon-low","displayName":"Gemini 4 Argon (Low)","quotaInfo":{"remainingFraction":0.1}},
-          "flash":{"displayName":"Gemini 3.8 Flash (High)","quotaInfo":{"remainingFraction":0.8}}
-        }}
-        """
-        let lines = AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseCloudCodeModels(Data(json.utf8)))
-        XCTAssertEqual(lines, [.progress(
-            label: "Session", used: 20, limit: 100, format: .percent,
-            resetsAt: nil, periodDurationMs: MetricPeriod.sessionMs
-        )])
-
-        let buckets = Data(#"{"buckets":[{"modelId":"gemini-4-argon","remainingFraction":0.1},{"modelId":"gemini-3.8-flash","remainingFraction":0.8}]}"#.utf8)
-        XCTAssertEqual(AntigravityUsageMapper.buildLines(AntigravityUsageMapper.parseQuotaBuckets(buckets)), lines)
     }
 }

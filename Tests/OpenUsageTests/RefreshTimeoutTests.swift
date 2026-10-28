@@ -2,9 +2,6 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// The per-provider refresh deadline (#1081). A provider whose `refresh()` never returns must not leave
-/// the dashboard spinner turning for the rest of the session, the abandoned work must actually be
-/// cancelled rather than left running, and a refresh that lands inside the deadline must be untouched.
 @MainActor
 final class RefreshTimeoutTests: XCTestCase {
     func testHungProviderRefreshFailsAndStopsTheSpinner() async {
@@ -17,8 +14,6 @@ final class RefreshTimeoutTests: XCTestCase {
         XCTAssertEqual(outcome, .failed)
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty, "the spinner must stop when the deadline wins")
         XCTAssertEqual(store.errorMessage(for: provider.id)?.hasPrefix("Refresh timed out after"), true)
-        // Same failure handling as any other error: the provider is negative-cached, so the next
-        // non-forced pass backs off instead of re-probing a provider that just hung.
         let next = await store.refresh(providerID: provider.id)
         XCTAssertEqual(next, .backedOff)
     }
@@ -37,7 +32,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
     func testRefreshInsideTheDeadlineStillSucceeds() async {
         let (provider, descriptor) = makeProvider()
-        let runtime = TestProviderRuntime(
+        let runtime = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
             snapshot: ProviderSnapshot(
@@ -56,12 +51,12 @@ final class RefreshTimeoutTests: XCTestCase {
     }
 
     private func makeProvider() -> (Provider, WidgetDescriptor) {
-        let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
+            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         )
         return (provider, descriptor)
     }
@@ -72,12 +67,8 @@ final class RefreshTimeoutTests: XCTestCase {
         runtime: ProviderRuntime,
         timeout: TimeInterval
     ) -> WidgetDataStore {
-        WidgetDataStore(
-            registry: WidgetRegistry(providers: [provider], descriptors: [descriptor]),
-            providers: [runtime],
-            defaults: makeUserDefaults("refresh-timeout"),
-            providerRefreshTimeout: timeout
-        )
+        let defaults = isolatedDefaults()
+        return WidgetDataStore.forTesting([runtime], defaults: defaults, providerRefreshTimeout: timeout)
     }
 
     private func waitUntil(_ condition: @MainActor () -> Bool) async -> Bool {
@@ -89,10 +80,4 @@ final class RefreshTimeoutTests: XCTestCase {
         return condition()
     }
 
-    private func makeUserDefaults(_ name: String) -> UserDefaults {
-        let suiteName = "OpenUsageTests.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defaults.removePersistentDomain(forName: suiteName)
-        return defaults
-    }
 }

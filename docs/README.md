@@ -1,46 +1,23 @@
-# OpenUsage Documentation
+# OpenUsage documentation
 
-What the app does and how it behaves. These pages describe **behavior, not visuals**, and they are updated together with any change to that behavior — if the app and a page here disagree, that's a bug.
+What the app does and how it behaves. These pages describe behaviour, not visuals, and change together
+with the behaviour they describe. If the app and a page here disagree, that is a bug.
 
 ## The app
 
-- [Dashboard](dashboard.md) — the popover: rows, toggles, reordering, keyboard shortcuts
-- [Menu bar](menu-bar.md) — pinning metrics into the menu bar
-- [macOS widgets](macos-widgets.md) — provider cards on the desktop and in Notification Center
-- [Settings](settings.md) — every option, what it changes
-- [Refreshing & caching](refreshing.md) — when data updates and what happens when a fetch fails
-- [iCloud Sync](icloud-sync.md) — how spend history is combined across Macs
-- [Model pricing](pricing.md) — how spend tiles price tokens, and where the rates come from
-- [Updates](updates.md) — automatic updates, manual checks, and the beta channel
-- [Privacy & usage data](privacy.md) — daily activity, crash reports, and optional usage analytics
-
-## Integrations
-
-- [Command-line interface](cli.md) — one-shot cached and forced usage reads for agents and scripts
-- [Local HTTP API](local-http-api.md) — read your usage from other apps on `127.0.0.1:6736`
-- [Proxy](proxy.md) — route provider requests through SOCKS5 or HTTP(S)
-
-## Providers
-
-What each provider tracks, where its credentials come from, and what to do when it shows an error.
-
-- [Antigravity](providers/antigravity.md)
-- [Claude](providers/claude.md)
-- [Codex](providers/codex.md)
-- [Copilot](providers/copilot.md)
-- [Cursor](providers/cursor.md)
-- [Devin](providers/devin.md)
-- [Grok](providers/grok.md)
-- [Ollama](providers/ollama.md)
-- [OpenCode](providers/opencode.md)
-- [OpenRouter](providers/openrouter.md)
-- [Z.ai](providers/zai.md)
+- [Dashboard](dashboard.md): cards, accounts, metrics, right-click menus, reordering, keyboard shortcuts
+- [Accounts](accounts.md): adding, renaming, and removing accounts; how sign-in works
+- [Menu bar](menu-bar.md): starring metrics into the menu bar
+- [macOS widgets](macos-widgets.md): account usage on the desktop and in Notification Center
+- [Settings](settings.md): every option and what it changes
+- [Command line](cli.md): the `openusage` command, its JSON output, and installing it
+- [Refreshing](refreshing.md): when data updates and what happens when a fetch fails
+- [Providers](providers.md): how each provider signs in and what it shows
+- [Updates](updates.md): automatic updates, manual checks, and the beta channel
+- [Privacy](privacy.md): what stays on your Mac and what the anonymous telemetry sends
 
 ## For developers
 
-How the app is built and how to extend it.
-
-- [Architecture](architecture.md) — composition root, stores, the provider pipeline, the AppKit bridge
-- [Adding a provider](adding-a-provider.md) — the metric contract and the register/test/document steps
-- [Debugging & capturing logs](debugging.md) — running a local build and streaming logs
-- [Logging](logging.md) — the file log, log levels, subsystem tags, and what is never logged
+- [Architecture](architecture.md): the composition root, the stores, the account runtime, the AppKit bridge
+- [Adding a provider](adding-a-provider.md): the sign-in and usage contract, and the register, test, document steps
+- [Debugging](debugging.md): running a local build and reading its logs

@@ -13,22 +13,14 @@ import SwiftUI
 /// KeyboardShortcuts library (`setShortcut` persists and re-registers automatically).
 struct ShortcutRecorderField: View {
     let name: KeyboardShortcuts.Name
-    /// Settings can remain mounted offscreen, so visibility changes must end an active recording even
-    /// when SwiftUI doesn't remove this field from the view hierarchy.
     var isVisible = true
 
-    /// Read by `EscapeToCloseReader`: while recording, Esc belongs to the recorder (cancel), not
-    /// to popover navigation. The recorder's own monitor consumes the press; this flag keeps the
-    /// popover's Esc handling from also acting on it.
     @MainActor static private(set) var isRecordingActive = false
 
     @State private var isRecording = false
     @State private var keyMonitor: Any?
     /// Re-renders the chip after `setShortcut` (the library's store isn't observable).
     @State private var currentShortcut: KeyboardShortcuts.Shortcut?
-    /// The hosting popover window; key events only reach the local monitor while the app is
-    /// active and some window is key, so recording starts by making this one key.
-    @State private var hostWindow: NSWindow?
 
     var body: some View {
         HStack(spacing: 6) {
@@ -66,11 +58,9 @@ struct ShortcutRecorderField: View {
         .onAppear {
             currentShortcut = KeyboardShortcuts.getShortcut(for: name)
         }
-        .background(HostWindowReader(window: $hostWindow))
         .onChange(of: isVisible) { _, isVisible in
             if !isVisible { stopRecording() }
         }
-        // Covers this field actually unmounting, including resets and host teardown.
         .onDisappear {
             stopRecording()
         }
@@ -107,8 +97,6 @@ struct ShortcutRecorderField: View {
 
     private func startRecording() {
         stopRecording()
-        // Without a monitor there is no recording session — bail before touching any state, or
-        // the UI would sit in "Type Shortcut…" with the hotkey disabled and nothing listening.
         guard let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { event in
             MainActor.assumeIsolated {
                 handleRecorded(event)
@@ -122,9 +110,9 @@ struct ShortcutRecorderField: View {
         isRecording = true
         Self.isRecordingActive = true
         NSApp.activate(ignoringOtherApps: true)
-        hostWindow?.makeKey()
-        // The combo being recorded may be the current hotkey itself (or contain it) — don't let
-        // the press toggle the popover out from under the recorder.
+        // Key events only reach the local monitor while some window is key: make the popover
+        // window the chip was clicked in key.
+        NSApp.currentEvent?.window?.makeKey()
         KeyboardShortcuts.disable(name)
     }
 
@@ -147,7 +135,6 @@ struct ShortcutRecorderField: View {
         stopRecording()
     }
 
-    /// Global hotkeys need a real modifier; plain keys (or shift-only) would hijack normal typing.
     private func isValid(_ shortcut: KeyboardShortcuts.Shortcut) -> Bool {
         !shortcut.modifiers.intersection([.command, .option, .control]).isEmpty
     }
@@ -161,33 +148,5 @@ struct ShortcutRecorderField: View {
         isRecording = false
         Self.isRecordingActive = false
         KeyboardShortcuts.enable(name)
-    }
-}
-
-/// Reports the window hosting the view, so recording can make it key.
-private struct HostWindowReader: NSViewRepresentable {
-    @Binding var window: NSWindow?
-
-    func makeNSView(context: Context) -> NSView {
-        let view = WindowReportingView()
-        view.onWindowChange = { window = $0 }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? WindowReportingView)?.onWindowChange = { window = $0 }
-    }
-
-    final class WindowReportingView: NSView {
-        var onWindowChange: ((NSWindow?) -> Void)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            let window = self.window
-            // Defer past the SwiftUI update that triggered the move.
-            DispatchQueue.main.async { [weak self] in
-                self?.onWindowChange?(window)
-            }
-        }
     }
 }

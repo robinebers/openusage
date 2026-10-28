@@ -5,113 +5,73 @@ import OpenUsageWidgetSupport
 struct WidgetBridgeExporter {
     let layout: LayoutStore
     let dataStore: WidgetDataStore
-    let enablement: ProviderEnablementStore
 
     func makeDocument(generatedAt: Date = Date()) -> WidgetBridgeDocument {
-        let orderedProviders = layout.customizeProviderRows.map(\.provider)
-        return WidgetBridgeDocument(
+        WidgetBridgeDocument(
             generatedAt: generatedAt,
-            providers: orderedProviders.map { provider in
-                makeProvider(provider, generatedAt: generatedAt)
+            providers: layout.orderedProviders().map { provider in
+                let metrics = Self.enabledMetricDescriptors(for: provider.id, layout: layout).map {
+                    makeMetric($0, generatedAt: generatedAt)
+                }
+                let snapshot = dataStore.snapshots[provider.id]
+                let health: WidgetProviderHealth = if dataStore.backoffs[provider.id] != nil {
+                    .failed
+                } else if metrics.contains(where: \.hasData) {
+                    .ready
+                } else {
+                    .noData
+                }
+                return WidgetProviderRecord(
+                    id: provider.id,
+                    displayName: provider.fullName,
+                    iconID: provider.icon,
+                    plan: snapshot?.plan,
+                    refreshedAt: snapshot?.refreshedAt,
+                    health: health,
+                    metrics: metrics
+                )
             }
         )
     }
 
-    private func makeProvider(_ provider: Provider, generatedAt: Date) -> WidgetProviderRecord {
-        let descriptors = Self.enabledMetricDescriptors(
-            for: provider.id,
-            layout: layout,
-            dataStore: dataStore
-        )
-        let primary = descriptors.filter { !layout.isMetricExpanded($0.id) }
-        let secondary = descriptors.filter { layout.isMetricExpanded($0.id) }
-        let snapshot = dataStore.snapshots[provider.id]
-        let records = descriptors.reduce(into: [String: WidgetMetricRecord]()) { result, descriptor in
-            result[descriptor.id] = makeMetric(descriptor, generatedAt: generatedAt)
-        }
-        let hasData = records.values.contains(where: \.hasData)
-
-        let health: WidgetProviderHealth
-        if dataStore.errorMessage(for: provider.id) != nil {
-            health = .failed
-        } else if dataStore.warningMessage(for: provider.id) != nil {
-            health = .warning
-        } else if snapshot != nil, hasData {
-            health = .ready
-        } else {
-            health = .noData
-        }
-
-        return WidgetProviderRecord(
-            id: provider.id,
-            displayName: provider.displayName,
-            iconID: provider.icon.providerID,
-            isEnabled: enablement.isEnabled(provider.id),
-            plan: snapshot?.plan,
-            refreshedAt: snapshot?.refreshedAt,
-            health: health,
-            primaryMetrics: primary.compactMap { records[$0.id] },
-            secondaryMetrics: secondary.compactMap { records[$0.id] }
-        )
-    }
-
-    /// Enabled rows the WidgetKit extension can actually render. Keep this as the single predicate
-    /// for export and deep-link routing so a chart-only provider opens Customize instead of a
-    /// dashboard card that cannot explain the widget's "No Data" state.
-    static func enabledMetricDescriptors(
-        for providerID: String,
-        layout: LayoutStore,
-        dataStore: WidgetDataStore
-    ) -> [WidgetDescriptor] {
-        layout.orderedSupportedMetrics(for: providerID).filter {
-            layout.isMetricEnabled($0.id) && !dataStore.data(for: $0).isChart
-        }
+    /// Export and click routing share the account's shown metrics, even before its first refresh.
+    static func enabledMetricDescriptors(for providerID: String, layout: LayoutStore) -> [WidgetDescriptor] {
+        layout.orderedSupportedMetrics(for: providerID).filter { layout.isMetricEnabled($0.id) }
     }
 
     private func makeMetric(_ descriptor: WidgetDescriptor, generatedAt: Date) -> WidgetMetricRecord {
         let data = dataStore.data(for: descriptor)
         let kind: WidgetMetricKind = if data.isBounded {
             .progress
-        } else if data.selectedValues.isEmpty, data.valueTextOverride != nil {
+        } else if data.values.isEmpty, data.valueTextOverride != nil {
             .status
         } else {
             .value
         }
-        let detail: String? = if data.isBounded, data.isFreshSessionWindow(now: generatedAt) {
-            "Not started"
-        } else if data.isBounded, data.resetsAt != nil {
-            // The extension renders the raw date with SwiftUI's dynamic date styles. Baking a countdown
-            // here would make the shared payload stale every minute and require needless host reloads.
-            nil
-        } else if data.isBounded {
-            data.boundedTrailingText(now: generatedAt)
-        } else {
-            data.unboundedDetail
-        }
-
+        let headline = data.isBounded
+            ? "\(data.valueText) \(data.displayMode.label.lowercased())"
+            : data.unboundedDetail
+        let severity = data.isBounded
+            ? data.meterState(now: generatedAt).severity
+            : data.expirySeverity(now: generatedAt)
         return WidgetMetricRecord(
             id: descriptor.id,
             title: data.title,
             kind: kind,
-            headline: data.headline,
-            detail: detail == data.headline ? nil : detail,
+            headline: headline,
+            detail: nil,
             progressFraction: data.isBounded ? data.fraction : nil,
-            resetAt: data.resetsAt,
-            severity: severity(for: data, now: generatedAt),
-            hasData: data.hasData
+            resetAt: data.isFreshSessionWindow(now: generatedAt) ? nil : data.resetsAt,
+            severity: data.hasData ? Self.severity(severity) : .neutral,
+            hasData: data.hasData && (!data.showsResetExpiries || data.resetCreditCount > 0)
         )
     }
 
-    private func severity(for data: WidgetData, now: Date) -> WidgetMetricSeverity {
-        guard data.hasData else { return .neutral }
-        let severity = data.isBounded
-            ? data.meterState(now: now).severity
-            : data.expirySeverity(now: now)
-        return switch severity {
-        case .normal: .normal
+    private static func severity(_ severity: WidgetData.MeterSeverity?) -> WidgetMetricSeverity {
+        switch severity {
+        case .normal, nil: .normal
         case .warning: .warning
         case .critical: .critical
-        case nil: .normal
         }
     }
 }

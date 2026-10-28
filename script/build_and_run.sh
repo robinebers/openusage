@@ -14,10 +14,8 @@ set -euo pipefail
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        OPENUSAGE_TEAM_ID  Apple Developer team id (normally inferred from the identity)
-#        WIDGETS_REQUIRED   set to 1 to fail instead of producing a host-only ad-hoc build
+#        WIDGETS_REQUIRED   set to 1 to fail instead of building without widgets
 #        CONFIG             "release" (default) or "debug"
-#        ICLOUD_PROVISIONING_PROFILE  optional override for the development provisioning profile;
-#                         otherwise the newest matching installed profile is selected automatically
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -25,12 +23,13 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
-ICLOUD_CONTAINER_ID="iCloud.com.robinebers.openusage.dev"
 MIN_SYSTEM_VERSION="15.0"
-APP_VERSION="0.7.0"
-APP_BUILD="0.7.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The dev build is labelled by its commit ("dev (abc1234)" in the footer and About panel), so it never
+# carries a stale release number. Releases take their version from the tag; see script/release.sh.
+APP_VERSION="dev ($(git -C "$ROOT_DIR" rev-parse --short HEAD))"
+APP_BUILD="$(git -C "$ROOT_DIR" rev-list --count HEAD)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_DISPLAY.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -41,17 +40,13 @@ APP_BINARY="$APP_MACOS/$TARGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
-ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.dev.entitlements.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 WIDGET_BUNDLE_ID="$BUNDLE_ID.widgets"
-if [ "$BUNDLE_ID" = "com.robinebers.openusage" ]; then
-  OPENUSAGE_URL_SCHEME="${OPENUSAGE_URL_SCHEME:-openusage}"
-else
-  OPENUSAGE_URL_SCHEME="${OPENUSAGE_URL_SCHEME:-openusage-dev}"
-fi
+OPENUSAGE_URL_SCHEME="openusage-dev"
+[ "$BUNDLE_ID" != "com.robinebers.openusage" ] || OPENUSAGE_URL_SCHEME="openusage"
 
-# WidgetKit/App Groups need a stable team-signed identity. Keep the host-only ad-hoc fallback for
-# contributors without an Apple Development certificate; widget work can require the full path.
+# A shared App Group needs a team-signed host and extension. Keep the host-only ad-hoc build for
+# contributors without a development certificate; WIDGETS_REQUIRED makes widget validation explicit.
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$CODESIGN_IDENTITY" ]; then
   CODESIGN_IDENTITY=$(/usr/bin/security find-identity -p codesigning -v 2>/dev/null \
@@ -66,15 +61,12 @@ if [ -z "$OPENUSAGE_TEAM_ID" ] && [ -n "$CODESIGN_IDENTITY" ]; then
           toupper($2) == toupper(wanted) { split($0, fields, "\""); print fields[2]; exit }
         ')
   fi
-  if [ -n "$CERTIFICATE_NAME" ]; then
-    OPENUSAGE_TEAM_ID=$(/usr/bin/security find-certificate -c "$CERTIFICATE_NAME" -p 2>/dev/null \
-      | /usr/bin/openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null \
-      | /usr/bin/tr ',' '\n' \
-      | /usr/bin/sed -n 's/^OU=\([A-Z0-9][A-Z0-9]*\)$/\1/p' \
-      | /usr/bin/head -n 1)
-  fi
+  OPENUSAGE_TEAM_ID=$(/usr/bin/security find-certificate -c "$CERTIFICATE_NAME" -p 2>/dev/null \
+    | /usr/bin/openssl x509 -noout -subject -nameopt RFC2253 2>/dev/null \
+    | /usr/bin/tr ',' '\n' \
+    | /usr/bin/sed -n 's/^OU=\([A-Z0-9][A-Z0-9]*\)$/\1/p' \
+    | /usr/bin/head -n 1)
 fi
-
 WIDGETS_ENABLED=0
 OPENUSAGE_APP_GROUP=""
 if [ -n "$CODESIGN_IDENTITY" ] && [ -n "$OPENUSAGE_TEAM_ID" ]; then
@@ -87,10 +79,10 @@ else
   echo "WARNING: no team-signed identity; building the host app without WidgetKit support." >&2
 fi
 
-pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
-# WidgetKit keeps the extension process alive across rebuilds, so without this the desktop widgets keep
-# running the previous build's code. Match the staged path so an installed release is left alone.
-pkill -f "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex/" >/dev/null 2>&1 || true
+# Stop only the dev build staged here, never an installed OpenUsage with the same executable name.
+pkill -f "^$APP_BINARY" >/dev/null 2>&1 || true
+# WidgetKit can keep the previous extension alive after the host exits.
+pkill -f "^$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex/" >/dev/null 2>&1 || true
 
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
@@ -137,33 +129,13 @@ for bundle in "$BUILD_DIR"/*.bundle; do
 done
 shopt -u nullglob
 
-# Compile the Icon Composer source (assets/AppIcon.icon) into Assets.car so
-# Tahoe renders the real Liquid Glass icon. CFBundleIconName below must match
-# the .icon file stem ("AppIcon"). The app floor is macOS 15, so a classic .icns
-# fallback is relevant there (the release build supplies one); this dev build only
-# stages the Assets.car and runs on the maintainer's current OS.
-echo "==> compiling app icon (actool)"
-PREBUILT_ICON_DIR="$ROOT_DIR/assets/AppIcon.prebuilt"
-if xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$APP_RESOURCES" \
-  --app-icon AppIcon \
-  --enable-on-demand-resources NO \
-  --development-region en \
-  --target-device mac \
-  --platform macosx \
-  --minimum-deployment-target "$MIN_SYSTEM_VERSION" \
-  --output-partial-info-plist /dev/null \
-  --output-format human-readable-text --errors --warnings; then
-  : # compiled the icon fresh
-elif [ -f "$PREBUILT_ICON_DIR/Assets.car" ]; then
-  # actool is broken on some toolchains; commit 08863d7 ships a prebuilt icon so release CI bypasses
-  # it. Reuse the same prebuilt here, so a failed actool doesn't abort the dev build under set -e and
-  # the app still gets its real icon.
-  echo "==> actool failed; using prebuilt icon (assets/AppIcon.prebuilt)"
-  cp "$PREBUILT_ICON_DIR/Assets.car" "$APP_RESOURCES/Assets.car"
-  [ -f "$PREBUILT_ICON_DIR/AppIcon.icns" ] && cp "$PREBUILT_ICON_DIR/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
-else
-  echo "WARNING: actool failed and no prebuilt icon found; continuing without an icon" >&2
-fi
+# Install the prebuilt app icon, like the release build: actool crashes on the Icon Composer source
+# (assets/AppIcon.icon) on current toolchains, so script/compile_icon.sh regenerates
+# assets/AppIcon.prebuilt whenever the source changes. CFBundleIconName below must match the .icon
+# stem ("AppIcon").
+echo "==> installing app icon (assets/AppIcon.prebuilt)"
+cp "$ROOT_DIR/assets/AppIcon.prebuilt/Assets.car" "$APP_RESOURCES/Assets.car"
+cp "$ROOT_DIR/assets/AppIcon.prebuilt/AppIcon.icns" "$APP_RESOURCES/AppIcon.icns"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -181,7 +153,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>$APP_VERSION-dev</string>
+  <string>$APP_VERSION</string>
   <key>CFBundleVersion</key>
   <string>$APP_BUILD</string>
   <key>LSMinimumSystemVersion</key>
@@ -201,69 +173,28 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
-      <key>CFBundleURLName</key>
-      <string>$BUNDLE_ID.provider</string>
-      <key>CFBundleURLSchemes</key>
-      <array><string>$OPENUSAGE_URL_SCHEME</string></array>
+      <key>CFBundleURLName</key><string>$BUNDLE_ID.provider</string>
+      <key>CFBundleURLSchemes</key><array><string>$OPENUSAGE_URL_SCHEME</string></array>
     </dict>
   </array>
-  <key>NSUbiquitousContainers</key>
-  <dict>
-    <key>iCloud.com.robinebers.openusage.dev</key>
-    <dict>
-      <key>NSUbiquitousContainerIsDocumentScopePublic</key>
-      <false/>
-      <key>NSUbiquitousContainerName</key>
-      <string>OpenUsage</string>
-      <key>NSUbiquitousContainerSupportedFolderLevels</key>
-      <string>None</string>
-    </dict>
-  </dict>
 </dict>
 </plist>
 PLIST
 
-if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ] && [ ! -f "$ICLOUD_PROVISIONING_PROFILE" ]; then
-  echo "iCloud provisioning profile not found: $ICLOUD_PROVISIONING_PROFILE" >&2
-  exit 1
-fi
-
-if [ -z "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
-  ICLOUD_PROVISIONING_PROFILE=$("$ROOT_DIR/script/find_icloud_provisioning_profile.sh" \
-    "$BUNDLE_ID" "$ICLOUD_CONTAINER_ID" || true)
-fi
-
-if [ -n "${ICLOUD_PROVISIONING_PROFILE:-}" ]; then
-  echo "==> using iCloud provisioning profile: $ICLOUD_PROVISIONING_PROFILE"
-  cp "$ICLOUD_PROVISIONING_PROFILE" "$APP_CONTENTS/embedded.provisionprofile"
-  SIGN_ENTITLEMENTS="$DIST_DIR/OpenUsage.dev.resolved.entitlements.plist"
-  "$ROOT_DIR/script/render_icloud_entitlements.sh" \
-    "$ENTITLEMENTS" "$ICLOUD_PROVISIONING_PROFILE" "$SIGN_ENTITLEMENTS" \
-    "$ICLOUD_CONTAINER_ID"
-else
-  echo "WARNING: no matching installed iCloud provisioning profile was found; iCloud Sync will be unavailable in this build." >&2
-fi
-
 if [ "$WIDGETS_ENABLED" = "1" ]; then
-  HOST_ENTITLEMENTS="$DIST_DIR/OpenUsage.host.entitlements.plist"
-  cp "$SIGN_ENTITLEMENTS" "$HOST_ENTITLEMENTS"
-  SIGN_ENTITLEMENTS="$HOST_ENTITLEMENTS"
+  SIGN_ENTITLEMENTS="$DIST_DIR/OpenUsage.host.entitlements.plist"
+  cp "$ROOT_DIR/script/OpenUsage.local.entitlements.plist" "$SIGN_ENTITLEMENTS"
   /usr/libexec/PlistBuddy \
     -c 'Add :com.apple.security.application-groups array' \
     -c "Add :com.apple.security.application-groups:0 string $OPENUSAGE_APP_GROUP" \
     "$SIGN_ENTITLEMENTS"
 
   WIDGET_CONFIGURATION=Release
-  [ "$CONFIG" = "debug" ] && WIDGET_CONFIGURATION=Debug
-  APP_BUNDLE="$APP_BUNDLE" \
-  WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
-  OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" \
-  OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
-  OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" \
-  WIDGET_VERSION="$APP_VERSION-dev" \
-  WIDGET_BUILD="$APP_BUILD" \
-  WIDGET_ARCHS="$(uname -m)" \
-  WIDGET_CONFIGURATION="$WIDGET_CONFIGURATION" \
+  [ "$CONFIG" != "debug" ] || WIDGET_CONFIGURATION=Debug
+  APP_BUNDLE="$APP_BUNDLE" WIDGET_BUNDLE_ID="$WIDGET_BUNDLE_ID" \
+  OPENUSAGE_APP_GROUP="$OPENUSAGE_APP_GROUP" OPENUSAGE_URL_SCHEME="$OPENUSAGE_URL_SCHEME" \
+  OPENUSAGE_TEAM_ID="$OPENUSAGE_TEAM_ID" WIDGET_VERSION="$APP_VERSION" WIDGET_BUILD="$APP_BUILD" \
+  WIDGET_ARCHS="$(uname -m)" WIDGET_CONFIGURATION="$WIDGET_CONFIGURATION" \
     "$ROOT_DIR/script/build_widget_extension.sh"
 fi
 
@@ -278,15 +209,14 @@ if [ -n "$CODESIGN_IDENTITY" ]; then
     WIDGET_ENTITLEMENTS="$DIST_DIR/OpenUsage.widget.entitlements.plist"
     cat >"$WIDGET_ENTITLEMENTS" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>com.apple.security.app-sandbox</key><true/>
   <key>com.apple.security.application-groups</key>
   <array><string>$OPENUSAGE_APP_GROUP</string></array>
 </dict></plist>
 PLIST
-    /usr/bin/codesign --force --options runtime \
-      --sign "$CODESIGN_IDENTITY" \
+    /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
       --entitlements "$WIDGET_ENTITLEMENTS" \
       "$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex" >/dev/null
   fi
@@ -295,13 +225,13 @@ PLIST
     --sign "$CODESIGN_IDENTITY" \
     --entitlements "$SIGN_ENTITLEMENTS" \
     "$APP_BUNDLE" >/dev/null
-  /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
   echo "==> signed with: $CODESIGN_IDENTITY"
 else
   /usr/bin/codesign --force --sign - "$CLI_BINARY" >/dev/null
   /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$APP_BUNDLE" >/dev/null
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
 fi
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 
 launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"
@@ -322,7 +252,7 @@ case "$MODE" in
   verify)
     launch_app
     sleep 1
-    pgrep -x "$TARGET_NAME" >/dev/null && echo "==> running"
+    pgrep -f "^$APP_BINARY" >/dev/null && echo "==> running"
     ;;
   *)
     echo "usage: $0 [run|build|logs|verify]" >&2

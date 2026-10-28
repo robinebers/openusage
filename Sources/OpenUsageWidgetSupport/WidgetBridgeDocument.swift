@@ -32,42 +32,34 @@ public struct WidgetBridgeDocument: Codable, Hashable, Sendable {
 public struct WidgetProviderRecord: Codable, Hashable, Sendable, Identifiable {
     public let id: String
     public let displayName: String
-    /// Provider-mark asset name. Account cards (a second Claude or Codex login) have their own `id`
-    /// but share their family's mark. Optional so files written before this field still decode.
+    /// Accounts have distinct ids but share their provider's mark.
     public let iconID: String?
-    public let isEnabled: Bool
     public let plan: String?
     public let refreshedAt: Date?
     public let health: WidgetProviderHealth
-    public let primaryMetrics: [WidgetMetricRecord]
-    public let secondaryMetrics: [WidgetMetricRecord]
+    public let metrics: [WidgetMetricRecord]
 
     public init(
         id: String,
         displayName: String,
         iconID: String?,
-        isEnabled: Bool,
         plan: String?,
         refreshedAt: Date?,
         health: WidgetProviderHealth,
-        primaryMetrics: [WidgetMetricRecord],
-        secondaryMetrics: [WidgetMetricRecord]
+        metrics: [WidgetMetricRecord]
     ) {
         self.id = id
         self.displayName = displayName
         self.iconID = iconID
-        self.isEnabled = isEnabled
         self.plan = plan
         self.refreshedAt = refreshedAt
         self.health = health
-        self.primaryMetrics = primaryMetrics
-        self.secondaryMetrics = secondaryMetrics
+        self.metrics = metrics
     }
 }
 
 public enum WidgetProviderHealth: String, Codable, Hashable, Sendable {
     case ready
-    case warning
     case failed
     case noData
 }

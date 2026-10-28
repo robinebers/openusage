@@ -48,13 +48,13 @@ By submitting a pull request, you agree that your contribution is licensed under
 
 ### Add a provider
 
-Each provider is a small Swift module under `Sources/OpenUsage/Providers/<Name>/` that conforms to `ProviderRuntime`: an auth store reads credentials already on the user's machine, a usage client calls the provider's API, and a mapper normalizes the response into metric lines. See [docs/adding-a-provider.md](docs/adding-a-provider.md) for the full walkthrough (and [docs/architecture.md](docs/architecture.md) for how the pieces fit together).
+Each provider is a `ProviderKind` case, a `ProviderLogin` the user starts from the Accounts screen, and a small module under `Sources/OpenUsage/Providers/<Name>/`: a usage client that calls the provider's API with the account's own credential, and a mapper that normalizes the response into metric lines. OpenUsage never reads credentials, files, or logs that belong to other tools, and never estimates spend. See [docs/adding-a-provider.md](docs/adding-a-provider.md) for the full walkthrough (and [docs/architecture.md](docs/architecture.md) for how the pieces fit together).
 
 1. Open or comment on an issue and wait for a maintainer to approve it (`approved` label) and assign it to you — include why the provider fits and how its usage data is accessible
-2. Create `Sources/OpenUsage/Providers/<Name>/` and implement `ProviderRuntime`
-3. Register the provider in `AppContainer`
+2. Add the `ProviderKind` case and its sign-in, then create `Sources/OpenUsage/Providers/<Name>/` with the usage client and mapper
+3. Add the provider's metrics as descriptors in `AccountProviderRuntime+Descriptors.swift`, marking the ones the menu bar shows by default with `.pinnedByDefault()`
 4. Add focused tests under `Tests/OpenUsageTests/`
-5. Add a provider page in `docs/providers/` (metrics, credential sources, endpoints, troubleshooting)
+5. Add the provider to `docs/providers.md` (sign-in, metrics, where the plan badge comes from, what its errors mean)
 6. Test it locally with `./script/build_and_run.sh`
 7. Open a PR with screenshots showing it working
 

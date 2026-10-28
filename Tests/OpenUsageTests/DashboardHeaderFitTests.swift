@@ -1,0 +1,59 @@
+import AppKit
+import SwiftUI
+import XCTest
+@testable import OpenUsage
+
+@MainActor
+final class DashboardHeaderFitTests: QuietWindowTestCase {
+    private let width = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
+
+    func testRobinsCaptionsFitWhole() async throws {
+        let captions: [(ProviderKind, String, String)] = [
+            (.grok, "rob@sunstory.com", "SuperGrok Heavy"), (.cursor, "rob@sunstory.com", "Ultra"),
+            (.codex, "sam@hey.com", "Plus"), (.codex, "Sunstory", "Pro 200"), (.opencodeGo, "OpenCode", "Go"),
+            (.claude, "Personal", "Max 20x"), (.ollama, "Ollama", "Free"), (.openrouter, "OpenRouter", "Pay-as-you-go"),
+            (.claude, "Attention Machine 1", "Team 5x"), (.claude, "Attention Machine 2", "Team 5x"),
+        ]
+        let inset = DashboardGrid.inset
+        let planEnd = width - inset
+        for (kind, name, plan) in captions {
+            let label = "\(name) · \(plan)"
+            let account = account(kind, name)
+
+            let warned = DashboardAccountCaption(account: account, plan: plan, status: AccountStatus(notice: "Refresh failed"))
+            let asked = NSHostingView(rootView: warned.fixedSize().environment(AccountRenameStore?.none)).fittingSize.width
+            XCTAssertLessThanOrEqual(asked, width, "\(label) asks \(asked) of \(width) pt")
+
+            let nameAlone = try await ink(Text(name).font(DashboardGrid.captionFont).foregroundStyle(.secondary).fixedSize().padding(20))
+            let planAlone = try await ink(Text(plan).font(DashboardGrid.planFont).foregroundStyle(.secondary).fixedSize().padding(20))
+            let nameWidth = try XCTUnwrap(nameAlone.span()).width
+            let planWidth = try XCTUnwrap(planAlone.span()).width
+            let caption = try await ink(DashboardAccountCaption(account: account, plan: plan), width: width)
+            XCTAssertEqual(CGFloat(caption.height) / caption.scale, DashboardGrid.captionHeight, accuracy: 1, label)
+
+            let title = try XCTUnwrap(caption.span(from: 0, to: inset + nameWidth + 4), "\(label): no name drawn")
+            XCTAssertEqual(title.first, inset, accuracy: 1.5, "\(label): the name doesn't start at the caption's inset")
+            XCTAssertEqual(title.last, inset + nameWidth, accuracy: 1.5, "\(label): the name is cut")
+            let drawnPlan = try XCTUnwrap(caption.span(from: planEnd - planWidth - 2, to: planEnd + 2), "\(label): no plan drawn")
+            XCTAssertEqual(drawnPlan.last, planEnd, accuracy: 1.5, "\(label): the plan doesn't end at the inset before the edge")
+            XCTAssertEqual(drawnPlan.width, planWidth, accuracy: 1.5, "\(label): the plan is cut")
+            XCTAssertLessThanOrEqual(title.last + DashboardGrid.columnGap, drawnPlan.first + 1, "\(label): the name runs into the plan")
+            XCTAssertNil(caption.span(from: title.last + 1, to: drawnPlan.first - 1), "\(label): something sits between the name and the plan")
+        }
+    }
+
+    private func account(_ kind: ProviderKind, _ name: String) -> DashboardAccount {
+        DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", kind: kind, accountLabel: name), lines: [])
+    }
+
+    private func ink(_ content: some View, width: CGFloat? = nil) async throws -> InkMap {
+        let view = content
+            .frame(width: width)
+            .background(Color.white)
+            .environment(AccountRenameStore?.none)
+            .environment(\.colorScheme, .light)
+        let hosted = show(view, in: .borderless).host
+        try await Task.sleep(for: .milliseconds(150))
+        return InkMap(of: hosted, threshold: 40, background: .white)
+    }
+}

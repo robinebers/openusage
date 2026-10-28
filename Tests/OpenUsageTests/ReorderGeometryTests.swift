@@ -60,7 +60,7 @@ final class ReorderGeometryTests: XCTestCase {
     func testCrossingThresholdWhenDraggingUp() {
         let frames = [
             "above": CGRect(x: 0, y: 0, width: 100, height: 40),
-            "divider": CGRect(x: 0, y: 40, width: 100, height: 40),
+            "middle": CGRect(x: 0, y: 40, width: 100, height: 40),
             "dragged": CGRect(x: 0, y: 80, width: 100, height: 40)
         ]
 
@@ -68,13 +68,13 @@ final class ReorderGeometryTests: XCTestCase {
             at: CGPoint(x: 20, y: 76),
             in: frames,
             excluding: "dragged",
-            orderedIDs: ["above", "divider", "dragged"],
+            orderedIDs: ["above", "middle", "dragged"],
         ))
         XCTAssertEqual(reorderTarget(
             at: CGPoint(x: 20, y: 72),
             in: frames,
             excluding: "dragged",
-            orderedIDs: ["above", "divider", "dragged"],
-        ), "divider")
+            orderedIDs: ["above", "middle", "dragged"],
+        ), "middle")
     }
 }

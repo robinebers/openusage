@@ -16,44 +16,33 @@ struct HTTPResponse: Sendable {
     func header(_ name: String) -> String? {
         headers[name.lowercased()]
     }
+
+    var date: Date? {
+        header("Date").flatMap { Self.httpDateFormatter.date(from: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    func retryAfter(now: Date = Date()) -> TimeInterval? {
+        guard let value = header("Retry-After")?.trimmingCharacters(in: .whitespaces) else { return nil }
+        let seconds = TimeInterval(value) ?? Self.httpDateFormatter.date(from: value).map { $0.timeIntervalSince(now) }
+        guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
+        return seconds
+    }
+
+    private static let httpDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        return formatter
+    }()
 }
 
 protocol HTTPClient: Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse
 }
 
-// NOTE: headers and successful-response bodies are NEVER logged — `Authorization`, `Cookie`, `Bearer`
-// headers and token-bearing bodies would leak. The Debug line carries the method, the redacted URL, and
-// the status code. On an HTTP error (>= 400) a redacted, truncated (<= 500 byte) preview of the body is
-// added at Debug to aid diagnosis — never the full body, and always run through `LogRedaction.bodyPreview`
-// first (which strips JWTs, api keys, and sensitive JSON values exactly like the Tauri host API did).
-
 struct URLSessionHTTPClient: HTTPClient {
-    /// When true, requests use a loopback session that accepts a self-signed TLS cert for `127.0.0.1`
-    /// only (see `LoopbackTLSDelegate`). The local language server serves HTTPS with a self-signed cert
-    /// on a random localhost port; nothing else needs this. Off by default so remote calls keep full
-    /// certificate validation.
-    var allowsInsecureLoopback: Bool = false
-
-    /// One session for every provider request, built once with the optional `~/.openusage/config.json`
-    /// proxy applied (see `ProxyConfig`). Default configuration — same cookie/cache semantics as
-    /// `URLSession.shared` — when no valid proxy is configured.
-    private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        if let proxy = ProxyConfig.current {
-            configuration.proxyConfigurations = [proxy.proxyConfiguration()]
-            // Record that a proxy is in effect (useful in a support log). Scheme/host/port only —
-            // any embedded `user:pass` lives in separate fields and is never logged.
-            AppLog.info(.config, "proxy enabled \(proxy.scheme.rawValue)://\(proxy.host):\(proxy.port)")
-        }
-        return URLSession(configuration: configuration)
-    }()
-
-    /// Loopback-only session: ephemeral (no shared cookie/cache state), no proxy (localhost), and a
-    /// delegate that trusts a self-signed cert exclusively for `127.0.0.1`. Built once.
-    private static let loopbackSession: URLSession = {
-        URLSession(configuration: .ephemeral, delegate: LoopbackTLSDelegate(), delegateQueue: nil)
-    }()
+    private static let session = URLSession(configuration: .default)
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout)
@@ -63,8 +52,8 @@ struct URLSessionHTTPClient: HTTPClient {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
 
-        let session = allowsInsecureLoopback ? Self.loopbackSession : Self.session
-        let (data, response) = try await session.data(for: urlRequest)
+        let start = ContinuousClock.now
+        let (data, response) = try await Self.session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else {
             throw HTTPClientError.invalidResponse
         }
@@ -73,14 +62,15 @@ struct URLSessionHTTPClient: HTTPClient {
         for (key, value) in http.allHeaderFields {
             headers[String(describing: key).lowercased()] = String(describing: value)
         }
+        let result = HTTPResponse(statusCode: http.statusCode, headers: headers, body: data)
+        AppLog.debug(.http, Self.diagnostic(for: request, response: result, duration: ContinuousClock.now - start))
+        return result
+    }
 
-        let line = "\(request.method) \(LogRedaction.redactURL(request.url.absoluteString)) -> \(http.statusCode)"
-        if http.statusCode >= 400 {
-            AppLog.debug(.http, "\(line) body: \(LogRedaction.bodyPreview(String(decoding: data, as: UTF8.self)))")
-        } else {
-            AppLog.debug(.http, line)
-        }
-        return HTTPResponse(statusCode: http.statusCode, headers: headers, body: data)
+    static func diagnostic(for request: HTTPRequest, response: HTTPResponse, duration: Duration) -> String {
+        let milliseconds = Int((duration / .milliseconds(1)).rounded())
+        let endpoint = (request.url.host() ?? "") + request.url.path()
+        return "\(request.method) \(endpoint) -> \(response.statusCode) (\(milliseconds) ms)"
     }
 }
 
@@ -91,24 +81,3 @@ enum HTTPClientError: Error, LocalizedError {
         "Invalid HTTP response."
     }
 }
-
-/// Accepts a self-signed server cert ONLY for loopback (`127.0.0.1`). Every other host — and every
-/// non-server-trust challenge — falls through to default validation, so this never weakens trust for a
-/// real remote endpoint. Holds no mutable state, so it is safe to share across the loopback session.
-private final class LoopbackTLSDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
-    func urlSession(
-        _ session: URLSession,
-        didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-              challenge.protectionSpace.host == "127.0.0.1",
-              let trust = challenge.protectionSpace.serverTrust
-        else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        completionHandler(.useCredential, URLCredential(trust: trust))
-    }
-}
-

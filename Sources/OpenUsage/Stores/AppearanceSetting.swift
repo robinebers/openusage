@@ -2,20 +2,16 @@ import AppKit
 
 /// Explicit appearance override for the whole app; `.system` follows macOS. Applied as
 /// `NSApp.appearance` — the panel hosting ignores SwiftUI's `preferredColorScheme`, so the override
-/// has to happen at the AppKit level. `applyCurrent()` also posts `didChangeNotification` for
-/// `StatusItemController` to pin the same appearance directly on the menu-bar panel. The menu-bar
-/// label is unaffected (template image).
-enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBacked {
+/// has to happen at the AppKit level, and the menu-bar panel inherits it. The menu-bar label is
+/// unaffected (template image).
+enum AppearanceSetting: String, Hashable, Sendable, CaseIterable {
     case system
     case light
     case dark
 
     static let key = "appearance"
-    static var fallback: AppearanceSetting { .system }
 
-    /// Posted by `applyCurrent()` after the app-level appearance is set, so the popover owner can
-    /// mirror the override onto the menu-bar panel.
-    static let didChangeNotification = Notification.Name("AppearanceSettingDidChange")
+    static var current: AppearanceSetting { UserDefaults.standard.enumValue(forKey: key, default: .system) }
 
     var label: String {
         switch self {
@@ -25,8 +21,6 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
         }
     }
 
-    /// `nil` for `.system`: both `NSApp` and the menu-bar panel inherit the OS setting, so "System"
-    /// tracks live theme switches without re-applying.
     var nsAppearance: NSAppearance? {
         switch self {
         case .system: return nil
@@ -35,14 +29,8 @@ enum AppearanceSetting: String, Hashable, Sendable, CaseIterable, UserDefaultsBa
         }
     }
 
-    // `current` (the stored choice, `.system` when unset) comes from `UserDefaultsBacked`.
-
-    /// Reads the stored choice and applies it app-wide. Call once at launch and again whenever
-    /// the setting changes — app windows restyle immediately, and the notification lets the
-    /// status-item owner restyle the menu-bar panel.
     @MainActor
     static func applyCurrent() {
         NSApplication.shared.appearance = current.nsAppearance
-        NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 }

@@ -1,87 +1,65 @@
-# Debugging and Capturing Logs
-
-How to run a local build and watch what the app is doing — useful when a provider misbehaves or you're
-chasing a startup or refresh problem.
+# Debugging
 
 ## Run a local build
 
-The project script owns the build/run loop. From the repo root:
-
 ```sh
-./script/build_and_run.sh          # build and launch the dev app from dist/
-./script/build_and_run.sh build    # build and stage only, don't launch
-./script/build_and_run.sh verify   # launch and confirm the process is running
+./script/build_and_run.sh verify
 ```
 
-The script builds a signed app bundle under `dist/` and launches it in place — nothing is installed to
-`/Applications`. The dev build uses its own bundle id (`com.robinebers.openusage.dev`), so it keeps its
-own settings and keychain and never disturbs a released OpenUsage. It ships no update feed, so it never
-checks for updates — test updates with a real signed, notarized release build.
+The script stops the dev build if it is running, builds the package, stages `dist/OpenUsage.app`,
+embeds Sparkle, signs the bundle with your Apple Development identity (ad hoc when none is installed),
+launches it, and confirms the process is up. The dev bundle id is `com.robinebers.openusage.dev`, so
+it keeps its own settings and Keychain items and runs beside an installed OpenUsage. It has no update
+feed, so the Updates section does not show.
 
-WidgetKit and App Groups require an Apple Development identity and team id. The script normally infers
-the team id from the identity. Without one it still builds the host app, but warns that widgets were
-left out. Set `WIDGETS_REQUIRED=1` to make that condition fail, or set `OPENUSAGE_TEAM_ID` when the
-identity name does not contain the team id.
+`./script/build_and_run.sh logs` launches the app and streams its log lines.
 
-## Stream logs
+Widgets need an Apple Development identity and team id. The script infers the team from the signing
+certificate, or accepts `OPENUSAGE_TEAM_ID`. Without both, it warns and builds the host without widgets;
+set `WIDGETS_REQUIRED=1` to make that a failure. Rebuilding stops the staged widget extension as well
+as the host, so macOS does not keep rendering old code.
 
-To watch the app's logs live while you reproduce an issue:
-
-```sh
-./script/build_and_run.sh logs
-```
-
-This launches the dev app and then streams its unified logs. Under the hood it filters the system log to
-the app's process, equivalent to:
+`swift build` and the SwiftPM tests do not compile the extension. Check it separately with:
 
 ```sh
-log stream --info --style compact --predicate 'process == "OpenUsage"'
+xcodebuild -project OpenUsageWidgets.xcodeproj -scheme OpenUsageWidgets \
+  -configuration Release -destination 'generic/platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO build
 ```
 
-To read logs *after the fact* instead of live, use `log show` with a time window:
+## Read the logs
+
+OpenUsage logs through unified logging only, under the subsystem `OpenUsage`, one category per
+subsystem tag (`refresh`, `cache`, `http`, `auth`, `updates`, `config`, `statusitem`, `lifecycle`,
+`notifications`, and `plugin:<id>` and `auth:<id>` per account).
 
 ```sh
-log show --last 10m --info --predicate 'process == "OpenUsage"'
+log stream --info --predicate 'subsystem == "OpenUsage"'
+log stream --info --predicate 'subsystem == "OpenUsage" AND category == "refresh"'
+log show --last 1h --info --predicate 'subsystem == "OpenUsage"'
 ```
 
-## Log file
+macOS keeps info lines in memory only, so `log show` finds them for a few minutes at most. Each
+refresh pass's `batch start` and `batch end` lines are notices, which it writes to disk, so this lists
+every pass after the fact:
 
-In addition to the unified log above, the app writes a file log to
-`~/Library/Logs/OpenUsage/OpenUsage.log` — this is what to send with a support report. It is capped at
-~10 MB with one `.1` archive. Raise the detail in **Settings -> Advanced -> Log Level** (use **Debug**
-for full detail), then grab the file with **Copy Log Path** or **Reveal in Finder** in that same
-section. See [Logging](logging.md) for the levels, subsystem tags, and the never-log-secrets guarantee.
+```sh
+log show --last 2h --predicate 'subsystem == "OpenUsage" AND category == "refresh"'
+```
 
-## Account log lines
+Console.app shows the same lines; filter by subsystem. Debug-level lines exist in debug builds only
+(`CONFIG=debug ./script/build_and_run.sh`) and need `--debug` instead of `--info`.
 
-The launch-time account pass (which account is signed in at the Claude/Codex default home) leaves a
-short trail in the log file. Its filesystem and Keychain reads run in parallel off the main actor;
-account reconciliation stays on the main actor. Adapted from Runway (mstallone/runway) #48, MIT.
+The HTTP transport logs one line per exchange: method, host and path, status, and duration. It never
+logs a URL's query, a header, or a response body. Every message also passes `LogRedaction` before it
+is written, which masks tokens, keys, `account=` values, and home paths.
 
-- `account assembly duration: <n> ms` — elapsed time for launch-time account discovery and assembly.
-- `launch to status item ready: <n> ms` — elapsed time from app process start to status-item initialization.
-- `accounts: claude default identity resolved (claude@<hash>)` — the default login named its account.
-  The hash is derived from the account id, so two launches by the same account always match.
-- `accounts: codex default identity unresolved — …` — a login exists but its account can't be named
-  with certainty this launch (an auth file without an account id, or a keychain credential whose
-  secret we don't read at launch). The card works as before; it just can't participate in
-  account-aware features yet.
-- `stale account cache discarded for claude` — the account at the default home changed between
-  launches, so the previous account's cached snapshot was dropped instead of painting under the new
-  login.
-- `account identity read skipped for claude, codex: login shell cold and no shell-environment
-  snapshot exists yet` — a first launch raced a slow login shell, so the named families were left
-  unread this launch; every later launch has a persisted snapshot to fall back on.
+## Tests
 
-## Tips
+```sh
+script/test_quiet.sh
+script/test_quiet.sh --filter CursorTokenRefreshTests
+```
 
-- **A provider shows an error.** Reproduce with `logs` running, then check that provider's page in
-  `docs/providers/` for what its error states mean and where it reads credentials from.
-- **Nothing updates.** Refresh runs on a timer and respects the cache; see
-  [Refreshing & caching](refreshing.md) for when a network call actually happens. Use the per-provider
-  "Refresh" in the row's context menu to force one.
-- **Permissions / keychain prompts on every rebuild.** The script signs with a stable Apple Development
-  identity so the permission ACLs stick. If you see repeated prompts, make sure such an identity exists in
-  your keychain (the script warns when it falls back to ad-hoc signing).
-- **Inspect the local API.** With the app running, `curl 127.0.0.1:6736/v1/usage` shows the same usage
-  snapshots the UI uses — handy to confirm whether a problem is in fetching/mapping or in the UI.
+The script runs the suite niced without letting it take the keyboard or show a window, and fails the
+run if a test process ever came to the front.

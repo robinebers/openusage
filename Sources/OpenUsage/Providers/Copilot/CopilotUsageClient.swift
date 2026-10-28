@@ -14,7 +14,7 @@ struct CopilotUsageClient: Sendable {
 
     func fetchUsage(token: String) async throws -> HTTPResponse {
         guard let url = URL(string: Self.usageURL) else {
-            throw CopilotUsageError.invalidResponse
+            throw ProviderError.invalidResponse
         }
 
         return try await http.send(HTTPRequest(

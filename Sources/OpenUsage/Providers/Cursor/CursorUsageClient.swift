@@ -14,7 +14,6 @@ struct CursorUsageClient: Sendable {
     static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
     static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let stripeURL = URL(string: "https://cursor.com/api/auth/stripe")!
-    static let usageEventsURL = URL(string: "https://cursor.com/api/dashboard/get-filtered-usage-events")!
     static let clientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
 
     var http: any HTTPClient
@@ -88,34 +87,6 @@ struct CursorUsageClient: Sendable {
         ))
     }
 
-    func fetchUsageEventsPage(
-        accessToken: String,
-        start: Date,
-        end: Date,
-        page: Int,
-        pageSize: Int
-    ) async throws -> HTTPResponse? {
-        guard let session = Self.session(from: accessToken) else { return nil }
-        let body: [String: Any] = [
-            "startDate": String(Int(start.timeIntervalSince1970 * 1000)),
-            "endDate": String(Int(end.timeIntervalSince1970 * 1000)),
-            "page": page,
-            "pageSize": pageSize
-        ]
-
-        return try await http.send(HTTPRequest(
-            method: "POST",
-            url: Self.usageEventsURL,
-            headers: [
-                "Cookie": "WorkosCursorSessionToken=\(session.sessionToken)",
-                "Content-Type": "application/json",
-                "Origin": "https://cursor.com"
-            ],
-            body: try JSONSerialization.data(withJSONObject: body),
-            timeout: 15
-        ))
-    }
-
     private func connectPost(_ url: URL, accessToken: String) async throws -> HTTPResponse {
         try await http.send(HTTPRequest(
             method: "POST",
@@ -131,8 +102,10 @@ struct CursorUsageClient: Sendable {
     }
 
     static func session(from accessToken: String) -> CursorSession? {
-        guard let subject = CursorAuthStore.tokenSubject(accessToken) else { return nil }
-        let parts = subject.split(separator: "|", omittingEmptySubsequences: false)
+        guard let subject = ProviderParse.jwtPayload(accessToken)?["sub"] as? String else { return nil }
+        let trimmedSubject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSubject.isEmpty else { return nil }
+        let parts = trimmedSubject.split(separator: "|", omittingEmptySubsequences: false)
         let userID = String(parts.count > 1 ? parts[1] : parts[0])
         guard !userID.isEmpty else { return nil }
         return CursorSession(userID: userID, sessionToken: "\(userID)%3A%3A\(accessToken)")

@@ -13,7 +13,7 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
 
         for body in malformedLimits {
             XCTAssertThrowsError(try ZAIUsageMapper.mapQuota(Data(body.utf8)), body) { error in
-                XCTAssertEqual(error as? ZAIUsageError, .invalidResponse, body)
+                XCTAssertEqual(error as? ProviderError, .invalidResponse, body)
             }
         }
     }
@@ -21,12 +21,12 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
     func testMalformedEnvelopeIsRejectedButExplicitEmptyLimitsRemainValid() throws {
         for body in ["not-json", #"{"data":[]}"#, #"{"data":{}}"#, #"{"data":{"limits":{}}}"#] {
             XCTAssertThrowsError(try ZAIUsageMapper.mapQuota(Data(body.utf8)), body) { error in
-                XCTAssertEqual(error as? ZAIUsageError, .invalidResponse, body)
+                XCTAssertEqual(error as? ProviderError, .invalidResponse, body)
             }
         }
 
         let lines = try ZAIUsageMapper.mapQuota(Data(#"{"data":{"limits":[]}}"#.utf8))
-        XCTAssertNotNil(lines.first { $0.label == "Status" })
+        XCTAssertTrue(lines.isEmpty)
     }
 
     func testUnknownEntriesDoNotHideKnownMeters() throws {
@@ -47,33 +47,6 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
 
         let lines = try ZAIUsageMapper.mapQuota(body)
 
-        XCTAssertNotNil(lines.first { $0.label == "Status" })
-    }
-}
-
-@MainActor
-final class ZAIQuotaValidationProviderTests: XCTestCase {
-    func testMissingUsageReportsInvalidResponseInsteadOfZeroMeter() async {
-        let provider = ZAIProvider(
-            authStore: ZAIAuthStore(
-                files: FakeFiles(),
-                environment: FakeEnvironment(["ZAI_API_KEY": "zai-test"])
-            ),
-            usageClient: ZAIUsageClient(http: RoutingHTTPClient { request in
-                if request.url == ZAIUsageClient.quotaURL {
-                    return HTTPResponse(
-                        statusCode: 200,
-                        headers: [:],
-                        body: Data(#"{"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5}]}}"#.utf8)
-                    )
-                }
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"data":[]}"#.utf8))
-            })
-        )
-
-        let snapshot = await provider.refresh()
-
-        XCTAssertEqual(snapshot.errorCategory, .decoding)
-        XCTAssertNil(snapshot.line(label: "Session"))
+        XCTAssertTrue(lines.isEmpty)
     }
 }

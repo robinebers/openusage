@@ -38,7 +38,6 @@ final class SingleInstanceLockTests: XCTestCase {
         }
 
         XCTAssertNotNil(token)
-        XCTAssertNil(SingleInstanceGuard.instanceToYieldTo(myPID: 101, runningPIDs: [101]))
         assertAlreadyRunning(SingleInstanceLock.acquire(at: lockURL))
         token = nil
     }

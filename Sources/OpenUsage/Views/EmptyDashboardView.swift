@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct EmptyDashboardView: View {
-    let chooseProviders: () -> Void
+    let addAccount: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,10 +14,10 @@ struct EmptyDashboardView: View {
                 .padding(.bottom, 14)
                 .accessibilityHidden(true)
 
-            Text("Make It Yours")
+            Text("Add an Account")
                 .font(.system(size: 19, weight: .semibold))
                 .padding(.bottom, 7)
-            Text("Bring your AI usage, limits, and spend together. Choose what goes on your dashboard.")
+            Text("Sign in to see your usage limits.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -25,18 +25,19 @@ struct EmptyDashboardView: View {
                 .frame(maxWidth: 230)
                 .padding(.bottom, 20)
 
-            Button(action: chooseProviders) {
-                Label("Choose Providers", systemImage: "plus")
+            Button(action: addAccount) {
+                Label("Add Account", systemImage: "plus")
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 3)
             }
-            .onboardingPrimaryAction()
+            .glassButtonStyle(prominent: true)
             .controlSize(.large)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
         .padding(.top, 22)
         .padding(.bottom, 26)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }

@@ -2,10 +2,10 @@ import AppIntents
 import OpenUsageWidgetSupport
 
 struct ProviderWidgetConfiguration: WidgetConfigurationIntent {
-    static let title: LocalizedStringResource = "Provider Usage"
-    static let description = IntentDescription("Choose the provider shown in the widget.")
+    static let title: LocalizedStringResource = "Account Usage"
+    static let description = IntentDescription("Choose the account shown in the widget.")
 
-    @Parameter(title: "Provider")
+    @Parameter(title: "Account")
     var provider: WidgetProviderEntity?
 
     init() {}
@@ -16,7 +16,7 @@ struct ProviderWidgetConfiguration: WidgetConfigurationIntent {
 }
 
 struct WidgetProviderEntity: AppEntity, Identifiable, Hashable, Sendable {
-    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Provider")
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Account")
     static let defaultQuery = WidgetProviderEntityQuery()
 
     let id: String
@@ -39,7 +39,7 @@ struct WidgetProviderEntityQuery: EntityQuery, EnumerableEntityQuery {
     }
 
     func suggestedEntities() async throws -> [WidgetProviderEntity] {
-        WidgetProviderSelection.suggested(in: Self.providers()).map(WidgetProviderEntity.init)
+        Self.providers().map(WidgetProviderEntity.init)
     }
 
     private static func providers() -> [WidgetProviderRecord] {

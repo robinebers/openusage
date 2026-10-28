@@ -1,35 +1,20 @@
 import Foundation
 
-struct CodexMappedUsage: Equatable, Sendable {
-    var plan: String?
-    var lines: [MetricLine]
-}
-
 enum CodexUsageMapper {
-    static let sessionPeriodMs = MetricPeriod.sessionMs
-    static let weeklyPeriodMs = MetricPeriod.weekMs
-    /// Codex flex credits are worth 4¢ each; the credits line leads with the dollar value
-    /// (mirrors the JS plugin's `CREDIT_USD_RATE`).
-    static let creditUSDRate = 0.04
-
     static func mapUsageResponse(
         _ response: HTTPResponse,
         resetCredits: HTTPResponse? = nil,
         now: Date = Date()
-    ) throws -> CodexMappedUsage {
-        try ProviderAuthRetry.requireSuccess(
-            response,
-            authExpired: CodexAuthError.tokenExpired,
-            requestFailed: { CodexUsageError.requestFailed($0) }
-        )
+    ) throws -> ProviderUsage {
+        try ProviderError.requireSuccess(response, kind: .codex)
 
         guard let body = ProviderParse.jsonObject(response.body) else {
-            throw CodexUsageError.invalidResponse
+            throw ProviderError.invalidResponse
         }
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]
-        lines.append(contentsOf: classifiedWindowLines(
+        lines.append(contentsOf: windowLines(
             rateLimit: rateLimit,
             labels: (session: "Session", weekly: "Weekly"),
             headerPercents: (
@@ -39,15 +24,8 @@ enum CodexUsageMapper {
             now: now
         ))
 
-        // Model-specific limits (e.g. GPT-5.3-Codex-Spark) ride in a separate `additional_rate_limits`
-        // array, each entry reusing the primary/secondary window shape. Surfaced as their own Spark /
-        // Spark Weekly meters (issue #796) — the JS edition had these; the Swift rewrite dropped them.
         lines.append(contentsOf: sparkLines(body: body, now: now))
 
-        // On-demand rate-limit reset credits, shown before Credits — mirrors the JS plugin (PR #577).
-        // The row reads "2 available" (the count is carried raw, so the menu-bar tile reads the same
-        // number); each still-available credit's expiry rides along in `expiriesAt` and surfaces in the
-        // row's hover tooltip ("Resets expire in: …").
         if let resets = readResetCredits(body: body, resetCredits: resetCredits) {
             lines.append(.values(
                 label: "Rate Limit Resets",
@@ -60,129 +38,41 @@ enum CodexUsageMapper {
             lines.append(.values(label: "Credits", values: creditValues(remaining: remaining)))
         }
 
-        // The "no usage data" badge is appended by `CodexProvider.probe` *after* the scanned spend
-        // lines, so an empty live response never yields a badge that coexists with Today/Yesterday.
-        return CodexMappedUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
-    }
-
-    private static func progress(
-        label: String,
-        used: Double,
-        resetWindow: [String: Any]?,
-        now: Date,
-        periodDurationMs: Int
-    ) -> MetricLine {
-        .progress(
-            label: label,
-            used: used,
-            limit: 100,
-            format: .percent,
-            resetsAt: resetDate(resetWindow, now: now),
-            periodDurationMs: periodDurationMs
-        )
-    }
-
-    /// One rate-limit window → a percent-used meter, or `nil` when `usedPercent` is absent. Resolves the
-    /// window's own period (falling back to `defaultPeriodMs`) while preserving the percentage reported
-    /// by Codex, so all Session/Weekly/Spark paths share one construction.
-    private static func windowLine(
-        label: String,
-        usedPercent: Double?,
-        window: [String: Any]?,
-        defaultPeriodMs: Int,
-        now: Date
-    ) -> MetricLine? {
-        guard let usedPercent else { return nil }
-        let periodDurationMs = readPeriodMs(window) ?? defaultPeriodMs
-        return progress(
-            label: label,
-            used: usedPercent,
-            resetWindow: window,
-            now: now,
-            periodDurationMs: periodDurationMs
-        )
-    }
-
-    private enum WindowKind {
-        case session
-        case weekly
-    }
-
-    private struct WindowCandidate {
-        var window: [String: Any]
-        var usedPercent: Double?
-        var fallbackKind: WindowKind
+        return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
     }
 
     /// Codex normally returns the five-hour window as `primary_window` and the weekly window as
-    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot.
-    /// Classify by the explicit duration when present; keep the historical slot mapping only as a
-    /// compatibility fallback for payloads that omit or introduce an unfamiliar duration.
-    private static func classifiedWindowLines(
+    /// `secondary_window`, but it can move a temporarily sole weekly limit into the primary slot. Each
+    /// meter takes the window whose explicit duration is its own; failing that, the window in its own slot
+    /// when that window's duration is absent or unfamiliar. A slot known only from its header percent is a
+    /// window with no fields. The meter keeps the percentage Codex reported and the window's own period,
+    /// falling back to the meter's; a chosen window without a percentage shows nothing.
+    private static func windowLines(
         rateLimit: [String: Any]?,
         labels: (session: String, weekly: String),
         headerPercents: (primary: Double?, secondary: Double?) = (nil, nil),
         now: Date
     ) -> [MetricLine] {
-        let candidates = [
-            windowCandidate(rateLimit?["primary_window"], headerPercent: headerPercents.primary, fallbackKind: .session),
-            windowCandidate(rateLimit?["secondary_window"], headerPercent: headerPercents.secondary, fallbackKind: .weekly)
-        ].compactMap { $0 }
-
-        return [
-            classifiedWindowLine(kind: .session, label: labels.session, candidates: candidates, now: now),
-            classifiedWindowLine(kind: .weekly, label: labels.weekly, candidates: candidates, now: now)
-        ].compactMap { $0 }
-    }
-
-    private static func windowCandidate(
-        _ value: Any?,
-        headerPercent: Double?,
-        fallbackKind: WindowKind
-    ) -> WindowCandidate? {
-        guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
-        return WindowCandidate(
-            window: window,
-            usedPercent: ProviderParse.number(window["used_percent"]) ?? headerPercent,
-            fallbackKind: fallbackKind
-        )
-    }
-
-    private static func classifiedWindowLine(
-        kind: WindowKind,
-        label: String,
-        candidates: [WindowCandidate],
-        now: Date
-    ) -> MetricLine? {
-        let exact = candidates.first { exactKind(for: $0.window) == kind }
-        let fallback = candidates.first { exactKind(for: $0.window) == nil && $0.fallbackKind == kind }
-        guard let candidate = exact ?? fallback else { return nil }
-        let defaultPeriodMs = kind == .session ? sessionPeriodMs : weeklyPeriodMs
-        return windowLine(
-            label: label,
-            usedPercent: candidate.usedPercent,
-            window: candidate.window,
-            defaultPeriodMs: defaultPeriodMs,
-            now: now
-        )
-    }
-
-    private static func exactKind(for window: [String: Any]) -> WindowKind? {
-        guard let periodMs = readPeriodMs(window) else { return nil }
-        switch periodMs {
-        case sessionPeriodMs: return .session
-        case weeklyPeriodMs: return .weekly
-        default: return nil
+        let slots = [
+            (rateLimit?["primary_window"], headerPercents.primary),
+            (rateLimit?["secondary_window"], headerPercents.secondary)
+        ].map { value, headerPercent -> (window: [String: Any], usedPercent: Double?)? in
+            guard let window = value as? [String: Any] ?? (headerPercent == nil ? nil : [:]) else { return nil }
+            return (window, ProviderParse.number(window["used_percent"]) ?? headerPercent)
+        }
+        let meters = [(label: labels.session, periodMs: MetricPeriod.sessionMs), (label: labels.weekly, periodMs: MetricPeriod.weekMs)]
+        let familiarPeriods = meters.map(\.periodMs)
+        return meters.enumerated().compactMap { slot, meter in
+            let exact = slots.compactMap { $0 }.first { readPeriodMs($0.window) == meter.periodMs }
+            let fallback = slots[slot].flatMap { candidate in
+                readPeriodMs(candidate.window).map(familiarPeriods.contains) == true ? nil : candidate
+            }
+            guard let candidate = exact ?? fallback, let used = candidate.usedPercent else { return nil }
+            let periodMs = readPeriodMs(candidate.window) ?? meter.periodMs
+            return .percent(meter.label, used, resetsAt: resetDate(candidate.window, now: now), periodMs: periodMs)
         }
     }
 
-    /// Spark (and any future model-specific) limits from `additional_rate_limits`. Each array entry is a
-    /// named limit whose `rate_limit` reuses the primary (5-hour) / secondary (weekly) window shape, so
-    /// the parsing mirrors the core Session/Weekly path exactly. We surface the entry whose
-    /// `limit_name`/`metered_feature` names Spark as the
-    /// `Spark` and `Spark Weekly` meters; a non-dictionary or null array element is skipped rather than
-    /// discarding its valid siblings. Returns an empty list when the field is absent or carries no Spark
-    /// entry (the common case for accounts without the limit), so those rows simply read "No data".
     private static func sparkLines(body: [String: Any], now: Date) -> [MetricLine] {
         guard let rawEntries = body["additional_rate_limits"] as? [Any] else { return [] }
         let entries = rawEntries.compactMap { $0 as? [String: Any] }
@@ -192,16 +82,13 @@ enum CodexUsageMapper {
             return []
         }
 
-        return classifiedWindowLines(
+        return windowLines(
             rateLimit: rateLimit,
             labels: (session: "Spark", weekly: "Spark Weekly"),
             now: now
         )
     }
 
-    /// True when an `additional_rate_limits` entry is the Spark limit — matched on either `limit_name`
-    /// ("GPT-5.3-Codex-Spark") or `metered_feature`, case-insensitively, so a wording change on either
-    /// field still resolves it.
     private static func isSparkEntry(_ entry: [String: Any]) -> Bool {
         [entry["limit_name"], entry["metered_feature"]]
             .compactMap { ($0 as? String)?.lowercased() }
@@ -225,71 +112,53 @@ enum CodexUsageMapper {
         return Int(seconds * 1000)
     }
 
-    /// Codex flex credits as raw values: the floored credit count and its dollar value (count × 4¢),
-    /// shown combined as e.g. "$32.84 · 821 credits". The count is floored *before* pricing to match the
-    /// Codex CLI/plugin (so OpenUsage's dollar agrees with Codex's own), which keeps the two values
-    /// mutually consistent. Negative balances clamp to zero, so an exhausted balance reads
-    /// "$0.00 · 0 credits" — a real, measured zero, not "No data".
     static func creditValues(remaining: Double) -> [MetricValue] {
         let credits = max(0, Int(remaining.rounded(.down)))
-        let usd = Double(credits) * creditUSDRate
-        return [
-            MetricValue(number: usd, kind: .dollars),
-            MetricValue(number: Double(credits), kind: .count, label: "credits")
-        ]
+        return [MetricValue(number: Double(credits), kind: .count, label: "credits")]
     }
 
-    /// On-demand reset credits: the floored available count plus each still-available credit's expiry
-    /// (sorted soonest-first, for the row's hover tooltip).
-    ///
-    /// Prefers the dedicated `/rate-limit-reset-credits` payload (the only source that carries the
-    /// per-credit expiry list); falls back to the usage body's embedded `rate_limit_reset_credits`
-    /// object (count only) when that fetch was unavailable — mirroring the JS plugin. `ProviderParse.number`
-    /// returns nil for missing/null/non-numeric counts, so a malformed count skips the row entirely.
+    /// The count comes from the usage body of this pass; the dedicated list, read hourly, supplies the
+    /// count only when the usage body has none, and its expiry times only while it agrees with the count,
+    /// so an hour-old list never stands in for a reset spent or granted since.
     static func readResetCredits(
         body: [String: Any],
         resetCredits: HTTPResponse?
     ) -> (count: Int, expiries: [Date])? {
-        guard let source = resetCreditsSource(body: body, resetCredits: resetCredits),
-              let count = ProviderParse.number(source["available_count"]), count >= 0
-        else {
-            return nil
+        let embedded = body["rate_limit_reset_credits"] as? [String: Any]
+        let dedicated = resetCredits.flatMap { response -> [String: Any]? in
+            guard (200..<300).contains(response.statusCode), let body = ProviderParse.jsonObject(response.body),
+                  availableCount(in: body) != nil
+            else { return nil }
+            return body
         }
-        return (Int(count.rounded(.down)), availableExpiries(in: source["credits"]))
+        guard let count = embedded.flatMap(availableCount) ?? dedicated.flatMap(availableCount) else { return nil }
+        guard count > 0 else { return (0, []) }
+        if let dedicated, availableCount(in: dedicated) == count {
+            return (count, availableResetCredits(in: dedicated).compactMap(\.expiry).sorted())
+        }
+        return (count, embedded.map { availableResetCredits(in: $0).compactMap(\.expiry).sorted() } ?? [])
     }
 
-    /// The dictionary the count and expiry list are read from: the dedicated endpoint's body when it
-    /// returned a usable payload (2xx, parseable, carrying a *numeric* `available_count`), otherwise the
-    /// usage body's embedded object. The count is validated with `ProviderParse.number` rather than a bare
-    /// nil-check: a JSON `null` decodes to `NSNull` (non-nil), so a bare check would select a dedicated
-    /// body whose count is unusable and drop the row instead of falling back to the usage-body count.
-    private static func resetCreditsSource(
-        body: [String: Any],
-        resetCredits: HTTPResponse?
-    ) -> [String: Any]? {
-        if let resetCredits, (200..<300).contains(resetCredits.statusCode),
-           let dedicated = ProviderParse.jsonObject(resetCredits.body),
-           ProviderParse.number(dedicated["available_count"]) != nil {
-            return dedicated
-        }
-        return body["rate_limit_reset_credits"] as? [String: Any]
+    /// `ProviderParse.number` because a JSON `null` decodes to `NSNull`, which a bare nil-check would accept.
+    private static func availableCount(in source: [String: Any]) -> Int? {
+        guard let count = ProviderParse.number(source["available_count"]), count >= 0 else { return nil }
+        return Int(count.rounded(.down))
     }
 
-    /// Every still-available credit's `expires_at`, sorted soonest-first. `status` is optional upstream,
-    /// so a credit is kept when it's explicitly "available" *or* carries no status at all — only an
-    /// explicitly non-available state (e.g. "consumed"/"expired") is dropped. Filtering hard on
-    /// `== "available"` would otherwise blank the whole expiry list (tooltip + 24h warning) for responses
-    /// that omit status, even though `available_count` reported credits. `expires_at` is parsed as an
-    /// ISO-8601 string or an epoch number.
-    private static func availableExpiries(in value: Any?) -> [Date] {
-        guard let credits = value as? [[String: Any]] else { return [] }
+    static func resetCreditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
+        availableResetCredits(in: body).first { credit in
+            credit.expiry.map { abs($0.timeIntervalSince(expiry)) < 1 } ?? false
+        }?.id
+    }
+
+    private static func availableResetCredits(in source: [String: Any]) -> [(id: String?, expiry: Date?)] {
+        guard let credits = source["credits"] as? [[String: Any]] else { return [] }
         return credits
             .filter { credit in
                 guard let status = credit["status"] as? String else { return true }
                 return status == "available"
             }
-            .compactMap { parseExpiry($0["expires_at"]) }
-            .sorted()
+            .map { credit in (credit["id"] as? String, parseExpiry(credit["expires_at"])) }
     }
 
     private static func parseExpiry(_ value: Any?) -> Date? {
@@ -300,6 +169,25 @@ enum CodexUsageMapper {
             return Date(timeIntervalSince1970: seconds)
         }
         return nil
+    }
+
+    /// Collapses a consume response to the popover's outcome. Every protocol code arrives as HTTP 200 with
+    /// the outcome in the body's `code`; `already_redeemed` is the idempotency key absorbing a retry of a
+    /// claim that already landed, so it counts as success.
+    static func resetClaimOutcome(from response: HTTPResponse) -> ResetClaimOutcome {
+        if ProviderError.isAuthFailure(response) { return .failed(.signInExpired) }
+        guard (200..<300).contains(response.statusCode),
+              let body = ProviderParse.jsonObject(response.body),
+              let code = body["code"] as? String
+        else {
+            return .failed(.refused)
+        }
+        switch code {
+        case "reset", "already_redeemed": return .success
+        case "nothing_to_reset": return .nothingToReset
+        case "no_credit": return .noCredit
+        default: return .failed(.refused)
+        }
     }
 
     private static func readCreditsRemaining(response: HTTPResponse, body: [String: Any]) -> Double? {
@@ -334,21 +222,4 @@ enum CodexUsageMapper {
         }
     }
 
-}
-
-enum CodexUsageError: Error, LocalizedError, Equatable {
-    case requestFailed(Int)
-    case invalidResponse
-    case connectionFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .requestFailed(let statusCode):
-            return ProviderUsageErrorText.requestFailed(statusCode: statusCode)
-        case .invalidResponse:
-            return ProviderUsageErrorText.invalidResponse
-        case .connectionFailed:
-            return ProviderUsageErrorText.connectionFailed
-        }
-    }
 }

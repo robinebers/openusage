@@ -1,0 +1,119 @@
+import Foundation
+import XCTest
+@testable import OpenUsage
+
+private let openCodeUsage = #"{"usage":{"rolling":{"percent":12,"resetsAt":"2026-07-12T13:30:00Z"},"weekly":{"percent":8,"resetsAt":"2026-07-13T00:00:00Z"},"monthly":{"percent":40,"resetsAt":"2026-08-04T11:18:32Z"}}}"#
+private let ollamaBalance = #"{"included":{"balance_usd":72.5,"allowance_usd":100,"period":{"from":"2026-09-15T09:30:00Z","until":"2026-10-15T09:30:00Z"}},"purchased":{"balance_usd":25}}"#
+private let openRouterCredits = #"{"data":{"total_credits":100,"total_usage":22.23}}"#
+private let openRouterKey = #"{"data":{"usage_daily":1.5,"usage_weekly":4,"usage_monthly":12,"limit":1,"limit_remaining":0.25,"is_free_tier":false}}"#
+
+private func response(_ status: Int, _ body: String = "") -> HTTPResponse {
+    HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
+}
+
+@MainActor
+final class ProviderErrorBoundaryTests: XCTestCase {
+    private static let keyedKinds: [(ProviderKind, AccountCredential)] = [
+        (.copilot, .oauth(OAuthTokens(accessToken: "token"))),
+        (.ollama, .apiKey("key")),
+        (.opencodeGo, .apiKey("key")),
+        (.openrouter, .apiKey("key")),
+        (.zai, .apiKey("key"))
+    ]
+
+    private func refresh(
+        _ kind: ProviderKind, credential: AccountCredential = .apiKey("key"),
+        handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
+    ) async throws -> Result<ProviderSnapshot, RefreshFailure> {
+        let account = Account(kind: kind, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(credential, for: account.id)
+        return await AccountProviderRuntime(account: account, vault: vault, http: RoutingHTTPClient(handler: handler)).refresh()
+    }
+
+    func testAnUnauthorizedResponseIsAnExpiredSignInWhateverTheBodySays() async throws {
+        for (kind, credential) in Self.keyedKinds {
+            let snapshot = try await refresh(kind, credential: credential) { _ in response(401, openCodeUsage) }
+            XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(kind).localizedDescription, "\(kind)")
+        }
+    }
+
+    func testAMissingKeychainItemIsAnExpiredSignIn() async {
+        let account = Account(kind: .claude, label: "Work")
+        let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault(), http: RoutingHTTPClient { _ in response(200) })
+
+        let snapshot = await runtime.refresh()
+
+        XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(.claude).localizedDescription)
+    }
+
+    func testAServerErrorNamesItsStatus() async throws {
+        for (kind, credential) in Self.keyedKinds {
+            let snapshot = try await refresh(kind, credential: credential) { _ in response(503, "<html>down</html>") }
+            XCTAssertEqual(snapshot.failure?.message, ProviderError.requestFailed(503).localizedDescription, "\(kind)")
+        }
+    }
+
+    func testATransportErrorKeepsItsOwnMessage() async throws {
+        let offline = URLError(.notConnectedToInternet)
+        for (kind, credential) in Self.keyedKinds {
+            let snapshot = try await refresh(kind, credential: credential) { _ in throw offline }
+            XCTAssertEqual(snapshot.failure?.message, offline.localizedDescription, "\(kind)")
+        }
+    }
+
+    func testAFailedPlanLookupCostsThePlanNotTheMeters() async throws {
+        let ollama = try await refresh(.ollama) { request in
+            request.url.absoluteString.hasSuffix("/api/balance")
+                ? response(200, ollamaBalance)
+                : response(500, #"{"Plan":"pro"}"#)
+        }.get()
+        XCTAssertNil(ollama.plan)
+        XCTAssertEqual(ollama.lines.map(\.label), ["Monthly", "Purchased Credits"])
+
+        let zai = try await refresh(.zai) { request in
+            request.url.absoluteString.contains("quota")
+                ? response(200, #"{"data":{"limits":[]}}"#)
+                : response(401, #"{"data":{"plan":"GLM Coding Pro"}}"#)
+        }.get()
+        XCTAssertNil(zai.plan)
+    }
+
+    func testOpenCodeWithoutAGoSubscriptionSaysSo() async throws {
+        let snapshot = try await refresh(.opencodeGo) { _ in
+            response(403, #"{"type":"error","error":{"type":"EntitlementError","message":"no subscription"}}"#)
+        }
+        XCTAssertEqual(snapshot.failure?.message, "No OpenCode Go subscription on this account.")
+    }
+
+    func testOpenRouterCallsTheKeyInvalidOnlyWhenBothEndpointsRejectIt() async throws {
+        let rejected = try await refresh(.openrouter) { _ in response(401, #"{"error":{"message":"No auth credentials found","code":401}}"#) }
+        XCTAssertEqual(rejected.failure?.message, ProviderError.signInExpired(.openrouter).localizedDescription)
+
+        let gated = try await refresh(.openrouter) { request in
+            request.url.absoluteString == OpenRouterUsageClient.creditsURL
+                ? response(403, #"{"error":{"message":"forbidden","code":403}}"#)
+                : response(200, openRouterKey)
+        }.get()
+        XCTAssertEqual(gated.lines.map(\.label), ["Today", "This Week", "This Month"])
+    }
+
+    func testOpenRouterShowsTheFailureWhenNeitherEndpointAnswers() async throws {
+        let down = try await refresh(.openrouter) { request in
+            request.url.absoluteString == OpenRouterUsageClient.creditsURL
+                ? response(503, "<html>down</html>")
+                : response(401, #"{"error":{"message":"No auth credentials found","code":401}}"#)
+        }
+        XCTAssertEqual(down.failure?.message, ProviderError.requestFailed(503).localizedDescription)
+
+        let partial = try await refresh(.openrouter) { request in
+            request.url.absoluteString == OpenRouterUsageClient.creditsURL
+                ? response(200, openRouterCredits)
+                : response(503, "")
+        }.get()
+        XCTAssertEqual(partial.lines.map(\.label), ["Balance"])
+
+        let unreadable = try await refresh(.openrouter) { _ in response(200, #"{"ok":true}"#) }
+        XCTAssertEqual(unreadable.failure?.message, ProviderError.invalidResponse.localizedDescription)
+    }
+}

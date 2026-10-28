@@ -1,157 +1,143 @@
 import Foundation
 
-/// The once-a-day configuration snapshot that rides on `app_daily_active` (answers "which providers /
-/// metrics are enabled" and "which are Always Visible vs On Demand"). All values are stable IDs/enums.
 struct TelemetryConfigSnapshot: Sendable {
     let enabledProviders: [String]
     let enabledMetricIDs: [String]
     let pinnedMetricIDs: [String]
-    let expandedMetricIDs: [String]
-    let menuBarStyle: String
 }
 
-/// Turns raw refresh outcomes into the two daily-rollup events, enforcing "at most one event per day"
-/// without flooding the pipeline from the 5-minute refresh timer (~1,440 outcomes/user/day).
-///
-/// - `app_daily_active`: emitted once per local day (DAU + the config snapshot), driven by `tick()`.
-///   This ping is always sent — the Settings toggle does not gate it.
-/// - `provider_refresh_daily`: one per provider per day, accumulated in the persisted store and emitted
-///   when the day rolls over (so counts are complete and survive app restarts within a day). Gated on
-///   the optional-analytics toggle. Crash reporting is handled separately and always remains enabled.
+struct ProviderDailyCounter: Codable, Sendable, Equatable {
+    var day: String
+    var success = 0
+    var failure = 0
+    var manual = 0
+}
+
 @MainActor
 final class TelemetryRecorder {
     private let sink: TelemetrySink
-    private let store: TelemetryStore
+    private let defaults: UserDefaults
     private let snapshot: @MainActor () -> TelemetryConfigSnapshot
     private let now: () -> Date
 
+    private static let installIDKey = "installID"
+    private static let enabledKey = "enabled"
+    private static let activeDayKey = "activeDay"
+    private static let providerDaysKey = "providerDays"
+
+    static var suite: UserDefaults {
+        UserDefaults(suiteName: (Bundle.main.bundleIdentifier ?? "com.openusage.app") + ".telemetry") ?? .standard
+    }
+
     init(
         sink: TelemetrySink,
-        store: TelemetryStore,
+        defaults: UserDefaults,
         snapshot: @escaping @MainActor () -> TelemetryConfigSnapshot,
         now: @escaping () -> Date = Date.init
     ) {
         self.sink = sink
-        self.store = store
+        self.defaults = defaults
         self.snapshot = snapshot
         self.now = now
     }
 
-    /// Whether optional provider rollups and error categories are on.
-    /// Independent of the mandatory daily ping and crash reports.
-    var isEnabled: Bool { store.enabled }
+    var isEnabled: Bool { defaults.bool(forKey: Self.enabledKey, default: true) }
 
-    /// Toggle optional provider analytics without stopping daily activity or crash reporting.
     func setEnabled(_ enabled: Bool) {
-        guard store.enabled != enabled else { return }
-        store.enabled = enabled
-        sink.setOptionalAnalyticsEnabled(enabled)
+        guard isEnabled != enabled else { return }
+        defaults.set(enabled, forKey: Self.enabledKey)
         AppLog.info(.config, "optional analytics \(enabled ? "enabled" : "disabled") by user")
     }
 
-    /// Run on every refresh pass (launch + each interval): flush any provider counters left over from a
-    /// previous day (only while optional analytics are on), then emit `app_daily_active` once per local
-    /// day regardless of the analytics toggle.
+    var installID: String {
+        if let existing = defaults.string(forKey: Self.installIDKey) { return existing }
+        let minted = UUID().uuidString
+        defaults.set(minted, forKey: Self.installIDKey)
+        return minted
+    }
+
+    func providerCounters() -> [String: ProviderDailyCounter] {
+        guard let data = defaults.data(forKey: Self.providerDaysKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: ProviderDailyCounter].self, from: data)) ?? [:]
+    }
+
     func tick() {
         let today = Self.dayString(now())
-        if store.enabled {
+        if isEnabled {
             flushStaleCounters(today: today)
         }
-        if store.activeDay != today {
-            store.activeDay = today
+        if defaults.string(forKey: Self.activeDayKey) != today {
+            defaults.set(today, forKey: Self.activeDayKey)
             emitDailyActive()
         }
     }
 
-    /// Record one provider refresh outcome. Only `.refreshed` / `.failed` count — cache hits, skips, and
-    /// backoffs are timer noise, not usage, and are dropped. Skipped while optional analytics are off.
-    func record(providerID: String, outcome: WidgetDataStore.RefreshOutcome, category: ErrorCategory?, manual: Bool) {
-        guard store.enabled else { return }
-        guard outcome == .refreshed || outcome == .failed else { return }
+    func record(providerID: String, result: WidgetDataStore.RefreshOutcome, manual: Bool) {
+        guard isEnabled, result == .refreshed || result == .failed else { return }
 
         let today = Self.dayString(now())
-        var counters = store.providerCounters()
-        // Roll a stale prior-day counter over to its own event before accumulating today's.
+        var counters = providerCounters()
         if let existing = counters[providerID], existing.day != today {
             emitProviderRollup(providerID: providerID, counter: existing)
             counters[providerID] = nil
         }
         var counter = counters[providerID] ?? ProviderDailyCounter(day: today)
-        switch outcome {
-        case .refreshed:
+        if result == .refreshed {
             counter.success += 1
-        case .failed:
+        } else {
             counter.failure += 1
-            counter.errors[(category ?? .other).rawValue, default: 0] += 1
-        default:
-            break
         }
         if manual { counter.manual += 1 }
         counters[providerID] = counter
-        store.setProviderCounters(counters)
+        setProviderCounters(counters)
     }
 
     func flush() {
         sink.flush()
     }
 
-    // MARK: - Internals
-
-    /// Emit (and clear) every provider counter that belongs to a day other than `today`.
     private func flushStaleCounters(today: String) {
-        var counters = store.providerCounters()
+        var counters = providerCounters()
         var changed = false
         for (providerID, counter) in counters where counter.day != today {
             emitProviderRollup(providerID: providerID, counter: counter)
             counters[providerID] = nil
             changed = true
         }
-        if changed { store.setProviderCounters(counters) }
+        if changed { setProviderCounters(counters) }
+    }
+
+    private func setProviderCounters(_ counters: [String: ProviderDailyCounter]) {
+        guard let data = try? JSONEncoder().encode(counters) else {
+            AppLog.warn(.config, "failed to persist telemetry counters")
+            return
+        }
+        defaults.set(data, forKey: Self.providerDaysKey)
     }
 
     private func emitDailyActive() {
         let config = snapshot()
         sink.capture("app_daily_active", [
-            "install_id": store.installID,
+            "install_id": installID,
             "app_version": AppInfo.version,
             "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
             "enabled_providers": config.enabledProviders,
             "enabled_metric_ids": config.enabledMetricIDs,
-            "pinned_metric_ids": config.pinnedMetricIDs,
-            "expanded_metric_ids": config.expandedMetricIDs,
-            "menu_bar_style": config.menuBarStyle
+            "pinned_metric_ids": config.pinnedMetricIDs
         ])
         sink.flush()
     }
 
     private func emitProviderRollup(providerID: String, counter: ProviderDailyCounter) {
-        sink.capture("provider_refresh_daily", Self.providerRollupProperties(providerID: providerID, counter: counter))
-        sink.flush()
-    }
-
-    private static func providerRollupProperties(providerID: String, counter: ProviderDailyCounter) -> [String: Any] {
-        var properties: [String: Any] = [
+        sink.capture("provider_refresh_daily", [
             "provider_id": providerID,
             "success_count": counter.success,
             "failure_count": counter.failure,
-            "error_categories": counter.errors,
             "manual_refresh_count": counter.manual
-        ]
-
-        for category in ErrorCategory.allCases {
-            properties["\(category.rawValue)_failure_count"] = counter.errors[category.rawValue] ?? 0
-        }
-
-        let expectedFailureCount = [ErrorCategory.notLoggedIn, .notAvailable].reduce(0) { total, category in
-            total + (counter.errors[category.rawValue] ?? 0)
-        }
-        properties["expected_failure_count"] = expectedFailureCount
-        properties["unexpected_failure_count"] = max(0, counter.failure - expectedFailureCount)
-        return properties
+        ])
+        sink.flush()
     }
 
-    /// Local-calendar `yyyy-MM-dd`. Local (not UTC) so "every day" matches the user's perception; the
-    /// calendar is injectable for tests.
     static func dayString(_ date: Date, calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)

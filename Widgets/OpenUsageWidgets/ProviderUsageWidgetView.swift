@@ -1,3 +1,4 @@
+import AppKit
 import OpenUsageWidgetSupport
 import SwiftUI
 import WidgetKit
@@ -11,13 +12,7 @@ struct ProviderUsageWidgetView: View {
         Group {
             switch entry.selection {
             case .provider(let provider):
-                if !provider.isEnabled {
-                    WidgetMessageView(
-                        title: "Provider Disabled",
-                        message: "Enable \(provider.displayName) in OpenUsage to show its metrics.",
-                        symbol: "slider.horizontal.3"
-                    )
-                } else if provider.health == .noData || selectedMetrics(for: provider).isEmpty {
+                if provider.health == .noData || selectedMetrics(for: provider).isEmpty {
                     WidgetMessageView(
                         title: "No Data",
                         message: "Open OpenUsage to refresh \(provider.displayName).",
@@ -35,7 +30,7 @@ struct ProviderUsageWidgetView: View {
             case .missingData:
                 WidgetMessageView(
                     title: "Open OpenUsage",
-                    message: "Launch the app once to make usage available.",
+                    message: "Add an account in OpenUsage to make usage available.",
                     symbol: "arrow.up.forward.app"
                 )
             case .corruptData:
@@ -52,8 +47,8 @@ struct ProviderUsageWidgetView: View {
                 )
             case .missingProvider:
                 WidgetMessageView(
-                    title: "Provider Unavailable",
-                    message: "Choose another provider or open OpenUsage.",
+                    title: "Account Unavailable",
+                    message: "Choose another account or open OpenUsage.",
                     symbol: "questionmark.app"
                 )
             }
@@ -62,21 +57,13 @@ struct ProviderUsageWidgetView: View {
     }
 
     private func selectedMetrics(for provider: WidgetProviderRecord) -> [WidgetMetricRecord] {
-        let primary = provider.primaryMetrics.filter(\.hasData)
-        let secondary = provider.secondaryMetrics.filter(\.hasData)
-
-        switch family {
-        case .systemSmall:
-            return Array((primary.isEmpty ? secondary : primary).prefix(2))
-        case .systemMedium:
-            return Array((primary.isEmpty ? secondary : primary).prefix(4))
-        case .systemLarge:
-            if primary.isEmpty { return Array(secondary.prefix(8)) }
-            let selectedPrimary = Array(primary.prefix(6))
-            return selectedPrimary + secondary.prefix(8 - selectedPrimary.count)
-        default:
-            return Array((primary.isEmpty ? secondary : primary).prefix(2))
+        let limit = switch family {
+        case .systemSmall: 2
+        case .systemMedium: 4
+        case .systemLarge: 8
+        default: 2
         }
+        return Array(provider.metrics.filter(\.hasData).prefix(limit))
     }
 }
 
@@ -165,7 +152,6 @@ private struct ProviderWidgetHeader: View {
     private var status: (title: LocalizedStringKey, symbol: String, color: Color)? {
         switch (provider.health, isStale) {
         case (.failed, _): ("Refresh Failed", "exclamationmark.circle.fill", .red)
-        case (.warning, _): ("Warning", "exclamationmark.triangle.fill", .orange)
         case (_, true): ("Outdated", "clock.badge.exclamationmark", .orange)
         default: nil
         }
@@ -300,9 +286,9 @@ private struct WidgetMetricView: View {
 
     private var severityColor: Color {
         switch metric.severity {
-        case .critical: .red
-        case .warning: .orange
-        case .normal: .accentColor
+        case .critical: Color(nsColor: .systemRed)
+        case .warning: Color(nsColor: .systemOrange)
+        case .normal: Color(nsColor: .systemBlue)
         case .neutral: .secondary
         }
     }

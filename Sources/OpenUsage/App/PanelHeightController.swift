@@ -1,11 +1,7 @@
 import AppKit
 
-/// Owns the menu-bar panel's placement and content-driven height changes. The status-item controller
-/// still owns panel creation and show/hide; this type owns only the height boundary between SwiftUI and
-/// AppKit.
 @MainActor
 final class PanelHeightController {
-    static let panelWidth: CGFloat = 320
     static let defaultHeight: CGFloat = 800
 
     private let panel: MenuBarPanel
@@ -16,6 +12,8 @@ final class PanelHeightController {
     private var anchorTopLeft: NSPoint?
     private var morphSettleTask: Task<Void, Never>?
     private(set) var isMorphing = false
+    private var contentHeight: CGFloat?
+    private var sheetObservers: [NSObjectProtocol] = []
 
     init(
         panel: MenuBarPanel,
@@ -27,8 +25,6 @@ final class PanelHeightController {
         self.currentScreen = currentScreen
     }
 
-    /// Installs the two narrow callbacks SwiftUI uses: apply one animated frame and clamp a target to
-    /// the available display height.
     func installBridge() {
         MenuBarPopover.applyHeight = { [weak self] height in
             self?.applyMorphHeight(height)
@@ -36,11 +32,22 @@ final class PanelHeightController {
         MenuBarPopover.clampHeight = { [weak self] rawHeight in
             self?.clampedHeight(rawHeight) ?? rawHeight
         }
+        let center = NotificationCenter.default
+        sheetObservers = [NSWindow.willBeginSheetNotification, NSWindow.didEndSheetNotification].map { name in
+            center.addObserver(forName: name, object: panel, queue: .main) { [weak self] _ in
+                // `attachedSheet` is updated after these notifications, so fit on the next turn.
+                Task { @MainActor in self?.fitAttachedSheet() }
+            }
+        }
+        sheetObservers.append(center.addObserver(forName: NSWindow.didResizeNotification, object: nil, queue: .main) { [weak self] note in
+            let windowID = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, let sheet = self.panel.attachedSheet, windowID == ObjectIdentifier(sheet) else { return }
+                self.fitAttachedSheet()
+            }
+        })
     }
 
-    /// Clears the previous session, captures the display, and opens at the remembered guess. This must
-    /// happen before SwiftUI sees the popover as shown, because that signal immediately asks the clamp
-    /// hook for this display's real maximum height.
     func prepareForOpening(below buttonRect: NSRect) {
         morphSettleTask?.cancel()
         isMorphing = false
@@ -50,7 +57,7 @@ final class PanelHeightController {
         anchorScreen = screen
         let topLeft = PanelGeometry.clampedTopLeft(
             below: buttonRect,
-            width: Self.panelWidth,
+            width: PanelMetrics.width,
             visibleFrame: screen?.visibleFrame
         )
         anchorTopLeft = topLeft
@@ -58,25 +65,28 @@ final class PanelHeightController {
         let remembered = loadHeight(for: currentScreen()) ?? Self.defaultHeight
         let height = clampedHeight(remembered)
         panel.setFrame(
-            PanelGeometry.frame(topLeft: topLeft, width: Self.panelWidth, height: height),
+            PanelGeometry.frame(topLeft: topLeft, width: PanelMetrics.width, height: height),
             display: false
         )
         panel.invalidateShadow()
     }
 
-    /// Saves before the caller changes screens or orders the panel out.
     func saveBeforeClosing() {
         guard panel.isVisible else { return }
         saveHeight(panel.frame.height, for: currentScreen())
     }
 
-    /// Clears all opening-session state after the panel is ordered out.
     func finishClosing() {
         anchorTopLeft = nil
         anchorScreen = nil
+        contentHeight = nil
         morphSettleTask?.cancel()
         isMorphing = false
         PanelHeightBridge.invalidate()
+    }
+
+    private func fitAttachedSheet() {
+        applyMorphHeight(contentHeight ?? panel.frame.height)
     }
 
     private func applyMorphHeight(_ rawHeight: CGFloat) {
@@ -85,10 +95,11 @@ final class PanelHeightController {
             AppLog.error(.statusItem, "Morph height while visible but no anchor; frame not applied")
             return
         }
-        let height = clampedHeight(rawHeight)
+        contentHeight = rawHeight
+        let height = clampedHeight(PanelGeometry.height(content: rawHeight, attachedSheet: panel.attachedSheet?.frame.height))
         guard abs(panel.frame.height - height) > 1 else { return }
         panel.setFrame(
-            PanelGeometry.frame(topLeft: anchorTopLeft, width: Self.panelWidth, height: height),
+            PanelGeometry.frame(topLeft: anchorTopLeft, width: PanelMetrics.width, height: height),
             display: false
         )
         isMorphing = true
@@ -101,15 +112,13 @@ final class PanelHeightController {
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled, let self, self.panel.isVisible else { return }
             self.isMorphing = false
-            // Rebuilding the shadow for every interpolated frame competes with the page animation.
-            // Refresh it once after the window reaches its final shape instead.
             self.panel.invalidateShadow()
             self.saveHeight(self.panel.frame.height, for: self.currentScreen())
         }
     }
 
     private func clampedHeight(_ rawHeight: CGFloat) -> CGFloat {
-        PanelGeometry.clampedHeight(rawHeight, maximum: maximumHeight())
+        PanelGeometry.clampedHeight(rawHeight, minimum: PanelGeometry.minimumHeight(for: currentScreen()), maximum: maximumHeight())
     }
 
     private func maximumHeight() -> CGFloat {
@@ -131,17 +140,19 @@ final class PanelHeightController {
     private static func heightKey(for screen: PopoverScreen) -> String {
         switch screen {
         case .dashboard: "openusage.panel.height.dashboard"
-        case .customize: "openusage.panel.height.customize"
+        case .accounts: "openusage.panel.height.accounts"
         case .settings: "openusage.panel.height.settings"
         }
     }
 }
 
-/// Pure panel geometry, kept separate so display clamping can be tested without opening a window.
 enum PanelGeometry {
     static let topGap: CGFloat = 4
     static let screenMargin: CGFloat = 8
-    static let minimumHeight: CGFloat = 200
+
+    static func minimumHeight(for screen: PopoverScreen) -> CGFloat {
+        screen == .dashboard ? 100 : 200
+    }
 
     static func clampedTopLeft(below buttonRect: NSRect, width: CGFloat, visibleFrame: NSRect?) -> NSPoint {
         var x = buttonRect.minX
@@ -160,8 +171,15 @@ enum PanelGeometry {
         return max(1, min(roomBelowAnchor, aestheticCap))
     }
 
-    static func clampedHeight(_ rawHeight: CGFloat, maximum: CGFloat) -> CGFloat {
-        min(max(rawHeight, minimumHeight), maximum)
+    static let sheetMargin: CGFloat = 20
+
+    static func height(content: CGFloat, attachedSheet: CGFloat?) -> CGFloat {
+        guard let attachedSheet else { return content }
+        return max(content, attachedSheet + sheetMargin)
+    }
+
+    static func clampedHeight(_ rawHeight: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
+        min(max(rawHeight, minimum), maximum)
     }
 
     /// Snaps the top edge and height to whole points. AppKit rounds a window's origin and size

@@ -1,7 +1,6 @@
 import XCTest
 @testable import OpenUsage
 
-/// Go plan meters from `/zen/go/v1/usage`: percent format, resets, periods, and boundary failures.
 final class OpenCodeUsageMapperTests: XCTestCase {
     private let sampleBody: [String: Any] = [
         "usage": [
@@ -15,7 +14,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         let lines = try OpenCodeUsageMapper.meterLines(body: sampleBody)
         XCTAssertEqual(lines.map(\.label), ["Session", "Weekly", "Monthly"])
 
-        guard case let .progress(_, sessionUsed, sessionLimit, sessionFormat, sessionReset, sessionPeriod, _) = lines[0] else {
+        guard case let .progress(_, sessionUsed, sessionLimit, sessionFormat, sessionReset, sessionPeriod) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertEqual(sessionUsed, 12)
@@ -24,7 +23,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(sessionReset, OpenUsageISO8601.date(from: "2026-07-12T13:30:00.662Z"))
         XCTAssertEqual(sessionPeriod, MetricPeriod.sessionMs)
 
-        guard case let .progress(_, weeklyUsed, _, weeklyFormat, weeklyReset, weeklyPeriod, _) = lines[1] else {
+        guard case let .progress(_, weeklyUsed, _, weeklyFormat, weeklyReset, weeklyPeriod) = lines[1] else {
             return XCTFail("weekly is not a progress line")
         }
         XCTAssertEqual(weeklyUsed, 8)
@@ -32,7 +31,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(weeklyReset, OpenUsageISO8601.date(from: "2026-07-13T00:00:00.662Z"))
         XCTAssertEqual(weeklyPeriod, MetricPeriod.weekMs)
 
-        guard case let .progress(_, monthlyUsed, _, monthlyFormat, _, monthlyPeriod, _) = lines[2] else {
+        guard case let .progress(_, monthlyUsed, _, monthlyFormat, _, monthlyPeriod) = lines[2] else {
             return XCTFail("monthly is not a progress line")
         }
         XCTAssertEqual(monthlyUsed, 100)
@@ -49,7 +48,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body)
-        guard case let .progress(_, used, limit, format, _, _, _) = lines[0] else {
+        guard case let .progress(_, used, limit, format, _, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertEqual(used, 0)
@@ -71,16 +70,13 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
-        guard case let .progress(_, used, _, _, resetsAt, _, _) = lines[0] else {
+        guard case let .progress(_, used, _, _, resetsAt, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertEqual(used, 0)
         XCTAssertNil(resetsAt)
     }
 
-    /// The reported bug at the point it matters most: a newly started session still reads 0%, but its
-    /// reset has already moved inside the five-hour period. Thirty and sixty seconds are both well past
-    /// the upstream response's unavoidable whole-second ambiguity and must keep the countdown.
     func testSubOnePercentRollingWindowKeepsAnchoredReset() throws {
         let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
         let period = TimeInterval(MetricPeriod.sessionMs) / 1000
@@ -94,7 +90,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 ]
             ]
             let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
-            guard case let .progress(_, used, _, _, resetsAt, _, _) = lines[0] else {
+            guard case let .progress(_, used, _, _, resetsAt, _) = lines[0] else {
                 return XCTFail("session is not a progress line")
             }
             XCTAssertEqual(used, 0)
@@ -116,7 +112,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
                 ]
             ]
             let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
-            guard case let .progress(_, _, _, _, resetsAt, _, _) = lines[0] else {
+            guard case let .progress(_, _, _, _, resetsAt, _) = lines[0] else {
                 XCTFail("session is not a progress line")
                 return nil
             }
@@ -147,9 +143,9 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         )
         let lines = try OpenCodeUsageMapper.meterLines(
             response,
-            capturedAt: serverDate.addingTimeInterval(2 * 60) // deliberately wrong local clock
+            capturedAt: serverDate.addingTimeInterval(2 * 60)
         )
-        guard case let .progress(_, _, _, _, resetsAt, _, _) = lines[0] else {
+        guard case let .progress(_, _, _, _, resetsAt, _) = lines[0] else {
             return XCTFail("session is not a progress line")
         }
         XCTAssertNil(resetsAt)
@@ -169,16 +165,13 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         for headers in [[:], ["date": "not-an-http-date"]] {
             let response = HTTPResponse(statusCode: 200, headers: headers, body: data)
             let lines = try OpenCodeUsageMapper.meterLines(response, capturedAt: capturedAt)
-            guard case let .progress(_, _, _, _, resetsAt, _, _) = lines[0] else {
+            guard case let .progress(_, _, _, _, resetsAt, _) = lines[0] else {
                 return XCTFail("session is not a progress line")
             }
             XCTAssertNil(resetsAt)
         }
     }
 
-    /// Weekly and monthly resets are calendar/billing instants that exist with or without usage, so the
-    /// placeholder rule must not touch them — early in a cycle one sits a near-full period out, and
-    /// dropping it would strip a real countdown off a row that has no "Not started" state to fall to.
     func testFullPeriodWeeklyAndMonthlyResetsSurviveAtZeroUsage() throws {
         let capturedAt = Date(timeIntervalSince1970: 1_800_000_000)
         let weeklyReset = capturedAt.addingTimeInterval(7 * 86_400)
@@ -191,8 +184,8 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body, capturedAt: capturedAt)
-        guard case let .progress(_, _, _, _, weekly, _, _) = lines[1],
-              case let .progress(_, _, _, _, monthly, _, _) = lines[2] else {
+        guard case let .progress(_, _, _, _, weekly, _) = lines[1],
+              case let .progress(_, _, _, _, monthly, _) = lines[2] else {
             return XCTFail("expected progress lines")
         }
         XCTAssertEqual(weekly, weeklyReset)
@@ -216,7 +209,7 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         ]
         for body in [missingWeekly, malformedRolling] {
             XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: body)) { error in
-                XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
+                XCTAssertEqual(error as? ProviderError, .invalidResponse)
             }
         }
     }
@@ -230,8 +223,8 @@ final class OpenCodeUsageMapperTests: XCTestCase {
             ]
         ]
         let lines = try OpenCodeUsageMapper.meterLines(body: body)
-        guard case let .progress(_, rolling, _, _, _, _, _) = lines[0],
-              case let .progress(_, weekly, _, _, _, _, _) = lines[1] else {
+        guard case let .progress(_, rolling, _, _, _, _) = lines[0],
+              case let .progress(_, weekly, _, _, _, _) = lines[1] else {
             return XCTFail("expected progress lines")
         }
         XCTAssertEqual(rolling, 100)
@@ -246,10 +239,10 @@ final class OpenCodeUsageMapperTests: XCTestCase {
 
     func testMissingUsageOrWindowIsInvalid() {
         XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: [:])) { error in
-            XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
+            XCTAssertEqual(error as? ProviderError, .invalidResponse)
         }
         XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: ["usage": ["weekly": ["percent": 1]]])) { error in
-            XCTAssertEqual(error as? OpenCodeUsageError, .invalidResponse)
+            XCTAssertEqual(error as? ProviderError, .invalidResponse)
         }
     }
 

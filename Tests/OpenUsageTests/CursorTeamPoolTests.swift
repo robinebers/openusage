@@ -30,7 +30,7 @@ final class CursorTeamPoolTests: XCTestCase {
         ]
         for name: String? in ["Team", "Enterprise", nil] {
             XCTAssertFalse(CursorUsageMapper.shouldUseRequestBasedFallback(
-                usage: usage, planName: name, planInfoUnavailable: name == nil
+                facts: CursorPlanUsageFacts(usage: usage), planName: name
             ).shouldFallback)
         }
         XCTAssertFalse(CursorPlanUsageFacts(usage: usage).shouldTryGenericRequestFallback)
@@ -46,7 +46,7 @@ final class CursorTeamPoolTests: XCTestCase {
             "limit": 500_000, "totalSpend": 234_500,
             "autoPercentUsed": 0, "apiPercentUsed": 0, "totalPercentUsed": 0
         ])
-        guard case .progress(_, let used, let limit, let format, _, _, _) =
+        guard case .progress(_, let used, let limit, let format, _, _) =
             mapped.lines.first(where: { $0.label == "Total usage" }) else {
             return XCTFail("Missing legacy total")
         }
@@ -64,7 +64,7 @@ final class CursorTeamPoolTests: XCTestCase {
         ] {
             let plan = pools.merging(["limit": 500_000, "totalSpend": 234_500]) { first, _ in first }
             let mapped = try map(plan)
-            guard case .progress(_, _, _, let format, _, _, _) =
+            guard case .progress(_, _, _, let format, _, _) =
                 mapped.lines.first(where: { $0.label == "Total usage" }) else {
                 return XCTFail("Missing legacy total")
             }
@@ -86,7 +86,7 @@ final class CursorTeamPoolTests: XCTestCase {
         XCTAssertNotNil(mapped.lines.first { $0.label == "Credits" })
     }
 
-    private func map(_ plan: [String: Any]) throws -> CursorMappedUsage {
+    private func map(_ plan: [String: Any]) throws -> ProviderUsage {
         try CursorUsageMapper.mapUsage(
             usage: [
                 "enabled": true, "planUsage": plan,
@@ -97,9 +97,9 @@ final class CursorTeamPoolTests: XCTestCase {
         )
     }
 
-    private func assertPercent(_ mapped: CursorMappedUsage, _ label: String, _ expected: Double,
+    private func assertPercent(_ mapped: ProviderUsage, _ label: String, _ expected: Double,
                                file: StaticString = #filePath, line: UInt = #line) {
-        guard case .progress(_, let used, let limit, let format, _, _, _) =
+        guard case .progress(_, let used, let limit, let format, _, _) =
             mapped.lines.first(where: { $0.label == label }) else {
             return XCTFail("Missing \(label)", file: file, line: line)
         }

@@ -2,9 +2,19 @@
   "features" : [
     "refractivity"
   ],
-  "fill" : {
-    "automatic-gradient" : "extended-srgb:0.17008,0.49616,1.02141,1.00000"
-  },
+  "fill-specializations" : [
+    {
+      "value" : {
+        "automatic-gradient" : "extended-srgb:0.17008,0.49616,1.02141,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "automatic-gradient" : "srgb:0.09000,0.10500,0.15000,1.00000"
+      }
+    }
+  ],
   "groups" : [
     {
       "layers" : [
@@ -20,12 +30,19 @@
               "value" : {
                 "solid" : "extended-srgb:0.17008,0.49616,1.02141,1.00000"
               }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
             }
           ],
-          "image-name" : "dashboard-3-line.svg",
-          "name" : "dashboard-3-line",
+          "glass" : true,
+          "image-name" : "liquid.svg",
+          "name" : "liquid",
           "position" : {
-            "scale" : 37.48,
+            "scale" : 1,
             "translation-in-points" : [
               0,
               0
@@ -33,18 +50,67 @@
           }
         }
       ],
-      "refractivity" : {
-        "depth" : 0.4239062500000001,
+      "lighting" : "individual",
+      "name" : "Liquid",
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "specular" : true,
+      "translucency" : {
         "enabled" : true,
-        "strength" : 0.64328125
+        "value" : 0.1
+      }
+    },
+    {
+      "layers" : [
+        {
+          "fill-specializations" : [
+            {
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            }
+          ],
+          "glass" : true,
+          "image-name" : "vessel.svg",
+          "name" : "vessel",
+          "position" : {
+            "scale" : 1,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "lighting" : "individual",
+      "name" : "Vessel",
+      "refractivity" : {
+        "depth" : 0.42,
+        "enabled" : true,
+        "strength" : 0.64
       },
       "shadow" : {
         "kind" : "neutral",
-        "opacity" : 1.08
+        "opacity" : 0.5
       },
+      "specular" : true,
       "translucency" : {
         "enabled" : true,
-        "value" : 0.46
+        "value" : 0.35
       }
     }
   ],

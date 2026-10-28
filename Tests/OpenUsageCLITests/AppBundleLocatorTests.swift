@@ -39,4 +39,14 @@ final class AppBundleLocatorTests: XCTestCase {
 
         XCTAssertEqual(located.bundleIdentifier, "com.example.dev")
     }
+
+    func testBareExecutableFallsBackToTheReleaseBundle() {
+        let located = AppBundleLocator.locate(
+            executableURL: FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)/openusage"),
+            environment: [:]
+        )
+
+        XCTAssertEqual(located.bundleIdentifier, "com.robinebers.openusage")
+        XCTAssertNil(located.version)
+    }
 }

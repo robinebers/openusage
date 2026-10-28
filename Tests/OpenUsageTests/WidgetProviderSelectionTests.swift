@@ -3,86 +3,68 @@ import OpenUsageWidgetSupport
 
 final class WidgetProviderSelectionTests: XCTestCase {
     private let providers = [
-        makeProvider("claude", "Claude", enabled: false),
-        makeProvider("codex", "Codex", enabled: true),
-        makeProvider("codex-2", "Codex (Personal)", enabled: true),
+        makeProvider("claude@00000001", "Claude · Work"),
+        makeProvider("codex@00000002", "ChatGPT · Work"),
+        makeProvider("codex@00000003", "ChatGPT · Personal"),
     ]
 
-    func testResolvesExportedIDsInRequestedOrder() {
+    func testResolvesDistinctAccountsInRequestedOrder() {
         XCTAssertEqual(
-            WidgetProviderSelection.resolve(["codex-2", "claude"], in: providers),
-            [.init(id: "codex-2", name: "Codex (Personal)"), .init(id: "claude", name: "Claude")]
+            WidgetProviderSelection.resolve(["codex@00000003", "claude@00000001"], in: providers),
+            [.init(id: "codex@00000003", name: "ChatGPT · Personal"), .init(id: "claude@00000001", name: "Claude · Work")]
         )
     }
 
     func testKeepsAnIDTheHostNoLongerExports() {
-        // A removed account card must stay selected so the widget reports it missing instead of
-        // silently falling back to another provider.
         XCTAssertEqual(
-            WidgetProviderSelection.resolve(["claude-work"], in: providers),
-            [.init(id: "claude-work", name: "claude-work")]
+            WidgetProviderSelection.resolve(["claude@removed"], in: providers),
+            [.init(id: "claude@removed", name: "claude@removed")]
         )
         XCTAssertEqual(
-            WidgetProviderSelection.resolve(["claude"], in: []),
-            [.init(id: "claude", name: "claude")]
+            WidgetProviderSelection.resolve(["claude@00000001"], in: []),
+            [.init(id: "claude@00000001", name: "claude@00000001")]
         )
     }
 
-    func testSuggestsEnabledProvidersAndFallsBackToAll() {
-        XCTAssertEqual(WidgetProviderSelection.suggested(in: providers).map(\.id), ["codex", "codex-2"])
-
-        let allDisabled = [makeProvider("claude", "Claude", enabled: false), makeProvider("zai", "Z.ai", enabled: false)]
-        XCTAssertEqual(WidgetProviderSelection.suggested(in: allDisabled).map(\.id), ["claude", "zai"])
-    }
-
-    func testDefaultsToFirstEnabledThenFirstExported() {
-        XCTAssertEqual(WidgetProviderSelection.defaultProviderID(in: providers), "codex")
-        XCTAssertEqual(
-            WidgetProviderSelection.defaultProviderID(in: [makeProvider("claude", "Claude", enabled: false)]),
-            "claude"
-        )
+    func testDefaultsToFirstAccountInExportedOrder() {
+        XCTAssertEqual(WidgetProviderSelection.defaultProviderID(in: providers), "claude@00000001")
+        XCTAssertEqual(WidgetProviderSelection.defaultProviderID(in: Array(providers.reversed())), "codex@00000003")
         XCTAssertNil(WidgetProviderSelection.defaultProviderID(in: []))
     }
 
-    func testUnconfiguredWidgetReportsCorruptBridge() {
+    func testUnconfiguredWidgetReportsCorruptAndUnsupportedBridgeBeforeChoosingAnAccount() {
         XCTAssertEqual(entry(.corrupt), .corruptData(nil))
-    }
-
-    func testUnconfiguredWidgetReportsUnsupportedBridge() {
         XCTAssertEqual(entry(.unsupported), .unsupportedData(nil))
     }
 
-    func testBridgeErrorsKeepConfiguredProviderID() {
-        let corrupt = entry(.corrupt, configuredID: "codex-2")
-        let unsupported = entry(.unsupported, configuredID: "codex-2")
-        XCTAssertEqual(corrupt, .corruptData("codex-2"))
-        XCTAssertEqual(unsupported, .unsupportedData("codex-2"))
-        XCTAssertEqual(corrupt.providerID, "codex-2")
-        XCTAssertEqual(unsupported.providerID, "codex-2")
+    func testBridgeErrorsKeepConfiguredAccountID() {
+        let corrupt = entry(.corrupt, configuredID: "codex@00000003")
+        let unsupported = entry(.unsupported, configuredID: "codex@00000003")
+        XCTAssertEqual(corrupt, .corruptData("codex@00000003"))
+        XCTAssertEqual(unsupported, .unsupportedData("codex@00000003"))
+        XCTAssertEqual(corrupt.providerID, "codex@00000003")
+        XCTAssertEqual(unsupported.providerID, "codex@00000003")
     }
 
     func testMissingBridgeReportsMissingDataWithOrWithoutConfiguration() {
         XCTAssertEqual(entry(.missing), .missingData(nil))
-        XCTAssertEqual(entry(.missing, configuredID: "codex-2"), .missingData("codex-2"))
+        XCTAssertEqual(entry(.missing, configuredID: "codex@00000003"), .missingData("codex@00000003"))
     }
 
-    func testLoadedBridgeUsesEnabledDefaultForUnconfiguredWidget() {
+    func testLoadedBridgeUsesFirstSavedAccountForUnconfiguredWidget() {
         let selection = entry(.loaded, providers: providers)
-        XCTAssertEqual(selection, .provider(providers[1]))
-        XCTAssertEqual(selection.providerID, "codex")
+        XCTAssertEqual(selection, .provider(providers[0]))
+        XCTAssertEqual(selection.providerID, "claude@00000001")
     }
 
-    func testLoadedBridgeKeepsConfiguredProviderEvenWhenDisabled() {
-        XCTAssertEqual(
-            entry(.loaded, configuredID: "claude", providers: providers),
-            .provider(providers[0])
-        )
+    func testLoadedBridgeKeepsConfiguredAccountInsteadOfSwitchingToTheDefault() {
+        XCTAssertEqual(entry(.loaded, configuredID: "codex@00000003", providers: providers), .provider(providers[2]))
     }
 
-    func testLoadedBridgeReportsUnavailableConfiguredProvider() {
-        let selection = entry(.loaded, configuredID: "claude-work", providers: providers)
-        XCTAssertEqual(selection, .missingProvider("claude-work"))
-        XCTAssertEqual(selection.providerID, "claude-work")
+    func testLoadedBridgeReportsUnavailableConfiguredAccount() {
+        let selection = entry(.loaded, configuredID: "claude@removed", providers: providers)
+        XCTAssertEqual(selection, .missingProvider("claude@removed"))
+        XCTAssertEqual(selection.providerID, "claude@removed")
     }
 
     func testLoadedEmptyBridgeReportsMissingDataForUnconfiguredWidget() {
@@ -92,15 +74,12 @@ final class WidgetProviderSelectionTests: XCTestCase {
     private func entry(
         _ status: WidgetBridgeReadStatus, configuredID: String? = nil, providers: [WidgetProviderRecord] = []
     ) -> WidgetProviderSelection.Entry {
-        WidgetProviderSelection.entry(
-            configuredID: configuredID, bridgeStatus: status, in: providers
-        )
+        WidgetProviderSelection.entry(configuredID: configuredID, bridgeStatus: status, in: providers)
     }
 }
 
-private func makeProvider(_ id: String, _ name: String, enabled: Bool) -> WidgetProviderRecord {
+private func makeProvider(_ id: String, _ name: String) -> WidgetProviderRecord {
     WidgetProviderRecord(
-        id: id, displayName: name, iconID: nil, isEnabled: enabled, plan: nil, refreshedAt: nil,
-        health: .noData, primaryMetrics: [], secondaryMetrics: []
+        id: id, displayName: name, iconID: nil, plan: nil, refreshedAt: nil, health: .noData, metrics: []
     )
 }

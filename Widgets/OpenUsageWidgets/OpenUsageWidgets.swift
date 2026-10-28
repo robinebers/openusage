@@ -20,8 +20,8 @@ struct ProviderUsageWidget: Widget {
             ProviderUsageWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("Provider Usage")
-        .description("See current AI provider usage at a glance.")
+        .configurationDisplayName("Account Usage")
+        .description("See current AI account usage at a glance.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

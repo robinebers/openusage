@@ -1,83 +1,82 @@
 import Foundation
-import SwiftUI
 
-/// The outcome of a rate-limit reset claim, as the resets popover renders it. Each provider collapses
-/// its own protocol answers into these.
 enum ResetClaimOutcome: Equatable, Sendable {
     case success
     case nothingToReset
     case noCredit
-    /// The server took the claim but couldn't confirm it landed (Claude only).
     case unconfirmed
-    /// A reset exists but can't be used right now, e.g. a cooldown (Claude only).
     case unavailableNow(until: Date?)
-    case failed
+    case failed(ResetClaimFailure)
 }
 
-/// Claims one rate-limit reset from the resets popover. Never throws: every failure is logged and
-/// collapsed to an outcome.
-@MainActor
-protocol ResetClaimService: AnyObject, Sendable {
-    /// `false` renders the timeline read-only (no "Use").
-    var isClaimable: Bool { get }
-    /// Replaces the confirm card's default explanation line.
-    var confirmDetail: String? { get }
-    func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome
-}
-
-extension ResetClaimService {
-    var isClaimable: Bool { true }
-    var confirmDetail: String? { nil }
-}
-
-/// The post-claim forced refresh both providers share. The forced refresh returns `.skipped` when
-/// another refresh already owns the provider — and that in-flight probe may carry *pre-claim* usage —
-/// so retry until this refresh actually runs. The bound must outlast the provider's slowest refresh
-/// (≈45s of chained timeouts); a `.failed` probe is retried a few times so a transient flake can't
-/// strand pre-claim meters behind a success banner, then gives up loudly.
-@MainActor
-enum ResetClaimRefresh {
-    static func run(dataStore: WidgetDataStore?, providerID: String, tag: String) async {
-        var failures = 0
-        for attempt in 0..<45 {
-            guard let dataStore else { return }
-            switch await dataStore.refresh(providerID: providerID, force: true) {
-            case .refreshed, .cacheHit, .backedOff:
-                return
-            case .failed:
-                failures += 1
-                guard failures < 3 else {
-                    AppLog.error(LogTag.plugin(tag), "post-claim refresh failed \(failures) times; meters may lag until the next cycle")
-                    return
-                }
-                try? await Task.sleep(for: .seconds(2))
-            case .skipped:
-                AppLog.info(LogTag.plugin(tag), "post-claim refresh waiting out an in-flight refresh (attempt \(attempt + 1))")
-                try? await Task.sleep(for: .seconds(1))
-            }
+extension ResetClaimOutcome {
+    func message(now: Date = Date()) -> String {
+        switch self {
+        case .success:
+            "Reset claimed. Enjoy!"
+        case .nothingToReset:
+            "Your usage doesn't need a reset yet"
+        case .noCredit:
+            "That reset is no longer available"
+        case .unconfirmed:
+            "Your reset may still be going through. Check again in a minute."
+        case .unavailableNow(let until):
+            "Resets can't be used right now." + (until.flatMap { Formatters.whenLabel(at: $0, mode: .relative, now: now) }
+                .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? "")
+        case .failed(.signInExpired):
+            "Your sign-in expired. Remove the account and add it again."
+        case .failed(.notPermitted):
+            "This sign-in can't use resets. Use the reset in Claude Code instead."
+        case .failed(.connection):
+            "Couldn't connect. Check your internet connection and try again."
+        case .failed(.refused):
+            "Couldn't reset usage. Please try again."
         }
-        AppLog.error(LogTag.plugin(tag), "post-claim refresh kept being skipped; meters may lag until the next cycle")
     }
 }
 
-/// Hands the claim services to the resets popover through the environment: `nil` (the default —
-/// previews, share-card renders, reorder previews) renders the timeline read-only.
-private struct ResetClaimServiceKey: EnvironmentKey {
-    static let defaultValue: (any ResetClaimService)? = nil
+enum ResetClaimFailure: Equatable, Sendable {
+    case signInExpired
+    case notPermitted
+    case connection
+    case refused
+
+    init(_ error: Error) {
+        switch error {
+        case ProviderError.signInExpired:
+            self = .signInExpired
+        case is URLError, ProviderError.connectionFailed:
+            self = .connection
+        default:
+            self = .refused
+        }
+    }
 }
 
-private struct ResetClaimsKey: EnvironmentKey {
-    static let defaultValue: [String: any ResetClaimService] = [:]
-}
+@MainActor
+struct ResetClaimService {
+    let accountID: String
+    let isClaimable: Bool
+    let confirmDetail: String?
+    let claimReset: @MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome
+    let refreshAccount: @MainActor () async -> WidgetDataStore.RefreshOutcome
+    let refreshDelay: Duration
+    var pause: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
-extension EnvironmentValues {
-    var resetClaims: [String: any ResetClaimService] {
-        get { self[ResetClaimsKey.self] }
-        set { self[ResetClaimsKey.self] = newValue }
+    /// The claim's result shows first; the refresh that drops the spent row follows after the delay.
+    func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
+        let outcome = await claimReset(expiry, redeemRequestID)
+        if case .failed = outcome { return outcome }
+        Task {
+            await pause(refreshDelay)
+            await refreshAfterClaim()
+        }
+        return outcome
     }
 
-    var resetClaim: (any ResetClaimService)? {
-        get { self[ResetClaimServiceKey.self] }
-        set { self[ResetClaimServiceKey.self] = newValue }
+    private func refreshAfterClaim() async {
+        let outcome = await refreshAccount()
+        guard outcome != .refreshed, outcome != .cacheHit else { return }
+        AppLog.warn(.refresh, "\(accountID) post-claim refresh \(outcome); meters may lag until the next pass")
     }
 }

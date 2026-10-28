@@ -1,97 +1,63 @@
 # Settings
 
-Settings lives inside the popover — there is no separate window. Open it from the footer's **Options** menu, with ⌘, while the popover is showing, or by right-clicking the menu bar icon and choosing Settings. The dashboard slides over to the Settings screen, which carries a back button in its top-left corner. Go back with that button, the ⌘, shortcut, or Esc (Esc always backs out to the dashboard first — pressing it again closes the popover).
+Open Settings from the panel's **Options** menu or press **⌘,**. Every setting applies at once and
+survives relaunch.
 
 ## General
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Show Total Spend | on/off | Whether the cross-provider [Total Spend](dashboard.md#total-spend) card shows at the top of the dashboard. On by default; the card appears whenever at least one enabled provider tracks spend (Claude, Codex, Cursor, Grok, OpenCode). |
-| Launch at Login | on/off | Registers the app as a login item (the system's login-item registry is the source of truth). |
-| Global Shortcut | record a shortcut | Global shortcut that toggles the popover from anywhere. Click the field and press a combo; the ⓧ clears it and disables the shortcut. |
-
-**Upgrading from the legacy (pre-0.7) edition:** the old edition managed start-on-login with its own launcher file, which an in-place update left behind. That leftover could start the app a second time at every login and showed up in System Settings → Login Items under the signing company's name ("SUNSTORY LLC") instead of OpenUsage. The app now removes it automatically on launch — only when the file verifiably points at OpenUsage itself — so login starts exactly one copy, controlled by the Launch at Login toggle above.
-
-## iCloud Sync
-
-**Sync Across Macs** is off by default. Turning it on shares normalized OpenUsage history through the
-app's private iCloud container and combines machine-local tokens and spend across Macs signed into the
-same iCloud account. Settings shows the five-minute write cadence and each Mac's relative **Updated**
-time; it also reports unavailable iCloud, loading, write, and malformed-file states. See
-[iCloud Sync](icloud-sync.md) for what is included and which surfaces use the combined values.
+| Launch at Login | switch | Registers OpenUsage as a login item, so it starts when you sign in to your Mac. |
+| Global Shortcut | recorder | A keyboard shortcut that opens and closes the panel from any app. Click the field and press the keys. |
 
 ## Appearance
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Icon Style | Text / Bars | How starred metrics render in the menu bar. See [Menu bar](menu-bar.md). |
-| Theme | System / Light / Dark | App-wide appearance override for the popover. |
-| Density | Default / Compact | Default breathes; Compact is a real information-dense mode — text steps down one size, rows and provider sections pull together, and Customize / Settings rows tighten with them. In both, consecutive one-line metrics (Today / Yesterday / …) pull together; Compact pulls harder. |
-| Reduce Animations | Off / On | Off by default. On removes transitions, motion effects, and continuous decorative animation throughout the popover. The app also honors the macOS Reduce Motion accessibility setting. |
-| Time Format | Auto / 12-hour / 24-hour | How exact times read (e.g. "Resets today at 6:38 PM" vs "18:38"). Auto follows the system. |
-| Increase Transparency | Off / On | Off (default) keeps the popover a solid panel. On makes it translucent so your desktop shows through, while keeping the numbers and Options control legible with adaptive surfaces. It pauses automatically when you have the macOS **Reduce Transparency** or **Increase Contrast** accessibility setting turned on (a note explains why), so it never works against those preferences. |
+| Theme | System, Light, Dark | The panel's appearance. System follows macOS. |
+| Time Format | Auto, 12-hour, 24-hour | How exact times read. Auto follows your macOS locale. |
 
-## Usage Display
+## Usage display
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Show Usage As | Used / Left | Whether bounded metrics read "48% used" or "52% left" — same toggle as clicking a headline. |
-| Reset Times | Countdown / Exact time | "Resets in 3h 25m" vs "Resets today at 6:38 PM" — same toggle as clicking a reset label. |
-| Always Show Pacing | Off / On | Off (default) shows pacing only when a metric is close to or over its limit. On surfaces it on every metric with a reset window: on-track rows gain their projection ("~33% left at reset") and an even-pace tick marking where steady use would put you right now. Metrics without a reset window have no pace to show, and a metric with nothing used yet stays plain until something has been spent. |
+| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any bar row's value in the dashboard flips it too. |
+| Reset Times | Countdown, Exact time | Whether reset labels read `Resets in 3h 25m` or `Resets today at 6:38 PM`. A click on any reset in the dashboard flips it too. |
 
 ## Notifications
 
-OpenUsage can alert you with a macOS notification when a metric runs low or its pace gets worse, so you don't have to keep the popover open to catch a quota creeping toward its limit. Alerts work while the app runs in the menu bar, even with the popover closed.
+Three independent triggers, all off by default. Turning the first one on asks macOS for notification
+permission. While macOS has notifications off for OpenUsage, a footer under the switches says so and
+links to System Settings.
 
-| Setting | Options | What it does |
-|---|---|---|
-| Almost Out | On / Off | Alerts when a metric crosses under 10% remaining, including balances without a reset window. |
-| Cutting It Close | On / Off | Alerts when a metric is projected to finish the period with little left — close to its limit. |
-| Will Run Out | On / Off | Alerts when a metric is projected to run out before it resets. |
+| Setting | What it sends |
+|---|---|
+| Under 10% Remaining | The first time a metric with a limit drops under 10% left in its period. |
+| Healthy Pace Changes | When a metric's pace worsens from on course to close to the limit. |
+| Near-Limit Pace Changes | When a metric's pace worsens from close to the limit to running out. |
 
-Alerts fire on a new crossing or pace worsening, then stay deduplicated while that condition is unchanged, so you do not get repeats on every refresh. A quota already in a bad state when OpenUsage launches establishes the baseline without alerting. If it recovers and later worsens again, the alert re-arms; a new reset period also clears the reset-based history. **Almost Out** is based only on the remaining share, so it also works for bounded balances without a reset window. **Cutting It Close** and **Will Run Out** require reset-window pace context. Metrics whose data cannot be read never alert. Turn all three triggers off to silence everything. When several alerts fire at once, they stack into a single grouped banner.
-
-All three alerts default off. The first time you turn one on, OpenUsage asks for notification permission; if you decline (or turn notifications off for OpenUsage in System Settings later), a warning mark appears on the Notifications header and an "Open System Settings" button shows under the toggles so you can re-enable them. A notification's title is the alert name, its subtitle names the provider and metric, and its body is the plain-language verdict. Tapping an alert opens the popover on the dashboard.
+Each notification names the trigger, the provider, and the metric, and fires once per metric per reset window.
 
 ## Privacy
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Hide From Screen Share | On / Off | Off (default). On replaces the menu bar strip with the OpenUsage icon and wordmark while your screen is being shared or recorded, and restores your starred metrics the moment the capture ends. See [Menu bar](menu-bar.md#hiding-usage-while-screen-sharing). |
-| Help Make OpenUsage Better | On / Off | On (default) shares extra anonymous usage analytics — provider-refresh summaries and error categories. Off stops that extra sharing. Daily activity and crash reports are always sent. See [Privacy & Usage Data](privacy.md) for exactly what is and isn't sent. |
+| Help Make OpenUsage Better | switch | Whether the app sends the optional daily provider-refresh summaries described in [Privacy](privacy.md). The anonymous daily active ping and crash reports do not depend on this switch. |
 
-## Advanced
+## Command Line
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Log Level | Error / Warning / Info / Debug | How much detail the app writes to its log file. Defaults to Info and persists across launches; raise to Debug while reproducing a problem. Applies immediately. |
-| Copy Log Path | button | Copies the log file path (`~/Library/Logs/OpenUsage/OpenUsage.log`) to the clipboard. |
-| Reveal in Finder | button | Opens a Finder window with the log file selected. |
-| Reset All Settings… | button | Restores every setting to its default, behind a confirmation alert. |
-
-See [Logging](logging.md) for the full behavior: subsystem tags, the file size cap, and the guarantee that secrets are never written.
-
-**Reset All Settings…** restores every setting on this screen to its default — appearance, usage display, notifications, privacy, log level, the global shortcut (cleared), Launch at Login (turned off), iCloud sync (turned off), and the update preferences (stable channel, automatic checks on) — and also resets all customization, exactly like Customize's Reset All: default layout, order, and menu-bar stars, with providers turned back on for the tools you have installed. The reset cannot be undone.
-
-Not touched: provider logins and API keys, cached usage data, and your extra-analytics choice. Turning iCloud sync off as part of the reset works exactly like flipping its toggle off: this Mac's synced history is removed from the shared iCloud data, and your other Macs keep their own.
+| Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. A link left by another copy of OpenUsage (an earlier version, or a build in another folder) is replaced on Install. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
 
 ## Updates
 
-The Updates section appears in official packaged builds that include the signed update feed. Local
-developer builds do not show it.
+This section appears in the released build only; the dev build has no update feed.
 
-| Setting | Options | What it does |
+| Setting | Control | What it changes |
 |---|---|---|
-| Check Automatically | On / Off | Whether Sparkle checks for updates in the background. You can still check manually when this is off. |
-| Beta Updates | On / Off | Adds pre-release builds to the updates you can receive. Stable releases remain available either way. |
-| Check for Updates… | button | Starts a manual update check and opens Sparkle's update window. |
+| Check Automatically | switch | Checks for a new version about once an hour and shows the **Update Available** banner on the dashboard when one is found. |
+| Beta Updates | switch | Adds pre-release builds to the checks. Turn it off to stay on your current version until the next stable release. |
+| Check for Updates… | button | Checks now and opens the update window. |
 
-See [Updates](updates.md) for the dashboard banner, channels, and signature verification.
-
-## Version
-
-The app version shows in the popover footer.
-
-Your settings carry across updates — layout, stars, preferences, and the menu-bar shortcut all stay put. When an update changes how a setting is stored, the app upgrades it in place on launch, stepping through any in-between versions if you skipped a few. Nothing is reset. (Earlier betas wiped all settings on every update; that no longer happens.)
-
-Which providers you have on also carries across updates — your choices are never overridden. A brand-new install picks its starting set by detecting the AI tools on your Mac (see [Dashboard § First launch](dashboard.md#first-launch)). When an update ships a provider you've never seen, the same local detection runs once for just that provider and turns it on only if you actually have the tool; everything you've already decided about stays exactly as you set it. See [Which Providers Are On](provider-enablement.md).
+See [Updates](updates.md).

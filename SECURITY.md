@@ -35,7 +35,6 @@ The following are in scope:
 
 - The OpenUsage desktop application
 - The built-in providers (credential handling, API calls)
-- The local HTTP API
 - Build and release infrastructure
 
 The following are out of scope:

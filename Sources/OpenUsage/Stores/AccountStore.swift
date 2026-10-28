@@ -1,0 +1,83 @@
+import Foundation
+import Observation
+
+@MainActor
+@Observable
+final class AccountStore {
+    static let storageKey = "accounts.v1"
+
+    private(set) var accounts: [Account]
+    private(set) var lastError: String?
+    @ObservationIgnored var didChange: (() -> Void)?
+    private let defaults: UserDefaults
+    let credentialVault: any CredentialVault
+
+    init(defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault()) {
+        self.defaults = defaults
+        credentialVault = vault
+        accounts = Self.load(from: defaults)
+    }
+
+    static func load(from defaults: UserDefaults) -> [Account] {
+        guard let data = defaults.data(forKey: storageKey),
+              let decoded = try? JSONDecoder().decode([Account].self, from: data) else { return [] }
+        return decoded.sorted { $0.addedAt < $1.addedAt }
+    }
+
+    @discardableResult
+    func add(kind: ProviderKind, label: String, credential: AccountCredential) -> Account {
+        let account = Account(kind: kind, label: label)
+        do {
+            try credentialVault.save(credential, for: account.id)
+            accounts.append(account)
+            persist()
+            didChange?()
+        } catch {
+            lastError = error.localizedDescription
+            AppLog.error(LogTag.auth("accounts"), "could not save account: \(error.localizedDescription)")
+        }
+        return account
+    }
+
+    func rename(_ id: UUID, to label: String) {
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
+        accounts[index].label = label
+        persist()
+        didChange?()
+    }
+
+    func remove(_ id: UUID) {
+        guard let accountIndex = accounts.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            try credentialVault.delete(id)
+            accounts.remove(at: accountIndex)
+            persist()
+            didChange?()
+        } catch {
+            lastError = error.localizedDescription
+            AppLog.error(LogTag.auth("accounts"), "could not remove account credential: \(error.localizedDescription)")
+        }
+    }
+
+    func credential(for id: UUID) throws -> AccountCredential? {
+        try credentialVault.load(id)
+    }
+
+    func account(kind: ProviderKind, signedInAs credential: AccountCredential) -> Account? {
+        guard let identity = credential.identity else { return nil }
+        return accounts.first { account in
+            account.kind == kind && (try? credentialVault.load(account.id))??.identity == identity
+        }
+    }
+
+    func account(cardID: String) -> Account? {
+        accounts.first { $0.cardID == cardID }
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(accounts) else {
+            return AppLog.error(LogTag.auth("accounts"), "could not encode the account list")
+        }
+        defaults.set(data, forKey: Self.storageKey)
+    }
+}

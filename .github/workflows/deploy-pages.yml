@@ -1,20 +1,20 @@
-# Deploys the gh-pages branch content (appcast.xml, pricing_supplement.json) to the live Pages site.
+# Deploys the gh-pages branch content (appcast.xml, and the pricing_supplement.json that installed
+# 0.7.x apps still fetch) to the live Pages site.
 #
 # The repo's Pages source is "GitHub Actions", not "Deploy from a branch": GitHub's legacy
 # branch-deploy pipeline repeatedly failed server-side ("Deployment failed, try again later",
 # deployments stuck in deployment_queued) in July 2026, leaving the live appcast stale while the
 # branch was current. This workflow replaces it.
 #
-# Trigger notes (why workflow_run and not `on: push branches: [gh-pages]`): the Release and
-# Publish pricing supplement workflows push to gh-pages with the built-in GITHUB_TOKEN, and GitHub
-# suppresses workflow triggers from GITHUB_TOKEN pushes. workflow_run on their completion is the
-# reliable signal — and it requires this file to live on the default branch, which also makes
-# manual dispatch work.
+# Trigger notes (why workflow_run and not `on: push branches: [gh-pages]`): the Release workflow
+# pushes to gh-pages with the built-in GITHUB_TOKEN, and GitHub suppresses workflow triggers from
+# GITHUB_TOKEN pushes. workflow_run on its completion is the reliable signal — and it requires this
+# file to live on the default branch, which also makes manual dispatch work.
 name: Deploy Pages
 
 on:
   workflow_run:
-    workflows: ["Release", "Publish pricing supplement"]
+    workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
 

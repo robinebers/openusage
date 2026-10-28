@@ -50,7 +50,6 @@ private struct InvisibleOverlayScroller: NSViewRepresentable {
             }
         }
 
-        /// Idempotent: safe to call repeatedly from `updateNSView` and the style-change observer.
         func apply() {
             guard let scrollView = enclosingScrollView else { return }
             scrollView.hasVerticalScroller = true

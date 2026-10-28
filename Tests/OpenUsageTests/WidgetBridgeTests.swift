@@ -5,8 +5,7 @@ import OpenUsageWidgetSupport
 
 final class WidgetBridgeFileStoreTests: XCTestCase {
     func testRoundTripAndSemanticContentIgnoresGenerationDate() throws {
-        let url = temporaryURL()
-        let store = WidgetBridgeFileStore(fileURL: url)
+        let store = WidgetBridgeFileStore(fileURL: temporaryURL())
         let first = document(generatedAt: Date(timeIntervalSince1970: 100))
         let later = document(generatedAt: Date(timeIntervalSince1970: 200))
 
@@ -17,8 +16,7 @@ final class WidgetBridgeFileStoreTests: XCTestCase {
     }
 
     func testUnsupportedWriteLeavesPreviousGoodFileUntouched() throws {
-        let url = temporaryURL()
-        let store = WidgetBridgeFileStore(fileURL: url)
+        let store = WidgetBridgeFileStore(fileURL: temporaryURL())
         let valid = document(generatedAt: Date(timeIntervalSince1970: 100))
         try store.write(valid)
 
@@ -29,52 +27,34 @@ final class WidgetBridgeFileStoreTests: XCTestCase {
         XCTAssertEqual(try store.read(), valid)
     }
 
-    func testMissingAndCorruptFilesFailExplicitly() throws {
+    func testMissingCorruptAndUnsupportedFilesFailExplicitly() throws {
         let url = temporaryURL()
         let store = WidgetBridgeFileStore(fileURL: url)
         XCTAssertNil(try store.read())
 
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("not-json".utf8).write(to: url)
         XCTAssertThrowsError(try store.read())
-    }
 
-    func testReadsFileWrittenBeforeIconIDExisted() throws {
-        let url = temporaryURL()
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        try Data("""
-        {"schemaVersion":1,"generatedAt":"2026-09-01T00:00:00Z","providers":[{"id":"claude",\
-        "displayName":"Claude","isEnabled":true,"health":"ready","primaryMetrics":[],"secondaryMetrics":[]}]}
-        """.utf8).write(to: url)
-
-        let document = try XCTUnwrap(WidgetBridgeFileStore(fileURL: url).read())
-        XCTAssertEqual(document.providers.map(\.id), ["claude"])
-        XCTAssertNil(document.providers.first?.iconID)
+        try Data(#"{"schemaVersion":99,"generatedAt":"2026-09-01T00:00:00Z","providers":[]}"#.utf8).write(to: url)
+        XCTAssertThrowsError(try store.read()) { error in
+            XCTAssertEqual(error as? WidgetBridgeFileError, .unsupportedSchema(99))
+        }
     }
 
     private func temporaryURL() -> URL {
-        FileManager.default.temporaryDirectory
+        let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("OpenUsageWidgetBridgeTests-\(UUID().uuidString)")
-            .appendingPathComponent(WidgetBridgeFileStore.fileName)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory.appendingPathComponent(WidgetBridgeFileStore.fileName)
     }
 
     private func document(generatedAt: Date) -> WidgetBridgeDocument {
         WidgetBridgeDocument(
             generatedAt: generatedAt,
             providers: [WidgetProviderRecord(
-                id: "claude",
-                displayName: "Claude",
-                iconID: "claude",
-                isEnabled: true,
-                plan: "Pro",
-                refreshedAt: Date(timeIntervalSince1970: 50),
-                health: .ready,
-                primaryMetrics: [],
-                secondaryMetrics: []
+                id: "claude@00000001", displayName: "Claude · Work", iconID: "claude", plan: "Pro",
+                refreshedAt: Date(timeIntervalSince1970: 50), health: .ready, metrics: []
             )]
         )
     }
@@ -82,117 +62,173 @@ final class WidgetBridgeFileStoreTests: XCTestCase {
 
 @MainActor
 final class WidgetBridgeExporterTests: XCTestCase {
-    func testExportsPresentationRowsInLayoutOrderAndOmitsCharts() {
-        let fixture = Fixture()
+    func testExportsShownMetricsInSavedOrderWithDisplayValuesAndResetDate() throws {
+        let fixture = Fixture(defaults: isolatedDefaults())
         fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
+        XCTAssertTrue(fixture.layout.reorderMetric(dragged: fixture.session.id, target: fixture.balance.id, in: fixture.provider.id))
+        fixture.layout.setMetricEnabled(fixture.resets.id, false)
 
-        let document = fixture.exporter.makeDocument(generatedAt: fixture.now)
+        let provider = try XCTUnwrap(fixture.exporter.makeDocument(generatedAt: fixture.now).providers.first)
 
-        XCTAssertEqual(document.providers.map(\.id), [fixture.provider.id])
-        let provider = try! XCTUnwrap(document.providers.first)
-        XCTAssertTrue(provider.isEnabled)
+        XCTAssertEqual(provider.id, fixture.provider.id)
+        XCTAssertEqual(provider.displayName, "ChatGPT · Work")
+        XCTAssertEqual(provider.iconID, "codex")
         XCTAssertEqual(provider.health, .ready)
         XCTAssertEqual(provider.plan, "Pro")
-        XCTAssertEqual(provider.primaryMetrics.map(\.id), ["test.session"])
-        XCTAssertEqual(provider.secondaryMetrics.map(\.id), ["test.balance"])
-        XCTAssertEqual(provider.primaryMetrics.first?.headline, "60% left")
-        XCTAssertEqual(provider.primaryMetrics.first?.progressFraction, 0.6)
-        XCTAssertEqual(provider.primaryMetrics.first?.resetAt, fixture.now.addingTimeInterval(3_600))
-        XCTAssertNil(provider.primaryMetrics.first?.detail)
-        XCTAssertFalse(provider.primaryMetrics.contains { $0.id == "test.trend" })
+        XCTAssertEqual(provider.metrics.map(\.id), [fixture.balance.id, fixture.session.id])
+        let session = try XCTUnwrap(provider.metrics.last)
+        XCTAssertEqual(session.headline, "60% left")
+        XCTAssertEqual(session.progressFraction, 0.6)
+        XCTAssertEqual(session.resetAt, fixture.now.addingTimeInterval(3_600))
+        XCTAssertNil(session.detail)
     }
 
-    func testExportsIconIDSoAccountCardsKeepTheirProviderMark() throws {
-        let fixture = Fixture()
-        let provider = try XCTUnwrap(fixture.exporter.makeDocument().providers.first)
-        XCTAssertEqual(provider.id, "test")
-        XCTAssertEqual(provider.iconID, "codex")
+    func testPreservesDistinctAccountsAndSavedAccountOrder() {
+        let defaults = isolatedDefaults()
+        let work = Provider(id: "claude@00000001", kind: .claude, accountLabel: "Work")
+        let personal = Provider(id: "claude@00000002", kind: .claude, accountLabel: "Personal")
+        let chatGPT = Provider(id: "codex@00000003", kind: .codex, accountLabel: "Work")
+        let providers = [work, personal, chatGPT]
+        let runtimes = providers.map { provider in
+            StubRuntime(
+                provider: provider,
+                descriptors: [.percent(key: "session", provider: provider, title: "Session")],
+                snapshot: ProviderSnapshot(provider: provider, plan: nil, lines: [])
+            )
+        }
+        let registry = WidgetRegistry.from(runtimes)
+        let layout = LayoutStore(registry: registry, defaults: defaults)
+        layout.providerOrder = [personal.id, work.id, chatGPT.id]
+        let dataStore = WidgetDataStore.forTesting(runtimes, defaults: defaults)
+        let document = WidgetBridgeExporter(layout: layout, dataStore: dataStore).makeDocument()
+
+        XCTAssertEqual(document.providers.map(\.id), [personal.id, work.id, chatGPT.id])
+        XCTAssertEqual(document.providers.map(\.displayName), ["Claude · Personal", "Claude · Work", "ChatGPT · Work"])
+        XCTAssertEqual(document.providers.map(\.iconID), ["claude", "claude", "codex"])
     }
 
-    func testExportsFailureWithoutRawErrorAndRetainsLastGoodRows() throws {
-        let fixture = Fixture()
-        fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
-        fixture.dataStore.providerErrors[fixture.provider.id] = "secret token expired"
+    func testExportsFailureWithoutRawErrorAndRetainsLastGoodRows() async throws {
+        let failureKinds: [RefreshFailure.Kind] = [.refused, .rateLimited(retryAfter: 120)]
+        for kind in failureKinds {
+            let fixture = Fixture(defaults: isolatedDefaults())
+            fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
+            fixture.runtime.answer = { _ in .failure(RefreshFailure(message: "secret token expired", kind: kind)) }
 
-        let document = fixture.exporter.makeDocument(generatedAt: fixture.now)
-        let provider = try XCTUnwrap(document.providers.first)
-        XCTAssertEqual(provider.health, .failed)
-        XCTAssertEqual(provider.primaryMetrics.first?.headline, "60% left")
-
-        let encoded = try JSONEncoder().encode(document)
-        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("secret token expired"))
+            let outcome = await fixture.dataStore.refresh(providerID: fixture.provider.id, force: true)
+            XCTAssertEqual(outcome, .failed)
+            let document = fixture.exporter.makeDocument(generatedAt: fixture.now)
+            let provider = try XCTUnwrap(document.providers.first)
+            XCTAssertEqual(provider.health, .failed)
+            XCTAssertEqual(provider.metrics.first?.headline, "60% left")
+            XCTAssertFalse(String(decoding: try JSONEncoder().encode(document), as: UTF8.self).contains("secret token expired"))
+        }
     }
 
-    func testExportsDisabledProviderInsteadOfDroppingIt() throws {
-        let fixture = Fixture(enabled: false)
-        let provider = try XCTUnwrap(fixture.exporter.makeDocument().providers.first)
-        XCTAssertFalse(provider.isEnabled)
-        XCTAssertEqual(provider.health, .noData)
-    }
-
-    func testConfiguredMetricAvailabilityExcludesChartsButIncludesEmptyRenderableRows() {
-        let fixture = Fixture()
-
-        fixture.layout.setMetricEnabled("test.session", false)
-        fixture.layout.setMetricEnabled("test.balance", false)
-        XCTAssertTrue(fixture.layout.isMetricEnabled("test.trend"))
-        XCTAssertTrue(
-            WidgetBridgeExporter.enabledMetricDescriptors(
-                for: fixture.provider.id,
-                layout: fixture.layout,
-                dataStore: fixture.dataStore
-            ).isEmpty,
-            "a chart-only provider must route its No Data widget to Customize"
-        )
-
-        fixture.layout.setMetricEnabled("test.balance", true)
+    func testUnrefreshedAccountAndAllHiddenMetricsRemainAvailableForRecovery() throws {
+        let fixture = Fixture(defaults: isolatedDefaults())
+        let before = try XCTUnwrap(fixture.exporter.makeDocument().providers.first)
+        XCTAssertEqual(before.health, .noData)
+        XCTAssertEqual(before.metrics.map(\.id), fixture.runtime.widgetDescriptors.map(\.id))
+        XCTAssertTrue(before.metrics.allSatisfy { !$0.hasData })
         XCTAssertEqual(
-            WidgetBridgeExporter.enabledMetricDescriptors(
-                for: fixture.provider.id,
-                layout: fixture.layout,
-                dataStore: fixture.dataStore
-            ).map(\.id),
-            ["test.balance"],
-            "an enabled non-chart row remains dashboard-routable before it has refreshed data"
+            WidgetBridgeExporter.enabledMetricDescriptors(for: fixture.provider.id, layout: fixture.layout).map(\.id),
+            fixture.runtime.widgetDescriptors.map(\.id)
         )
+
+        for descriptor in fixture.runtime.widgetDescriptors { fixture.layout.setMetricEnabled(descriptor.id, false) }
+
+        let hidden = try XCTUnwrap(fixture.exporter.makeDocument().providers.first)
+        XCTAssertEqual(hidden.id, fixture.provider.id)
+        XCTAssertTrue(hidden.metrics.isEmpty)
+        XCTAssertEqual(hidden.health, .noData)
+        XCTAssertTrue(WidgetBridgeExporter.enabledMetricDescriptors(for: fixture.provider.id, layout: fixture.layout).isEmpty)
+    }
+
+    func testFreshSessionOmitsResetAndZeroResetCreditsAreNotRendered() throws {
+        let fixture = Fixture(defaults: isolatedDefaults())
+        var snapshot = fixture.snapshot
+        snapshot.lines = [
+            .progress(label: "Session", used: 0, limit: 100, format: .percent, resetsAt: fixture.now.addingTimeInterval(3_600)),
+            .values(label: "Resets", values: [.init(number: 0, kind: .count)])
+        ]
+        fixture.dataStore.snapshots[fixture.provider.id] = snapshot
+
+        let provider = try XCTUnwrap(fixture.exporter.makeDocument(generatedAt: fixture.now).providers.first)
+        let session = try XCTUnwrap(provider.metrics.first { $0.id == fixture.session.id })
+        let resets = try XCTUnwrap(provider.metrics.first { $0.id == fixture.resets.id })
+        XCTAssertTrue(session.hasData)
+        XCTAssertNil(session.resetAt)
+        XCTAssertFalse(resets.hasData)
     }
 }
 
 @MainActor
 final class WidgetBridgeCoordinatorTests: XCTestCase {
-    func testWritesAndReloadsOnlyForSemanticChanges() async {
-        let fixture = Fixture()
+    func testWritesAndReloadsOnlyForSemanticChangesAndObservesDisplayChanges() async throws {
+        let fixture = Fixture(defaults: isolatedDefaults())
         fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
         let store = MemoryBridgeStore()
         var reloadCount = 0
         let coordinator = WidgetBridgeCoordinator(
-            exporter: fixture.exporter,
-            store: store,
-            debounceDuration: .zero,
-            now: { fixture.now },
-            reload: { reloadCount += 1 }
+            exporter: fixture.exporter, store: store, debounceDuration: .zero,
+            now: { fixture.now }, reload: { reloadCount += 1 }
         )
 
         coordinator.start()
         XCTAssertEqual(store.documents.count, 1)
         XCTAssertEqual(reloadCount, 1)
-
         coordinator.exportIfChanged()
         XCTAssertEqual(store.documents.count, 1)
         XCTAssertEqual(reloadCount, 1)
 
         fixture.dataStore.meterStyle = .used
-        for _ in 0..<5 { await Task.yield() }
+        try await waitUntil { store.documents.last?.providers.first?.metrics.first?.headline == "40% used" }
         XCTAssertEqual(store.documents.count, 2)
         XCTAssertEqual(reloadCount, 2)
-        XCTAssertEqual(store.documents.last?.providers.first?.primaryMetrics.first?.headline, "40% used")
+    }
+
+    func testObservesAccountAddRenameAndRemovalThroughTheCurrentContainer() async throws {
+        let defaults = isolatedDefaults()
+        let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 400, headers: [:], body: Data()))
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+        let store = MemoryBridgeStore()
+        let coordinator = WidgetBridgeCoordinator(
+            exporter: WidgetBridgeExporter(layout: container.layout, dataStore: container.dataStore),
+            store: store, debounceDuration: .zero, reload: {}
+        )
+        coordinator.start()
+        XCTAssertEqual(store.documents.last?.providers, [])
+
+        let work = accounts.add(kind: .codex, label: "Work", credential: .apiKey("test-only"))
+        try await waitUntil { store.documents.last?.providers.map(\.id) == [work.cardID] }
+        XCTAssertEqual(store.documents.last?.providers.first?.displayName, "ChatGPT · Work")
+        let personal = accounts.add(kind: .codex, label: "Personal", credential: .apiKey("test-only"))
+        try await waitUntil { store.documents.last?.providers.map(\.id) == [work.cardID, personal.cardID] }
+
+        accounts.rename(work.id, to: "Office")
+        try await waitUntil { store.documents.last?.providers.first?.displayName == "ChatGPT · Office" }
+        accounts.remove(work.id)
+        try await waitUntil { store.documents.last?.providers.map(\.id) == [personal.cardID] }
+        XCTAssertNil(container.dataStore.snapshots[work.cardID])
+
+        accounts.remove(personal.id)
+        try await waitUntil { store.documents.last?.providers.isEmpty == true }
+        XCTAssertTrue(container.layout.orderedProviders().isEmpty)
+    }
+
+    private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        XCTAssertTrue(condition(), file: file, line: line)
     }
 }
 
 @MainActor
 private final class MemoryBridgeStore: WidgetBridgePersisting {
     var documents: [WidgetBridgeDocument] = []
-
     func read() throws -> WidgetBridgeDocument? { documents.last }
     func write(_ document: WidgetBridgeDocument) throws { documents.append(document) }
 }
@@ -200,73 +236,33 @@ private final class MemoryBridgeStore: WidgetBridgePersisting {
 @MainActor
 private final class Fixture {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
-    let provider = Provider(id: "test", displayName: "Test", icon: .providerMark("codex"))
-    let registry: WidgetRegistry
+    let provider = Provider(id: "codex@00000001", kind: .codex, accountLabel: "Work")
+    let session: WidgetDescriptor
+    let balance: WidgetDescriptor
+    let resets: WidgetDescriptor
     let layout: LayoutStore
     let dataStore: WidgetDataStore
-    let enablement: ProviderEnablementStore
     let snapshot: ProviderSnapshot
+    let runtime: StubRuntime
 
-    var exporter: WidgetBridgeExporter {
-        WidgetBridgeExporter(layout: layout, dataStore: dataStore, enablement: enablement)
-    }
+    var exporter: WidgetBridgeExporter { WidgetBridgeExporter(layout: layout, dataStore: dataStore) }
 
-    init(enabled: Bool = true) {
-        let session = WidgetDescriptor(
-            id: "test.session", providerID: provider.id, metricLabel: "Session",
-            sample: WidgetData(title: "Session", icon: provider.icon, kind: .percent, used: 0, limit: 100)
-        )
-        let balance = WidgetDescriptor(
-            id: "test.balance", providerID: provider.id, metricLabel: "Balance",
-            sample: WidgetData(title: "Balance", icon: provider.icon, kind: .dollars, used: 0)
-        )
-        var chartSample = WidgetData(title: "Trend", icon: provider.icon, kind: .count, used: 0)
-        chartSample.isChart = true
-        let chart = WidgetDescriptor(
-            id: "test.trend", providerID: provider.id, metricLabel: "Trend", sample: chartSample
-        )
-        let descriptors = [session, balance, chart]
-        registry = WidgetRegistry(providers: [provider], descriptors: descriptors)
-
-        let defaults = UserDefaults(suiteName: "WidgetBridgeTests-\(UUID().uuidString)")!
-        enablement = ProviderEnablementStore(defaults: defaults)
-        enablement.seedEnabledProviders(enabled ? [provider.id] : [])
-        layout = LayoutStore(
-            registry: registry,
-            defaults: defaults,
-            storageKey: "layout",
-            defaultMetricIDs: descriptors.map(\.id),
-            migrationBaselineMetricIDs: [],
-            defaultPinnedMetricIDs: [],
-            defaultExpandedMetricIDs: [balance.id],
-            isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
-        )
+    init(defaults: UserDefaults) {
+        session = .percent(key: "session", provider: provider, title: "Session", sessionStartSignal: .zeroUsage)
+        balance = .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "available")
+        resets = .values(key: "resets", provider: provider, title: "Resets", showsResetExpiries: true)
+        let descriptors = [session, balance, resets]
         snapshot = ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            plan: "Pro",
+            provider: provider, plan: "Pro",
             lines: [
-                .progress(
-                    label: "Session", used: 40, limit: 100, format: .percent,
-                    resetsAt: now.addingTimeInterval(3_600)
-                ),
+                .progress(label: "Session", used: 40, limit: 100, format: .percent, resetsAt: now.addingTimeInterval(3_600)),
                 .values(label: "Balance", values: [.init(number: 12, kind: .dollars)]),
-                .chart(label: "Trend", points: [.init(value: 1, label: "Today")])
+                .values(label: "Resets", values: [.init(number: 2, kind: .count)], expiriesAt: [now.addingTimeInterval(86_400)])
             ],
             refreshedAt: now
         )
-        let runtime = TestProviderRuntime(provider: provider, descriptors: descriptors, snapshot: snapshot)
-        dataStore = WidgetDataStore(
-            registry: registry,
-            providers: [runtime],
-            cache: ProviderSnapshotCache(
-                userDefaults: defaults,
-                storageKey: "snapshots",
-                ttl: 600,
-                now: { Date() }
-            ),
-            defaults: defaults,
-            isProviderEnabled: { [enablement] in enablement.isEnabled($0) }
-        )
+        runtime = StubRuntime(provider: provider, descriptors: descriptors, snapshot: snapshot)
+        layout = LayoutStore(registry: .from([runtime]), defaults: defaults)
+        dataStore = WidgetDataStore.forTesting([runtime], defaults: defaults, now: { Date(timeIntervalSince1970: 1_800_000_000) })
     }
 }

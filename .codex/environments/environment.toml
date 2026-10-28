@@ -8,21 +8,6 @@ set -euo pipefail
 
 cd "$CODEX_WORKTREE_PATH"
 swift package resolve
-
-# Sync AI-agent config dirs from the source tree into this worktree.
-for d in .agents .claude .codex .cursor; do
-    if [ -d "$CODEX_SOURCE_TREE_PATH/$d" ]; then
-        mkdir -p "$CODEX_WORKTREE_PATH/$d"
-        rsync -a --exclude worktrees --exclude scheduled_tasks.lock "$CODEX_SOURCE_TREE_PATH/$d/." "$CODEX_WORKTREE_PATH/$d/"
-    fi
-done
-
-# Copy common env files if this repo gains them later.
-for f in .env .env.local .env.development .env.production; do
-    if [ -f "$CODEX_SOURCE_TREE_PATH/$f" ]; then
-        cp "$CODEX_SOURCE_TREE_PATH/$f" "$CODEX_WORKTREE_PATH/$f"
-    fi
-done
 '''
 
 [[actions]]

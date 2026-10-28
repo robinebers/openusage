@@ -61,107 +61,46 @@ final class ProviderDeepLinkTests: XCTestCase {
         )
     }
 
-    func testDestinationRequiresEnablementAndVisibleMetricsForDashboard() {
-        XCTAssertEqual(
-            ProviderDeepLinkDestination.resolve(isEnabled: true, hasVisibleMetrics: true),
-            .dashboard
-        )
-        XCTAssertEqual(
-            ProviderDeepLinkDestination.resolve(isEnabled: false, hasVisibleMetrics: true),
-            .customize
-        )
-        XCTAssertEqual(
-            ProviderDeepLinkDestination.resolve(isEnabled: true, hasVisibleMetrics: false),
-            .customize
-        )
-        XCTAssertEqual(
-            ProviderDeepLinkDestination.resolve(isEnabled: false, hasVisibleMetrics: false),
-            .customize
-        )
+    @MainActor
+    func testAccountLinksUseDashboardOrAccountDetailAndRecoveryClearsFocus() throws {
+        let popover = PopoverState()
+        popover.screen = .settings
+        popover.openWidgetAccount("codex@active", hasVisibleMetrics: true)
+        XCTAssertEqual(popover.screen, .dashboard)
+        XCTAssertEqual(popover.dashboardFocusProviderID, "codex@active")
+        let firstRequest = popover.dashboardFocusRequestID
+
+        popover.openWidgetAccount("codex@active", hasVisibleMetrics: true)
+        XCTAssertGreaterThan(popover.dashboardFocusRequestID, firstRequest)
+        popover.acknowledgeDashboardFocus(requestID: firstRequest)
+        XCTAssertEqual(popover.dashboardFocusProviderID, "codex@active")
+        popover.acknowledgeDashboardFocus(requestID: popover.dashboardFocusRequestID)
+        XCTAssertNil(popover.dashboardFocusProviderID)
+
+        popover.openWidgetAccount("codex@active", hasVisibleMetrics: false)
+        XCTAssertEqual(popover.screen, .accounts)
+        XCTAssertEqual(popover.customizeProviderID, "codex@active")
+        XCTAssertNil(popover.dashboardFocusProviderID)
+
+        popover.openWidgetAccount(nil, hasVisibleMetrics: false)
+        XCTAssertEqual(popover.screen, .dashboard)
+        XCTAssertNil(popover.customizeProviderID)
+        XCTAssertNil(popover.dashboardFocusProviderID)
     }
 
     @MainActor
-    func testWelcomeCompletionKeepsQueuedDisabledProviderDestination() throws {
-        let url = try XCTUnwrap(URL(string: "openusage://provider/codex"))
-        var screen: PopoverScreen = .settings
-        var openedProviderID: String?
-
-        AppDelegate.openInitialDestination(
-            pendingURLs: [url],
-            showsDashboard: true,
-            openDashboard: { screen = .dashboard },
-            openURL: { url in
-                guard case .provider(let id) = ProviderDeepLink.parse(
-                    url, expectedScheme: "openusage", knownProviderIDs: knownProviderIDs
-                ) else {
-                    XCTFail("Expected a known provider link")
-                    return
-                }
-                let destination = ProviderDeepLinkDestination.resolve(isEnabled: false, hasVisibleMetrics: true)
-                screen = destination == .dashboard ? .dashboard : .customize
-                openedProviderID = id
-            }
-        )
-
-        XCTAssertEqual(screen, .customize, "The welcome dashboard must not replace the queued widget's destination")
-        XCTAssertEqual(openedProviderID, "codex")
-    }
-
-    @MainActor
-    func testWelcomeCompletionWithoutWidgetLinksOpensDashboard() {
-        var screen: PopoverScreen = .settings
-        AppDelegate.openInitialDestination(
-            pendingURLs: [],
-            showsDashboard: true,
-            openDashboard: { screen = .dashboard },
-            openURL: { _ in XCTFail("No widget link was queued") }
-        )
-        XCTAssertEqual(screen, .dashboard)
-    }
-
-    @MainActor
-    func testDashboardFocusRequestValidatesAndRepeatsKnownProvider() {
-        withLayoutStore { store in
-            XCTAssertFalse(store.requestDashboardProviderFocus("unknown"))
-            XCTAssertNil(store.dashboardFocusProviderID)
-            XCTAssertEqual(store.dashboardFocusRequestID, 0)
-
-            XCTAssertTrue(store.requestDashboardProviderFocus("claude"))
-            XCTAssertEqual(store.dashboardFocusProviderID, "claude")
-            XCTAssertEqual(store.dashboardFocusRequestID, 1)
-
-            XCTAssertTrue(store.requestDashboardProviderFocus("claude"))
-            XCTAssertEqual(store.dashboardFocusRequestID, 2, "same-provider links must retrigger scrolling")
-        }
-    }
-
-    @MainActor
-    func testDashboardFocusAcknowledgementOnlyClearsMatchingRequest() {
-        withLayoutStore { store in
-            XCTAssertTrue(store.requestDashboardProviderFocus("claude"))
-            let firstRequestID = store.dashboardFocusRequestID
-            XCTAssertTrue(store.requestDashboardProviderFocus("codex"))
-
-            store.acknowledgeDashboardProviderFocus(requestID: firstRequestID)
-            XCTAssertEqual(store.dashboardFocusProviderID, "codex", "an older callback must preserve a newer request")
-
-            store.acknowledgeDashboardProviderFocus(requestID: store.dashboardFocusRequestID)
-            XCTAssertNil(store.dashboardFocusProviderID, "a handled request must not replay when the dashboard remounts")
-        }
+    func testWidgetLinkDismissesAnOpenAddAccountSheet() {
+        let popover = PopoverState()
+        popover.screen = .accounts
+        popover.isAddingAccount = true
+        popover.openWidgetAccount("codex@active", hasVisibleMetrics: false)
+        XCTAssertFalse(popover.isAddingAccount)
+        XCTAssertEqual(popover.customizeProviderID, "codex@active")
     }
 
     private func parse(_ string: String, scheme: String = "openusage") throws -> ProviderDeepLink? {
         ProviderDeepLink.parse(
             try XCTUnwrap(URL(string: string)), expectedScheme: scheme, knownProviderIDs: knownProviderIDs
         )
-    }
-
-    @MainActor
-    private func withLayoutStore(_ assertions: (LayoutStore) -> Void) {
-        let suite = "OpenUsageTests.ProviderDeepLink.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let store = LayoutStore(registry: .mock, defaults: defaults, storageKey: "layout", defaultMetricIDs: [])
-        assertions(store)
     }
 }

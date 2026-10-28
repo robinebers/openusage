@@ -1,40 +1,22 @@
 import SwiftUI
 
 struct ReorderLift {
-    enum Payload {
-        case dashboardProvider(
-            provider: Provider,
-            plan: String?,
-            rows: [WidgetData],
-            dividerIndex: Int?,
-            links: [ProviderLink],
-            showsCaret: Bool,
-            isExpanded: Bool
-        )
-        case dashboardMetric(data: WidgetData)
-        case customizeProviderRow(provider: Provider, isEnabled: Bool, metricCount: Int)
-        case customizeMetric(title: String)
-    }
-
     let id: String
-    let payload: Payload
+    let preview: AnyView
     let sourceFrame: CGRect
     let touchOffset: CGPoint
     var location: CGPoint
 
-    /// The one place a lift is built from a drag value. Every reorder site (dashboard/Customize ×
-    /// provider/metric) differs only in the `payload`; the frame lookup and touch-offset math are
-    /// identical, so they live here once. Returns `nil` when the dragged row has no recorded frame.
     static func make(
         id: String,
-        payload: Payload,
+        preview: AnyView,
         value: DragGesture.Value,
         frames: [String: CGRect]
     ) -> ReorderLift? {
         guard let sourceFrame = frames[id] else { return nil }
         return ReorderLift(
             id: id,
-            payload: payload,
+            preview: preview,
             sourceFrame: sourceFrame,
             touchOffset: CGPoint(
                 x: value.startLocation.x - sourceFrame.minX,
@@ -48,13 +30,8 @@ struct ReorderLift {
 struct ReorderLiftPreview: View {
     let lift: ReorderLift
 
-    // The previews are deliberately the same views the live screens render (shared row/card
-    // builders); reading the density here lets the header→card spacing track the live sections too,
-    // so a lifted provider block matches its source block in every density.
-    @AppStorage(DensitySetting.key) private var density = DensitySetting.regular
-
     var body: some View {
-        preview
+        lift.preview
             .frame(width: lift.sourceFrame.width)
             .scaleEffect(1.025)
             .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 8)
@@ -65,99 +42,8 @@ struct ReorderLiftPreview: View {
             .animation(.none, value: lift.location)
             .allowsHitTesting(false)
     }
-
-    @ViewBuilder
-    private var preview: some View {
-        switch lift.payload {
-        case .dashboardProvider(let provider, let plan, let rows, let dividerIndex, let links, let showsCaret, let isExpanded):
-            dashboardProviderPreview(
-                provider: provider,
-                plan: plan,
-                rows: rows,
-                dividerIndex: dividerIndex,
-                links: links,
-                showsCaret: showsCaret,
-                isExpanded: isExpanded
-            )
-        case .dashboardMetric(let data):
-            dashboardMetricPreview(data)
-        case .customizeProviderRow(let provider, let isEnabled, let metricCount):
-            customizeProviderRowPreview(provider: provider, isEnabled: isEnabled, metricCount: metricCount)
-        case .customizeMetric(let title):
-            customizeMetricPreview(title)
-        }
-    }
-
-    private func dashboardProviderPreview(
-        provider: Provider,
-        plan: String?,
-        rows: [WidgetData],
-        dividerIndex: Int?,
-        links: [ProviderLink],
-        showsCaret: Bool,
-        isExpanded: Bool
-    ) -> some View {
-        // Same anatomy as the live dashboard section (`WidgetGroupedListView.section` + `container`):
-        // header over the shared metric card, at the density's header→card spacing.
-        VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
-            ProviderSectionHeader(provider: provider, plan: plan)
-                .padding(.horizontal, 8)
-
-            DashboardMetricCard {
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    if dividerIndex == index {
-                        DashboardMetricCardSeparator()
-                    }
-                    WidgetRowView(data: row)
-                }
-                if dividerIndex == rows.count {
-                    DashboardMetricCardSeparator()
-                }
-                if isExpanded, !links.isEmpty {
-                    ProviderLinksView(links: links)
-                }
-                if showsCaret {
-                    DashboardMetricCardCaret(isExpanded: isExpanded, action: {})
-                }
-            }
-        }
-    }
-
-    private func dashboardMetricPreview(_ data: WidgetData) -> some View {
-        WidgetRowView(data: data)
-            .liftedRowSurface()
-    }
-
-    private func customizeProviderRowPreview(provider: Provider, isEnabled: Bool, metricCount: Int) -> some View {
-        // Same row anatomy as the live L1 (`ProviderListRow`), rendered inert — the lift's shadow +
-        // scale read as the floating chip, and the whole preview is non-interactive (`.allowsHitTesting`
-        // false in `body`), so the toggle/chevron carry no live action.
-        ProviderListRow(
-            provider: provider,
-            isEnabled: isEnabled,
-            metricCount: metricCount,
-            handle: { $0 }
-        )
-        .liftedRowSurface()
-    }
-
-    private func customizeMetricPreview(_ title: String) -> some View {
-        CustomizeMetricRow(title: title,
-            trailing: {
-                CustomizeStarPlaceholder()
-                CustomizeSwitchPlaceholder()
-            }
-        )
-        .liftedRowSurface()
-    }
-
 }
 
-/// Lightweight in-view geometry used for reordering inside the menu-bar popover.
-///
-/// This deliberately avoids SwiftUI's pasteboard-backed `.draggable` / `.dropDestination` APIs, which are
-/// unreliable in this popover. A plain `DragGesture` stays inside the SwiftUI view tree: we record row frames,
-/// compare the pointer location to those frames, and then mutate `LayoutStore` directly.
 struct ReorderFramePreferenceKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
 
@@ -174,26 +60,18 @@ final class ReorderFrameStore {
 }
 
 extension View {
-    func reorderFrame(
-        id: String,
-        in coordinateSpace: CoordinateSpace,
-        yOutset: CGFloat = 0
-    ) -> some View {
+    func reorderFrame(id: String, in coordinateSpace: CoordinateSpace) -> some View {
         background(
             GeometryReader { proxy in
                 Color.clear.preference(
                     key: ReorderFramePreferenceKey.self,
-                    value: [id: proxy.frame(in: coordinateSpace).insetBy(dx: 0, dy: -yOutset)]
+                    value: [id: proxy.frame(in: coordinateSpace)]
                 )
             }
         )
     }
 }
 
-/// The shared drag-to-reorder gesture used by both the dashboard list and the Customize screen, for both
-/// provider headers and metric rows. The gesture body (lift tracking, target hit-testing, spring + haptic)
-/// lives here once; each caller supplies only what differs: the active-row binding, the lift builder, the
-/// current ordered ids, and the reorder action.
 @MainActor
 func reorderDragGesture(
     id: String,
@@ -246,8 +124,6 @@ func reorderTarget(
 
         guard frame.insetBy(dx: 0, dy: -2).contains(location) else { continue }
 
-        // Reorder only after crossing partway into the target row. This avoids the jumpy feel where a row moves
-        // as soon as the pointer barely enters a neighbor, while still feeling less delayed than the midpoint.
         if to > from {
             return location.y >= frame.minY + frame.height * crossingThreshold ? id : nil
         } else {

@@ -1,71 +1,52 @@
 import SwiftUI
 
-/// A screen's navigation chrome. It reads the screen it belongs to, not the destination, so during a
-/// slide each mounted page carries its own bar and the bar travels with its content.
 struct PopoverTopBar: View {
-    let layout: LayoutStore
-    /// The screen this bar belongs to — the page that hosts it, so a switch can't put the incoming
-    /// screen's bar over the outgoing one.
+    @Environment(LayoutStore.self) private var layout
+    @Environment(PopoverState.self) private var popover
     let screen: PopoverScreen
     let height: CGFloat
     let horizontalPadding: CGFloat
-    let onResetAll: () -> Void
-
-    @Binding var isPresentingResetAllConfirm: Bool
 
     @ViewBuilder
     var body: some View {
         switch screen {
         case .dashboard:
             EmptyView()
-        case .customize:
-            if let providerID = layout.customizeProviderID {
-                navigationBar(title: customizeTitle, back: customizeBack) {
-                    resetButton(for: providerID)
+        case .accounts:
+            if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
+                navigationBar(back: { popover.back() }) {
+                    AccountTitle(provider: provider)
+                } trailing: {
+                    logo(for: provider)
                 }
             } else {
-                navigationBar(title: customizeTitle, back: customizeBack) {
-                    resetAllButton
-                }
-                .alert("Reset All Customization?", isPresented: $isPresentingResetAllConfirm) {
-                    Button("Reset All", role: .destructive) {
-                        withAnimation(Motion.spring) { onResetAll() }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Turns providers back on for the tools you have installed and resets every provider's metrics and order. Are you sure?")
+                navigationBar(back: { popover.back() }) {
+                    Text("Accounts")
+                } trailing: {
+                    addAccountButton
                 }
             }
         case .settings:
-            navigationBar(title: "Settings") {
-                withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
+            navigationBar {
+                popover.back()
+            } title: {
+                Text("Settings")
             } trailing: {
                 EmptyView()
             }
         }
     }
 
-    private var customizeTitle: String {
-        layout.customizeProviderID.flatMap { layout.provider(id: $0)?.displayName } ?? "Customize"
-    }
-
-    private func customizeBack() {
-        if layout.customizeProviderID != nil {
-            withAnimation(Motion.spring) { layout.customizeProviderID = nil }
-        } else {
-            withAnimation(Motion.modeSwitch) { layout.screen = .dashboard }
-        }
-    }
-
-    private func navigationBar<Trailing: View>(
-        title: String,
+    private func navigationBar<Title: View, Trailing: View>(
         back: @escaping () -> Void,
+        @ViewBuilder title: () -> Title,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         ZStack {
-            Text(title)
+            title()
                 .font(.headline)
                 .lineLimit(1)
+                .padding(.horizontal, 40)
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: 0) {
@@ -93,27 +74,17 @@ struct PopoverTopBar: View {
         .accessibilityLabel("Back")
     }
 
-    private func resetButton(for providerID: String) -> some View {
-        Button {
-            withAnimation(Motion.spring) { layout.resetProvider(providerID) }
-        } label: {
-            Image(systemName: "arrow.counterclockwise")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16, height: 16)
-                .contentShape(Rectangle())
-        }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .hoverTooltip("Reset \(layout.provider(id: providerID)?.displayName ?? providerID)")
-        .accessibilityLabel("Reset")
+    private func logo(for provider: Provider) -> some View {
+        ProviderIcon(id: provider.icon, side: 22, inset: 0.04)
+            .frame(width: 28, height: 28)
+            .accessibilityHidden(true)
     }
 
-    private var resetAllButton: some View {
+    private var addAccountButton: some View {
         Button {
-            isPresentingResetAllConfirm = true
+            popover.isAddingAccount = true
         } label: {
-            Image(systemName: "arrow.counterclockwise")
+            Image(systemName: "plus")
                 .font(.system(size: 13, weight: .semibold))
                 .frame(width: 16, height: 16)
                 .contentShape(Rectangle())
@@ -121,7 +92,39 @@ struct PopoverTopBar: View {
         .glassButtonStyle()
         .buttonBorderShape(.circle)
         .controlSize(.large)
-        .hoverTooltip("Reset All Customization")
-        .accessibilityLabel("Reset All Customization")
+        .hoverTooltip("Add Account")
+        .accessibilityLabel("Add Account")
+    }
+}
+
+private struct AccountTitle: View {
+    let provider: Provider
+
+    @Environment(AccountRenameStore.self) private var renaming
+    @State private var isHovered = false
+
+    var body: some View {
+        if let edit = renaming.edit, edit.providerID == provider.id {
+            InlineRenameField(renaming: renaming, edit: edit)
+                .multilineTextAlignment(.center)
+        } else {
+            Button {
+                renaming.begin(provider.id)
+            } label: {
+                Text(provider.accountName)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(.quaternary)
+                            .opacity(isHovered ? 1 : 0)
+                    }
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { isHovered = $0 }
+            .hoverTooltip("Rename Account")
+            .accessibilityLabel("\(provider.fullName), Rename Account")
+        }
     }
 }

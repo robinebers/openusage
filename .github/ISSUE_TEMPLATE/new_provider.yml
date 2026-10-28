@@ -25,11 +25,11 @@ body:
     id: data
     attributes:
       label: What usage data does this provider expose?
-      description: Describe the usage metrics, limits, and how they are accessed (API, dashboard scraping, etc.). Name the auth method only — never paste real API keys, tokens, or cookie values.
+      description: Describe the usage metrics and limits the provider's API reports, and how a user signs in (OAuth, device code, API key). OpenUsage only shows what the API returns to a signed-in account; it does not scrape dashboards or read other tools' files. Name the auth method only — never paste real API keys, tokens, or cookie values.
       placeholder: |
         - Monthly request limit: 500
-        - Accessible via: dashboard at provider.com/usage
-        - Auth method: session cookie
+        - Accessible via: GET https://api.provider.com/v1/usage
+        - Auth method: API key
     validations:
       required: true
   - type: dropdown

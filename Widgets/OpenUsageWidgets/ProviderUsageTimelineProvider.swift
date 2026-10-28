@@ -78,19 +78,18 @@ struct ProviderUsageTimelineProvider: AppIntentTimelineProvider {
 
 extension WidgetProviderRecord {
     static let placeholder = WidgetProviderRecord(
-        id: "claude",
-        displayName: "Claude",
+        id: "claude@00000000",
+        displayName: "Claude · Personal",
         iconID: "claude",
-        isEnabled: true,
         plan: "Pro",
         refreshedAt: .now,
         health: .ready,
-        primaryMetrics: [
+        metrics: [
             WidgetMetricRecord(
                 id: "session",
                 title: "Session",
                 kind: .progress,
-                headline: "38% Used",
+                headline: "38%",
                 detail: nil,
                 progressFraction: 0.38,
                 resetAt: .now.addingTimeInterval(3_600),
@@ -101,14 +100,13 @@ extension WidgetProviderRecord {
                 id: "weekly",
                 title: "Weekly",
                 kind: .progress,
-                headline: "64% Used",
+                headline: "64%",
                 detail: nil,
                 progressFraction: 0.64,
                 resetAt: .now.addingTimeInterval(86_400),
                 severity: .warning,
                 hasData: true
             ),
-        ],
-        secondaryMetrics: []
+        ]
     )
 }

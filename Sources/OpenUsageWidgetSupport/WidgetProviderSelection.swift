@@ -73,14 +73,8 @@ public enum WidgetProviderSelection {
         }
     }
 
-    /// Enabled providers first; every exported provider when none is enabled.
-    public static func suggested(in providers: [WidgetProviderRecord]) -> [WidgetProviderRecord] {
-        let enabled = providers.filter(\.isEnabled)
-        return enabled.isEmpty ? providers : enabled
-    }
-
     /// The provider an unconfigured widget shows.
     public static func defaultProviderID(in providers: [WidgetProviderRecord]) -> String? {
-        suggested(in: providers).first?.id
+        providers.first?.id
     }
 }

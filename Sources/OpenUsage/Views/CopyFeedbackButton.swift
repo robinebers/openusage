@@ -1,10 +1,5 @@
 import SwiftUI
 
-/// The shared screenshot-copy control used by dashboard headers. The glyph stays compact, but the
-/// button owns a larger pointer target; a successful copy swaps it for a green, bouncing checkmark
-/// before returning to the copy symbol (the bounce is omitted under Reduce Animations). Keeping the
-/// state and timer here makes every copy action use the same feedback instead of rebuilding the
-/// interaction at each call site.
 struct CopyFeedbackButton: View {
     let accessibilityLabel: String
     var isRevealed = true
@@ -34,9 +29,6 @@ struct CopyFeedbackButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // Preserve the header's compact 16pt layout slot while the button's 28pt hit rectangle extends
-        // around it. The visible glyph therefore aligns with the old provider-mark position instead of
-        // being pushed inward by the larger interaction target.
         .padding(-6)
         .opacity(isRevealed || copied ? 1 : 0)
         .allowsHitTesting(isRevealed || copied)

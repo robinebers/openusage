@@ -2,18 +2,22 @@ import AppKit
 import Foundation
 import Observation
 
-/// Installs the bundled one-shot CLI on the stock macOS PATH without copying it out of the app.
-/// The symlink survives in-place Sparkle updates because its destination path stays stable.
 @MainActor
 @Observable
 final class CommandLineToolInstaller {
     enum Status: Equatable {
         case notInstalled
         case installed
+        /// The link was written by another copy of OpenUsage (an earlier version, a build in another
+        /// folder, or one that has since moved); Install points it at this app.
+        case linkedToAnotherCopy(String)
         case conflict
     }
 
-    enum Operation { case install, uninstall }
+    enum Operation: Equatable {
+        case install(replacing: String?)
+        case uninstall
+    }
     enum OperationResult { case success, cancelled, failure(String) }
 
     private(set) var status: Status
@@ -67,13 +71,23 @@ final class CommandLineToolInstaller {
             errorMessage = "The bundled terminal helper couldn't be found. Reinstall OpenUsage and try again."
             return
         }
-        handle(performPrivileged(.install, sourcePath, destinationPath), action: "install")
+        var replacing: String?
+        if case .linkedToAnotherCopy(let target) = status { replacing = target }
+        handle(performPrivileged(.install(replacing: replacing), sourcePath, destinationPath), action: "install")
     }
 
     func uninstall() {
         refreshStatus()
         guard status == .installed else { return }
         handle(performPrivileged(.uninstall, sourcePath, destinationPath), action: "remove")
+    }
+
+    /// Every OpenUsage installer, main's included, links the command to `<OpenUsage….app>/Contents/Helpers/openusage`.
+    static func isOpenUsageHelper(_ path: String) -> Bool {
+        let components = (path as NSString).pathComponents
+        guard components.count >= 4, Array(components.suffix(3)) == ["Contents", "Helpers", "openusage"] else { return false }
+        let bundle = components[components.count - 4]
+        return bundle.hasPrefix("OpenUsage") && bundle.hasSuffix(".app")
     }
 
     private func handle(_ result: OperationResult, action: String) {
@@ -97,9 +111,33 @@ final class CommandLineToolInstaller {
         guard let target = try? fileManager.destinationOfSymbolicLink(atPath: destinationPath) else {
             return fileManager.fileExists(atPath: destinationPath) ? .conflict : .notInstalled
         }
-        // The installer always writes this exact absolute target, and uninstall checks the same string
-        // again under privilege. A manually-created relative/equivalent link is therefore foreign.
-        return target == sourcePath ? .installed : .conflict
+        if target == sourcePath { return .installed }
+        return isOpenUsageHelper(target) ? .linkedToAnotherCopy(target) : .conflict
+    }
+
+    /// The script that runs as root. `ln -h` never follows a link planted at the destination between the
+    /// check and the write, so a link to a directory fails with "File exists" instead of writing into it.
+    static func shellCommand(for operation: Operation, source sourcePath: String, destination destinationPath: String) -> String {
+        let directory = (destinationPath as NSString).deletingLastPathComponent
+        switch operation {
+        case .install(replacing: nil):
+            return """
+            if [ -e \(shellQuote(destinationPath)) ] || [ -L \(shellQuote(destinationPath)) ]; then exit 73; fi
+            /bin/mkdir -p \(shellQuote(directory)) && /bin/ln -sh \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
+            """
+        case .install(replacing: let target?):
+            return """
+            existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 73
+            [ "$existing" = \(shellQuote(target)) ] || exit 73
+            /bin/ln -sfh \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
+            """
+        case .uninstall:
+            return """
+            existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
+            [ "$existing" = \(shellQuote(sourcePath)) ] || exit 75
+            /bin/rm \(shellQuote(destinationPath))
+            """
+        }
     }
 
     private static func runPrivileged(
@@ -107,22 +145,7 @@ final class CommandLineToolInstaller {
         sourcePath: String,
         destinationPath: String
     ) -> OperationResult {
-        let directory = (destinationPath as NSString).deletingLastPathComponent
-        let command: String
-        switch operation {
-        case .install:
-            command = """
-            if [ -e \(shellQuote(destinationPath)) ] || [ -L \(shellQuote(destinationPath)) ]; then exit 73; fi
-            /bin/mkdir -p \(shellQuote(directory)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
-            """
-        case .uninstall:
-            command = """
-            target=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
-            [ "$target" = \(shellQuote(sourcePath)) ] || exit 75
-            /bin/rm \(shellQuote(destinationPath))
-            """
-        }
-
+        let command = shellCommand(for: operation, source: sourcePath, destination: destinationPath)
         let source = "do shell script \(appleScriptStringLiteral(command)) with administrator privileges"
         guard let script = NSAppleScript(source: source) else {
             return .failure("macOS couldn't prepare the authorization request.")

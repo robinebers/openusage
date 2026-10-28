@@ -46,6 +46,94 @@ final class CommandLineToolInstallerTests: XCTestCase {
         XCTAssertEqual(installer.status, .notInstalled)
     }
 
+    func testALinkFromAnotherCopyOfOpenUsageIsReplacedOnInstall() throws {
+        for other in ["Applications/OpenUsage.app", "Downloads/OpenUsage 0.7.16.app", "moved-away/OpenUsage.app"] {
+            let fixture = try fixture()
+            defer { try? FileManager.default.removeItem(at: fixture.root) }
+            let otherHelper = fixture.root.appendingPathComponent("\(other)/Contents/Helpers/openusage").path
+            if !other.hasPrefix("moved-away") {
+                try FileManager.default.createDirectory(atPath: (otherHelper as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try Data().write(to: URL(fileURLWithPath: otherHelper))
+            }
+            try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: otherHelper)
+            var operations: [CommandLineToolInstaller.Operation] = []
+            let installer = CommandLineToolInstaller(
+                sourcePath: fixture.source,
+                destinationPath: fixture.destination,
+                performPrivileged: { operation, source, destination in
+                    operations.append(operation)
+                    do {
+                        switch operation {
+                        case .install(let replacing):
+                            if replacing != nil { try FileManager.default.removeItem(atPath: destination) }
+                            try FileManager.default.createSymbolicLink(atPath: destination, withDestinationPath: source)
+                        case .uninstall:
+                            try FileManager.default.removeItem(atPath: destination)
+                        }
+                        return .success
+                    } catch {
+                        return .failure(error.localizedDescription)
+                    }
+                }
+            )
+
+            XCTAssertEqual(installer.status, .linkedToAnotherCopy(otherHelper), other)
+            installer.install()
+            XCTAssertEqual(operations, [.install(replacing: otherHelper)], other)
+            XCTAssertEqual(installer.status, .installed, other)
+            XCTAssertNil(installer.errorMessage, other)
+            XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination), fixture.source, other)
+        }
+    }
+
+    func testAFailedInstallOverAnotherCopysLinkKeepsTheStatusAndReportsTheError() throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let otherHelper = fixture.root.appendingPathComponent("Applications/OpenUsage.app/Contents/Helpers/openusage").path
+        try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: otherHelper)
+        let installer = CommandLineToolInstaller(sourcePath: fixture.source, destinationPath: fixture.destination) { _, _, _ in .failure("x") }
+
+        installer.install()
+
+        XCTAssertEqual(installer.status, .linkedToAnotherCopy(otherHelper), "the link did not change, so the footer must show the error, not the notice")
+        XCTAssertEqual(installer.errorMessage, "Couldn't install the terminal helper: x")
+    }
+
+    func testALinkIntoAnotherAppsBundleIsAConflict() throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        let foreign = fixture.root.appendingPathComponent("Applications/Usage.app/Contents/Helpers/openusage").path
+        try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: foreign)
+        var operationRan = false
+        let installer = CommandLineToolInstaller(
+            sourcePath: fixture.source,
+            destinationPath: fixture.destination,
+            performPrivileged: { _, _, _ in
+                operationRan = true
+                return .success
+            }
+        )
+
+        XCTAssertEqual(installer.status, .conflict)
+        installer.install()
+        installer.uninstall()
+        XCTAssertFalse(operationRan)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination), foreign)
+    }
+
+    func testTheHelperRuleNamesOnlyOpenUsageBundles() {
+        XCTAssertTrue(CommandLineToolInstaller.isOpenUsageHelper("/Applications/OpenUsage.app/Contents/Helpers/openusage"))
+        XCTAssertTrue(CommandLineToolInstaller.isOpenUsageHelper("/Users/me/Dev/openusage/dist/OpenUsage.app/Contents/Helpers/openusage"))
+        XCTAssertTrue(CommandLineToolInstaller.isOpenUsageHelper("/Applications/OpenUsage Beta.app/Contents/Helpers/openusage"))
+        XCTAssertFalse(CommandLineToolInstaller.isOpenUsageHelper("/Applications/OpenUsage.app/Contents/MacOS/openusage"))
+        XCTAssertFalse(CommandLineToolInstaller.isOpenUsageHelper("/Applications/Usage.app/Contents/Helpers/openusage"))
+        XCTAssertFalse(CommandLineToolInstaller.isOpenUsageHelper("/opt/homebrew/bin/openusage"))
+        XCTAssertFalse(CommandLineToolInstaller.isOpenUsageHelper("Contents/Helpers/openusage"))
+    }
+
     func testForeignPathIsNeverOverwritten() throws {
         let fixture = try fixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -99,5 +187,66 @@ final class CommandLineToolInstallerTests: XCTestCase {
             try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination),
             "/tmp/another-openusage"
         )
+    }
+
+    func testTheScriptLinksRefusesAnExistingPathOrAChangedLinkAndNeverWritesThroughAPlantedLink() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("open usage's \(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let source = root.appendingPathComponent("OpenUsage.app/Contents/Helpers/openusage").path
+        let other = root.appendingPathComponent("Other OpenUsage.app/Contents/Helpers/openusage").path
+        let destination = root.appendingPathComponent("bin/openusage").path
+        try FileManager.default.createDirectory(atPath: (source as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try Data().write(to: URL(fileURLWithPath: source))
+        func run(_ operation: CommandLineToolInstaller.Operation) throws -> Int32 {
+            let shell = Process()
+            shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+            shell.arguments = ["-c", CommandLineToolInstaller.shellCommand(for: operation, source: source, destination: destination)]
+            shell.standardError = FileHandle.nullDevice
+            try shell.run()
+            shell.waitUntilExit()
+            return shell.terminationStatus
+        }
+
+        XCTAssertEqual(try run(.install(replacing: nil)), 0)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source, "install creates the link")
+        XCTAssertEqual(try run(.install(replacing: nil)), 73, "install refuses an existing path")
+
+        XCTAssertEqual(try run(.install(replacing: other)), 73, "replace refuses a link that changed")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source)
+        try FileManager.default.removeItem(atPath: destination)
+        try FileManager.default.createSymbolicLink(atPath: destination, withDestinationPath: other)
+        XCTAssertEqual(try run(.install(replacing: other)), 0)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source, "replace points another copy's link here")
+        XCTAssertEqual(try run(.uninstall), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination))
+
+        let planted = root.appendingPathComponent("planted").path
+        try FileManager.default.createDirectory(atPath: planted, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: destination, withDestinationPath: planted)
+        XCTAssertNotEqual(try run(.install(replacing: nil)), 0, "install over a planted directory link fails")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: planted), [], "nothing is written through the planted link")
+        XCTAssertEqual(try run(.install(replacing: planted)), 0, "a replace whose link matches swaps the link itself")
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: destination), source)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: planted), [], "the swap never writes into the directory the link named")
+    }
+
+    func testMissingHelperIsReportedWithoutAskingForAuthorization() throws {
+        let fixture = try fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try FileManager.default.removeItem(atPath: fixture.source)
+        var operationRan = false
+        let installer = CommandLineToolInstaller(
+            sourcePath: fixture.source,
+            destinationPath: fixture.destination,
+            performPrivileged: { _, _, _ in
+                operationRan = true
+                return .success
+            }
+        )
+
+        installer.install()
+        XCTAssertFalse(operationRan)
+        XCTAssertEqual(installer.status, .notInstalled)
+        XCTAssertNotNil(installer.errorMessage)
     }
 }
