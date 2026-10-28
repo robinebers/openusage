@@ -70,7 +70,6 @@ struct InkMap {
     @MainActor
     init(rendering content: some View, width: CGFloat, scale: CGFloat = 1) throws {
         let renderer = ImageRenderer(content: content
-            .environment(\.hoverTooltipsDisabled, true)
             .environment(\.colorScheme, .light))
         renderer.proposedSize = ProposedViewSize(width: width, height: nil)
         renderer.scale = scale

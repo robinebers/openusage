@@ -64,7 +64,6 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
             .frame(width: width)
             .background(Color.white)
             .environment(AccountRenameStore?.none)
-            .environment(\.hoverTooltipsDisabled, true)
             .environment(\.colorScheme, .light)
         let hosted = show(view, in: .borderless).host
         try await Task.sleep(for: .milliseconds(150))

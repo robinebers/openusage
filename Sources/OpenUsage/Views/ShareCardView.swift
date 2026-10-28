@@ -7,8 +7,8 @@ import SwiftUI
 /// never leaves the panel. The view takes already-resolved data, so it has no environment dependency
 /// and renders the same way in the app and in tests.
 ///
-/// It sets its own width, opaque tray background (an `ImageRenderer` has no window backdrop), forced
-/// appearance, and tooltip suppression (the tooltips' AppKit anchors rasterize as yellow boxes otherwise).
+/// It sets its own width, opaque tray background (an `ImageRenderer` has no window backdrop) and forced
+/// appearance.
 struct ShareCardView: View {
     let family: DashboardFamily
     /// The plan of an account, by its id.
@@ -32,7 +32,6 @@ struct ShareCardView: View {
         .frame(width: Self.width, alignment: .topLeading)
         .background(Theme.traySurface)
         .environment(\.colorScheme, appearance)
-        .environment(\.hoverTooltipsDisabled, true)
     }
 
     /// The brand mark + tagline, centered at the bottom. Quiet (secondary) so it reads as a watermark.
