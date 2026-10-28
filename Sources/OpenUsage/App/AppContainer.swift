@@ -100,7 +100,7 @@ final class AppContainer {
                 await quotaNotifications.evaluate(
                     layout.visibleDescriptors,
                     data: dataStore.data(for:),
-                    toggles: notificationSettings.toggles,
+                    isOn: notificationSettings.isOn,
                     now: Date(),
                     providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
                 )

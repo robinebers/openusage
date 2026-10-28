@@ -12,17 +12,14 @@ enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
 }
 
 extension PaceMilestone {
-    /// User-facing label for the Settings row and the notification title (they match by design).
-    var settingLabel: String {
+    /// Notification title, the same as the Settings row so a tapped alert maps back to one row.
+    var notificationTitle: String {
         switch self {
         case .underTenPercent: return "Almost Out"
         case .healthyToClose: return "Cutting It Close"
         case .closeToRunningOut: return "Will Run Out"
         }
     }
-
-    /// Notification title. Same as the setting label so a tapped alert maps back to one row.
-    var notificationTitle: String { settingLabel }
 
     /// Notification body — the plain-language verdict. The subtitle carries provider + metric, so the
     /// body stays generic and reads well for any metric (sessions, rate-limit resets, spend tiles).
@@ -38,16 +35,19 @@ extension PaceMilestone {
 /// The pace-severity bucket a metric is in, derived from its `MeterState`. Only the three live-pace
 /// verdicts (and the terminal `spent`) carry a comparable severity; states with no trustworthy pace
 /// (`noData`, absolute-band `level`, and a fresh session window) are `untracked` for pace milestones.
-/// A `.level` metric may still fire the independent remaining-based Almost Out milestone.
-enum PaceBucket: Hashable, Sendable {
+/// A `.level` metric may still fire the independent remaining-based Almost Out milestone. Ordered by
+/// severity, with `untracked` below `healthy`.
+enum PaceBucket: Int, Comparable, Hashable, Sendable {
     /// No pace story to act on (no data, plain level band, or a not-yet-started session window).
-    case untracked
+    case untracked = -1
     /// On course to finish with ≥10% to spare.
     case healthy
     /// Projected inside the last 10%, cutting it close.
     case close
     /// Projected to run out before the reset, or already spent to nothing.
     case runningOut
+
+    static func < (lhs: PaceBucket, rhs: PaceBucket) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
 /// Deduplication state for one metric (provider + descriptor), persisted across refresh passes so a
@@ -68,24 +68,9 @@ struct NotificationState: Equatable, Sendable {
     var primed: Bool = false
 }
 
-/// Which of the three independent per-milestone toggles are currently on.
-struct PaceNotificationToggles: Sendable {
-    var underTenPercent: Bool
-    var healthyToClose: Bool
-    var closeToRunningOut: Bool
-
-    func isOn(_ milestone: PaceMilestone) -> Bool {
-        switch milestone {
-        case .underTenPercent: return underTenPercent
-        case .healthyToClose: return healthyToClose
-        case .closeToRunningOut: return closeToRunningOut
-        }
-    }
-}
-
 /// Pure milestone logic — no SwiftUI, no UserNotifications — so the firing rules stay unit-testable.
 /// `QuotaNotificationEvaluator.evaluate` feeds it the current `MeterState` + `fraction` + `resetsAt`
-/// for each metric and posts a notification for every returned milestone.
+/// for each metric and posts a notification for every returned milestone whose trigger is on.
 enum PaceNotificationLogic {
     /// Result of one evaluation: the milestones to fire now, and the state to persist for next time.
     struct Transition: Equatable {
@@ -112,7 +97,7 @@ enum PaceNotificationLogic {
     ///   again. Provider timestamps can jitter by milliseconds between refreshes, so tiny differences are
     ///   treated as the same reset window for notification dedupe.
     /// - `healthyToClose` / `closeToRunningOut` fire only on a worsening *edge* between adjacent
-    ///   buckets, only if not already fired this window, and only if their toggle is on.
+    ///   buckets, and only if not already fired this window.
     /// - `underTenPercent` fires the first time remaining crosses under 10% this window; recovering
     ///   above 10% re-arms it so a later dip re-fires.
     /// - `untracked` states carry no trustworthy pace and therefore suppress pace milestones. No data
@@ -120,26 +105,19 @@ enum PaceNotificationLogic {
     ///   disturbs the recorded pace signals, so a momentary gap does not spuriously re-fire when real
     ///   pace data returns.
     /// - Improving pace clears the relevant fired flags so a later worsening re-fires.
+    ///
+    /// The state always advances; a milestone that isn't delivered (its trigger off, or the post
+    /// failed) doesn't consume its edge, because the evaluator puts the edge's signal back to
+    /// `carriedOver(_:resetsAt:)`'s value, so it fires once the trigger is on and the post goes through.
     static func transitions(
         state: WidgetData.MeterState,
         /// Remaining share of the limit, 0...1 — must mean "remaining" regardless of display mode
         /// (callers pass `WidgetData.remainingFraction`, not the display-mode-dependent `fraction`).
         fraction: Double,
         resetsAt: Date?,
-        previous: NotificationState,
-        toggles: PaceNotificationToggles
+        previous: NotificationState
     ) -> Transition {
-        var next = previous
-
-        // New window: reset dedup. A nil-or-equal reset keeps the window; a reset appearing where there
-        // was none or moving later by more than the jitter tolerance starts fresh.
-        if resetWindowAdvanced(resetsAt: resetsAt, previousReset: previous.resetsAt) {
-            next.firedMilestones = []
-            next.wasUnderTenPercent = false
-            next.previousBucket = .untracked
-        }
-        next.resetsAt = resetsAt ?? previous.resetsAt
-
+        var next = carriedOver(previous, resetsAt: resetsAt)
         let currentBucket = bucket(for: state)
 
         // No real data backing the tile: skip entirely without disturbing recorded signals — a
@@ -163,81 +141,53 @@ enum PaceNotificationLogic {
         }
 
         var fire: [PaceMilestone] = []
+        func candidate(_ milestone: PaceMilestone) {
+            if !next.firedMilestones.contains(milestone) { fire.append(milestone) }
+        }
 
         // Pace-verdict edges — only for live-pace states (`.level` has no pace projection, so no pace
-        // milestones for it). Severity order: untracked(-1) < healthy(0) < close(1) < runningOut(2).
-        // "Cutting It Close" is the orange state itself: it fires only when the metric is *currently*
-        // in `.close` having been below it. "Will Run Out" fires when severity reaches `.runningOut`
-        // having been below it. A jump straight from blue to red fires *Will Run Out only* — the metric
-        // skipped orange, so the user gets the single, more urgent alert, never both at once.
+        // milestones for it). "Cutting It Close" is the orange state itself: it fires only when the
+        // metric is *currently* in `.close` having been below it. "Will Run Out" fires when the bucket
+        // reaches `.runningOut` having been below it. A jump straight from blue to red fires *Will Run
+        // Out only* — the metric skipped orange, so the user gets the single, more urgent alert, never
+        // both at once.
         if currentBucket != .untracked {
-            let previousSeverity = severity(next.previousBucket)
-            let currentSeverity = severity(currentBucket)
-            var paceFired = false
-            if currentBucket == .close, previousSeverity < severity(.close) {
-                if maybeFire(.healthyToClose, into: &fire, state: &next, toggles: toggles) { paceFired = true }
-            }
-            if currentSeverity >= severity(.runningOut), previousSeverity < severity(.runningOut) {
-                if maybeFire(.closeToRunningOut, into: &fire, state: &next, toggles: toggles) { paceFired = true }
-            }
+            let previousBucket = next.previousBucket
+            if currentBucket == .close, previousBucket < .close { candidate(.healthyToClose) }
+            if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.closeToRunningOut) }
             // Improving pace clears the now-irrelevant fired flags so a later worsening re-fires them.
-            if currentSeverity < previousSeverity {
-                if currentSeverity <= severity(.healthy) { next.firedMilestones.remove(.healthyToClose) }
-                if currentSeverity <= severity(.close) { next.firedMilestones.remove(.closeToRunningOut) }
+            if currentBucket < previousBucket {
+                if currentBucket <= .healthy { next.firedMilestones.remove(.healthyToClose) }
+                if currentBucket <= .close { next.firedMilestones.remove(.closeToRunningOut) }
             }
-            // Advance the recorded bucket only when a worsening was actually alerted (or there was no
-            // worsening). A worsening that no enabled trigger caught leaves `previousBucket` where it was,
-            // so turning a trigger back on while the quota is still in the worse bucket fires on the next
-            // evaluation instead of the crossing being silently consumed.
-            if currentSeverity <= previousSeverity || paceFired {
-                next.previousBucket = currentBucket
-            }
+            next.previousBucket = currentBucket
         }
 
         // Under-10%-remaining edge, tracked independently of the pace verdict. Runs for any state with
         // data (pace OR `.level`), since "Almost Out" is about remaining share, not pace projection.
-        // Same consume-guard: a crossing no enabled trigger caught leaves `wasUnderTenPercent` un-advanced,
-        // so re-enabling "Almost Out" while still under 10% still alerts.
         let underNow = fraction < 0.10
-        let underCrossed = underNow && !next.wasUnderTenPercent
-        var underFired = false
-        if underCrossed, maybeFire(.underTenPercent, into: &fire, state: &next, toggles: toggles) {
-            underFired = true
-        }
+        if underNow, !next.wasUnderTenPercent { candidate(.underTenPercent) }
         if !underNow {
             // Recovered above 10% — re-arm so a later dip fires again.
             next.firedMilestones.remove(.underTenPercent)
         }
-        if !underCrossed || underFired {
-            next.wasUnderTenPercent = underNow
-        }
+        next.wasUnderTenPercent = underNow
 
         return Transition(fire: fire, newState: next)
     }
 
-    /// Returns whether a milestone is a candidate to fire this pass (toggle on, not already fired this
-    /// window) and appends it to `fire`. It does NOT mark the milestone fired — the caller commits the
-    /// dedup mark only after delivery succeeds, so a skipped/failed delivery doesn't consume the edge.
-    @discardableResult
-    private static func maybeFire(
-        _ milestone: PaceMilestone,
-        into fire: inout [PaceMilestone],
-        state: inout NotificationState,
-        toggles: PaceNotificationToggles
-    ) -> Bool {
-        guard toggles.isOn(milestone), !state.firedMilestones.contains(milestone) else { return false }
-        fire.append(milestone)
-        return true
-    }
-
-    /// Ordinal pace severity so transitions can be compared (`untracked` sorts below `healthy`).
-    private static func severity(_ bucket: PaceBucket) -> Int {
-        switch bucket {
-        case .untracked: return -1
-        case .healthy: return 0
-        case .close: return 1
-        case .runningOut: return 2
+    /// `previous` carried into this pass's reset window: a new window (a nil-or-equal reset keeps it; a
+    /// reset appearing where there was none, or moving later by more than the jitter tolerance, starts
+    /// fresh) clears the fired set and both edge signals.
+    static func carriedOver(_ previous: NotificationState, resetsAt: Date?) -> NotificationState {
+        var next = previous
+        if resetWindowAdvanced(resetsAt: resetsAt, previousReset: previous.resetsAt) {
+            next.firedMilestones = []
+            next.wasUnderTenPercent = false
+            next.previousBucket = .untracked
         }
+        next.resetsAt = resetsAt ?? previous.resetsAt
+        return next
     }
 
     /// Reset timestamps can carry provider-side millisecond jitter. For notification dedupe, only a

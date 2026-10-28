@@ -38,12 +38,12 @@ final class NotificationSettingsStore {
         self.closeToRunningOut = defaults.bool(forKey: Self.closeToRunningOutKey, default: false)
     }
 
-    /// The per-milestone toggles as the pure logic consumes them.
-    var toggles: PaceNotificationToggles {
-        PaceNotificationToggles(
-            underTenPercent: underTenPercent,
-            healthyToClose: healthyToClose,
-            closeToRunningOut: closeToRunningOut
-        )
+    /// Whether the trigger for `milestone` is on.
+    func isOn(_ milestone: PaceMilestone) -> Bool {
+        switch milestone {
+        case .underTenPercent: return underTenPercent
+        case .healthyToClose: return healthyToClose
+        case .closeToRunningOut: return closeToRunningOut
+        }
     }
 }

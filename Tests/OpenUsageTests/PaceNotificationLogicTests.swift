@@ -1,17 +1,9 @@
 import XCTest
 @testable import OpenUsage
 
-private extension PaceNotificationToggles {
-    static let allOn = PaceNotificationToggles(
-        underTenPercent: true,
-        healthyToClose: true,
-        closeToRunningOut: true
-    )
-}
-
 /// Covers the pure milestone logic that decides when a quota notification fires: worsening pace edges
 /// (blue→orange, orange→red), the under-10%-remaining crossing, per-window dedup, reset rollover,
-/// recovery re-arming, the no-trustworthy-pace suppression, and the toggle gates.
+/// recovery re-arming, and the no-trustworthy-pace suppression.
 final class PaceNotificationLogicTests: XCTestCase {
     private let reset = Date(timeIntervalSince1970: 1_700_000_000)
 
@@ -19,17 +11,15 @@ final class PaceNotificationLogicTests: XCTestCase {
     private let close = WidgetData.MeterState.closeToLimit
     private let running = WidgetData.MeterState.runningOut
 
-    /// Run one evaluation from a prior state with all toggles on.
+    /// Run one evaluation from a prior state.
     private func step(
         _ state: WidgetData.MeterState,
         fraction: Double = 0.5,
         resetsAt: Date? = nil,
-        from previous: NotificationState = NotificationState(),
-        toggles: PaceNotificationToggles = .allOn
+        from previous: NotificationState = NotificationState()
     ) -> PaceNotificationLogic.Transition {
         PaceNotificationLogic.transitions(
-            state: state, fraction: fraction, resetsAt: resetsAt ?? reset,
-            previous: previous, toggles: toggles
+            state: state, fraction: fraction, resetsAt: resetsAt ?? reset, previous: previous
         )
     }
 
@@ -154,39 +144,5 @@ final class PaceNotificationLogicTests: XCTestCase {
         state = step(.noData, fraction: 0.5, from: state).newState
         let close = step(self.close, from: state)
         XCTAssertEqual(close.fire, [.healthyToClose])
-    }
-
-    // MARK: - Toggle gates
-
-    func testDisabledTriggersDoNotFire() {
-        let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: false)
-        let state = step(healthy, toggles: off).newState
-        let close = step(self.close, fraction: 0.05, from: state, toggles: off)
-        XCTAssertTrue(close.fire.isEmpty)
-    }
-
-    func testPerTriggerOffSuppressesOnlyThatMilestone() {
-        // Only the orange→red trigger is off; blue→orange still fires.
-        let toggles = PaceNotificationToggles(underTenPercent: false, healthyToClose: true, closeToRunningOut: false)
-        let state = step(healthy, toggles: toggles).newState
-        let close = step(self.close, fraction: 0.05, from: state, toggles: toggles)
-        XCTAssertEqual(close.fire, [.healthyToClose])
-        let red = step(running, fraction: 0.02, from: close.newState, toggles: toggles)
-        XCTAssertTrue(red.fire.isEmpty)
-    }
-
-    func testOffToggleDoesNotConsumeTheEdge() {
-        // A worsening while the trigger is off must not silently consume the crossing: previousBucket
-        // stays behind, so turning the trigger back on while the quota is still in the worse bucket
-        // fires on the next evaluation.
-        let off = PaceNotificationToggles(underTenPercent: false, healthyToClose: false, closeToRunningOut: true)
-        var state = step(healthy, toggles: off).newState   // prime at healthy
-        let closeSkipped = step(self.close, fraction: 0.20, from: state, toggles: off)  // healthyToClose off
-        XCTAssertTrue(closeSkipped.fire.isEmpty)
-        state = closeSkipped.newState
-        // Turn healthyToClose on; the metric is still close, so the next evaluation fires it.
-        let on = PaceNotificationToggles(underTenPercent: false, healthyToClose: true, closeToRunningOut: true)
-        let refired = step(self.close, fraction: 0.20, from: state, toggles: on)
-        XCTAssertTrue(refired.fire.contains(.healthyToClose))
     }
 }

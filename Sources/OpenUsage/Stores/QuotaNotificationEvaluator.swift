@@ -29,7 +29,7 @@ final class QuotaNotificationEvaluator {
     func evaluate(
         _ descriptors: [WidgetDescriptor],
         data: (WidgetDescriptor) -> WidgetData,
-        toggles: PaceNotificationToggles,
+        isOn: (PaceMilestone) -> Bool,
         now: Date,
         providerName: @MainActor (String) -> String
     ) async {
@@ -43,30 +43,31 @@ final class QuotaNotificationEvaluator {
                 state: state,
                 fraction: data.remainingFraction,
                 resetsAt: data.resetsAt,
-                previous: previous,
-                toggles: toggles
+                previous: previous
             )
-            // Deliver each fired milestone, then commit dedup state only for the ones that actually
-            // delivered. The logic doesn't mark milestones fired — that's done here, after delivery
-            // succeeds, so a skipped/failed delivery (not authorized, or `add` errored) leaves the
-            // milestone un-marked and the state advance reverted, re-firing on the next pass instead of
-            // being lost for the rest of the reset window.
+            // Deliver each fired milestone whose trigger is on, then commit dedup state only for the ones
+            // that actually delivered. The logic doesn't mark milestones fired — that's done here, after
+            // delivery succeeds, so an undelivered one (trigger off, not authorized, or `add` errored)
+            // leaves the milestone un-marked and its edge signal put back, re-firing on the next pass
+            // instead of being lost for the rest of the reset window.
             var next = result.newState
             var paceDelivered = false
             var underDelivered = false
             for milestone in result.fire {
-                let delivered = await deliver(milestone, data: data, providerID: descriptor.providerID,
-                                              providerName: providerName)
+                let delivered = isOn(milestone)
+                    ? await deliver(milestone, data: data, providerID: descriptor.providerID, providerName: providerName)
+                    : false
                 if delivered {
                     if milestone == .underTenPercent { underDelivered = true } else { paceDelivered = true }
                     next.firedMilestones.insert(milestone)
                 }
             }
+            let held = PaceNotificationLogic.carriedOver(previous, resetsAt: data.resetsAt)
             if result.fire.contains(where: { $0 != .underTenPercent }) && !paceDelivered {
-                next.previousBucket = previous.previousBucket
+                next.previousBucket = held.previousBucket
             }
             if result.fire.contains(.underTenPercent) && !underDelivered {
-                next.wasUnderTenPercent = previous.wasUnderTenPercent
+                next.wasUnderTenPercent = held.wasUnderTenPercent
             }
             if !result.fire.isEmpty {
                 AppLog.debug(.notifications, "\(key): \(previous.previousBucket) -> \(next.previousBucket), fired \(result.fire.map(\.rawValue)), delivered pace=\(paceDelivered) under10=\(underDelivered)")

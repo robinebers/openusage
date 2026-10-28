@@ -40,7 +40,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             await evaluator.evaluate(
                 descriptors,
                 data: store.data(for:),
-                toggles: settings.toggles,
+                isOn: settings.isOn,
                 now: now,
                 providerName: { id in providers.first { $0.id == id }?.fullName ?? id }
             )
@@ -208,6 +208,22 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.isEmpty)
+    }
+
+    /// A worsening while its trigger is off doesn't consume the crossing: turning the trigger on while the
+    /// quota is still in the worse bucket fires on the next pass.
+    func testAnOffTriggerDoesNotConsumeTheEdge() async {
+        let settings = NotificationSettingsStore(defaults: isolatedDefaults())
+        settings.closeToRunningOut = true
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
+        await evaluate(store, runtime: runtime)
+        await evaluate(store, runtime: runtime, used: 87)
+        XCTAssertTrue(recorder.posts.isEmpty)
+
+        settings.healthyToClose = true
+        await notify(base)
+        XCTAssertEqual(recorder.posts.map(\.0), ["test.healthyToClose"])
     }
 
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
