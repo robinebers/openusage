@@ -155,10 +155,6 @@ enum MenuBarPopover {
     /// path as a status-item click.
     static var dismissHandler: (() -> Void)?
 
-    /// Installed by `StatusItemController` at launch; opens the popover (e.g. when the user taps a
-    /// quota pace notification banner).
-    static var showHandler: (() -> Void)?
-
     /// Auto-resize bridge — the "single clock". SwiftUI owns the animated height and the AppKit panel
     /// is a passive follower: `applyHeight` is called once per animation frame from a SwiftUI
     /// `Animatable` modifier with the interpolated height, and the controller hops it onto the main
@@ -178,9 +174,5 @@ enum MenuBarPopover {
         } else {
             window?.orderOut(nil)
         }
-    }
-
-    static func show() {
-        showHandler?()
     }
 }

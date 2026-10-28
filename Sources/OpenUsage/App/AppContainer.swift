@@ -70,7 +70,6 @@ final class AppContainer {
             telemetry?.record(providerID: Account.kindScopedID(providerID), result: result, manual: manual)
         }
         self.telemetry = telemetry
-        AppNotifications.shared.registerAsDelegate()
         accounts.didChange = { [weak self] in self?.syncAccounts() }
     }
 
