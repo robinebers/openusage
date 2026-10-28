@@ -17,9 +17,10 @@ extension AccountProviderRuntime {
         let forced = claude.forcedReadsPending
         claude.forcedReadsPending = false
         if let wait = session.wait(at: now()) { throw ProviderError.rateLimited(retryAfter: wait) }
-        let tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
         let client = ClaudeUsageClient(httpClient: http)
-        let response = try await session.usage(at: now()) { try await client.fetchUsage(accessToken: tokens.accessToken) }
+        let (tokens, response) = try await authorizedRead(credential, grant: ClaudeLogin.refresh) { tokens in
+            try await session.usage(at: now()) { try await client.fetchUsage(accessToken: tokens.accessToken) }
+        }
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         if forced {
             if session.resetGrants.isOlder(than: RefreshSetting.forcedResetGrantsMinimumAge, at: now()) {

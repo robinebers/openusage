@@ -109,8 +109,35 @@ final class AccountProviderRuntime: ProviderRuntime {
         _ credential: AccountCredential,
         grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
-        guard case .oauth(var tokens) = credential else { throw ProviderError.invalidResponse }
-        guard tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken else { return tokens }
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
+        guard tokens.needsRefresh(at: now()) else { return tokens }
+        return try await renewedTokens(tokens, grant: grant)
+    }
+
+    /// The usage read with the sign-in renewed once when the provider refuses the access token (401):
+    /// a token whose expiry the login never reported, or one the provider cut short, is renewed through
+    /// the account's own refresh token and the read retried; a second 401 is the expired sign-in. No
+    /// other answer renews.
+    func authorizedRead(
+        _ credential: AccountCredential,
+        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant,
+        read: (OAuthTokens) async throws -> HTTPResponse
+    ) async throws -> (tokens: OAuthTokens, response: HTTPResponse) {
+        var tokens = try await freshTokens(credential, grant: grant)
+        var response = try await read(tokens)
+        guard response.statusCode == 401, tokens.refreshToken != nil else { return (tokens, response) }
+        AppLog.debug(.auth, "\(account.cardID) usage read unauthorized; renewing the sign-in once")
+        tokens = try await renewedTokens(tokens, grant: grant)
+        response = try await read(tokens)
+        return (tokens, response)
+    }
+
+    private func renewedTokens(
+        _ tokens: OAuthTokens,
+        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+    ) async throws -> OAuthTokens {
+        guard let refreshToken = tokens.refreshToken else { return tokens }
+        var tokens = tokens
         let granted = try await grant(refreshToken, http, now())
         tokens.accessToken = granted.accessToken
         if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
@@ -120,9 +147,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshCodex(_ credential: AccountCredential) async throws -> ProviderUsage {
-        let tokens = try await freshTokens(credential, grant: CodexLogin.refresh)
+        let (tokens, response) = try await authorizedRead(credential, grant: CodexLogin.refresh) { tokens in
+            try await CodexUsageClient(http: http).fetchUsage(accessToken: tokens.accessToken, accountID: tokens.extras["chatgpt_account_id"])
+        }
         let accountID = tokens.extras["chatgpt_account_id"]
-        let response = try await CodexUsageClient(http: http).fetchUsage(accessToken: tokens.accessToken, accountID: accountID)
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
         return try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
     }
@@ -135,9 +163,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {
-        let tokens = try await freshTokens(credential, grant: GrokLogin.refresh)
         let client = GrokUsageClient(httpClient: http)
-        let usage = try await client.fetchCreditsConfig(accessToken: tokens.accessToken)
+        let (tokens, usage) = try await authorizedRead(credential, grant: GrokLogin.refresh) { tokens in
+            try await client.fetchCreditsConfig(accessToken: tokens.accessToken)
+        }
         let mapped = try GrokUsageMapper.mapCreditsConfig(usage)
         if planRead.isDue(at: now()) {
             let settings = try? await client.fetchSettings(accessToken: tokens.accessToken)
