@@ -4,9 +4,9 @@ import AppKit
 enum Theme {
     static let iconGray = AnyShapeStyle(.secondary)
 
-    static func severityColor(_ severity: WidgetData.MeterSeverity?) -> Color {
+    static func severityColor(_ severity: WidgetData.MeterSeverity) -> Color {
         switch severity {
-        case .normal, nil: return Color(nsColor: .systemBlue)
+        case .normal: return Color(nsColor: .systemBlue)
         case .warning: return Color(nsColor: .systemOrange)
         case .critical: return Color(nsColor: .systemRed)
         }

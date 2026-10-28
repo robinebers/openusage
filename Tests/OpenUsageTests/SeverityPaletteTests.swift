@@ -21,7 +21,6 @@ final class SeverityPaletteTests: XCTestCase {
         for (severity, name) in Self.palette {
             XCTAssertEqual(Self.nearest(NSColor(Theme.severityColor(severity))), name, "\(severity)")
         }
-        XCTAssertEqual(Self.nearest(NSColor(Theme.severityColor(nil))), "systemBlue")
     }
 
     func testMeterValueTimelineDotAndBannerAgree() throws {
@@ -33,6 +32,9 @@ final class SeverityPaletteTests: XCTestCase {
                 let row = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: severity, value: "0%", reset: "1d 8h")))
                     .frame(width: 292)
                 XCTAssertEqual(try dominant(row), name, "value \(severity)")
+                let count = DashboardMetricRow(model: DashboardRowModel(label: "Limit Resets", mark: .value("2 available", severity: severity)))
+                    .frame(width: 292)
+                XCTAssertEqual(try dominant(count), name, "count \(severity)")
             }
             if severity == .critical {
                 let flame = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: .normal, value: "60%", reset: "1d 8h", flame: true)))

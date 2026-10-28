@@ -3,7 +3,7 @@ import Foundation
 struct DashboardRowModel: Equatable {
     enum Mark: Equatable {
         case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, flame: Bool = false)
-        case value(String, severity: WidgetData.MeterSeverity? = nil)
+        case value(String, severity: WidgetData.MeterSeverity = .normal)
     }
 
     let label: String

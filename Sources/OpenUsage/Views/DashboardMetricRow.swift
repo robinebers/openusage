@@ -36,12 +36,12 @@ struct DashboardMetricRow: View {
             case .value(let text, let severity):
                 figure(AnyView(
                     Text(text)
-                        .foregroundStyle(severity.map { AnyShapeStyle(Theme.severityColor($0)) } ?? AnyShapeStyle(.primary))
+                        .foregroundStyle(Self.figureStyle(severity))
                         .monospacedDigit()
                         .lineLimit(1)
                         .contentTransition(.numericText())
                         .fixedSize()
-                        .accessibilityValue(severity.flatMap(Self.expiryAccessibilityValue) ?? "")
+                        .accessibilityValue(Self.expiryAccessibilityValue(severity) ?? "")
                 ))
                 Spacer(minLength: 0)
             }
@@ -51,6 +51,11 @@ struct DashboardMetricRow: View {
         .frame(height: DashboardGrid.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    /// A figure keeps the row's colour until it warns.
+    private static func figureStyle(_ severity: WidgetData.MeterSeverity) -> AnyShapeStyle {
+        severity == .normal ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.severityColor(severity))
     }
 
     static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String? {
@@ -65,7 +70,7 @@ struct DashboardMetricRow: View {
     private func valueText(_ value: String, severity: WidgetData.MeterSeverity) -> some View {
         let text = Text(value)
             .fontWeight(.medium)
-            .foregroundStyle(severity == .normal ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.severityColor(severity)))
+            .foregroundStyle(Self.figureStyle(severity))
             .monospacedDigit()
             .lineLimit(1)
             .contentTransition(.numericText())

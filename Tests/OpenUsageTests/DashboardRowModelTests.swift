@@ -34,9 +34,9 @@ final class DashboardRowModelTests: XCTestCase {
         resets.values = [MetricValue(number: 2, kind: .count, label: "available")]
         resets.showsResetExpiries = true
         let day: TimeInterval = 24 * 3600
-        let cases: [(expiries: [TimeInterval], severity: WidgetData.MeterSeverity?)] = [
-            ([], nil),
-            ([10 * day], nil),
+        let cases: [(expiries: [TimeInterval], severity: WidgetData.MeterSeverity)] = [
+            ([], .normal),
+            ([10 * day], .normal),
             ([3 * day, 20 * day], .warning),
             ([20 * day, 1 * day], .critical),
             ([-1 * day, 20 * day], .critical)
