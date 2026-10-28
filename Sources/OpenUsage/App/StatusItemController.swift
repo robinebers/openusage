@@ -75,8 +75,6 @@ final class StatusItemController: NSObject {
     private let hostingController: NSHostingController<AnyView>
     /// The panel's backdrop, the opaque tray the content sits on.
     private let backdrop = PopoverBackdropView()
-    /// Token for the appearance-change observer; held to follow the documented removal pattern.
-    private var appearanceObserver: NSObjectProtocol?
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
@@ -121,15 +119,6 @@ final class StatusItemController: NSObject {
         configureStatusItem()
         imageUpdater.update()
 
-        appearanceObserver = NotificationCenter.default.addObserver(
-            forName: AppearanceSetting.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.panel.appearance = AppearanceSetting.current.nsAppearance
-            }
-        }
         // Registered once here; the controller lives for the app's whole life.
         KeyboardShortcuts.onKeyUp(for: .togglePopover) { [weak self] in
             AppLog.info(.statusItem, "Global shortcut fired; toggling popover")
@@ -160,9 +149,6 @@ final class StatusItemController: NSObject {
         panel.animationBehavior = .none
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        // Pin the theme override (nil for System) so the menu bar's appearance doesn't win; tracked
-        // live by `appearanceObserver`.
-        panel.appearance = AppearanceSetting.current.nsAppearance
 
         let container = NSView()
 
@@ -172,8 +158,7 @@ final class StatusItemController: NSObject {
         // leaves unpainted shows the backdrop, not a raw hole. Its tray is `Theme.trayNSColor` (tracks
         // light/dark and the forced appearance override) matching the SwiftUI tray
         // (`DashboardView.PopoverSurface`).
-        // `MenuBarPanel` clips everything to its rounded frame. `panel.appearance` (tracked by
-        // `appearanceObserver`) pins the mode.
+        // `MenuBarPanel` clips everything to its rounded frame.
         let host = hostingController.view
         host.translatesAutoresizingMaskIntoConstraints = false
         host.wantsLayer = true
