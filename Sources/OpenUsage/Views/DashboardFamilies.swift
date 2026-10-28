@@ -26,7 +26,7 @@ struct DashboardAccount: Identifiable {
     let lines: [DashboardLine]
 
     var id: String { provider.id }
-    var name: String { provider.accountLabel ?? provider.displayName }
+    var name: String { provider.accountName }
 }
 
 struct DashboardLine: Identifiable {
@@ -36,11 +36,6 @@ struct DashboardLine: Identifiable {
 }
 
 extension DashboardFamily {
-    /// "claude" for the account card "claude@8ad3b217".
-    static func familyID(of providerID: String) -> String {
-        String(providerID.split(separator: "@", maxSplits: 1).first ?? Substring(providerID))
-    }
-
     /// Groups accounts under their provider in order of first appearance. Every enabled metric that
     /// has data is a line; nothing is tucked behind a click.
     static func make(groups: [ProviderMetrics], line: (WidgetDescriptor) -> DashboardLine) -> [DashboardFamily] {
@@ -50,7 +45,7 @@ extension DashboardFamily {
                 $0.data.hasData && (!$0.data.showsResetExpiries || $0.data.resetCreditCount > 0)
             }
             let account = DashboardAccount(provider: group.provider, lines: lines)
-            let familyID = familyID(of: group.provider.id)
+            let familyID = group.provider.kind.rawValue
             if let index = families.firstIndex(where: { $0.id == familyID }) {
                 families[index].accounts.append(account)
             } else {
@@ -70,6 +65,6 @@ extension Provider {
     /// The provider with an email account name left out.
     var hidingEmail: Provider {
         guard isNamedByEmail else { return self }
-        return Provider(id: id, displayName: displayName, icon: icon, accountLabel: nil, links: links)
+        return Provider(id: id, kind: kind)
     }
 }

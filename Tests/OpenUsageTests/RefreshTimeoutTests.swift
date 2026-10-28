@@ -56,10 +56,10 @@ final class RefreshTimeoutTests: XCTestCase {
     }
 
     private func makeProvider() -> (Provider, WidgetDescriptor) {
-        let provider = Provider(id: "test", displayName: "Test", icon: "codex")
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         )

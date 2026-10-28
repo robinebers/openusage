@@ -100,7 +100,7 @@ menus are declared as data in `DashboardMenus` and rendered by `ClosureMenuItem`
 
 `PostHogTelemetrySink` and `TelemetryRecorder` send the anonymous daily ping,
 crash reports, and the optional provider rollups described in [Privacy](privacy.md). Ids are
-kind-scoped (`Account.kindScopedID`), so events name providers, never accounts.
+kind-scoped (`WidgetDescriptor.kindScopedKey`), so events name providers, never accounts.
 
 ## Logging
 

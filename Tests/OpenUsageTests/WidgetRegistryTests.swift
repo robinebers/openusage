@@ -3,24 +3,24 @@ import XCTest
 
 final class WidgetRegistryTests: XCTestCase {
     private func provider(_ id: String) -> Provider {
-        Provider(id: id, displayName: id.capitalized, icon: id)
+        Provider(id: id, kind: ProviderKind(rawValue: id)!)
     }
 
-    private func descriptor(_ id: String, provider: Provider) -> WidgetDescriptor {
+    private func descriptor(_ key: String, provider: Provider) -> WidgetDescriptor {
         WidgetDescriptor(
-            id: id,
-            providerID: provider.id,
-            metricLabel: id,
-            sample: WidgetData(title: id, kind: .percent, used: 0, limit: 100)
+            provider: provider,
+            key: key,
+            metricLabel: key,
+            sample: WidgetData(title: key, kind: .percent, used: 0, limit: 100)
         )
     }
 
     func testLookupsReturnExpectedEntries() {
         let claude = provider("claude")
         let codex = provider("codex")
-        let session = descriptor("claude.session", provider: claude)
-        let weekly = descriptor("claude.weekly", provider: claude)
-        let codexSession = descriptor("codex.session", provider: codex)
+        let session = descriptor("session", provider: claude)
+        let weekly = descriptor("weekly", provider: claude)
+        let codexSession = descriptor("session", provider: codex)
         let registry = WidgetRegistry(
             providers: [claude, codex],
             descriptors: [session, weekly, codexSession]
@@ -39,11 +39,11 @@ final class WidgetRegistryTests: XCTestCase {
         let codex = provider("codex")
         // Interleave two providers so a naive grouping that didn't preserve order could still pass for a
         // single contiguous run.
-        let c1 = descriptor("claude.session", provider: claude)
-        let x1 = descriptor("codex.session", provider: codex)
-        let c2 = descriptor("claude.weekly", provider: claude)
-        let x2 = descriptor("codex.weekly", provider: codex)
-        let c3 = descriptor("claude.extra", provider: claude)
+        let c1 = descriptor("session", provider: claude)
+        let x1 = descriptor("session", provider: codex)
+        let c2 = descriptor("weekly", provider: claude)
+        let x2 = descriptor("weekly", provider: codex)
+        let c3 = descriptor("extra", provider: claude)
         let registry = WidgetRegistry(
             providers: [claude, codex],
             descriptors: [c1, x1, c2, x2, c3]

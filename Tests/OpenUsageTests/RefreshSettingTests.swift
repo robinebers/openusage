@@ -95,10 +95,10 @@ final class RefreshSettingTests: XCTestCase {
     }
 
     private func makeRuntime(used: Double) -> StubRuntime {
-        let provider = Provider(id: "test", displayName: "Test", icon: "codex")
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: "test",
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: used, limit: 100)
         )

@@ -78,16 +78,6 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
         "\(kind.rawValue)@\(id.uuidString.lowercased().prefix(8))"
     }
 
-    /// The id with the account part of a card id removed: "claude@1a2b3c4d.session" reads
-    /// "claude.session", and a bare card id reads its kind. Telemetry reports these, so PostHog keeps
-    /// one id per provider instead of one per account.
-    static func kindScopedID(_ id: String) -> String {
-        guard let at = id.firstIndex(of: "@") else { return id }
-        let kind = id[..<at]
-        guard let dot = id[at...].firstIndex(of: ".") else { return String(kind) }
-        return String(kind) + id[dot...]
-    }
-
     init(id: UUID = UUID(), kind: ProviderKind, label: String, addedAt: Date = Date()) {
         self.id = id
         self.kind = kind

@@ -90,11 +90,11 @@ final class LimitsEnvelopeTests: XCTestCase {
     }
 
     func testEnvelopeCarriesRawScalarsAndFreshnessWithoutUIPresentation() throws {
-        let provider = Provider(id: "codex", displayName: "Codex", icon: "codex")
-        let session = WidgetDescriptor.percent(id: "codex.session", provider: provider, title: "Session")
+        let provider = Provider(id: "codex", kind: .codex)
+        let session = WidgetDescriptor.percent(key: "session", provider: provider, title: "Session")
             .exportingLimit("session", unit: "percent")
         let credits = WidgetDescriptor.values(
-            id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
+            key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
         )
         .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits"))
         .exportingLimit("creditValue", kind: .balance, unit: "usd", source: .value(kind: .dollars))
@@ -160,8 +160,8 @@ final class LimitsEnvelopeTests: XCTestCase {
     }
 
     func testProvidersPrintInTheRequestedOrderAndOnlyThoseRequested() throws {
-        let provider = Provider(id: "zai", displayName: "Z.ai", icon: "zai")
-        let weekly = WidgetDescriptor.percent(id: "zai.weekly", provider: provider, title: "Weekly")
+        let provider = Provider(id: "zai", kind: .zai)
+        let weekly = WidgetDescriptor.percent(key: "weekly", provider: provider, title: "Weekly")
             .exportingLimit("weekly", unit: "percent")
         func snapshot(_ id: String) -> ProviderSnapshot {
             ProviderSnapshot(providerID: id, displayName: "Z.ai",
@@ -180,9 +180,9 @@ final class LimitsEnvelopeTests: XCTestCase {
     }
 
     func testFlexibleConsumptionExportsUncappedValueWithoutInventingLimit() throws {
-        let provider = Provider(id: "claude", displayName: "Claude", icon: "claude")
+        let provider = Provider(id: "claude", kind: .claude)
         let extra = WidgetDescriptor.boundedDollars(
-            id: "claude.extra", provider: provider, title: "Extra Usage",
+            key: "extra", provider: provider, title: "Extra Usage",
             metricLabel: "Extra usage spent", limit: 100
         ).exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars))
         let snapshot = ProviderSnapshot(
@@ -231,9 +231,9 @@ final class LimitsEnvelopeTests: XCTestCase {
     }
 
     func testProgressResourceUnitFollowsRuntimeMetricFormat() throws {
-        let provider = Provider(id: "cursor", displayName: "Cursor", icon: "cursor")
+        let provider = Provider(id: "cursor", kind: .cursor)
         let total = WidgetDescriptor.percent(
-            id: "cursor.usage", provider: provider, title: "Total Usage", metricLabel: "Total usage"
+            key: "usage", provider: provider, title: "Total Usage", metricLabel: "Total usage"
         ).exportingLimit("totalUsage", unit: "percent")
         let snapshot = ProviderSnapshot(
             providerID: "cursor",

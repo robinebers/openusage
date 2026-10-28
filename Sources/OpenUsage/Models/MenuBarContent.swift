@@ -63,19 +63,17 @@ enum MenuBarContentBuilder {
                 metrics: metrics
             )
         }
-        let accountNames = Dictionary(uniqueKeysWithValues: groups.map {
-            ($0.provider.id, $0.provider.accountLabel ?? $0.provider.displayName)
-        })
-        let badgedGroups = badged(resolvedGroups, names: accountNames)
+        let providers = Dictionary(uniqueKeysWithValues: groups.map { ($0.provider.id, $0.provider) })
+        let badgedGroups = badged(resolvedGroups, providers: providers)
 return MenuBarContent(groups: badgedGroups)
     }
 
     /// Tags each group whose provider has more than one account in the strip.
-    private static func badged(_ groups: [MenuBarContent.Group], names: [String: String]) -> [MenuBarContent.Group] {
-        let families = Dictionary(grouping: groups.indices) { DashboardFamily.familyID(of: groups[$0].providerID) }
+    private static func badged(_ groups: [MenuBarContent.Group], providers: [String: Provider]) -> [MenuBarContent.Group] {
+        let families = Dictionary(grouping: groups.indices) { providers[groups[$0].providerID]?.kind }
         var result = groups
         for index in families.values.filter({ $0.count > 1 }).joined() {
-            result[index].badge = AccountInitials.tag(for: names[groups[index].providerID] ?? "")
+            result[index].badge = AccountInitials.tag(for: providers[groups[index].providerID]?.accountName ?? "")
         }
         return result
     }

@@ -36,7 +36,7 @@ final class QuotaNotificationEvaluator {
         let metrics = descriptors.map { ($0, data($0)) }.filter { $0.1.isBounded }
         var nextState: [String: NotificationState] = [:]
         for (descriptor, data) in metrics {
-            let key = "\(descriptor.providerID).\(descriptor.id)"
+            let key = descriptor.id
             let state = data.meterState(now: now)
             let previous = notificationState[key] ?? NotificationState()
             let result = PaceNotificationLogic.transitions(

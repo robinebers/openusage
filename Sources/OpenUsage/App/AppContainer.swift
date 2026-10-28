@@ -53,7 +53,7 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
-        // Ids are kind-scoped (`Account.kindScopedID`), so the events name providers, never accounts.
+        // The events name providers and their metrics, never accounts.
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,
@@ -64,13 +64,13 @@ final class AppContainer {
                 }
                 return TelemetryConfigSnapshot(
                     enabledProviders: kinds,
-                    enabledMetricIDs: layout.visibleDescriptors.map { Account.kindScopedID($0.id) },
-                    pinnedMetricIDs: layout.pinnedMetricIDs.map(Account.kindScopedID).sorted()
+                    enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey),
+                    pinnedMetricIDs: layout.pinnedMetricIDs.compactMap { layout.registry.descriptor(id: $0)?.kindScopedKey }.sorted()
                 )
             }
         )
-        dataStore.onRefreshOutcome = { [weak telemetry] providerID, result, manual in
-            telemetry?.record(providerID: Account.kindScopedID(providerID), result: result, manual: manual)
+        dataStore.onRefreshOutcome = { [weak telemetry] kind, result, manual in
+            telemetry?.record(providerID: kind.rawValue, result: result, manual: manual)
         }
         self.telemetry = telemetry
         accounts.didChange = { [weak self] in self?.syncAccounts() }

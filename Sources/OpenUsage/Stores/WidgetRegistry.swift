@@ -51,12 +51,11 @@ struct WidgetRegistry: Sendable {
         let known = Set(providers.map(\.id))
         var ordered = savedOrder.filter { known.contains($0) }
         let savedIDs = Set(ordered)
-        for id in providers.map(\.id) where !savedIDs.contains(id) {
-            let family = DashboardFamily.familyID(of: id)
-            if let last = ordered.lastIndex(where: { DashboardFamily.familyID(of: $0) == family }) {
-                ordered.insert(id, at: last + 1)
+        for provider in providers where !savedIDs.contains(provider.id) {
+            if let last = ordered.lastIndex(where: { providersByID[$0]?.kind == provider.kind }) {
+                ordered.insert(provider.id, at: last + 1)
             } else {
-                ordered.append(id)
+                ordered.append(provider.id)
             }
         }
         return ordered

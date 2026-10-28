@@ -145,8 +145,7 @@ final class LayoutStore {
     /// `defaultPinnedMetricIDs` on one account: "claude.session" is "claude@1a2b3c4d.session" on
     /// "claude@1a2b3c4d".
     private func defaultPins(forCard cardID: String) -> [String] {
-        let family = DashboardFamily.familyID(of: cardID)
-        return defaultPinnedMetricIDs.compactMap { $0.hasPrefix("\(family).") ? cardID + $0.dropFirst(family.count) : nil }
+        registry.descriptors(for: cardID).filter { defaultPinnedMetricIDs.contains($0.kindScopedKey) }.map(\.id)
     }
 
     // MARK: - Layout mutations

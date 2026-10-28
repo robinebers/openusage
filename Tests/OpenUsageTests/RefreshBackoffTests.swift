@@ -22,7 +22,7 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertNil(store.errorMessage(for: "test"), "a provider-set wait is the clock glyph, not the warning")
         XCTAssertEqual(
             store.stalenessHint(for: "test"),
-            "Test asked OpenUsage to wait. Retrying at \(Formatters.compactClock(retryAt, now: clock.now))."
+            "Claude asked OpenUsage to wait. Retrying at \(Formatters.compactClock(retryAt, now: clock.now))."
         )
         XCTAssertEqual(store.data(for: descriptor).used, 12, "the last good numbers stay on screen")
 
@@ -121,11 +121,11 @@ final class RefreshBackoffTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private let provider = Provider(id: "test", displayName: "Test", icon: "claude")
+    private let provider = Provider(id: "test", kind: .claude)
 
     private var descriptor: WidgetDescriptor {
         WidgetDescriptor(
-            id: "test.weekly", providerID: provider.id, metricLabel: "Weekly quota",
+            provider: provider, key: "weekly", metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
     }

@@ -128,7 +128,7 @@ private final class OrderingApp {
 
     var accountsScreenFamilies: [String] {
         var families: [String] = []
-        for id in accountsScreen.map(DashboardFamily.familyID(of:)) where !families.contains(id) {
+        for id in layout.orderedProviders().map(\.kind.rawValue) where !families.contains(id) {
             families.append(id)
         }
         return families

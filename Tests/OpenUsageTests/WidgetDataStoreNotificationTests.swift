@@ -19,7 +19,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         var posts: [(String, String, String, String)] = []
     }
 
-    private static let provider = Provider(id: "test", displayName: "Test", icon: "cursor")
+    private static let provider = Provider(id: "test", kind: .cursor)
 
     /// The loop's notification step over the store the test built.
     private var notify: @MainActor (Date) async -> Void = { _ in }
@@ -49,8 +49,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     private static func descriptor() -> WidgetDescriptor {
         WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
         )
@@ -108,12 +108,12 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         allOn(settings)
         let recorder = Recorder()
         let providers = [("claude@aaaa", "Personal"), ("claude@bbbb", "Work")].map {
-            Provider(id: $0.0, displayName: "Claude", icon: "claude", accountLabel: $0.1)
+            Provider(id: $0.0, kind: .claude, accountLabel: $0.1)
         }
         let descriptors = providers.map { provider in
             WidgetDescriptor(
-                id: "\(provider.id).session",
-                providerID: provider.id,
+                provider: provider,
+                key: "session",
                 metricLabel: "Session",
                 sample: WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
             )
@@ -178,7 +178,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
         XCTAssertTrue(recorder.posts.contains { $0.3 == "Projected to finish before the limit resets." })
-        XCTAssertTrue(recorder.posts.contains { $0.2 == "Test Session" })
+        XCTAssertTrue(recorder.posts.contains { $0.2 == "Cursor Session" })
     }
 
     func testResetJitterDoesNotRefireRunningOutThroughTheStore() async {

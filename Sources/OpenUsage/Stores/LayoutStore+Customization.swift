@@ -73,10 +73,10 @@ extension LayoutStore {
         recordingUndoStep {
             var families: [String] = []
             var members: [String: [String]] = [:]
-            for id in orderedProviderIDs() {
-                let family = DashboardFamily.familyID(of: id)
+            for provider in orderedProviders() {
+                let family = provider.kind.rawValue
                 if members[family] == nil { families.append(family) }
-                members[family, default: []].append(id)
+                members[family, default: []].append(provider.id)
             }
             guard let next = Self.reordered(families, dragged: dragged, target: target) else { return false }
             providerOrder = next.flatMap { members[$0] ?? [] }

@@ -35,7 +35,7 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testAFinishedAccountShowsAndPersistsWithoutWaitingForThePass() async {
         let fast = makeRuntime("fast")
-        let slowProvider = Provider(id: "slow", displayName: "Slow", icon: "codex")
+        let slowProvider = Provider(id: "slow", kind: .codex)
         let slowSnapshot = ProviderSnapshot(providerID: slowProvider.id, displayName: slowProvider.displayName, lines: [])
         let slow = SuspendedProviderRuntime(provider: slowProvider, snapshot: slowSnapshot)
         let defaults = isolatedDefaults()
@@ -58,7 +58,7 @@ final class WidgetDataStoreTests: XCTestCase {
     /// A provider's Refresh covers its accounts side by side, as Refresh All does: both start before
     /// either finishes, so one slow account never holds the other behind its deadline.
     func testRefreshingSeveralAccountsStartsThemAllBeforeAnyFinishes() async {
-        let providers = ["first", "second"].map { Provider(id: $0, displayName: $0, icon: "codex") }
+        let providers = ["first", "second"].map { Provider(id: $0, kind: .codex) }
         let runtimes = providers.map {
             SuspendedProviderRuntime(provider: $0, snapshot: ProviderSnapshot(providerID: $0.id, displayName: $0.displayName, lines: []))
         }
@@ -81,10 +81,10 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testResolvesProgressSnapshotIntoWidgetData() async {
-        let provider = Provider(id: "test", displayName: "Test", icon: "codex")
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
@@ -135,9 +135,9 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testCreditsRenderProviderReportedCountInvariantToMeterStyle() async {
         // Codex flex credits are provider-reported counts, with no locally estimated dollar value.
-        let provider = Provider(id: "codex", displayName: "Codex", icon: "codex")
+        let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
-            id: "codex.credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
+            key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
         )
         let runtime = StubRuntime(
             provider: provider,
@@ -169,9 +169,9 @@ final class WidgetDataStoreTests: XCTestCase {
         // The menu-bar tile and the popover row resolve from one raw number, so a
         // pinned tile can't read "0" while the popover reads "1". The popover keeps Codex's "available"
         // wording, while the tighter tray reads "resets".
-        let provider = Provider(id: "codex", displayName: "Codex", icon: "codex")
+        let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
-            id: "codex.rateLimitResets",
+            key: "rateLimitResets",
             provider: provider,
             title: "Rate Limit Resets",
             metricLabel: "Rate Limit Resets",
@@ -201,9 +201,9 @@ final class WidgetDataStoreTests: XCTestCase {
     func testZeroRateLimitResetsStillFlagsResetPopoverForEmptyState() async {
         // The descriptor opt-in must survive resolve even at "0 available" (no expiries): that's exactly
         // when the value column needs to stay a hover target so the popover can show the empty state.
-        let provider = Provider(id: "codex", displayName: "Codex", icon: "codex")
+        let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
-            id: "codex.rateLimitResets",
+            key: "rateLimitResets",
             provider: provider,
             title: "Rate Limit Resets",
             metricLabel: "Rate Limit Resets",
@@ -233,10 +233,10 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testBoundedDollarAndCountTrayValuesHonorMeterStyleWithoutPercentConversion() async {
-        let provider = Provider(id: "example", displayName: "Example", icon: "cursor")
-        let budget = WidgetDescriptor.boundedDollars(id: "example.budget", provider: provider, title: "Budget", limit: 100)
+        let provider = Provider(id: "example", kind: .cursor)
+        let budget = WidgetDescriptor.boundedDollars(key: "budget", provider: provider, title: "Budget", limit: 100)
         let requests = WidgetDescriptor.boundedCount(
-            id: "example.requests",
+            key: "requests",
             provider: provider,
             title: "Requests",
             limit: 500,
@@ -268,9 +268,9 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testCursorCreditsRenderAsUnboundedBalance() async {
-        let provider = Provider(id: "cursor", displayName: "Cursor", icon: "cursor")
+        let provider = Provider(id: "cursor", kind: .cursor)
         let descriptor = WidgetDescriptor.dollarBalance(
-            id: "cursor.credits",
+            key: "credits",
             provider: provider,
             title: "Credits",
             valueWord: "left"
@@ -305,9 +305,9 @@ final class WidgetDataStoreTests: XCTestCase {
         // provider reports a monthly cap), but an uncapped spend arrives as a `.values` line. It must
         // resolve to an unbounded tile — the sample's placeholder limit dropped — and read in the same
         // compact shorthand as the spend tiles ("$1.2K spent"), not full currency, in both row and tray.
-        let provider = Provider(id: "claude", displayName: "Claude", icon: "claude")
+        let provider = Provider(id: "claude", kind: .claude)
         let descriptor = WidgetDescriptor.boundedDollars(
-            id: "claude.extra", provider: provider, title: "Extra Usage",
+            key: "extra", provider: provider, title: "Extra Usage",
             metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
         )
         let runtime = StubRuntime(
@@ -341,10 +341,10 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testUsesFreshCachedSnapshotInsteadOfRefreshingProvider() async {
-        let provider = Provider(id: "test", displayName: "Test", icon: "codex")
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
@@ -375,10 +375,10 @@ final class WidgetDataStoreTests: XCTestCase {
     }
 
     func testExpiredCacheRefreshesAndReplacesSnapshot() async {
-        let provider = Provider(id: "test", displayName: "Test", icon: "codex")
+        let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
-            id: "test.session",
-            providerID: provider.id,
+            provider: provider,
+            key: "session",
             metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
         )
@@ -411,7 +411,7 @@ final class WidgetDataStoreTests: XCTestCase {
 
 
     private func makeRuntime(_ id: String) -> (Provider, StubRuntime) {
-        let provider = Provider(id: id, displayName: id.capitalized, icon: "codex")
+        let provider = Provider(id: id, kind: .codex)
         return (
             provider,
             StubRuntime(

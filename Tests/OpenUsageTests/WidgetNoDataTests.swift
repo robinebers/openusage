@@ -26,10 +26,10 @@ final class WidgetNoDataTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeRefreshedStore() async -> (WidgetDataStore, WidgetDescriptor, WidgetDescriptor) {
-        let provider = Provider(id: "test", displayName: "Test", icon: "cursor")
-        let present = boundedPercent(provider, id: "test.present", metric: "Present", sampleUsed: 40)
+        let provider = Provider(id: "test", kind: .cursor)
+        let present = boundedPercent(provider, key: "present", metric: "Present", sampleUsed: 40)
         // Deliberately fake sample numbers we must never show once the account lacks this metric.
-        let missing = boundedPercent(provider, id: "test.missing", metric: "Missing", sampleUsed: 99)
+        let missing = boundedPercent(provider, key: "missing", metric: "Missing", sampleUsed: 99)
         let runtime = StubRuntime(
             provider: provider,
             descriptors: [present, missing],
@@ -47,13 +47,13 @@ final class WidgetNoDataTests: XCTestCase {
 
     private func boundedPercent(
         _ provider: Provider,
-        id: String,
+        key: String,
         metric: String,
         sampleUsed: Double
     ) -> WidgetDescriptor {
         WidgetDescriptor(
-            id: id,
-            providerID: provider.id,
+            provider: provider,
+            key: key,
             metricLabel: metric,
             sample: WidgetData(
                 title: metric,

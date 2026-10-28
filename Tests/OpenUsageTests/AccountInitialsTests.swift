@@ -13,9 +13,9 @@ final class AccountInitialsTests: XCTestCase {
     @MainActor
     func testStripBadgesOnlyProvidersWithSeveralAccounts() {
         func group(_ id: String, _ label: String) -> ProviderMetrics {
-            let provider = Provider(id: id, displayName: "P", icon: "claude", accountLabel: label)
+            let provider = Provider(id: id, kind: id.hasPrefix("codex") ? .codex : .claude, accountLabel: label)
             let sample = WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
-            let descriptor = WidgetDescriptor(id: "\(id).session", providerID: id, metricLabel: "Session", sample: sample)
+            let descriptor = WidgetDescriptor(provider: provider, key: "session", metricLabel: "Session", sample: sample)
             return ProviderMetrics(provider: provider, metrics: [descriptor])
         }
         let content = MenuBarContentBuilder.build(

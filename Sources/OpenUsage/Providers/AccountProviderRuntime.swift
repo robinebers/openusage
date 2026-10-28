@@ -49,13 +49,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(
-            id: account.cardID,
-            displayName: account.kind.displayName,
-            icon: account.kind.rawValue,
-            accountLabel: account.label,
-            links: account.kind.links
-        )
+        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label)
     }
 
     /// The resets popover's claim seam for this account, or `nil` for providers without reset claims.

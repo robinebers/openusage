@@ -13,13 +13,13 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         var byID: [String: CGRect] = [:]
     }
 
-    private let codex = Provider(id: "codex", displayName: "Codex", icon: "codex", accountLabel: "Sunstory")
-    private let personal = Provider(id: "claude@1", displayName: "Claude", icon: "claude", accountLabel: "Personal")
-    private let work = Provider(id: "claude@2", displayName: "Claude", icon: "claude", accountLabel: "Work")
+    private let codex = Provider(id: "codex", kind: .codex, accountLabel: "Sunstory")
+    private let personal = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
+    private let work = Provider(id: "claude@2", kind: .claude, accountLabel: "Work")
 
     private func descriptor(_ provider: Provider, _ metric: String, _ title: String) -> WidgetDescriptor {
         WidgetDescriptor(
-            id: "\(provider.id).\(metric)", providerID: provider.id, metricLabel: title,
+            provider: provider, key: metric, metricLabel: title,
             sample: WidgetData(title: title, kind: .percent, used: 0, limit: 100)
         )
     }

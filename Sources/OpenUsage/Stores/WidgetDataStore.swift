@@ -51,11 +51,11 @@ final class WidgetDataStore {
         didSet { defaults.set(meterStyle.rawValue, forKey: Self.meterStyleKey) }
     }
 
-    /// Telemetry hook wired by `AppContainer`: `(providerID, outcome, manual)`, once per real fetch
+    /// Telemetry hook wired by `AppContainer`: `(kind, outcome, manual)`, once per real fetch
     /// (`.refreshed` or `.failed`; cache hits, skips, and backoffs are timer noise and never reach it), so
     /// the recorder can roll daily success and failure counts up into one event per provider per day.
     /// `nil` (and so a no-op) in tests and previews. Not observable UI state.
-    @ObservationIgnored var onRefreshOutcome: (@MainActor (String, RefreshOutcome, Bool) -> Void)?
+    @ObservationIgnored var onRefreshOutcome: (@MainActor (ProviderKind, RefreshOutcome, Bool) -> Void)?
 
     /// Global reset-countdown format: relative ("Resets in 4d 17h") or absolute ("Resets tomorrow at
     /// 9:00 AM"). Persisted across relaunch; defaults to `.relative`. Toggled by clicking a reset label.
@@ -207,7 +207,7 @@ final class WidgetDataStore {
         }
         guard let snapshot = result else {
             let message = "Refresh timed out after \(Int(providerRefreshTimeout))s"
-            return recordFailure(RefreshFailure(message: message, kind: .refused), providerID: providerID, force: force)
+            return recordFailure(RefreshFailure(message: message, kind: .refused), providerID: providerID, kind: provider.provider.kind, force: force)
         }
         // A canceled refresh may still return if a provider's underlying work is non-throwing. Never
         // publish that potentially partial snapshot; keep the last-good state exactly as it was.
@@ -223,7 +223,7 @@ final class WidgetDataStore {
             )
         }
         if let failure = snapshot.failure {
-            return recordFailure(failure, providerID: providerID, force: force)
+            return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
         }
         if providerErrors[providerID] != nil {
             providerErrors[providerID] = nil
@@ -233,7 +233,7 @@ final class WidgetDataStore {
         snapshots[providerID] = snapshot
         cache.save(snapshots)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
-        onRefreshOutcome?(providerID, .refreshed, force)
+        onRefreshOutcome?(provider.provider.kind, .refreshed, force)
         return .refreshed
     }
 
@@ -257,14 +257,14 @@ final class WidgetDataStore {
     /// A failed refresh keeps the last good snapshot on screen rather than collapsing every row to
     /// "No data", and backs the account off. A wait the provider set shows as the clock glyph with the
     /// time it ends; any other failure raises the warning with the provider's user-safe message.
-    private func recordFailure(_ failure: RefreshFailure, providerID: String, force: Bool) -> RefreshOutcome {
+    private func recordFailure(_ failure: RefreshFailure, providerID: String, kind: ProviderKind, force: Bool) -> RefreshOutcome {
         let backoff = RefreshBackoff.after(failure.kind, previous: backoffs[providerID], now: now())
         backoffs[providerID] = backoff
         let notice = backoff.providerAsked ? nil : failure.message
         if providerErrors[providerID] != notice { providerErrors[providerID] = notice }
         let wait = Int(backoff.retryAt.timeIntervalSince(now()))
         AppLog.warn(.refresh, "\(providerID) failed: \(failure.message) Next try in \(wait)s.")
-        onRefreshOutcome?(providerID, .failed, force)
+        onRefreshOutcome?(kind, .failed, force)
         return .failed
     }
 

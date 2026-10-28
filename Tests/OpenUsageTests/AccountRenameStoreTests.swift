@@ -111,11 +111,11 @@ final class AccountRenameStoreTests: XCTestCase {
 
     func testFullNamePairsProviderAndAccountName() {
         XCTAssertEqual(
-            Provider(id: "claude@1", displayName: "Claude", icon: "claude", accountLabel: "AM1").fullName,
+            Provider(id: "claude@1", kind: .claude, accountLabel: "AM1").fullName,
             "Claude · AM1"
         )
         XCTAssertEqual(
-            Provider(id: "claude@2", displayName: "Claude", icon: "claude", accountLabel: "").fullName,
+            Provider(id: "claude@2", kind: .claude, accountLabel: "").fullName,
             "Claude"
         )
     }

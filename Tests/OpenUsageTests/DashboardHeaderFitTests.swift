@@ -53,8 +53,7 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
     }
 
     private func account(_ kind: ProviderKind, _ name: String) -> DashboardAccount {
-        DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", displayName: kind.displayName,
-                                            icon: kind.rawValue, accountLabel: name), lines: [])
+        DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", kind: kind, accountLabel: name), lines: [])
     }
 
     /// `content` hosted at `width` (its own width when nil) on white in a quiet window, laid out, and read as

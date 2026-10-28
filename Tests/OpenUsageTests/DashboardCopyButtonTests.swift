@@ -14,11 +14,11 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         var headerDrags = 0
     }
 
-    private let provider = Provider(id: "claude@1", displayName: "Claude", icon: "claude", accountLabel: "Personal")
+    private let provider = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
     private let lines: [DashboardLine] = ["Session", "Weekly"].map { title in
         var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
         data.resetsAt = Date().addingTimeInterval(3 * 3600)
-        return DashboardLine(descriptor: WidgetDescriptor(id: title, providerID: "claude", metricLabel: title, sample: data), data: data)
+        return DashboardLine(descriptor: WidgetDescriptor(provider: Provider(id: "claude", kind: .claude), key: title, metricLabel: title, sample: data), data: data)
     }
 
     private let headerMid = DashboardGrid.headerHeight / 2
@@ -82,7 +82,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     func testTheDashboardsButtonCopiesTheShareCard() async throws {
         let defaults = isolatedDefaults()
         let descriptor = WidgetDescriptor(
-            id: "claude@1.session", providerID: provider.id, metricLabel: "Session",
+            provider: provider, key: "session", metricLabel: "Session",
             sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100)
         )
         let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])

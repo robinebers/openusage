@@ -128,7 +128,7 @@ private struct AccountTitle: View {
             Button {
                 renaming.begin(provider.id)
             } label: {
-                Text(provider.accountLabel.flatMap { $0.isEmpty ? nil : $0 } ?? provider.displayName)
+                Text(provider.accountName)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background {

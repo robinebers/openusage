@@ -12,7 +12,7 @@ final class ProviderHeaderLayoutTests: XCTestCase {
     private let inset = DashboardGrid.cardPadding + DashboardGrid.inset
 
     private func claude(_ label: String?, _ id: String = "claude@1") -> Provider {
-        Provider(id: id, displayName: "Claude", icon: "claude", accountLabel: label)
+        Provider(id: id, kind: .claude, accountLabel: label)
     }
 
     private func family(_ accounts: [Provider], lines: [DashboardLine] = []) -> DashboardFamily {
@@ -26,7 +26,7 @@ final class ProviderHeaderLayoutTests: XCTestCase {
     }
 
     private func line(_ data: WidgetData) -> DashboardLine {
-        DashboardLine(descriptor: WidgetDescriptor(id: data.title, providerID: "p", metricLabel: data.title, sample: data), data: data)
+        DashboardLine(descriptor: WidgetDescriptor(provider: Provider(id: "p", kind: .claude), key: data.title, metricLabel: data.title, sample: data), data: data)
     }
 
     private func percent(_ title: String, used: Double, resetsIn: TimeInterval? = nil) -> WidgetData {

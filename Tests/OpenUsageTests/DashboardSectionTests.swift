@@ -48,7 +48,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
         var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
         data.resetsAt = Date().addingTimeInterval(86_400)
         data.periodDurationMs = 7 * 86_400 * 1000
-        return DashboardLine(descriptor: WidgetDescriptor(id: title, providerID: "claude", metricLabel: title, sample: data), data: data)
+        return DashboardLine(descriptor: WidgetDescriptor(provider: Provider(id: "claude", kind: .claude), key: title, metricLabel: title, sample: data), data: data)
     }
 
     /// The Limit Resets row: "2 available", the one row with a hover.
@@ -57,10 +57,10 @@ final class DashboardSectionTests: QuietWindowTestCase {
         data.values = [MetricValue(number: 2, kind: .count, label: "available")]
         data.showsResetExpiries = true
         data.expiriesAt = [Date().addingTimeInterval(3 * 86_400), Date().addingTimeInterval(20 * 86_400)]
-        return DashboardLine(descriptor: WidgetDescriptor(id: "resets", providerID: "claude", metricLabel: "Limit Resets", sample: data), data: data)
+        return DashboardLine(descriptor: WidgetDescriptor(provider: Provider(id: "claude", kind: .claude), key: "resets", metricLabel: "Limit Resets", sample: data), data: data)
     }()
 
-    private let work = Provider(id: "claude@2", displayName: "Claude", icon: "claude", accountLabel: "Work")
+    private let work = Provider(id: "claude@2", kind: .claude, accountLabel: "Work")
 
     private func account(_ provider: Provider, lines: [DashboardLine]? = nil) -> DashboardAccount {
         DashboardAccount(provider: provider, lines: lines ?? self.lines)
@@ -337,7 +337,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let stored = accounts.add(kind: .claude, label: label, credential: .apiKey("key"))
-        let provider = Provider(id: stored.cardID, displayName: "Claude", icon: "claude", accountLabel: label)
+        let provider = Provider(id: stored.cardID, kind: .claude, accountLabel: label)
         return (AccountRenameStore(accounts: accounts), provider)
     }
 

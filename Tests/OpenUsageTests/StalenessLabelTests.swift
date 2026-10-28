@@ -46,9 +46,9 @@ final class StalenessLabelTests: XCTestCase {
     /// persists — and is labelled with its age instead of silently passing
     /// for current data.
     func testFailingRefreshKeepsFossilButLabelsItStale() async {
-        let provider = Provider(id: "devin", displayName: "Devin", icon: "devin")
+        let provider = Provider(id: "devin", kind: .claude)
         let descriptor = WidgetDescriptor(
-            id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
+            provider: provider, key: "weekly", metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
         let runtime = StubRuntime(
@@ -84,9 +84,9 @@ final class StalenessLabelTests: XCTestCase {
     }
 
     private func makeStore() -> WidgetDataStore {
-        let provider = Provider(id: "devin", displayName: "Devin", icon: "devin")
+        let provider = Provider(id: "devin", kind: .claude)
         let descriptor = WidgetDescriptor(
-            id: "devin.weekly", providerID: provider.id, metricLabel: "Weekly quota",
+            provider: provider, key: "weekly", metricLabel: "Weekly quota",
             sample: WidgetData(title: "Weekly", kind: .percent, used: 0, limit: 100)
         )
         let runtime = StubRuntime(provider: provider, descriptors: [descriptor],

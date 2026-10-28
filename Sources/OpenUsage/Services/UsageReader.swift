@@ -23,7 +23,7 @@ public enum UsageReader {
         let accounts = AccountStore.load(from: defaults)
         var providerIDs = accounts.map(\.cardID)
         if let token = providerID?.lowercased() {
-            providerIDs = providerIDs.filter { $0 == token || Account.kindScopedID($0) == token }
+            providerIDs = accounts.filter { $0.cardID == token || $0.kind.rawValue == token }.map(\.cardID)
             guard !providerIDs.isEmpty else { throw UsageReaderError.unknownProvider(token) }
         }
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]

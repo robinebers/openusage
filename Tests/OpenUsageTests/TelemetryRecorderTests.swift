@@ -129,10 +129,9 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertFalse(recorder.isEnabled)
     }
 
-    func testKindScopedIDsNameProvidersNotAccounts() {
-        XCTAssertEqual(Account.kindScopedID("claude@1a2b3c4d.session"), "claude.session")
-        XCTAssertEqual(Account.kindScopedID("claude@1a2b3c4d"), "claude")
-        XCTAssertEqual(Account.kindScopedID("claude.session"), "claude.session")
+    func testKindScopedKeysNameProvidersNotAccounts() {
+        let descriptor = WidgetDescriptor.percent(key: "session", provider: Provider(id: "claude@1a2b3c4d", kind: .claude), title: "Session")
+        XCTAssertEqual(descriptor.kindScopedKey, "claude.session")
     }
 
     func testInstallIDIsStableAcrossRecorders() {

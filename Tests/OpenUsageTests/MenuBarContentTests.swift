@@ -64,7 +64,7 @@ final class MenuBarContentTests: XCTestCase {
             groups: [group("a", percent("a.m1", "Session", 41), percent("a.m2", "Weekly", 12))],
             data: { $0.sample }
         )
-        XCTAssertEqual(content.accessibilityText, "A Session 41%, Weekly 12%")
+        XCTAssertEqual(content.accessibilityText, "Claude Session 41%, Weekly 12%")
     }
 
     func testTrayLabelsShortenLongTimeWindows() {
@@ -93,11 +93,7 @@ final class MenuBarContentTests: XCTestCase {
     // MARK: - Fixtures
 
     private func group(_ providerID: String, _ metrics: WidgetDescriptor...) -> ProviderMetrics {
-        let provider = Provider(
-            id: providerID,
-            displayName: providerID.uppercased(),
-            icon: "cursor"
-        )
+        let provider = Provider(id: providerID, kind: providerID == "a" ? .claude : .codex)
         return ProviderMetrics(provider: provider, metrics: metrics)
     }
 
@@ -124,9 +120,10 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     private func descriptor(_ id: String, _ label: String, _ sample: WidgetData) -> WidgetDescriptor {
-        WidgetDescriptor(
-            id: id,
-            providerID: String(id.prefix { $0 != "." }),
+        let parts = id.split(separator: ".").map(String.init)
+        return WidgetDescriptor(
+            provider: Provider(id: parts[0], kind: parts[0] == "a" ? .claude : .codex),
+            key: parts[1],
             metricLabel: label,
             sample: sample
         )

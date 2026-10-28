@@ -6,31 +6,31 @@ import SwiftUI
 /// live `ProviderRuntime`s.
 enum MockData {
     // MARK: - Providers
-    static let claude = Provider(id: "claude", displayName: "Claude", icon: "claude")
-    static let codex = Provider(id: "codex", displayName: "Codex", icon: "codex")
-    static let cursor = Provider(id: "cursor", displayName: "Cursor", icon: "cursor")
+    static let claude = Provider(id: "claude", kind: .claude)
+    static let codex = Provider(id: "codex", kind: .codex)
+    static let cursor = Provider(id: "cursor", kind: .cursor)
 
     static let providers: [Provider] = [claude, codex, cursor]
 
     // MARK: - Registered widgets (limit => bar; no limit => value)
     static let descriptors: [WidgetDescriptor] = [
         // Claude — percent limits (bars) + dollar amounts (values)
-        percent(id: "claude.session", provider: claude, title: "Session", used: 0),
-        percent(id: "claude.weekly", provider: claude, title: "Weekly", used: 34),
-        amount(id: "claude.extra", provider: claude, title: "Extra usage", used: 217.59),
-        amount(id: "claude.today", provider: claude, title: "Today", used: 64.20),
+        percent(key: "session", provider: claude, title: "Session", used: 0),
+        percent(key: "weekly", provider: claude, title: "Weekly", used: 34),
+        amount(key: "extra", provider: claude, title: "Extra usage", used: 217.59),
+        amount(key: "today", provider: claude, title: "Today", used: 64.20),
 
         // Codex — percent limits (bars), credits as a counted limit (bar), dollars (value)
-        percent(id: "codex.session", provider: codex, title: "Session", used: 80),
-        percent(id: "codex.weekly", provider: codex, title: "Weekly", used: 20),
-        countBounded(id: "codex.credits", provider: codex, title: "Extra Usage", used: 320, limit: 1000),
-        amount(id: "codex.today", provider: codex, title: "Today", used: 569.09),
+        percent(key: "session", provider: codex, title: "Session", used: 80),
+        percent(key: "weekly", provider: codex, title: "Weekly", used: 20),
+        countBounded(key: "credits", provider: codex, title: "Extra Usage", used: 320, limit: 1000),
+        amount(key: "today", provider: codex, title: "Today", used: 569.09),
 
         // Cursor — usage % (bar), credits balance (value), requests count with cap (bar), dollars (value)
-        percent(id: "cursor.usage", provider: cursor, title: "Usage", used: 98),
-        amount(id: "cursor.credits", provider: cursor, title: "Credits", used: 12.48),
-        countBounded(id: "cursor.requests", provider: cursor, title: "Requests", used: 412, limit: 500),
-        amount(id: "cursor.today", provider: cursor, title: "Today", used: 12.48)
+        percent(key: "usage", provider: cursor, title: "Usage", used: 98),
+        amount(key: "credits", provider: cursor, title: "Credits", used: 12.48),
+        countBounded(key: "requests", provider: cursor, title: "Requests", used: 412, limit: 500),
+        amount(key: "today", provider: cursor, title: "Today", used: 12.48)
     ]
 
     static func descriptor(_ id: String) -> WidgetDescriptor? { descriptors.first { $0.id == id } }
@@ -40,22 +40,22 @@ enum MockData {
     }
 
     // MARK: - Descriptor builders (one display name = row + metric label)
-    private static func percent(id: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
+    private static func percent(key: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
         descriptor(
-            id,
+            key,
             provider,
             title,
             WidgetData(title: title, kind: .percent, used: used, limit: 100)
         )
     }
 
-    private static func countBounded(id: String, provider: Provider, title: String, used: Double, limit: Double) -> WidgetDescriptor {
-        descriptor(id, provider, title, WidgetData(title: title, kind: .count, used: used, limit: limit))
+    private static func countBounded(key: String, provider: Provider, title: String, used: Double, limit: Double) -> WidgetDescriptor {
+        descriptor(key, provider, title, WidgetData(title: title, kind: .count, used: used, limit: limit))
     }
 
-    private static func amount(id: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
+    private static func amount(key: String, provider: Provider, title: String, used: Double) -> WidgetDescriptor {
         descriptor(
-            id,
+            key,
             provider,
             title,
             WidgetData(title: title, kind: .dollars, used: used, limit: nil)
@@ -63,14 +63,14 @@ enum MockData {
     }
 
     private static func descriptor(
-        _ id: String,
+        _ key: String,
         _ provider: Provider,
         _ title: String,
         _ data: WidgetData
     ) -> WidgetDescriptor {
         WidgetDescriptor(
-            id: id,
-            providerID: provider.id,
+            provider: provider,
+            key: key,
             metricLabel: title,
             sample: data
         )
