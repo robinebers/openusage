@@ -29,20 +29,6 @@ extension View {
     }
 }
 
-/// Per-target nesting depth so a nested control's tooltip beats its container's when a hover sits in
-/// both (e.g. the clear button inside the Settings shortcut field). Each target bumps it for its
-/// descendants; `TooltipPresenter` shows the deepest active one.
-private struct TooltipDepthKey: EnvironmentKey {
-    static let defaultValue = 0
-}
-
-private extension EnvironmentValues {
-    var tooltipDepth: Int {
-        get { self[TooltipDepthKey.self] }
-        set { self[TooltipDepthKey.self] = newValue }
-    }
-}
-
 /// Turns every `hoverTooltip` in the subtree into a no-op. Share-card exports set this: `ImageRenderer`
 /// can't draw AppKit-backed views, so the tooltip's invisible `NSViewRepresentable` anchor would
 /// rasterize as the yellow "unsupported platform view" placeholder over the exported card.
@@ -93,7 +79,6 @@ private struct TooltipAnchorView: NSViewRepresentable {
 
 private struct HoverTooltipModifier: ViewModifier {
     let text: String?
-    @Environment(\.tooltipDepth) private var depth
     @Environment(\.hoverTooltipsDisabled) private var disabled
     /// Stable per-target identity, so the presenter can track which targets are currently hovered and
     /// drop this one on exit.
@@ -123,9 +108,6 @@ private struct HoverTooltipModifier: ViewModifier {
 
     private func decorated(_ content: Content) -> some View {
         content
-            // Descendants nest one level deeper, so a child target outranks this one when a hover sits
-            // inside both.
-            .environment(\.tooltipDepth, depth + 1)
             // The anchor exists only while there is something to anchor: a target with nothing to show
             // mounts no AppKit view, so a static row costs nothing and an off-screen render has no
             // placeholder to rasterize.
@@ -163,7 +145,7 @@ private struct HoverTooltipModifier: ViewModifier {
     private func syncPresenter() {
         guard isHovering else { return }
         if let resolved {
-            TooltipPresenter.shared.enter(id: id, text: resolved, depth: depth, anchor: anchor)
+            TooltipPresenter.shared.enter(id: id, text: resolved, anchor: anchor)
         } else {
             TooltipPresenter.shared.exit(id: id)
         }
@@ -178,12 +160,10 @@ private final class TooltipPresenter {
 
     private struct Target {
         let text: String
-        let depth: Int
         let anchor: TooltipAnchor
     }
 
-    /// Targets the cursor is currently inside. More than one only while a hover sits in both a child
-    /// and its container; the deepest wins.
+    /// Targets the cursor is currently inside.
     private var active: [UUID: Target] = [:]
     /// The target currently on screen (and its text, to detect a live text change), and the one a
     /// pending reveal is scheduled for.
@@ -247,8 +227,8 @@ private final class TooltipPresenter {
         panel.contentView = host
     }
 
-    func enter(id: UUID, text: String, depth: Int, anchor: TooltipAnchor) {
-        active[id] = Target(text: text, depth: depth, anchor: anchor)
+    func enter(id: UUID, text: String, anchor: TooltipAnchor) {
+        active[id] = Target(text: text, anchor: anchor)
         refresh()
     }
 
@@ -267,10 +247,10 @@ private final class TooltipPresenter {
         hide()
     }
 
-    /// Reconcile the panel with the deepest active target. Cheap and idempotent, so the per-pixel
+    /// Reconcile the panel with the active target. Cheap and idempotent, so the per-pixel
     /// `onContinuousHover` calls mostly hit an early return.
     private func refresh() {
-        guard let top = active.max(by: { $0.value.depth < $1.value.depth }) else {
+        guard let top = active.first else {
             cancelPending()
             hide()
             return
@@ -282,20 +262,9 @@ private final class TooltipPresenter {
             }
             return
         }
-        // A hovered descendant outranks the parent already on screen: hand off immediately, since the
-        // dwell was already earned on the parent (e.g. the clear button inside the Settings shortcut
-        // field). Reading `active[shownID]` ties this to the shown target still being hovered, so
-        // "deeper" means a genuine parent→child handoff, not a stale depth comparison.
-        if let shownID, let shown = active[shownID], top.value.depth > shown.depth {
-            present(top.value)
-            self.shownID = top.key
-            shownText = top.value.text
-            cancelPending()
-            return
-        }
-        // Any other switch (a same-depth sibling or a shallower target) hides the current bubble and
-        // makes the new target re-earn the full dwell, so sweeping across sibling labels while one is
-        // up doesn't retarget the tooltip on every pass.
+        // Switching to another target hides the current bubble and makes the new target re-earn the
+        // full dwell, so sweeping across sibling labels while one is up doesn't retarget the tooltip on
+        // every pass.
         if shownID != nil {
             hide()
         }
