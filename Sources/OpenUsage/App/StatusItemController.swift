@@ -35,6 +35,10 @@ class MenuBarPanel: NSPanel {
         frameView.layer?.masksToBounds = true
     }
 
+    /// Closes the popover through its owner, the same path a status-item click takes; Esc on the
+    /// dashboard calls it.
+    var onDismiss: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
@@ -117,7 +121,7 @@ final class StatusItemController: NSObject {
         }
 
         // Esc on the dashboard dismisses through the same code path as a status-item click.
-        MenuBarPopover.dismissHandler = { [weak self] in
+        panel.onDismiss = { [weak self] in
             self?.hidePanel()
         }
         // A tapped alert opens the dashboard, without toggling an open panel shut.
