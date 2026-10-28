@@ -30,16 +30,8 @@ final class AccountStore {
         do {
             try credentialVault.save(credential, for: account.id)
             accounts.append(account)
-            if persist() {
-                didChange?()
-            } else {
-                accounts.removeAll { $0.id == account.id }
-                do {
-                    try credentialVault.delete(account.id)
-                } catch {
-                    AppLog.error(LogTag.auth("accounts"), "could not roll back account credential: \(error.localizedDescription)")
-                }
-            }
+            persist()
+            didChange?()
         } catch {
             lastError = error.localizedDescription
             AppLog.error(LogTag.auth("accounts"), "could not save account: \(error.localizedDescription)")
@@ -49,33 +41,18 @@ final class AccountStore {
 
     func rename(_ id: UUID, to label: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        let previous = accounts[index].label
         accounts[index].label = label
-        if persist() {
-            didChange?()
-        } else {
-            accounts[index].label = previous
-        }
+        persist()
+        didChange?()
     }
 
     func remove(_ id: UUID) {
         guard let accountIndex = accounts.firstIndex(where: { $0.id == id }) else { return }
         do {
-            let credential = try credentialVault.load(id)
             try credentialVault.delete(id)
-            let account = accounts.remove(at: accountIndex)
-            if persist() {
-                didChange?()
-                return
-            }
-            accounts.insert(account, at: accountIndex)
-            if let credential {
-                do {
-                    try credentialVault.save(credential, for: id)
-                } catch {
-                    AppLog.error(LogTag.auth("accounts"), "could not restore account credential: \(error.localizedDescription)")
-                }
-            }
+            accounts.remove(at: accountIndex)
+            persist()
+            didChange?()
         } catch {
             lastError = error.localizedDescription
             AppLog.error(LogTag.auth("accounts"), "could not remove account credential: \(error.localizedDescription)")
@@ -97,15 +74,10 @@ final class AccountStore {
         accounts.first { $0.cardID == cardID }
     }
 
-    private func persist() -> Bool {
-        do {
-            defaults.set(try JSONEncoder().encode(accounts), forKey: Self.storageKey)
-            lastError = nil
-            return true
-        } catch {
-            lastError = error.localizedDescription
-            AppLog.error(LogTag.auth("accounts"), "could not persist account list: \(error.localizedDescription)")
-            return false
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(accounts) else {
+            return AppLog.error(LogTag.auth("accounts"), "could not encode the account list")
         }
+        defaults.set(data, forKey: Self.storageKey)
     }
 }
