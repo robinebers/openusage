@@ -21,8 +21,9 @@ that kind. Anything else is an error. There is no aliasing or account-picking lo
 In OpenUsage, open **Settings → Command Line** and click **Install…**. After the standard macOS
 administrator prompt, `openusage` is available in new terminal sessions as `/usr/local/bin/openusage`.
 The installed symlink points to the signed helper inside OpenUsage, so in-place app updates also update
-the command. **Uninstall** removes the symlink; a file at that path that OpenUsage did not install is
-left alone and the setting reads **Unavailable**.
+the command. A symlink left by another copy of OpenUsage, such as the one 0.7.x installed or a build
+in another folder, is replaced on Install. **Uninstall** removes the symlink; a file or link at that
+path that OpenUsage did not install is left alone and the setting reads **Unavailable**.
 
 ## Exit codes
 

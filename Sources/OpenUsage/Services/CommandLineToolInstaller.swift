@@ -8,10 +8,16 @@ final class CommandLineToolInstaller {
     enum Status: Equatable {
         case notInstalled
         case installed
+        /// The link was written by another copy of OpenUsage (an earlier version, a build in another
+        /// folder, or one that has since moved); Install points it at this app.
+        case linkedToAnotherCopy(String)
         case conflict
     }
 
-    enum Operation { case install, uninstall }
+    enum Operation: Equatable {
+        case install(replacing: String?)
+        case uninstall(target: String)
+    }
     enum OperationResult { case success, cancelled, failure(String) }
 
     private(set) var status: Status
@@ -65,13 +71,28 @@ final class CommandLineToolInstaller {
             errorMessage = "The bundled terminal helper couldn't be found. Reinstall OpenUsage and try again."
             return
         }
-        handle(performPrivileged(.install, sourcePath, destinationPath), action: "install")
+        var replacing: String?
+        if case .linkedToAnotherCopy(let target) = status { replacing = target }
+        handle(performPrivileged(.install(replacing: replacing), sourcePath, destinationPath), action: "install")
     }
 
     func uninstall() {
         refreshStatus()
-        guard status == .installed else { return }
-        handle(performPrivileged(.uninstall, sourcePath, destinationPath), action: "remove")
+        let target: String
+        switch status {
+        case .installed: target = sourcePath
+        case .linkedToAnotherCopy(let other): target = other
+        case .notInstalled, .conflict: return
+        }
+        handle(performPrivileged(.uninstall(target: target), sourcePath, destinationPath), action: "remove")
+    }
+
+    /// Every OpenUsage installer, main's included, links the command to `<OpenUsage….app>/Contents/Helpers/openusage`.
+    static func isOpenUsageHelper(_ path: String) -> Bool {
+        let components = (path as NSString).pathComponents
+        guard components.count >= 4, Array(components.suffix(3)) == ["Contents", "Helpers", "openusage"] else { return false }
+        let bundle = components[components.count - 4]
+        return bundle.hasPrefix("OpenUsage") && bundle.hasSuffix(".app")
     }
 
     private func handle(_ result: OperationResult, action: String) {
@@ -95,7 +116,8 @@ final class CommandLineToolInstaller {
         guard let target = try? fileManager.destinationOfSymbolicLink(atPath: destinationPath) else {
             return fileManager.fileExists(atPath: destinationPath) ? .conflict : .notInstalled
         }
-        return target == sourcePath ? .installed : .conflict
+        if target == sourcePath { return .installed }
+        return isOpenUsageHelper(target) ? .linkedToAnotherCopy(target) : .conflict
     }
 
     private static func runPrivileged(
@@ -106,15 +128,21 @@ final class CommandLineToolInstaller {
         let directory = (destinationPath as NSString).deletingLastPathComponent
         let command: String
         switch operation {
-        case .install:
+        case .install(replacing: nil):
             command = """
             if [ -e \(shellQuote(destinationPath)) ] || [ -L \(shellQuote(destinationPath)) ]; then exit 73; fi
             /bin/mkdir -p \(shellQuote(directory)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
             """
-        case .uninstall:
+        case .install(replacing: let target?):
             command = """
-            target=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
-            [ "$target" = \(shellQuote(sourcePath)) ] || exit 75
+            existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 73
+            [ "$existing" = \(shellQuote(target)) ] || exit 73
+            /bin/rm \(shellQuote(destinationPath)) && /bin/ln -s \(shellQuote(sourcePath)) \(shellQuote(destinationPath))
+            """
+        case .uninstall(let target):
+            command = """
+            existing=$(/usr/bin/readlink \(shellQuote(destinationPath))) || exit 74
+            [ "$existing" = \(shellQuote(target)) ] || exit 75
             /bin/rm \(shellQuote(destinationPath))
             """
         }

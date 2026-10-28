@@ -47,7 +47,7 @@ Each notification names the trigger, the provider, and the metric, and fires onc
 
 | Setting | Control | What it changes |
 |---|---|---|
-| Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
+| Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. A link left by another copy of OpenUsage (an earlier version, or a build in another folder) is replaced on Install. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
 
 ## Updates
 
