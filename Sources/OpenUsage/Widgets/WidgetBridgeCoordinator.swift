@@ -25,13 +25,14 @@ final class WidgetBridgeCoordinator {
     private let reload: () -> Void
     private let debounceDuration: Duration
     private var lastContent: WidgetBridgeDocument.SemanticContent?
+    private var lastReloadedDocument: WidgetBridgeDocument?
     private var debounceTask: Task<Void, Never>?
     private var isObserving = false
 
     init(
         exporter: WidgetBridgeExporter,
         store: any WidgetBridgePersisting,
-        debounceDuration: Duration = .milliseconds(250),
+        debounceDuration: Duration = .seconds(3),
         now: @escaping () -> Date = Date.init,
         reload: @escaping () -> Void
     ) {
@@ -63,14 +64,23 @@ final class WidgetBridgeCoordinator {
                 AppLog.error(.config, "widget bridge read failed: \(error.localizedDescription)")
             }
         }
-        guard document.semanticContent != lastContent else { return }
-        do {
-            try store.write(document)
-            lastContent = document.semanticContent
+        if document.semanticContent != lastContent {
+            do {
+                try store.write(document)
+                lastContent = document.semanticContent
+                AppLog.debug(.config, "widget bridge exported \(document.providers.count) providers")
+            } catch {
+                AppLog.error(.config, "widget bridge write failed: \(error.localizedDescription)")
+                return
+            }
+        }
+        let freshnessUpdateDue = lastReloadedDocument.map {
+            document.semanticContent != $0.semanticContent
+                && document.generatedAt.timeIntervalSince($0.generatedAt) >= WidgetTimelineSchedule.staleInterval / 2
+        } ?? true
+        if document.reloadContent != lastReloadedDocument?.reloadContent || freshnessUpdateDue {
             reload()
-            AppLog.debug(.config, "widget bridge exported \(document.providers.count) providers")
-        } catch {
-            AppLog.error(.config, "widget bridge write failed: \(error.localizedDescription)")
+            lastReloadedDocument = document
         }
     }
 

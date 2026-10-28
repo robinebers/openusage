@@ -18,7 +18,7 @@ struct ProviderUsageEntry: TimelineEntry {
 struct ProviderUsageTimelineProvider: AppIntentTimelineProvider {
     // WidgetKit schedules background updates within a limited daily budget. Thirty minutes avoids
     // declaring healthy host data outdated merely because a five-minute host reload was coalesced.
-    private let staleInterval: TimeInterval = 30 * 60
+    private let staleInterval = WidgetTimelineSchedule.staleInterval
     private let fallbackInterval = WidgetTimelineSchedule.entrySpacing
     private let minimumTimelineSpacing: TimeInterval = 5 * 60
 

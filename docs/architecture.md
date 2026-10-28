@@ -3,7 +3,8 @@
 OpenUsage is a SwiftPM package with `OpenUsage` (the app library),
 `OpenUsageApp` (a thin executable), and `OpenUsageCLI` (the `openusage` command, shipped at
 `Contents/Helpers/openusage`). Swift 6 with strict concurrency; SwiftUI content hosted in an
-AppKit-owned status item and panel. `OpenUsageWidgetSupport` contains the display-only bridge records;
+AppKit-owned status item and panel. `OpenUsageWidgetSupport` contains the display-only bridge records
+and live countdown formatter.
 `OpenUsageWidgets.xcodeproj` builds the separate WidgetKit extension.
 
 ## Composition root
@@ -64,7 +65,8 @@ and their order; `WidgetDataStore` turns snapshots into `WidgetData` for the vie
 `WidgetBridgeExporter` turns the accounts and their shown metrics, in saved order, into a small
 display-ready document. `WidgetBridgeCoordinator` observes account, snapshot, layout and display
 changes, atomically writes changed content to the channel's App Group, and requests a WidgetKit
-reload. Account removal removes its exported values as well.
+reload. Fetch-time-only changes are saved without requesting a redraw on every refresh; a periodic
+freshness request keeps the widget's age current. Account removal removes its exported values as well.
 
 The extension renders the shared records directly. It never reads credentials, refreshes tokens or
 calls provider APIs. It keeps the last values when the host quits and marks them outdated after

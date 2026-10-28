@@ -4,6 +4,8 @@ import Foundation
 /// postpone it to fit its daily budget, so the timeline carries evenly spaced entries well past that time
 /// and a widget redraws on schedule from data it already has.
 public enum WidgetTimelineSchedule {
+    public static let staleInterval: TimeInterval = 30 * 60
+
     /// The longest gap between two entries. Countdown layouts reserve room for the text they show until
     /// the next entry.
     public static let entrySpacing: TimeInterval = 30 * 60

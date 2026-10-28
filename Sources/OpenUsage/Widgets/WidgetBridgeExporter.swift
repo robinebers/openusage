@@ -14,7 +14,7 @@ struct WidgetBridgeExporter {
                     makeMetric($0, generatedAt: generatedAt)
                 }
                 let snapshot = dataStore.snapshots[provider.id]
-                let health: WidgetProviderHealth = if dataStore.backoffs[provider.id] != nil {
+                let health: WidgetProviderHealth = if dataStore.errorMessage(for: provider.id) != nil {
                     .failed
                 } else if metrics.contains(where: \.hasData) {
                     .ready

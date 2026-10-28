@@ -236,7 +236,7 @@ private struct WidgetMetricView: View {
             } else if !compact, let resetAt = metric.resetAt {
                 HStack(spacing: 2) {
                     Text("Resets")
-                    Text(resetAt, style: .relative)
+                    countdown(.relative, to: resetAt)
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -252,12 +252,7 @@ private struct WidgetMetricView: View {
     }
 
     private func countdown(_ style: CountdownStyle, to resetAt: Date) -> Text {
-        switch style {
-        case .relative:
-            Text(resetAt, style: .relative)
-        case let style:
-            Text(.currentDate, format: style.offsetFormat(to: resetAt))
-        }
+        Text(.currentDate, format: WidgetCountdownFormatStyle(resetAt: resetAt, style: style))
     }
 
     /// Within the last hour the relative style adds seconds ("49 min, 26 secs") and gets too wide, so
@@ -272,7 +267,7 @@ private struct WidgetMetricView: View {
     /// reserve that width, so the headline only scales down when the real countdown needs the room.
     private func countdownTemplates(_ style: CountdownStyle, to resetAt: Date) -> [String] {
         [date, date.addingTimeInterval(WidgetTimelineSchedule.entrySpacing)].map {
-            style.text(from: $0, to: resetAt).replacing(/\d/, with: "8")
+            WidgetCountdownFormatStyle(resetAt: resetAt, style: style).format($0).replacing(/\d/, with: "8")
         }
     }
 
@@ -294,30 +289,7 @@ private struct WidgetMetricView: View {
     }
 }
 
-private enum CountdownStyle {
-    /// SwiftUI's relative date style: "2 hrs, 27 min", "5 days, 3 hrs".
-    case relative
-    /// "2 hours", "5 days".
-    case leadingUnit
-    /// "49 minutes".
-    case minutes
-
-    func offsetFormat(to resetAt: Date) -> SystemFormatStyle.DateOffset {
-        let fields: Set<Date.ComponentsFormatStyle.Field> = self == .minutes ? [.minute] : [.day, .hour, .minute]
-        return .offset(to: resetAt, allowedFields: fields, maxFieldCount: 1, sign: .never)
-    }
-
-    /// Static text for sizing. SwiftUI's relative style reads like the abbreviated components style
-    /// limited to its two leading units.
-    func text(from date: Date, to resetAt: Date) -> String {
-        guard self == .relative else {
-            return String(offsetFormat(to: resetAt).format(date).characters)
-        }
-        let fields: Set<Date.ComponentsFormatStyle.Field> =
-            resetAt.timeIntervalSince(date) >= 24 * 60 * 60 ? [.day, .hour] : [.hour, .minute]
-        return Date.ComponentsFormatStyle(style: .abbreviated, fields: fields).format(date..<max(date, resetAt))
-    }
-}
+private typealias CountdownStyle = WidgetCountdownFormatStyle.Style
 
 /// A thin bar whose fill joins the accented group, so tinted widgets keep the fill and the translucent
 /// track apart (a `ProgressView` renders both in the same tint).

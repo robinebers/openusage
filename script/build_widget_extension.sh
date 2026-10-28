@@ -31,6 +31,7 @@ DESTINATION="$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex"
 echo "==> building WidgetKit extension ($CONFIGURATION, $WIDGET_ARCHS)"
 BUILD_LOG="$DERIVED_DATA/xcodebuild.log"
 mkdir -p "$DERIVED_DATA"
+# Scripted bundles are signed as one executable; Xcode's preview debug dylib would remain unsigned.
 if ! xcodebuild \
   -project "$ROOT_DIR/OpenUsageWidgets.xcodeproj" \
   -scheme OpenUsageWidgets \
@@ -38,6 +39,7 @@ if ! xcodebuild \
   -destination 'generic/platform=macOS' \
   -derivedDataPath "$DERIVED_DATA" \
   CODE_SIGNING_ALLOWED=NO \
+  ENABLE_DEBUG_DYLIB=NO \
   DEVELOPMENT_TEAM="${OPENUSAGE_TEAM_ID:-}" \
   ARCHS="$WIDGET_ARCHS" \
   ONLY_ACTIVE_ARCH=NO \

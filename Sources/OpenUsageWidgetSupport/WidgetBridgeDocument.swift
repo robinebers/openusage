@@ -23,6 +23,16 @@ public struct WidgetBridgeDocument: Codable, Hashable, Sendable {
         SemanticContent(schemaVersion: schemaVersion, providers: providers)
     }
 
+    /// Fetch timestamps are persisted on every refresh, but alone do not need an immediate redraw.
+    public var reloadContent: SemanticContent {
+        SemanticContent(schemaVersion: schemaVersion, providers: providers.map { provider in
+            WidgetProviderRecord(
+                id: provider.id, displayName: provider.displayName, iconID: provider.iconID,
+                plan: provider.plan, refreshedAt: nil, health: provider.health, metrics: provider.metrics
+            )
+        })
+    }
+
     public struct SemanticContent: Hashable, Sendable {
         public let schemaVersion: Int
         public let providers: [WidgetProviderRecord]

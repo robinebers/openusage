@@ -107,7 +107,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
         XCTAssertEqual(document.providers.map(\.iconID), ["claude", "claude", "codex"])
     }
 
-    func testExportsFailureWithoutRawErrorAndRetainsLastGoodRows() async throws {
+    func testFailureRetainsLastGoodRowsAndDistinguishesProviderWaits() async throws {
         let failureKinds: [RefreshFailure.Kind] = [.refused, .rateLimited(retryAfter: 120)]
         for kind in failureKinds {
             let fixture = Fixture(defaults: isolatedDefaults())
@@ -118,7 +118,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
             XCTAssertEqual(outcome, .failed)
             let document = fixture.exporter.makeDocument(generatedAt: fixture.now)
             let provider = try XCTUnwrap(document.providers.first)
-            XCTAssertEqual(provider.health, .failed)
+            XCTAssertEqual(provider.health, kind == .rateLimited(retryAfter: 120) ? .ready : .failed)
             XCTAssertEqual(provider.metrics.first?.headline, "60% left")
             XCTAssertFalse(String(decoding: try JSONEncoder().encode(document), as: UTF8.self).contains("secret token expired"))
         }
@@ -164,6 +164,44 @@ final class WidgetBridgeExporterTests: XCTestCase {
 
 @MainActor
 final class WidgetBridgeCoordinatorTests: XCTestCase {
+    func testTimestampOnlyRefreshWritesWithoutReloadUntilFreshnessUpdateIsDue() {
+        let fixture = Fixture(defaults: isolatedDefaults())
+        var clock = fixture.now
+        var snapshot = fixture.snapshot
+        fixture.dataStore.snapshots[fixture.provider.id] = snapshot
+        let store = MemoryBridgeStore()
+        var reloadCount = 0
+        let coordinator = WidgetBridgeCoordinator(
+            exporter: fixture.exporter, store: store, debounceDuration: .seconds(60),
+            now: { clock }, reload: { reloadCount += 1 }
+        )
+        coordinator.start()
+        XCTAssertEqual(reloadCount, 1)
+
+        clock = clock.addingTimeInterval(300)
+        snapshot.refreshedAt = clock
+        fixture.dataStore.snapshots[fixture.provider.id] = snapshot
+        coordinator.exportIfChanged()
+        XCTAssertEqual(store.documents.count, 2)
+        XCTAssertEqual(store.documents.last?.providers.first?.refreshedAt, clock)
+        XCTAssertEqual(reloadCount, 1, "a timestamp-only refresh should persist without requesting a redraw")
+
+        clock = clock.addingTimeInterval(600)
+        snapshot.refreshedAt = clock
+        fixture.dataStore.snapshots[fixture.provider.id] = snapshot
+        coordinator.exportIfChanged()
+        XCTAssertEqual(store.documents.count, 3)
+        XCTAssertEqual(reloadCount, 2, "a healthy account should refresh the widget's freshness before it becomes stale")
+
+        clock = clock.addingTimeInterval(900)
+        coordinator.exportIfChanged()
+        XCTAssertEqual(reloadCount, 2, "a clock tick with no new provider data needs no reload")
+
+        fixture.dataStore.meterStyle = .used
+        coordinator.exportIfChanged()
+        XCTAssertEqual(reloadCount, 3, "a changed displayed value must not wait for the freshness interval")
+    }
+
     func testWritesAndReloadsOnlyForSemanticChangesAndObservesDisplayChanges() async throws {
         let fixture = Fixture(defaults: isolatedDefaults())
         fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot

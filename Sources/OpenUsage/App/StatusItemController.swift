@@ -252,7 +252,12 @@ final class StatusItemController: NSObject {
         case .recovery:
             container.popover.openWidgetAccount(nil, hasVisibleMetrics: false)
         }
-        showPanel()
+        if panel.isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            statusItem.button?.highlight(true)
+        } else {
+            showPanel()
+        }
     }
 
     private func showPanel() {
