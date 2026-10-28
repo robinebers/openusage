@@ -27,6 +27,25 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 2)
     }
 
+    func testSigningInToAnAddedCursorAccountAgainNamesTheExistingOne() async throws {
+        let token = "eyJhbGciOiJub25lIn0." + Data(#"{"sub":"auth0|user_abc"}"#.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "") + ".sig"
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"accessToken":"\#(token)","refreshToken":"r","authId":"auth0|user_abc"}"#.utf8))
+        }
+        let store = makeStore()
+        let first = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        first.choose(.cursor)
+        try await waitUntil { first.isFinished }
+        XCTAssertEqual(store.accounts.map(\.label), ["Cursor Account"])
+
+        let again = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        again.choose(.cursor)
+        try await waitUntil { again.errorMessage != nil }
+
+        XCTAssertEqual(again.errorMessage, "This account is already added as Cursor Account.")
+        XCTAssertEqual(store.accounts.count, 1)
+    }
+
     func testTheSameAPIKeyIsNotAddedTwice() async throws {
         let store = makeStore()
         store.add(kind: .openrouter, label: "Personal", credential: .apiKey("sk-or-1"))

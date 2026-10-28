@@ -135,7 +135,7 @@ final class ProviderLoginTests: XCTestCase {
 
     func testCursorLoginPollsForTokens() async throws {
         let http = RoutingHTTPClient { _ in
-            Self.response(#"{"accessToken":"cursor-access","refreshToken":"cursor-refresh","userID":"cursor-user","expiresIn":3600}"#)
+            Self.response(#"{"accessToken":"\#(Self.jwt(#"{"sub":"auth0|user_abc"}"#))","refreshToken":"cursor-refresh","authId":"auth0|user_abc"}"#)
         }
         let prompt = PromptCapture()
 
@@ -144,7 +144,8 @@ final class ProviderLoginTests: XCTestCase {
             pastedCode: emptyInput()
         )
 
-        XCTAssertEqual(result.label, "cursor-user")
+        XCTAssertEqual(result.label, "Cursor Account")
+        XCTAssertEqual(result.credential.identity, "cursor:user_abc", "the id comes from the token's subject; the poll carries no user id")
         let authorizeURL = try XCTUnwrap(prompt.value?.browserURL)
         XCTAssertEqual(authorizeURL.host, "cursor.com")
         XCTAssertEqual(authorizeURL.path, "/loginDeepControl")

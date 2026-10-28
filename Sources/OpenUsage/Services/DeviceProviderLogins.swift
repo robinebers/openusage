@@ -91,11 +91,12 @@ struct CursorLogin: ProviderLogin {
             if response.statusCode == 404 || response.statusCode == 202 { return .pending }
             return .failed("Cursor sign-in failed.")
         }
-        return (token.userID ?? "Cursor Account", .oauth(OAuthTokens(
+        let userID = CursorUsageClient.session(from: token.accessToken)?.userID
+        return ("Cursor Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: ProviderParse.jwtExpiry(token.accessToken),
-            extras: token.userID.map { ["userID": $0] } ?? [:]
+            extras: userID.map { [OAuthTokens.identityKey: "cursor:\($0)"] } ?? [:]
         )))
     }
 }
@@ -185,7 +186,6 @@ private struct GitHubUser: Decodable {
 private struct CursorTokenResponse: Decodable, Sendable {
     let accessToken: String
     let refreshToken: String
-    let userID: String?
 }
 
 private struct GrokIDClaims: Decodable {

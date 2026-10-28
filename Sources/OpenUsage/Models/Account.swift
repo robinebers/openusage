@@ -113,7 +113,7 @@ enum AccountCredential: Codable, Sendable, Equatable {
     var identity: String? {
         switch self {
         case .oauth(let tokens):
-            tokens.extras[OAuthTokens.identityKey] ?? tokens.extras["userID"]
+            tokens.extras[OAuthTokens.identityKey]
         case .apiKey(let key):
             "key:" + SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
         }
