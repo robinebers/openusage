@@ -6,20 +6,15 @@ final class LoopbackCallbackServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.robinebers.openusage.oauth-callback")
     private let state: String
     private let path: String
-    private let port: UInt16
     private let lock = NSLock()
-    private var callbackCode: String?
-    private var callbackError: Error?
+    private var result: Result<String, Error>?
     private var continuation: CheckedContinuation<String, Error>?
-    private var finished = false
+    private(set) var redirectURI = ""
 
-    var redirectURI: String { "http://localhost:\(port)\(path)" }
-
-    private init(listener: NWListener, state: String, path: String, port: UInt16) {
+    private init(listener: NWListener, state: String, path: String) {
         self.listener = listener
         self.state = state
         self.path = path
-        self.port = port
     }
 
     static func start(state: String, port: UInt16? = nil, path: String = "/callback") async throws -> LoopbackCallbackServer {
@@ -29,41 +24,37 @@ final class LoopbackCallbackServer: @unchecked Sendable {
             port: port.map { NWEndpoint.Port(rawValue: $0)! } ?? .any
         )
         let listener = try NWListener(using: parameters)
-        let connectionHandler = LoopbackConnectionHandler()
-        listener.newConnectionHandler = { connectionHandler.accept($0) }
-        return try await withCheckedThrowingContinuation { continuation in
-            let completion = ListenerStartCompletion(continuation)
+        let server = LoopbackCallbackServer(listener: listener, state: state, path: path)
+        listener.newConnectionHandler = { [weak server] in server?.accept($0) }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             listener.stateUpdateHandler = { listenerState in
                 switch listenerState {
                 case .ready:
+                    listener.stateUpdateHandler = nil
                     guard let port = listener.port?.rawValue else {
-                        completion.finish(.failure(LoopbackCallbackError.listenerFailed("No local port was assigned.")))
+                        continuation.resume(throwing: LoopbackCallbackError.listenerFailed("No local port was assigned."))
                         return
                     }
-                    let server = LoopbackCallbackServer(listener: listener, state: state, path: path, port: port)
-                    connectionHandler.set { [weak server] connection in
-                        server?.accept(connection)
-                    }
-                    completion.finish(.success(server))
+                    server.redirectURI = "http://localhost:\(port)\(path)"
+                    continuation.resume()
                 case .failed(let error):
-                    completion.finish(.failure(LoopbackCallbackError.listenerFailed(error.localizedDescription)))
+                    listener.stateUpdateHandler = nil
+                    continuation.resume(throwing: LoopbackCallbackError.listenerFailed(error.localizedDescription))
                 default:
                     break
                 }
             }
             listener.start(queue: DispatchQueue(label: "com.robinebers.openusage.oauth-listener"))
         }
+        return server
     }
 
     func waitForCode() async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
-            if let callbackCode {
+            if let result {
                 lock.unlock()
-                continuation.resume(returning: callbackCode)
-            } else if let callbackError {
-                lock.unlock()
-                continuation.resume(throwing: callbackError)
+                continuation.resume(with: result)
             } else {
                 self.continuation = continuation
                 lock.unlock()
@@ -99,16 +90,17 @@ final class LoopbackCallbackServer: @unchecked Sendable {
             reply(connection, status: 404, body: "Sign-in callback not found.", result: .failure(LoopbackCallbackError.invalidRequest))
             return
         }
-        guard URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value == state else {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let value = { (name: String) in query.first { $0.name == name }?.value }
+        guard value("state") == state else {
             reply(connection, status: 400, body: "Sign-in state did not match.", result: .failure(LoopbackCallbackError.stateMismatch))
             return
         }
-        if let error = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "error" })?.value {
+        if let error = value("error") {
             reply(connection, status: 400, body: "Sign-in failed.", result: .failure(LoopbackCallbackError.authorization(error)))
             return
         }
-        guard let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "code" })?.value,
-              !code.isEmpty else {
+        guard let code = value("code"), !code.isEmpty else {
             reply(connection, status: 400, body: "Authorization code was missing.", result: .failure(LoopbackCallbackError.invalidRequest))
             return
         }
@@ -129,60 +121,12 @@ final class LoopbackCallbackServer: @unchecked Sendable {
 
     private func finish(_ result: Result<String, Error>) {
         lock.lock()
-        guard !finished else { lock.unlock(); return }
-        finished = true
-        let pending = continuation
-        continuation = nil
-        if case .success(let code) = result { callbackCode = code }
-        if case .failure(let error) = result { callbackError = error }
-        lock.unlock()
-        switch result {
-        case .success(let code): pending?.resume(returning: code)
-        case .failure(let error): pending?.resume(throwing: error)
-        }
-    }
-}
-
-private final class LoopbackConnectionHandler: @unchecked Sendable {
-    private let lock = NSLock()
-    private var handler: (@Sendable (NWConnection) -> Void)?
-
-    func set(_ handler: @escaping @Sendable (NWConnection) -> Void) {
-        lock.lock()
-        self.handler = handler
-        lock.unlock()
-    }
-
-    func accept(_ connection: NWConnection) {
-        lock.lock()
-        let handler = self.handler
-        lock.unlock()
-        guard let handler else {
-            connection.cancel()
-            return
-        }
-        handler(connection)
-    }
-}
-
-private final class ListenerStartCompletion: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<LoopbackCallbackServer, Error>?
-
-    init(_ continuation: CheckedContinuation<LoopbackCallbackServer, Error>) {
-        self.continuation = continuation
-    }
-
-    func finish(_ result: Result<LoopbackCallbackServer, Error>) {
-        lock.lock()
+        guard self.result == nil else { lock.unlock(); return }
+        self.result = result
         let pending = continuation
         continuation = nil
         lock.unlock()
-        guard let pending else { return }
-        switch result {
-        case .success(let server): pending.resume(returning: server)
-        case .failure(let error): pending.resume(throwing: error)
-        }
+        pending?.resume(with: result)
     }
 }
 
