@@ -10,7 +10,7 @@ enum ProviderError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .signInExpired(let kind): "\(kind.displayName) sign-in expired. Add the account again."
+        case .signInExpired(let kind): "\(kind.displayName) sign-in expired. Remove the account and add it again."
         case .connectionFailed: "Connection failed. Check your internet connection and try again."
         case .invalidResponse: "The provider returned an invalid response."
         case .requestFailed(let status): "The provider request failed (HTTP \(status))."
@@ -21,6 +21,12 @@ enum ProviderError: Error, LocalizedError, Equatable {
 
     static func isAuthFailure(_ response: HTTPResponse) -> Bool {
         response.statusCode == 401 || response.statusCode == 403
+    }
+
+    /// A token endpoint refusing the refresh token itself (RFC 6749 `invalid_grant`), which only a new sign-in cures.
+    static func refusedGrant(_ response: HTTPResponse) -> Bool {
+        (response.statusCode == 400 || response.statusCode == 401)
+            && ProviderParse.jsonObject(response.body)?["error"] as? String == "invalid_grant"
     }
 
     static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {

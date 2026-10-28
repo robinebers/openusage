@@ -15,6 +15,7 @@ extension ClaudeLogin {
             body: try JSONSerialization.data(withJSONObject: body),
             timeout: 15
         ))
+        if ProviderError.refusedGrant(response) { throw ProviderError.signInExpired(.claude) }
         guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
         return try JSONDecoder().decode(OAuthTokenResponse.self, from: response.body).grant(now: now)
     }

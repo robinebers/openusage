@@ -91,4 +91,51 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
         XCTAssertEqual(saved.accessToken, "old-access", "a refused refresh must not touch the stored credential")
     }
+    func testClaudeRefusedRefreshTokenReadsAsExpiredSignIn() async throws {
+        try await assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: .claude, tokenURL: "https://platform.claude.com/v1/oauth/token")
+    }
+
+    func testGrokRefusedRefreshTokenReadsAsExpiredSignIn() async throws {
+        try await assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: .grok, tokenURL: "https://auth.x.ai/oauth2/token")
+    }
+
+    func testClaudeRefreshRefusedWithoutInvalidGrantStaysARequestFailure() async throws {
+        let account = Account(kind: .claude, label: "Personal")
+        let vault = InMemoryCredentialVault()
+        try vault.save(
+            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)),
+            for: account.id
+        )
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_request"}"#.utf8))
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+
+        let snapshot = await runtime.refresh()
+
+        XCTAssertEqual(snapshot.errorMessage, ProviderError.requestFailed(400).localizedDescription)
+        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
+        XCTAssertEqual(saved.accessToken, "old-access")
+    }
+
+    private func assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: ProviderKind, tokenURL: String) async throws {
+        let account = Account(kind: kind, label: "Personal")
+        let vault = InMemoryCredentialVault()
+        try vault.save(
+            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "revoked", expiresAt: .distantPast)),
+            for: account.id
+        )
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+
+        let snapshot = await runtime.refresh()
+
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [tokenURL])
+        guard let text = snapshot.errorMessage else { return XCTFail("Expected an error snapshot") }
+        XCTAssertEqual(text, ProviderError.signInExpired(kind).localizedDescription)
+        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
+        XCTAssertEqual(saved.accessToken, "old-access", "a refused refresh must not touch the stored credential")
+    }
 }

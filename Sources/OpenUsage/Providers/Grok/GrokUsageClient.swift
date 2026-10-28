@@ -14,6 +14,7 @@ extension GrokLogin {
             body: Data(body.utf8),
             timeout: 15
         ))
+        if ProviderError.refusedGrant(response) { throw ProviderError.signInExpired(.grok) }
         guard (200..<300).contains(response.statusCode),
               let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body)
         else { throw ProviderError.failed(response) }
