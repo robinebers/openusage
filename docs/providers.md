@@ -103,7 +103,7 @@ inference key cannot read the balance. The card reads `/api/v1/credits` for the 
 
 Paste an API key from the [Z.ai key list](https://z.ai/manage-apikey/apikey-list). The card reads the
 GLM Coding Plan subscription and quota endpoints for the session and weekly windows, the web-search
-quota, and the plan.
+quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the card says so.
 
 ## Errors
 

@@ -29,6 +29,18 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
         XCTAssertTrue(lines.isEmpty)
     }
 
+    func testAKeyWithNoCodingPlanSaysSoAndAnyOtherFailedBodyStaysInvalid() {
+        let noPlan = Data(#"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#.utf8)
+        XCTAssertThrowsError(try ZAIUsageMapper.mapQuota(noPlan)) { error in
+            XCTAssertEqual(error as? ProviderError, .unavailable("No active GLM Coding Plan. Subscribe at z.ai/subscribe to see usage."))
+        }
+
+        let other = Data(#"{"code":500,"msg":"internal error","success":false}"#.utf8)
+        XCTAssertThrowsError(try ZAIUsageMapper.mapQuota(other)) { error in
+            XCTAssertEqual(error as? ProviderError, .invalidResponse)
+        }
+    }
+
     func testUnknownEntriesDoNotHideKnownMeters() throws {
         let body = Data(
             #"{"data":{"limits":[{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":25}]}}"#.utf8

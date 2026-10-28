@@ -10,6 +10,10 @@ enum ZAIUsageMapper {
         guard let root = ProviderParse.jsonObject(body) else {
             throw ProviderError.invalidResponse
         }
+        if (root["success"] as? Bool) == false,
+           (root["msg"] as? String)?.localizedCaseInsensitiveContains("coding plan") == true {
+            throw ProviderError.unavailable("No active GLM Coding Plan. Subscribe at z.ai/subscribe to see usage.")
+        }
         let container: [String: Any]
         if let data = root["data"] {
             guard let data = data as? [String: Any] else { throw ProviderError.invalidResponse }
