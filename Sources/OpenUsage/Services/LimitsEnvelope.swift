@@ -14,7 +14,6 @@ enum LimitsEnvelope {
         var snapshots: [String: ProviderSnapshot]
         /// Only descriptors that declare at least one limit resource, by card id.
         var limitDescriptors: [String: [WidgetDescriptor]] = [:]
-        var errors: [String: String] = [:]
         var generatedAt = Date()
     }
 
@@ -28,16 +27,12 @@ enum LimitsEnvelope {
                 generatedAt: input.generatedAt
             )
         }
-        let errors = input.providerIDs.compactMap { providerID in
-            input.errors[providerID].map { WireError(providerID: providerID, message: $0) }
-        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let envelope = WireEnvelope(
             schema: schema,
             generatedAt: OpenUsageISO8601.string(from: input.generatedAt),
-            providers: providers,
-            errors: errors
+            providers: providers
         )
         return (try? encoder.encode(envelope))
             ?? Data(#"{"errors":[],"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
@@ -47,17 +42,8 @@ enum LimitsEnvelope {
         let schema: String
         let generatedAt: String
         let providers: [String: WireProvider]
-        let errors: [WireError]
-    }
-
-    private struct WireError: Encodable {
-        let providerID: String
-        let message: String
-
-        enum CodingKeys: String, CodingKey {
-            case providerID = "providerId"
-            case message
-        }
+        /// The command reads the last successful fetch, so there is never a failure to list.
+        let errors: [String] = []
     }
 
     private struct WireProvider: Encodable {

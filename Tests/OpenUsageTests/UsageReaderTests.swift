@@ -29,7 +29,7 @@ final class UsageReaderTests: XCTestCase {
         cache(weekly(codex, used: 20), in: defaults)
         cache(weekly(claude, used: 30), in: defaults)
 
-        let result = try UsageReader(userDefaults: defaults).read()
+        let result = try UsageReader.read(defaults)
         let providers = try providers(in: result)
 
         XCTAssertTrue(result.hasSnapshots)
@@ -49,12 +49,11 @@ final class UsageReaderTests: XCTestCase {
         for account in [first, second, claude] {
             cache(weekly(account, used: 10), in: defaults)
         }
-        let reader = UsageReader(userDefaults: defaults)
 
-        XCTAssertEqual(Set(try providers(in: reader.read(providerID: "codex")).keys), [first.cardID, second.cardID])
-        XCTAssertEqual(Set(try providers(in: reader.read(providerID: "Codex")).keys), [first.cardID, second.cardID])
-        XCTAssertEqual(Set(try providers(in: reader.read(providerID: second.cardID)).keys), [second.cardID])
-        XCTAssertEqual(Set(try providers(in: reader.read(providerID: "claude")).keys), [claude.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "codex")).keys), [first.cardID, second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "Codex")).keys), [first.cardID, second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: second.cardID)).keys), [second.cardID])
+        XCTAssertEqual(Set(try providers(in: UsageReader.read(defaults, providerID: "claude")).keys), [claude.cardID])
     }
 
     func testUnknownProviderThrowsEvenWhenNothingIsCached() {
@@ -62,24 +61,24 @@ final class UsageReaderTests: XCTestCase {
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
 
-        XCTAssertThrowsError(try UsageReader(userDefaults: defaults).read(providerID: "cursor")) { error in
+        XCTAssertThrowsError(try UsageReader.read(defaults, providerID: "cursor")) { error in
             guard case UsageReaderError.unknownProvider(let token) = error else {
                 return XCTFail("unexpected error \(error)")
             }
             XCTAssertEqual(token, "cursor")
         }
-        XCTAssertThrowsError(try UsageReader(userDefaults: defaults).read(providerID: "codex@00000000"))
+        XCTAssertThrowsError(try UsageReader.read(defaults, providerID: "codex@00000000"))
     }
 
     func testNothingFetchedYetPrintsTheEmptyEnvelope() throws {
         let defaults = isolatedDefaults()
-        let empty = try UsageReader(userDefaults: defaults).read()
+        let empty = try UsageReader.read(defaults)
         XCTAssertFalse(empty.hasSnapshots)
         XCTAssertTrue(try providers(in: empty).isEmpty)
 
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
-        let unfetched = try UsageReader(userDefaults: defaults).read(providerID: "codex")
+        let unfetched = try UsageReader.read(defaults, providerID: "codex")
         XCTAssertFalse(unfetched.hasSnapshots)
         XCTAssertTrue(try providers(in: unfetched).isEmpty)
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: unfetched.data) as? [String: Any])

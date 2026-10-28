@@ -152,19 +152,11 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(expiredProvider["stale"] as? Bool, true)
     }
 
-    func testCardWithoutSnapshotHasNoEntryAndFailedRefreshIsListedUnderErrors() throws {
-        var input = LimitsEnvelope.Input(providerIDs: ["codex@ab12cd34"], snapshots: [:], generatedAt: generatedAt)
+    func testCardWithoutSnapshotHasNoEntryAndErrorsStayEmpty() throws {
+        let input = LimitsEnvelope.Input(providerIDs: ["codex@ab12cd34"], snapshots: [:], generatedAt: generatedAt)
         let pending = try json(LimitsEnvelope.encode(input))
         XCTAssertTrue((pending["providers"] as? [String: Any])?.isEmpty == true)
         XCTAssertTrue((pending["errors"] as? [Any])?.isEmpty == true)
-
-        input.errors["codex@ab12cd34"] = "Not logged in"
-        let failed = try json(LimitsEnvelope.encode(input))
-        let errors = try XCTUnwrap(failed["errors"] as? [[String: Any]])
-        XCTAssertTrue((failed["providers"] as? [String: Any])?.isEmpty == true)
-        XCTAssertEqual(errors.count, 1)
-        XCTAssertEqual(errors.first?["providerId"] as? String, "codex@ab12cd34")
-        XCTAssertEqual(errors.first?["message"] as? String, "Not logged in")
     }
 
     func testProvidersPrintInTheRequestedOrderAndOnlyThoseRequested() throws {

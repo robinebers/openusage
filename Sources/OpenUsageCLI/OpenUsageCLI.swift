@@ -22,7 +22,7 @@ struct OpenUsageCLI {
             guard let defaults = UserDefaults(suiteName: app.bundleIdentifier) else {
                 fail("Could not open the OpenUsage settings domain.", code: 4)
             }
-            let result = try UsageReader(userDefaults: defaults).read(providerID: arguments.providerID)
+            let result = try UsageReader.read(defaults, providerID: arguments.providerID)
             FileHandle.standardOutput.write(result.data)
             FileHandle.standardOutput.write(Data("\n".utf8))
             if !result.hasSnapshots {
