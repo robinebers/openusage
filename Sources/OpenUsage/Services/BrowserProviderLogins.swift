@@ -175,6 +175,7 @@ struct AntigravityLogin: ProviderLogin {
     /// the client), and the refresh-token grant requires it, so committing it is an accepted trade-off.
     static let clientID = "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com"
     static let clientSecret = "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"
+    static let tokenURL = URL(string: "https://oauth2.googleapis.com/token")!
     /// Cloud Code (`loadCodeAssist`, `retrieveUserQuotaSummary`) is a Google Cloud API and takes
     /// `cloud-platform`; `userinfo.email` names the account. The Antigravity app also asks for
     /// `userinfo.profile`, `cclog`, and `experimentsandconfigs`, which the quota reads never use.
@@ -201,7 +202,7 @@ struct AntigravityLogin: ProviderLogin {
         do {
             let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
             let code = try authorizationCode(from: input, expectedState: pkce.verifier, requireState: true)
-            let response = try await LoginHTTP.postForm(URL(string: "https://oauth2.googleapis.com/token")!, fields: [
+            let response = try await LoginHTTP.postForm(Self.tokenURL, fields: [
                 "client_id": Self.clientID,
                 "client_secret": Self.clientSecret,
                 "code": code,

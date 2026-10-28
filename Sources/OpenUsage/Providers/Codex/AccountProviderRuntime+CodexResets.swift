@@ -31,7 +31,7 @@ extension AccountProviderRuntime {
         let cardID = account.cardID
         let tokens: OAuthTokens
         do {
-            tokens = try await codexTokens(try await loadCredential())
+            tokens = try await freshTokens(try await loadCredential(), grant: CodexLogin.refresh)
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: couldn't prepare the claim: \(error.localizedDescription)")
             return .failed(ResetClaimFailure(error))

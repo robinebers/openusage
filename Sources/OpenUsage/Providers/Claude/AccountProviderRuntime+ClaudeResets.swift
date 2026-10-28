@@ -83,7 +83,7 @@ extension AccountProviderRuntime {
         let tokens: OAuthTokens
         let organizationUUID: String
         do {
-            tokens = try await claudeTokens(try await loadCredential())
+            tokens = try await freshTokens(try await loadCredential(), grant: ClaudeLogin.refresh)
             organizationUUID = try await claudeOrganizationUUID(accessToken: tokens.accessToken)
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: couldn't prepare the claim: \(error.localizedDescription)")

@@ -15,15 +15,45 @@ enum CloudCodeAllHostsOutcome: Sendable {
     case unavailable
 }
 
-/// Result of a Google OAuth token refresh, split so a dead refresh token reads as expired auth while a
-/// 5xx/network failure reads as a transient outage.
-enum TokenRefreshOutcome: Sendable {
-    case refreshed(accessToken: String, expiresIn: Double)
-    case authFailed
-    case unavailable
+extension AntigravityLogin {
+    /// Exchange a Google refresh token for a fresh access token. A dead refresh token (4xx, e.g.
+    /// `invalid_grant`) reads as an expired sign-in; a transient failure (5xx / network / undecodable)
+    /// as "temporarily unavailable".
+    static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
+        let unavailable = ProviderError.unavailable(AntigravityUsageClient.unavailableMessage)
+        let form = [
+            "client_id=\(clientID.urlFormEncoded)",
+            "client_secret=\(clientSecret.urlFormEncoded)",
+            "refresh_token=\(refreshToken.urlFormEncoded)",
+            "grant_type=refresh_token"
+        ].joined(separator: "&")
+        let request = HTTPRequest(
+            method: "POST",
+            url: tokenURL,
+            headers: ["Content-Type": "application/x-www-form-urlencoded"],
+            body: Data(form.utf8),
+            timeout: 15
+        )
+        guard let response = try? await http.send(request) else { throw unavailable }
+        switch response.statusCode {
+        case 200..<300:
+            guard let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body),
+                  !token.accessToken.isEmpty
+            else {
+                throw unavailable // 2xx but undecodable / empty — treat as transient
+            }
+            return OAuthGrant(accessToken: token.accessToken, expiresAt: now.addingTimeInterval(token.expiresIn ?? 3600))
+        case 408, 429:
+            throw unavailable // request timeout / rate limited — transient, not a revoked token
+        case 400..<500:
+            throw ProviderError.signInExpired(.antigravity) // invalid_grant / invalid_client — refresh token revoked or expired
+        default:
+            throw unavailable // 5xx and anything else — transient
+        }
+    }
 }
 
-/// All network I/O for Antigravity: the Google Cloud Code endpoints and the Google OAuth token refresh.
+/// Antigravity's usage I/O: the Google Cloud Code endpoints.
 struct AntigravityUsageClient: Sendable {
     /// The card's message for an `.unavailable` outcome: every host was down or the refresh failed transiently.
     static let unavailableMessage = "Antigravity usage is temporarily unavailable. Try again shortly."
@@ -34,7 +64,6 @@ struct AntigravityUsageClient: Sendable {
     ]
     static let loadCodeAssistPath = "/v1internal:loadCodeAssist"
     static let quotaSummaryPath = "/v1internal:retrieveUserQuotaSummary"
-    static let googleOAuthURL = "https://oauth2.googleapis.com/token"
 
     var http: HTTPClient
 
@@ -120,51 +149,5 @@ struct AntigravityUsageClient: Sendable {
             body: payload,
             timeout: 15
         )
-    }
-
-    /// Exchange a Google refresh token for a fresh access token. Distinguishes a dead refresh token
-    /// (4xx, e.g. `invalid_grant`) from a transient failure (5xx / network / undecodable) so the caller
-    /// can report "sign-in expired" vs "temporarily unavailable" correctly.
-    func refreshGoogleToken(_ refreshToken: String) async -> TokenRefreshOutcome {
-        guard let url = URL(string: Self.googleOAuthURL) else { return .unavailable }
-        let form = [
-            "client_id=\(AntigravityLogin.clientID.urlFormEncoded)",
-            "client_secret=\(AntigravityLogin.clientSecret.urlFormEncoded)",
-            "refresh_token=\(refreshToken.urlFormEncoded)",
-            "grant_type=refresh_token"
-        ].joined(separator: "&")
-        let request = HTTPRequest(
-            method: "POST",
-            url: url,
-            headers: ["Content-Type": "application/x-www-form-urlencoded"],
-            body: Data(form.utf8),
-            timeout: 15
-        )
-        guard let response = try? await http.send(request) else { return .unavailable }
-        switch response.statusCode {
-        case 200..<300:
-            guard let decoded = try? JSONDecoder().decode(GoogleTokenResponse.self, from: response.body),
-                  let access = decoded.accessToken?.nilIfEmpty
-            else {
-                return .unavailable // 2xx but undecodable / empty — treat as transient
-            }
-            return .refreshed(accessToken: access, expiresIn: decoded.expiresIn ?? 3600)
-        case 408, 429:
-            return .unavailable // request timeout / rate limited — transient, not a revoked token
-        case 400..<500:
-            return .authFailed // invalid_grant / invalid_client — refresh token revoked or expired
-        default:
-            return .unavailable // 5xx and anything else — transient
-        }
-    }
-}
-
-struct GoogleTokenResponse: Decodable {
-    let accessToken: String?
-    let expiresIn: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case expiresIn = "expires_in"
     }
 }

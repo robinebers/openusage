@@ -9,14 +9,14 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
             body: Data(#"{"access_token":"new-token"}"#.utf8)
         ))
 
-        _ = try await CodexUsageClient(http: http).refreshToken("refresh token&=+/?%")
+        _ = try await CodexLogin.refresh("refresh token&=+/?%", http: http, now: Date())
 
         let request = try XCTUnwrap(http.requests.first)
-        XCTAssertEqual(request.url, CodexUsageClient.refreshURL)
+        XCTAssertEqual(request.url, CodexLogin.tokenURL)
         XCTAssertEqual(request.method, "POST")
         XCTAssertEqual(
             String(data: try XCTUnwrap(request.body), encoding: .utf8),
-            "grant_type=refresh_token&client_id=\(CodexUsageClient.clientID)" +
+            "grant_type=refresh_token&client_id=\(CodexLogin.clientID)" +
                 "&refresh_token=refresh%20token%26%3D%2B%2F%3F%25"
         )
     }
@@ -29,7 +29,7 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         ))
 
         do {
-            _ = try await CodexUsageClient(http: http).refreshToken("refresh")
+            _ = try await CodexLogin.refresh("refresh", http: http, now: Date())
             XCTFail("expected refreshToken to throw")
         } catch let error as ProviderError {
             XCTAssertEqual(error, .signInExpired(.codex))

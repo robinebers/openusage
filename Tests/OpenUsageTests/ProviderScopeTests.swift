@@ -9,7 +9,7 @@ final class ProviderScopeTests: XCTestCase {
     func testClaudeRefreshAsksForTheSignInScopes() async throws {
         let http = Self.tokenEndpoint()
 
-        _ = try await ClaudeUsageClient(httpClient: http).refreshToken("refresh")
+        _ = try await ClaudeLogin.refresh("refresh", http: http, now: Date())
 
         let request = try XCTUnwrap(http.requests.first)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? [String: Any])
@@ -20,7 +20,7 @@ final class ProviderScopeTests: XCTestCase {
     func testAntigravityRefreshSendsNoScope() async throws {
         let http = Self.tokenEndpoint()
 
-        _ = await AntigravityUsageClient(http: http).refreshGoogleToken("refresh")
+        _ = try await AntigravityLogin.refresh("refresh", http: http, now: Date())
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
     }
@@ -28,7 +28,7 @@ final class ProviderScopeTests: XCTestCase {
     func testCodexRefreshSendsNoScope() async throws {
         let http = Self.tokenEndpoint()
 
-        _ = try await CodexUsageClient(http: http).refreshToken("refresh")
+        _ = try await CodexLogin.refresh("refresh", http: http, now: Date())
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
     }
@@ -36,7 +36,7 @@ final class ProviderScopeTests: XCTestCase {
     func testGrokRefreshSendsNoScope() async throws {
         let http = Self.tokenEndpoint()
 
-        _ = try await GrokUsageClient(httpClient: http).refreshToken("refresh", clientID: GrokLogin.clientID)
+        _ = try await GrokLogin.refresh("refresh", http: http, now: Date())
 
         XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
     }

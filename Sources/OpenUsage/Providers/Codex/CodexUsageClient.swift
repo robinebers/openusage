@@ -1,33 +1,15 @@
 import Foundation
 
-struct CodexRefreshResponse: Sendable, Equatable {
-    var accessToken: String
-    var refreshToken: String?
-    var idToken: String?
-}
-
-struct CodexUsageClient: Sendable {
-    static let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
-    static let refreshURL = URL(string: "https://auth.openai.com/oauth/token")!
-    static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
-    static let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
-    static let consumeResetCreditURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume")!
-
-    var http: any HTTPClient
-
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
-    func refreshToken(_ refreshToken: String) async throws -> CodexRefreshResponse {
+extension CodexLogin {
+    static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
         let body =
             "grant_type=refresh_token" +
-            "&client_id=\(Self.clientID.urlFormEncoded)" +
+            "&client_id=\(clientID.urlFormEncoded)" +
             "&refresh_token=\(refreshToken.urlFormEncoded)"
 
         let response = try await http.send(HTTPRequest(
             method: "POST",
-            url: Self.refreshURL,
+            url: tokenURL,
             headers: ["Content-Type": "application/x-www-form-urlencoded"],
             body: Data(body.utf8),
             timeout: 15
@@ -65,11 +47,23 @@ struct CodexUsageClient: Sendable {
             throw ProviderError.signInExpired(.codex)
         }
 
-        return CodexRefreshResponse(
+        return OAuthGrant(
             accessToken: accessToken,
             refreshToken: body["refresh_token"] as? String,
-            idToken: body["id_token"] as? String
+            expiresAt: ProviderParse.jwtExpiry(accessToken)
         )
+    }
+}
+
+struct CodexUsageClient: Sendable {
+    static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+    static let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
+    static let consumeResetCreditURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume")!
+
+    var http: any HTTPClient
+
+    init(http: any HTTPClient = URLSessionHTTPClient()) {
+        self.http = http
     }
 
     func fetchUsage(accessToken: String, accountID: String?) async throws -> HTTPResponse {

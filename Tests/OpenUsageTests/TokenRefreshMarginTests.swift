@@ -25,14 +25,14 @@ final class TokenRefreshMarginTests: XCTestCase {
 
     func testCodexTokenExpiringWithinTheMarginIsRefreshedBeforeTheUsageRead() async throws {
         let http = try await refreshCodex(expiringIn: 60)
-        XCTAssertEqual(http.requests.first?.url, CodexUsageClient.refreshURL)
+        XCTAssertEqual(http.requests.first?.url, CodexLogin.tokenURL)
         let usage = try XCTUnwrap(http.requests.first { $0.url == CodexUsageClient.usageURL })
         XCTAssertEqual(usage.headers["Authorization"], "Bearer new-access")
     }
 
     func testCodexTokenWithTimeToSpareIsNotRefreshed() async throws {
         let http = try await refreshCodex(expiringIn: 10 * 60)
-        XCTAssertFalse(http.requests.contains { $0.url == CodexUsageClient.refreshURL })
+        XCTAssertFalse(http.requests.contains { $0.url == CodexLogin.tokenURL })
     }
 
     // MARK: - Helpers
@@ -65,7 +65,7 @@ final class TokenRefreshMarginTests: XCTestCase {
             accessToken: "old-access", refreshToken: "refresh", expiresAt: now.addingTimeInterval(seconds)
         )), for: account.id)
         let http = RoutingHTTPClient { request in
-            if request.url == CodexUsageClient.refreshURL {
+            if request.url == CodexLogin.tokenURL {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new-access","refresh_token":"next"}"#.utf8))
             }
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"rate_limit":{}}"#.utf8))

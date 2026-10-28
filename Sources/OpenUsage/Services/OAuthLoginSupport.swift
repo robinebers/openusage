@@ -70,6 +70,17 @@ struct OAuthTokenResponse: Decodable {
         case idToken = "id_token"
     }
     var expiry: Date? { expiresIn.map { Date().addingTimeInterval($0) } }
+
+    func grant(now: Date) -> OAuthGrant {
+        OAuthGrant(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresIn.map { now.addingTimeInterval($0) })
+    }
+}
+
+/// What a token endpoint answers to a refresh grant. A `nil` refresh token keeps the stored one.
+struct OAuthGrant: Sendable {
+    var accessToken: String
+    var refreshToken: String?
+    var expiresAt: Date?
 }
 
 extension String {

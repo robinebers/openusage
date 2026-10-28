@@ -55,6 +55,7 @@ struct CopilotLogin: ProviderLogin {
 
 struct GrokLogin: ProviderLogin {
     static let clientID = "b1a00492-073a-47ea-816f-4c329264a828"
+    static let tokenURL = URL(string: "https://auth.x.ai/oauth2/token")!
     static let scopes = "openid profile email offline_access grok-cli:access api:access"
     var http: any HTTPClient = URLSessionHTTPClient()
 
@@ -72,7 +73,7 @@ struct GrokLogin: ProviderLogin {
             interval: device.interval ?? 5,
             expiresIn: TimeInterval(device.expiresIn)
         ) { [http] in
-            let response = try await LoginHTTP.postForm(URL(string: "https://auth.x.ai/oauth2/token")!, fields: [
+            let response = try await LoginHTTP.postForm(Self.tokenURL, fields: [
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 "client_id": Self.clientID,
                 "device_code": device.deviceCode

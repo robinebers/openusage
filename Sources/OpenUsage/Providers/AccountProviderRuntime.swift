@@ -120,24 +120,24 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    /// The account's Claude tokens, refreshed and saved back to the vault first when they expire within
-    /// `OAuthTokens.refreshMargin`.
-    func claudeTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
+    /// The account's OAuth tokens, refreshed through the login's own `grant` and saved back to the vault
+    /// first when they expire within `OAuthTokens.refreshMargin`.
+    func freshTokens(
+        _ credential: AccountCredential,
+        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+    ) async throws -> OAuthTokens {
         guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
-        if tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken {
-            let response = try await ClaudeUsageClient(httpClient: http).refreshToken(refreshToken)
-            guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
-            let refreshed = try JSONDecoder().decode(ClaudeRefreshResponse.self, from: response.body)
-            tokens.accessToken = refreshed.accessToken
-            if let refresh = refreshed.refreshToken { tokens.refreshToken = refresh }
-            tokens.expiresAt = refreshed.expiresIn.map { now().addingTimeInterval($0) }
-            try await replaceCredential(.oauth(tokens))
-        }
+        guard tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken else { return tokens }
+        let granted = try await grant(refreshToken, http, now())
+        tokens.accessToken = granted.accessToken
+        if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
+        tokens.expiresAt = granted.expiresAt
+        try await replaceCredential(.oauth(tokens))
         return tokens
     }
 
     private func refreshClaude(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
-        let tokens = try await claudeTokens(credential)
+        let tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
         let response = try await ClaudeUsageClient(httpClient: http).fetchUsage(accessToken: tokens.accessToken)
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         if let resets = await claudeResetGrantsLine(accessToken: tokens.accessToken) {
@@ -166,22 +166,8 @@ final class AccountProviderRuntime: ProviderRuntime {
         return planRead.value
     }
 
-    /// The account's Codex tokens, refreshed and saved back to the vault first when they expire within
-    /// `OAuthTokens.refreshMargin`.
-    func codexTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
-        guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
-        if tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken {
-            let refreshed = try await CodexUsageClient(http: http).refreshToken(refreshToken)
-            tokens.accessToken = refreshed.accessToken
-            if let refresh = refreshed.refreshToken { tokens.refreshToken = refresh }
-            tokens.expiresAt = ProviderParse.jwtExpiry(refreshed.accessToken)
-            try await replaceCredential(.oauth(tokens))
-        }
-        return tokens
-    }
-
     private func refreshCodex(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
-        let tokens = try await codexTokens(credential)
+        let tokens = try await freshTokens(credential, grant: CodexLogin.refresh)
         let accountID = tokens.extras["chatgpt_account_id"]
         let response = try await CodexUsageClient(http: http).fetchUsage(accessToken: tokens.accessToken, accountID: accountID)
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
@@ -198,18 +184,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
-        guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
+        let tokens = try await freshTokens(credential, grant: GrokLogin.refresh)
         let client = GrokUsageClient(httpClient: http)
-        if tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken {
-            let response = try await client.refreshToken(refreshToken, clientID: GrokLogin.clientID)
-            guard (200..<300).contains(response.statusCode), let refreshed = client.decodeRefreshResponse(response) else {
-                throw ProviderError.failed(response)
-            }
-            tokens.accessToken = refreshed.accessToken
-            if let refresh = refreshed.refreshToken { tokens.refreshToken = refresh }
-            tokens.expiresAt = refreshed.expiresIn.map { now().addingTimeInterval($0) }
-            try await replaceCredential(.oauth(tokens))
-        }
         let usage = try await client.fetchCreditsConfig(accessToken: tokens.accessToken)
         let mapped = try GrokUsageMapper.mapCreditsConfig(usage)
         if planRead.isDue(at: now()) {
@@ -239,18 +215,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshAntigravity(_ credential: AccountCredential) async throws -> (String?, [MetricLine]) {
-        guard case .oauth(var tokens) = credential else { throw LoginError.invalidResponse }
+        let tokens = try await freshTokens(credential, grant: AntigravityLogin.refresh)
         let client = AntigravityUsageClient(http: http)
-        if tokens.needsRefresh(at: now()), let refreshToken = tokens.refreshToken {
-            switch await client.refreshGoogleToken(refreshToken) {
-            case .refreshed(let accessToken, let expiresIn):
-                tokens.accessToken = accessToken
-                tokens.expiresAt = now().addingTimeInterval(expiresIn)
-                try await replaceCredential(.oauth(tokens))
-            case .authFailed: throw ProviderError.signInExpired(.antigravity)
-            case .unavailable: throw ProviderError.unavailable(AntigravityUsageClient.unavailableMessage)
-            }
-        }
         if planBodyRead.isDue(at: now()) {
             let fresh: Data? = if case .ok(let data) = await client.loadCodeAssist(token: tokens.accessToken) { data } else { nil }
             planBodyRead.record(fresh, at: now())

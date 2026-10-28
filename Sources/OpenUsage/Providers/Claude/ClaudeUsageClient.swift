@@ -1,14 +1,22 @@
 import Foundation
 
-struct ClaudeRefreshResponse: Decodable, Hashable, Sendable {
-    var accessToken: String
-    var refreshToken: String?
-    var expiresIn: Double?
-
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case expiresIn = "expires_in"
+extension ClaudeLogin {
+    static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
+        let body: [String: Any] = [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": clientID,
+            "scope": scopes
+        ]
+        let response = try await http.send(HTTPRequest(
+            method: "POST",
+            url: tokenURL,
+            headers: ["Content-Type": "application/json"],
+            body: try JSONSerialization.data(withJSONObject: body),
+            timeout: 15
+        ))
+        guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
+        return try JSONDecoder().decode(OAuthTokenResponse.self, from: response.body).grant(now: now)
     }
 }
 
@@ -54,25 +62,6 @@ struct ClaudeUsageClient: Sendable {
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
         self.httpClient = httpClient
-    }
-
-    func refreshToken(_ refreshToken: String) async throws -> HTTPResponse {
-        let body: [String: Any] = [
-            "grant_type": "refresh_token",
-            "refresh_token": refreshToken,
-            "client_id": ClaudeLogin.clientID,
-            "scope": ClaudeLogin.scopes
-        ]
-        let bodyData = try JSONSerialization.data(withJSONObject: body)
-        return try await httpClient.send(
-            HTTPRequest(
-                method: "POST",
-                url: ClaudeLogin.tokenURL,
-                headers: ["Content-Type": "application/json"],
-                body: bodyData,
-                timeout: 15
-            )
-        )
     }
 
     /// `GET /api/oauth/usage`, the plain read Claude Code makes for its own usage display.

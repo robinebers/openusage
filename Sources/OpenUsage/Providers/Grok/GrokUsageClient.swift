@@ -1,22 +1,28 @@
 import Foundation
 
-struct GrokRefreshResponse: Decodable, Hashable, Sendable {
-    var accessToken: String
-    var refreshToken: String?
-    var idToken: String?
-    var expiresIn: Double?
+extension GrokLogin {
+    static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
+        let body =
+            "grant_type=refresh_token" +
+            "&client_id=\(clientID.urlFormEncoded)" +
+            "&refresh_token=\(refreshToken.urlFormEncoded)"
 
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case refreshToken = "refresh_token"
-        case idToken = "id_token"
-        case expiresIn = "expires_in"
+        let response = try await http.send(HTTPRequest(
+            method: "POST",
+            url: tokenURL,
+            headers: ["Content-Type": "application/x-www-form-urlencoded"],
+            body: Data(body.utf8),
+            timeout: 15
+        ))
+        guard (200..<300).contains(response.statusCode),
+              let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body)
+        else { throw ProviderError.failed(response) }
+        return token.grant(now: now)
     }
 }
 
 struct GrokUsageClient: Sendable {
     static let settingsURL = URL(string: "https://cli-chat-proxy.grok.com/v1/settings")!
-    static let refreshURL = URL(string: "https://auth.x.ai/oauth2/token")!
     static let tokenAuthHeader = "xai-grok-cli"
 
     /// The weekly shared-pool data: the billing endpoint with `?format=credits`, which returns
@@ -27,21 +33,6 @@ struct GrokUsageClient: Sendable {
 
     init(httpClient: HTTPClient = URLSessionHTTPClient()) {
         self.httpClient = httpClient
-    }
-
-    func refreshToken(_ refreshToken: String, clientID: String) async throws -> HTTPResponse {
-        let body =
-            "grant_type=refresh_token" +
-            "&client_id=\(clientID.urlFormEncoded)" +
-            "&refresh_token=\(refreshToken.urlFormEncoded)"
-
-        return try await httpClient.send(HTTPRequest(
-            method: "POST",
-            url: Self.refreshURL,
-            headers: ["Content-Type": "application/x-www-form-urlencoded"],
-            body: Data(body.utf8),
-            timeout: 15
-        ))
     }
 
     func fetchCreditsConfig(accessToken: String) async throws -> HTTPResponse {
@@ -60,10 +51,6 @@ struct GrokUsageClient: Sendable {
             headers: authHeaders(accessToken: accessToken),
             timeout: 10
         ))
-    }
-
-    func decodeRefreshResponse(_ response: HTTPResponse) -> GrokRefreshResponse? {
-        try? JSONDecoder().decode(GrokRefreshResponse.self, from: response.body)
     }
 
     private func authHeaders(accessToken: String) -> [String: String] {
