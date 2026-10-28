@@ -1,7 +1,8 @@
 import XCTest
 @testable import OpenUsage
 
-/// End-to-end coverage of `WidgetDataStore.evaluateNotifications`: it resolves each visible
+/// End-to-end coverage of the loop's notification step (`QuotaNotificationEvaluator.evaluate` over the
+/// store's values, as `AppContainer` runs it): it resolves each visible
 /// bounded metric, runs the pure milestone logic, gates on the per-trigger settings, dedups per metric
 /// per window, and posts one notification per fired milestone. A recording sink stands in for
 /// `AppNotifications`; pace worsens by raising the metric's `used` between refreshes (real-world
@@ -19,6 +20,32 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     private static let provider = Provider(id: "test", displayName: "Test", icon: "cursor")
+
+    /// The loop's notification step over the store the test built.
+    private var notify: @MainActor (Date) async -> Void = { _ in }
+
+    private func notifier(
+        _ store: WidgetDataStore,
+        descriptors: [WidgetDescriptor],
+        providers: [Provider],
+        settings: NotificationSettingsStore,
+        recorder: Recorder,
+        delivered: @escaping @MainActor () -> Bool = { true }
+    ) -> @MainActor (Date) async -> Void {
+        let evaluator = QuotaNotificationEvaluator { idPrefix, title, subtitle, body in
+            recorder.posts.append((idPrefix, title, subtitle, body))
+            return delivered()
+        }
+        return { now in
+            await evaluator.evaluate(
+                descriptors,
+                data: store.data(for:),
+                toggles: settings.toggles,
+                now: now,
+                providerName: { id in providers.first { $0.id == id }?.fullName ?? id }
+            )
+        }
+    }
 
     private static func descriptor() -> WidgetDescriptor {
         WidgetDescriptor(
@@ -47,15 +74,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let descriptor = Self.descriptor()
         let runtime = StubRuntime(provider: Self.provider, descriptors: [descriptor], snapshot: snapshot(used: used))
         let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            [runtime],
-            defaults: defaults,
-            orderedDescriptors: { [descriptor] },
-            notificationSettings: { settings },
-            postNotification: { idPrefix, title, subtitle, body in
-                recorder.posts.append((idPrefix, title, subtitle, body))
-                return delivered()
-            }
+        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
+        notify = notifier(
+            store, descriptors: [descriptor], providers: [Self.provider], settings: settings, recorder: recorder,
+            delivered: delivered
         )
         return (store, runtime, descriptor)
     }
@@ -78,7 +100,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             runtime.answer = { _ in next }
         }
         await store.refreshAll(force: true)
-        await store.evaluateNotifications(now: base)
+        await notify(base)
     }
 
     /// Two accounts of one provider name themselves in the subtitle ("Claude · Personal Session",
@@ -110,18 +132,10 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             StubRuntime(provider: $0, descriptors: [$1], snapshot: snapshot($0, used: 80))
         }
         let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            runtimes,
-            defaults: defaults,
-            orderedDescriptors: { descriptors },
-            notificationSettings: { settings },
-            postNotification: { idPrefix, title, subtitle, body in
-                recorder.posts.append((idPrefix, title, subtitle, body))
-                return true
-            }
-        )
+        let store = WidgetDataStore.forTesting(runtimes, defaults: defaults)
+        notify = notifier(store, descriptors: descriptors, providers: providers, settings: settings, recorder: recorder)
         await store.refreshAll(force: true)
-        await store.evaluateNotifications(now: base)
+        await notify(base)
         XCTAssertTrue(recorder.posts.isEmpty, "healthy should not fire")
 
         for (runtime, provider) in zip(runtimes, providers) {
@@ -129,7 +143,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
             runtime.answer = { _ in next }
         }
         await store.refreshAll(force: true)
-        await store.evaluateNotifications(now: base)
+        await notify(base)
 
         XCTAssertEqual(recorder.posts.map(\.2), ["Claude · Personal Session", "Claude · Work Session"])
     }
@@ -150,7 +164,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertEqual(recorder.posts.first?.1, "Cutting It Close")
 
         // Staying orange doesn't re-fire.
-        await store.evaluateNotifications(now: base)
+        await notify(base)
         XCTAssertEqual(recorder.posts.count, 1)
     }
 
@@ -211,9 +225,9 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testLowRemainingFiresInUsedDisplayMode() async {
-        // Regression: the under-10%-remaining check must use remaining share, not the display-mode-
+        // The under-10%-remaining check must use remaining share, not the display-mode-
         // dependent `fraction`. When the meter shows "used", `data.fraction` is `used/limit` (0.95
-        // here), so the old `< 0.10` check would NOT fire "Almost Out" despite only 5% remaining.
+        // here), so a `< 0.10` check on it would not fire "Almost Out" despite only 5% remaining.
         // `remainingFraction` fires it regardless of the used/remaining display choice. Prime from
         // healthy first so the under-10% edge is a real transition, not a cold start.
         let settings = NotificationSettingsStore(defaults: isolatedDefaults())
@@ -230,7 +244,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     }
 
     func testFailedDeliveryRetriesNextTick() async {
-        // Regression: if delivery fails (not authorized, or scheduling errored), the milestone must not
+        // If delivery fails (not authorized, or scheduling errored), the milestone must not
         // be marked fired — the edge stays un-consumed so it re-fires on the next evaluation instead of
         // being lost for the rest of the reset window.
         let settings = NotificationSettingsStore(defaults: isolatedDefaults())

@@ -84,7 +84,7 @@ struct PaceNotificationToggles: Sendable {
 }
 
 /// Pure milestone logic — no SwiftUI, no UserNotifications — so the firing rules stay unit-testable.
-/// `WidgetDataStore.evaluateNotifications` feeds it the current `MeterState` + `fraction` + `resetsAt`
+/// `QuotaNotificationEvaluator.evaluate` feeds it the current `MeterState` + `fraction` + `resetsAt`
 /// for each metric and posts a notification for every returned milestone.
 enum PaceNotificationLogic {
     /// Result of one evaluation: the milestones to fire now, and the state to persist for next time.

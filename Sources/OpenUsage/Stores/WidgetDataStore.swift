@@ -8,21 +8,10 @@ final class WidgetDataStore {
     @ObservationIgnored private var providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
     private let defaults: UserDefaults
-    /// The user's widget order that drives the menu-bar value. Injected
-    /// so the store reads `LayoutStore.visibleDescriptors` without owning it; defaults to registry order.
-    private let layoutOrderedDescriptors: (@MainActor () -> [WidgetDescriptor])?
     /// Clock for the failure backoff and staleness. Injected so tests can advance time deterministically.
     private let now: () -> Date
     /// See `defaultProviderRefreshTimeout`. Injected so tests can drive the deadline in milliseconds.
     private let providerRefreshTimeout: TimeInterval
-    /// Quota-notification preferences (three independent triggers). Injected; `nil` disables
-    /// notifications entirely (tests and previews that don't wire it).
-    private let notificationSettings: (@MainActor () -> NotificationSettingsStore)?
-    /// Where a fired milestone is delivered: `(idPrefix, title, subtitle, body) -> Bool`. The Bool is
-    /// whether it was actually delivered (authorized + scheduled); on false the caller leaves the
-    /// milestone un-marked so it retries next pass. Injected so tests can record posts without a live
-    /// notification center; defaults to the shared `AppNotifications`.
-    private let postNotification: @MainActor (String, String, String, String) async -> Bool
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -56,10 +45,6 @@ final class WidgetDataStore {
     /// the account's clock glyph names the time a provider-set wait ends.
     private(set) var backoffs: [String: RefreshBackoff] = [:]
 
-    /// Owns the quota pace-notification subsystem (dedup state, fire/deliver decision, trace). This store
-    /// gathers each pass's visible bounded metrics and delegates.
-    @ObservationIgnored private let notificationEvaluator = QuotaNotificationEvaluator()
-
     /// Global meter style: whether every bounded row (and the menu-bar value) renders as "used" or
     /// "left/remaining". Persisted so the choice survives relaunch; defaults to `.remaining`.
     var meterStyle: WidgetDisplayMode {
@@ -83,25 +68,16 @@ final class WidgetDataStore {
         providers: [ProviderRuntime],
         cache: ProviderSnapshotCache = ProviderSnapshotCache(),
         defaults: UserDefaults = .standard,
-        orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
         now: @escaping () -> Date = Date.init,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
-        notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
     ) {
         precondition(providerRefreshTimeout > 0)
         self.registry = registry
         self.providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         self.cache = cache
         self.defaults = defaults
-        self.layoutOrderedDescriptors = orderedDescriptors
         self.now = now
         self.providerRefreshTimeout = providerRefreshTimeout
-        self.notificationSettings = notificationSettings
-        self.postNotification = postNotification
-            ?? { idPrefix, title, subtitle, body in
-                await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
-            }
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         // Stale-while-revalidate: load whatever was cached (expired included) so the menu bar and
@@ -178,42 +154,6 @@ final class WidgetDataStore {
         return outcomes
     }
 
-    /// Evaluate every visible metric for a quota pace milestone and post a notification for any
-    /// that just crossed one. Driven from the periodic loop *after* `refreshAll`, so it catches pace
-    /// worsening from time passing (not only from a fresh fetch). Deduped per metric per reset window by
-    /// the evaluator's per-key state. No-data metrics never fire; bounded level-only metrics can fire
-    /// Almost Out, but not pace-based milestones. A no-op when notifications are unconfigured
-    /// (tests/previews) or all triggers are off.
-    ///
-    /// State for metrics not visited this pass (an account the user removed, or a metric hidden from
-    /// the layout) is pruned, so adding it back starts fresh rather than carrying a stale "already
-    /// fired" flag.
-    func evaluateNotifications(now: Date = Date()) async {
-        guard let settingsProvider = notificationSettings else { return }
-        let toggles = settingsProvider().toggles
-        // Gather this pass's enabled, bounded, visible metrics — unbounded rows and charts have no pace
-        // story (their meterState never paces), so they're skipped here rather than occupying state.
-        // Order is the layout order; the evaluator prunes state for anything not passed this pass.
-        // The pass decides from this snapshot, taken before the first delivery `await`, so a mid-pass
-        // refresh can't change later metrics' inputs within one pass.
-        let metrics = (layoutOrderedDescriptors?() ?? registry.descriptors)
-            .compactMap { descriptor -> QuotaNotificationEvaluator.Metric? in
-                let data = data(for: descriptor)
-                guard data.isBounded else { return nil }
-                return QuotaNotificationEvaluator.Metric(
-                    key: "\(descriptor.providerID).\(descriptor.id)",
-                    providerID: descriptor.providerID,
-                    data: data
-                )
-            }
-        await notificationEvaluator.evaluate(
-            metrics: metrics,
-            toggles: toggles,
-            now: now,
-            providerName: { [providersByID] id in providersByID[id]?.provider.fullName ?? id },
-            post: postNotification
-        )
-    }
 
     /// What a single provider's refresh actually did this pass, so `refreshAll` can summarize the batch
     /// from real outcomes rather than cumulative error state. `.backedOff` is a probe deliberately skipped

@@ -149,21 +149,15 @@ extension WidgetDataStore {
         cache: ProviderSnapshotCache? = nil,
         defaults: UserDefaults,
         now: @escaping () -> Date = Date.init,
-        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
-        orderedDescriptors: (@MainActor () -> [WidgetDescriptor])? = nil,
-        notificationSettings: (@MainActor () -> NotificationSettingsStore)? = nil,
-        postNotification: (@MainActor (String, String, String, String) async -> Bool)? = nil
+        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout
     ) -> WidgetDataStore {
         WidgetDataStore(
             registry: registry ?? .from(runtimes),
             providers: runtimes,
             cache: cache ?? ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
             defaults: defaults,
-            orderedDescriptors: orderedDescriptors,
             now: now,
-            providerRefreshTimeout: providerRefreshTimeout,
-            notificationSettings: notificationSettings,
-            postNotification: postNotification
+            providerRefreshTimeout: providerRefreshTimeout
         )
     }
 }

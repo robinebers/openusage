@@ -60,7 +60,7 @@ and their order; `WidgetDataStore` turns snapshots into `WidgetData` for the vie
 
 ## Refresh loop
 
-`AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `evaluateNotifications`, then
+`AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `QuotaNotificationEvaluator.evaluate` over the shown metrics, then
 `TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes), with
 `WidgetDataStore.refreshHourlyReads` halfway between passes for the reads a provider must not get in
 the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Every cadence

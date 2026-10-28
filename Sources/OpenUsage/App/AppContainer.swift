@@ -20,6 +20,7 @@ final class AppContainer {
 
     @ObservationIgnored private let http: any HTTPClient
     @ObservationIgnored private let claudeSessions: ClaudeSessions
+    @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
     /// `telemetry` and `telemetryStore` have no defaults on purpose: the PostHog sink starts the
     /// process-global SDK and the production store writes the bundle's telemetry suite, so only the app
@@ -46,9 +47,7 @@ final class AppContainer {
             registry: registry,
             providers: providers,
             cache: ProviderSnapshotCache(userDefaults: defaults),
-            defaults: defaults,
-            orderedDescriptors: { [layout] in layout.visibleDescriptors },
-            notificationSettings: { notificationSettings }
+            defaults: defaults
         )
         self.providers = providers
         self.notificationSettings = notificationSettings
@@ -98,7 +97,13 @@ final class AppContainer {
         refreshTask = Task {
             while !Task.isCancelled {
                 await dataStore.refreshAll()
-                await dataStore.evaluateNotifications()
+                await quotaNotifications.evaluate(
+                    layout.visibleDescriptors,
+                    data: dataStore.data(for:),
+                    toggles: notificationSettings.toggles,
+                    now: Date(),
+                    providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
+                )
                 // Day-rollover beat: emits `app_daily_active` once per local day and flushes prior-day
                 // provider rollups while optional analytics are on.
                 telemetry.tick()

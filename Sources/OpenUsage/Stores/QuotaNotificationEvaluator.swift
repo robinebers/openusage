@@ -1,39 +1,42 @@
 import Foundation
 
 /// Owns the quota pace-notification subsystem: the per-metric dedup state and the fire/deliver/commit
-/// decision. Split out of `WidgetDataStore` (which orchestrates refresh + resolves
-/// `MetricLine`s) so the notification concern is self-contained. The store gathers each pass's enabled,
-/// bounded, visible metrics and calls `evaluate`; delivery + the provider display name come in as
-/// closures so this type stays independent of the store's providers.
+/// decision. `AppContainer`'s loop calls `evaluate` after each pass with the shown metrics in layout
+/// order and the data store's values for them.
 ///
 /// Deduped per metric per reset window. No-data metrics never fire; bounded level-only metrics can fire
 /// Almost Out, but not pace-based milestones. State for metrics not passed this pass is pruned, so
 /// re-enabling/re-adding a metric starts fresh rather than carrying a stale "already fired" flag.
 @MainActor
 final class QuotaNotificationEvaluator {
-    /// One enabled, bounded, visible metric for this pass, already resolved by the store.
-    struct Metric {
-        let key: String
-        let providerID: String
-        let data: WidgetData
+    private var notificationState: [String: NotificationState] = [:]
+    /// Delivers one notification (id-prefix, title, subtitle, body) and says whether it was delivered.
+    private let post: @MainActor (String, String, String, String) async -> Bool
+
+    init(
+        post: @escaping @MainActor (String, String, String, String) async -> Bool = { idPrefix, title, subtitle, body in
+            await AppNotifications.shared.post(idPrefix: idPrefix, title: title, subtitle: subtitle, body: body)
+        }
+    ) {
+        self.post = post
     }
 
-    private var notificationState: [String: NotificationState] = [:]
-
-    /// Evaluate every metric for a quota pace milestone and deliver a notification for any that just
-    /// crossed one, via `post` (id-prefix, title, subtitle, body → delivered?). `providerName` maps a
-    /// provider id to its display name for the subtitle.
+    /// Evaluate every shown metric for a quota pace milestone and deliver a notification for any that
+    /// just crossed one. Unbounded rows and charts have no pace story, so they're skipped. The pass
+    /// decides from the values `data` gives before the first delivery `await`, so a refresh landing
+    /// mid-pass can't change a later metric's inputs. `providerName` maps a provider id to its display
+    /// name for the subtitle.
     func evaluate(
-        metrics: [Metric],
+        _ descriptors: [WidgetDescriptor],
+        data: (WidgetDescriptor) -> WidgetData,
         toggles: PaceNotificationToggles,
         now: Date,
-        providerName: @MainActor (String) -> String,
-        post: @MainActor (String, String, String, String) async -> Bool
+        providerName: @MainActor (String) -> String
     ) async {
+        let metrics = descriptors.map { ($0, data($0)) }.filter { $0.1.isBounded }
         var nextState: [String: NotificationState] = [:]
-        for metric in metrics {
-            let key = metric.key
-            let data = metric.data
+        for (descriptor, data) in metrics {
+            let key = "\(descriptor.providerID).\(descriptor.id)"
             let state = data.meterState(now: now)
             let previous = notificationState[key] ?? NotificationState()
             let result = PaceNotificationLogic.transitions(
@@ -52,8 +55,8 @@ final class QuotaNotificationEvaluator {
             var paceDelivered = false
             var underDelivered = false
             for milestone in result.fire {
-                let delivered = await deliver(milestone, data: data, providerID: metric.providerID,
-                                              providerName: providerName, post: post)
+                let delivered = await deliver(milestone, data: data, providerID: descriptor.providerID,
+                                              providerName: providerName)
                 if delivered {
                     if milestone == .underTenPercent { underDelivered = true } else { paceDelivered = true }
                     next.firedMilestones.insert(milestone)
@@ -80,8 +83,7 @@ final class QuotaNotificationEvaluator {
         _ milestone: PaceMilestone,
         data: WidgetData,
         providerID: String,
-        providerName: @MainActor (String) -> String,
-        post: @MainActor (String, String, String, String) async -> Bool
+        providerName: @MainActor (String) -> String
     ) async -> Bool {
         let subtitle = "\(providerName(providerID)) \(data.title)"
         return await post("\(providerID).\(milestone.rawValue)", milestone.notificationTitle, subtitle, milestone.body)
