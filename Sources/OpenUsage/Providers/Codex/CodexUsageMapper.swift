@@ -117,32 +117,32 @@ enum CodexUsageMapper {
         return [MetricValue(number: Double(credits), kind: .count, label: "credits")]
     }
 
+    /// The count comes from the usage body of this pass; the dedicated list, read hourly, supplies the
+    /// count only when the usage body has none, and its expiry times only while it agrees with the count,
+    /// so an hour-old list never stands in for a reset spent or granted since.
     static func readResetCredits(
         body: [String: Any],
         resetCredits: HTTPResponse?
     ) -> (count: Int, expiries: [Date])? {
-        guard let source = resetCreditsSource(body: body, resetCredits: resetCredits),
-              let count = ProviderParse.number(source["available_count"]), count >= 0
-        else {
-            return nil
+        let embedded = body["rate_limit_reset_credits"] as? [String: Any]
+        let dedicated = resetCredits.flatMap { response -> [String: Any]? in
+            guard (200..<300).contains(response.statusCode), let body = ProviderParse.jsonObject(response.body),
+                  availableCount(in: body) != nil
+            else { return nil }
+            return body
         }
-        return (Int(count.rounded(.down)), availableResetCredits(in: source).compactMap(\.expiry).sorted())
+        guard let count = embedded.flatMap(availableCount) ?? dedicated.flatMap(availableCount) else { return nil }
+        guard count > 0 else { return (0, []) }
+        if let dedicated, availableCount(in: dedicated) == count {
+            return (count, availableResetCredits(in: dedicated).compactMap(\.expiry).sorted())
+        }
+        return (count, embedded.map { availableResetCredits(in: $0).compactMap(\.expiry).sorted() } ?? [])
     }
 
-    /// The dedicated endpoint's body when it returned a usable payload (2xx, parseable, carrying a
-    /// *numeric* `available_count`), otherwise the usage body's embedded object. The count is checked with
-    /// `ProviderParse.number` because a JSON `null` decodes to `NSNull`, which a bare nil-check would
-    /// accept and then drop the row instead of falling back to the usage-body count.
-    private static func resetCreditsSource(
-        body: [String: Any],
-        resetCredits: HTTPResponse?
-    ) -> [String: Any]? {
-        if let resetCredits, (200..<300).contains(resetCredits.statusCode),
-           let dedicated = ProviderParse.jsonObject(resetCredits.body),
-           ProviderParse.number(dedicated["available_count"]) != nil {
-            return dedicated
-        }
-        return body["rate_limit_reset_credits"] as? [String: Any]
+    /// `ProviderParse.number` because a JSON `null` decodes to `NSNull`, which a bare nil-check would accept.
+    private static func availableCount(in source: [String: Any]) -> Int? {
+        guard let count = ProviderParse.number(source["available_count"]), count >= 0 else { return nil }
+        return Int(count.rounded(.down))
     }
 
     static func resetCreditID(in body: [String: Any], expiringAt expiry: Date) -> String? {

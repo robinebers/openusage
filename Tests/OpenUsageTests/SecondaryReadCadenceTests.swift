@@ -16,6 +16,43 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.nextHour[CodexUsageClient.resetCreditsURL.path], 1, "read again once the hour is up")
     }
 
+    func testTheLiveResetCountWinsOverTheHourlyListAndKeepsItsExpiriesOnlyWhileTheyAgree() async throws {
+        let expiry = OpenUsageISO8601.string(from: start.addingTimeInterval(3 * 86_400))
+        let cases: [(name: String, dedicated: Int, live: Int, expiries: Int)] = [
+            ("spent outside OpenUsage", 1, 0, 0),
+            ("granted since the hourly read", 0, 1, 0),
+            ("unchanged", 1, 1, 1)
+        ]
+        for entry in cases {
+            let account = Account(kind: .codex, label: "Work")
+            let vault = InMemoryCredentialVault()
+            try vault.save(.oauth(OAuthTokens(accessToken: "token")), for: account.id)
+            let live = TestSwitch(entry.dedicated)
+            let http = RoutingHTTPClient { request in
+                switch request.url {
+                case CodexUsageClient.resetCreditsURL:
+                    let credits = entry.dedicated > 0 ? #"{"id":"RateLimitResetCredit_1","status":"available","expires_at":"\#(expiry)"}"# : ""
+                    return Self.ok(#"{"available_count":\#(entry.dedicated),"credits":[\#(credits)]}"#)
+                default:
+                    return Self.ok(#"{"rate_limit":{},"rate_limit_reset_credits":{"available_count":\#(live.value)}}"#)
+                }
+            }
+            let clock = TestClock(start)
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+            _ = await runtime.refresh()
+            live.value = entry.live
+            clock.set(start.addingTimeInterval(RefreshSetting.interval))
+            let snapshot = await runtime.refresh()
+
+            guard case .values(_, let values, let expiries)? = snapshot.lines.first(where: { $0.label == "Rate Limit Resets" }) else {
+                return XCTFail("\(entry.name): no resets row")
+            }
+            XCTAssertEqual(values, [MetricValue(number: Double(entry.live), kind: .count, label: "available")], entry.name)
+            XCTAssertEqual(expiries.count, entry.expiries, entry.name)
+            XCTAssertEqual(http.requests.count { $0.url == CodexUsageClient.resetCreditsURL }, 1, "\(entry.name): the list is read once an hour")
+        }
+    }
+
     func testGrokReadsThePlanHourly() async throws {
         let credits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-06-30T21:36:52+00:00","end":"2026-07-07T21:36:52+00:00"},"creditUsagePercent":40}}"#
         let counts = try await hourOfRefreshes(.grok, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in

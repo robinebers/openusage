@@ -168,7 +168,7 @@ final class CodexResetClaimTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url {
             case CodexUsageClient.usageURL:
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"rate_limit_reset_credits":{"available_count":1}}"#.utf8))
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"rate_limit_reset_credits":{"available_count":2}}"#.utf8))
             case CodexUsageClient.resetCreditsURL:
                 return HTTPResponse(statusCode: 200, headers: [:], body: Self.listBody())
             default:
