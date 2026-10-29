@@ -246,16 +246,15 @@ extension QuietWindowTestCase {
         ))
         let panel = QuietMenuBarPanel(contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelHeightController.defaultHeight))
         panel.appearance = NSAppearance(named: .aqua)
-        let host = hosting.view
-        host.wantsLayer = true
-        host.layerContentsRedrawPolicy = .duringViewResize
-        panel.contentViewController = hosting
+        hosting.sizingOptions = []
+        panel.host(hosting.view)
         addTeardownBlock {
+            withExtendedLifetime(hosting) {}
             MenuBarPopover.applyHeight = nil
             MenuBarPopover.clampHeight = nil
         }
         QuietTestProcess.show(panel, in: self)
-        return HostedPopover(panel: panel, host: host, popover: container.popover, defaults: defaults)
+        return HostedPopover(panel: panel, host: hosting.view, popover: container.popover, defaults: defaults)
     }
 }
 

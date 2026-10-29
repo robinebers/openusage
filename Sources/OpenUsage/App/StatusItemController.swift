@@ -36,6 +36,22 @@ class MenuBarPanel: NSPanel {
 
     var onDismiss: (() -> Void)?
 
+    /// Hosts the dashboard inside a plain container view, never as the content view. Under the
+    /// SwiftUI App lifecycle, an `NSHostingView` that is its window's content view sets the window's
+    /// frame to its own root size on every layout pass (`NSHostingView.animatesWindowRootSize`,
+    /// whatever its `sizingOptions`), keeping the bottom-left corner. On this panel that fought
+    /// `PanelHeightController` for the frame: the top edge moved, and the nested layout passes ended
+    /// in AppKit's "more Update Constraints in Window passes than there are views" exception.
+    func host(_ view: NSView) {
+        view.wantsLayer = true
+        view.layerContentsRedrawPolicy = .duringViewResize
+        let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
+        view.frame = container.bounds
+        view.autoresizingMask = [.width, .height]
+        container.addSubview(view)
+        contentView = container
+    }
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
@@ -141,11 +157,8 @@ final class StatusItemController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         panel.backgroundColor = Theme.trayNSColor
-        let host = hostingController.view
-        host.wantsLayer = true
-        host.layerContentsRedrawPolicy = .duringViewResize
         hostingController.sizingOptions = []
-        panel.contentViewController = hostingController
+        panel.host(hostingController.view)
     }
 
     private func configureStatusItem() {
