@@ -99,6 +99,15 @@ extension AccountProviderRuntime {
                 .boundedCount(key: "completions", provider: provider, title: "Completions", limit: 0)
                     .exportingLimit("completions", unit: "percent")
             ]
+        case .devin:
+            [
+                .percent(key: "daily", provider: provider, title: "Daily", metricLabel: "Daily quota")
+                    .exportingLimit("daily", unit: "percent"),
+                .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota")
+                    .exportingLimit("weekly", unit: "percent"),
+                .dollarBalance(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
+                    .exportingLimit("extraUsageBalance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+            ]
         case .grok:
             [
                 .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly limit")

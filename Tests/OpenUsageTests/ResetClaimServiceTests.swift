@@ -73,7 +73,7 @@ final class ResetClaimServiceTests: XCTestCase {
             case .codex:
                 XCTAssertEqual(service?.accountID, runtime.account.cardID)
                 XCTAssertEqual(service?.isClaimable, true)
-            case .cursor, .antigravity, .copilot, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+            case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
                 XCTAssertNil(service, kind.rawValue)
             }
         }
