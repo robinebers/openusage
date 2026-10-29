@@ -36,20 +36,17 @@ class MenuBarPanel: NSPanel {
 
     var onDismiss: (() -> Void)?
 
-    /// Hosts the dashboard inside a plain container view, never as the content view. Under the
-    /// SwiftUI App lifecycle, an `NSHostingView` that is its window's content view sets the window's
-    /// frame to its own root size on every layout pass (`NSHostingView.animatesWindowRootSize`,
-    /// whatever its `sizingOptions`), keeping the bottom-left corner. On this panel that fought
-    /// `PanelHeightController` for the frame: the top edge moved, and the nested layout passes ended
-    /// in AppKit's "more Update Constraints in Window passes than there are views" exception.
-    func host(_ view: NSView) {
-        view.wantsLayer = true
+    /// Hosts the dashboard one level below the content view. Under the SwiftUI App lifecycle a hosting
+    /// view that is its window's content view resizes the window to its root size on every layout,
+    /// whatever its `sizingOptions` (`animatesWindowRootSize`), which fought `PanelHeightController` for
+    /// the frame until AppKit threw "more Update Constraints in Window passes than there are views".
+    func host(_ view: NSHostingView<some View>) {
+        guard let contentView else { return }
+        view.sizingOptions = []
         view.layerContentsRedrawPolicy = .duringViewResize
-        let container = NSView(frame: NSRect(origin: .zero, size: frame.size))
-        view.frame = container.bounds
+        view.frame = contentView.bounds
         view.autoresizingMask = [.width, .height]
-        container.addSubview(view)
-        contentView = container
+        contentView.addSubview(view)
     }
 
     override var canBecomeKey: Bool { true }
@@ -87,14 +84,14 @@ final class StatusItemController: NSObject {
         onInsidePanelClick: { [weak self] in self?.clearStrayFocus() },
         onDismiss: { [weak self] in self?.hidePanel() }
     )
-    private let hostingController: NSHostingController<AnyView>
+    private let host: NSHostingView<AnyView>
 
     init(container: AppContainer, updater: UpdaterController) {
         self.container = container
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         self.statusItem = statusItem
 
-        let hosting = NSHostingController(
+        let host = NSHostingView(
             rootView: AnyView(
                 DashboardView()
                     .reduceAnimationsWhenRequested()
@@ -106,7 +103,7 @@ final class StatusItemController: NSObject {
                     .environment(updater)
             )
         )
-        self.hostingController = hosting
+        self.host = host
 
         let panel = MenuBarPanel(contentRect: NSRect(
             x: 0,
@@ -157,8 +154,7 @@ final class StatusItemController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
         panel.backgroundColor = Theme.trayNSColor
-        hostingController.sizingOptions = []
-        panel.host(hostingController.view)
+        panel.host(host)
     }
 
     private func configureStatusItem() {
@@ -257,7 +253,7 @@ final class StatusItemController: NSObject {
         heightController.prepareForOpening(below: buttonRectOnScreen)
         container.popover.popoverShown = true
 
-        hostingController.view.layoutSubtreeIfNeeded()
+        host.layoutSubtreeIfNeeded()
 
         panel.makeKeyAndOrderFront(nil)
         clearStrayFocus()

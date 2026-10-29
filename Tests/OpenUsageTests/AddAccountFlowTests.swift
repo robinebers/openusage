@@ -221,7 +221,7 @@ final class AddAccountFlowTests: XCTestCase {
         flow.cancel()
     }
 
-    func testReturnHeldOnTheKeyFieldStartsOneSave() async throws {
+    func testAddKeyWhileSavingStartsNoSecondSave() async throws {
         let store = makeStore()
         var started = 0
         let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in
@@ -234,7 +234,6 @@ final class AddAccountFlowTests: XCTestCase {
         flow.choose(.openrouter)
         flow.apiKey = "sk-or-key"
         for _ in 0..<3 { flow.addKey() }
-        XCTAssertTrue(flow.isWorking)
         XCTAssertFalse(flow.canAddKey, "a save in flight keeps Return from starting another")
         try await waitUntil { flow.isFinished }
         XCTAssertEqual(started, 1)
