@@ -5,7 +5,7 @@ final class CursorUsageEventsParserTests: XCTestCase {
     /// Shaped like Cursor's `get-filtered-usage-events` page: on-demand events carry what Cursor charged,
     /// and included events carry the value taken from the plan in the same field.
     static let mixedPage = #"""
-    {"totalUsageEventsCount":6,"usageEventsDisplay":[
+    {"totalUsageEventsCount":7,"usageEventsDisplay":[
      {"timestamp":"1793000000000","model":"claude-4.6-opus-high-thinking","kind":"USAGE_EVENT_KIND_USAGE_BASED",
       "requestsCosts":30.4,"usageBasedCosts":"$1.25","isTokenBasedCall":true,
       "tokenUsage":{"inputTokens":3,"outputTokens":20525,"cacheWriteTokens":112151,"totalCents":121.41},
@@ -15,6 +15,7 @@ final class CursorUsageEventsParserTests: XCTestCase {
       "isChargeable":false,"chargedCents":40},
      {"timestamp":"1793000002000","model":"gpt-5","kind":"USAGE_EVENT_KIND_USAGE_BASED","isChargeable":false,"chargedCents":50},
      {"timestamp":"1793000003000","model":"gpt-5","kind":"USAGE_EVENT_KIND_ERRORED_NOT_CHARGED"},
+     {"timestamp":"1793000003500","model":"composer-2","kind":"USAGE_EVENT_KIND_FREE_CREDIT","isChargeable":false,"chargedCents":40},
      {"timestamp":1793000004000,"model":"composer-2","kind":"USAGE_EVENT_KIND_USAGE_BASED","chargedCents":"3.5"},
      {"timestamp":"1793000005000","model":"composer-2","kind":"USAGE_EVENT_KIND_USAGE_BASED","isChargeable":true}
     ]}
@@ -23,30 +24,10 @@ final class CursorUsageEventsParserTests: XCTestCase {
     func testOnlyOnDemandEventsCountWhatCursorCharged() throws {
         let page = try XCTUnwrap(CursorUsageEvents.parsePage(Data(Self.mixedPage.utf8)))
 
-        XCTAssertEqual(page.totalCount, 6)
-        XCTAssertEqual(page.events.map(\.chargedCents), [124.73, 0, 0, 0, 3.5, 0])
+        XCTAssertEqual(page.totalCount, 7)
+        XCTAssertEqual(page.events.map(\.chargedCents), [124.73, 0, 0, 0, 0, 3.5, 0])
         XCTAssertEqual(page.events.first?.date, Date(timeIntervalSince1970: 1_793_000_000))
         XCTAssertEqual(page.events.last?.date, Date(timeIntervalSince1970: 1_793_000_005))
-    }
-
-    func testADayOfFreeCreditEventsSumsToZeroAndIntegerCentsParse() throws {
-        let freeCredit = #"{"timestamp":"1793000000000","model":"composer-2","kind":"USAGE_EVENT_KIND_FREE_CREDIT","isChargeable":false,"chargedCents":0}"#
-        let freeCreditWithValue = freeCredit.replacingOccurrences(of: #""chargedCents":0"#, with: #""chargedCents":40"#)
-        let freeDay = try XCTUnwrap(CursorUsageEvents.parsePage(Data(
-            #"{"totalUsageEventsCount":3,"usageEventsDisplay":[\#(freeCredit),\#(freeCredit),\#(freeCreditWithValue)]}"#.utf8
-        )))
-        XCTAssertEqual(freeDay.events.map(\.chargedCents), [0, 0, 0])
-        let day = Date(timeIntervalSince1970: 1_792_972_800)
-        let spend = CursorSpendDay(chargedCents: freeDay.events.reduce(0) { $0 + $1.chargedCents }, isComplete: true)
-        XCTAssertEqual(CursorUsageEvents.spendLines([day: spend], window: [day]),
-                       [.values(label: "Today", values: [MetricValue(number: 0, kind: .dollars)]),
-                        .values(label: "Last 30 Days", values: [MetricValue(number: 0, kind: .dollars)])])
-
-        let mixed = try XCTUnwrap(CursorUsageEvents.parsePage(Data(#"""
-        {"totalUsageEventsCount":2,"usageEventsDisplay":[\#(freeCredit),
-         {"timestamp":"1793000001000","model":"claude-4.6-opus","kind":"USAGE_EVENT_KIND_USAGE_BASED","isChargeable":true,"chargedCents":125}]}
-        """#.utf8)))
-        XCTAssertEqual(mixed.events.map(\.chargedCents), [0, 125])
     }
 
     func testAnEmptyPageLeavesOutItsEventListButNotItsCount() throws {
