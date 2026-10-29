@@ -43,7 +43,7 @@ By submitting a pull request, you agree that your contribution is licensed under
 3. Fork the repo
 4. Create a branch (`feat/my-change`, `fix/some-bug`, etc.)
 5. Make only the approved change
-6. Run `swift build` and `swift test` to verify nothing is broken
+6. Run `swift build` and `script/test_quiet.sh` to verify nothing is broken
 7. Open a PR against `main` and link your assigned, approved issue with `Fixes #<issue>`
 
 ### Add a provider
