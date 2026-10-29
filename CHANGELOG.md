@@ -78,6 +78,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   `usage-summary`, read once an hour, not from Cursor's local database.
 - Devin's Daily, Weekly, and Extra Usage rows. Sign in on windsurf.com and paste the token it shows,
   or paste a Windsurf API key.
+- Claiming a Claude or ChatGPT rate-limit reset refreshes that account right away, so its meters and
+  Limit Resets count update as soon as the result shows.
 
 ## v0.7.16
 

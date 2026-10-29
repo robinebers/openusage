@@ -6,7 +6,6 @@ final class ResetClaimServiceTests: XCTestCase {
     @MainActor
     private final class Recorder {
         var refreshes = 0
-        var pauses: [Duration] = []
     }
 
     private func makeService(
@@ -23,13 +22,11 @@ final class ResetClaimServiceTests: XCTestCase {
             refreshAccount: {
                 defer { recorder.refreshes += 1; refreshed.fulfill() }
                 return refreshOutcomes[min(recorder.refreshes, refreshOutcomes.count - 1)]
-            },
-            refreshDelay: .seconds(5),
-            pause: { recorder.pauses.append($0) }
+            }
         )
     }
 
-    func testClaimRefreshesTheAccountAfterTheDelayUnlessItFailed() async {
+    func testClaimRefreshesTheAccountUnlessItFailed() async {
         let outcomes: [ResetClaimOutcome] = [
             .success, .nothingToReset, .noCredit, .unconfirmed, .unavailableNow(until: nil), .failed(.connection)
         ]
@@ -45,7 +42,6 @@ final class ResetClaimServiceTests: XCTestCase {
             XCTAssertEqual(result, outcome)
             await fulfillment(of: [refreshed], timeout: failed ? 0.1 : 5)
             XCTAssertEqual(recorder.refreshes, failed ? 0 : 1, "\(outcome)")
-            XCTAssertEqual(recorder.pauses, failed ? [] : [.seconds(5)], "\(outcome)")
         }
     }
 
@@ -161,15 +157,12 @@ final class ResetClaimServiceTests: XCTestCase {
         let recorder = Recorder()
         let gate = Gate()
         let refreshed = expectation(description: "the post-claim refresh")
-        var service = try XCTUnwrap(runtime.resetClaimService {
+        let service = try XCTUnwrap(runtime.resetClaimService {
+            await gate.wait()
             recorder.refreshes += 1
             refreshed.fulfill()
             return .refreshed
         })
-        service.pause = { delay in
-            recorder.pauses.append(delay)
-            await gate.wait()
-        }
 
         let outcome = await service.claim(creditExpiringAt: expiry, redeemRequestID: "redeem-1")
 
@@ -177,7 +170,6 @@ final class ResetClaimServiceTests: XCTestCase {
         XCTAssertEqual(recorder.refreshes, 0, "the claim's result shows before the refresh drops the spent row")
         gate.open()
         await fulfillment(of: [refreshed], timeout: 5)
-        XCTAssertEqual(recorder.pauses, [.seconds(5)])
         XCTAssertEqual(recorder.refreshes, 1)
     }
 

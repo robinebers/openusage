@@ -60,17 +60,12 @@ struct ResetClaimService {
     let confirmDetail: String?
     let claimReset: @MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome
     let refreshAccount: @MainActor () async -> WidgetDataStore.RefreshOutcome
-    let refreshDelay: Duration
-    var pause: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
 
-    /// The claim's result shows first; the refresh that drops the spent row follows after the delay.
+    /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
         let outcome = await claimReset(expiry, redeemRequestID)
         if case .failed = outcome { return outcome }
-        Task {
-            await pause(refreshDelay)
-            await refreshAfterClaim()
-        }
+        Task { await refreshAfterClaim() }
         return outcome
     }
 
