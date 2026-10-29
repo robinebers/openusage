@@ -118,7 +118,7 @@ final class PanelHeightController {
     }
 
     private func clampedHeight(_ rawHeight: CGFloat) -> CGFloat {
-        PanelGeometry.clampedHeight(rawHeight, minimum: PanelGeometry.minimumHeight(for: currentScreen()), maximum: maximumHeight())
+        min(rawHeight, maximumHeight())
     }
 
     private func maximumHeight() -> CGFloat {
@@ -150,10 +150,6 @@ enum PanelGeometry {
     static let topGap: CGFloat = 4
     static let screenMargin: CGFloat = 8
 
-    static func minimumHeight(for screen: PopoverScreen) -> CGFloat {
-        screen == .dashboard ? 100 : 200
-    }
-
     static func clampedTopLeft(below buttonRect: NSRect, width: CGFloat, visibleFrame: NSRect?) -> NSPoint {
         var x = buttonRect.minX
         if let visibleFrame {
@@ -176,10 +172,6 @@ enum PanelGeometry {
     static func height(content: CGFloat, attachedSheet: CGFloat?) -> CGFloat {
         guard let attachedSheet else { return content }
         return max(content, attachedSheet + sheetMargin)
-    }
-
-    static func clampedHeight(_ rawHeight: CGFloat, minimum: CGFloat, maximum: CGFloat) -> CGFloat {
-        min(max(rawHeight, minimum), maximum)
     }
 
     /// Snaps the top edge and height to whole points. AppKit rounds a window's origin and size
