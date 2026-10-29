@@ -11,6 +11,7 @@ struct AccountDetailView: View {
 
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
+    @State private var removalError: String?
 
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
@@ -25,6 +26,9 @@ struct AccountDetailView: View {
                     ReplaceKeyRow(providerID: providerID, field: field)
                 }
                 removeAccountRow(group.provider)
+                if let removalError {
+                    ErrorText(removalError)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
@@ -66,8 +70,12 @@ struct AccountDetailView: View {
 
     private func removeAccount() {
         guard let account = container.accounts.account(cardID: providerID) else { return }
-        withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         container.accounts.remove(account.id)
+        if container.accounts.account(cardID: providerID) != nil {
+            removalError = container.accounts.lastError ?? "The account could not be removed."
+        } else {
+            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
+        }
     }
 
     private func metricRow(_ metric: WidgetDescriptor) -> some View {

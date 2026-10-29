@@ -55,7 +55,8 @@ bar; see [Menu bar](menu-bar.md).
 ## Remove an account
 
 **Remove Account…** sits at the bottom of the account's page. Removing an account deletes its sign-in
-from this Mac. You can add the account again at any time.
+from this Mac. You can add the account again at any time. If the Keychain refuses to delete the
+sign-in, the account stays and its page shows why.
 
 ## Where things are stored
 
