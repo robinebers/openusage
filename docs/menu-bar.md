@@ -13,7 +13,7 @@ Star a metric from its right-click menu on the dashboard, or with the star on it
 page in Accounts.
 
 - Each provider ships with default stars (for example Claude Session and Weekly, ChatGPT Session and
-  Weekly, Cursor Models and Other Models, OpenRouter Credits), so the strip shows numbers as soon as
+  Weekly, Cursor Total Usage and Today, OpenRouter Credits), so the strip shows numbers as soon as
   an account refreshes. Change them any time.
 - After an update from 0.7.x, a provider's first account takes its 0.7.x stars instead. See
   [Upgrading from 0.7.x](settings.md#upgrading-from-07x).

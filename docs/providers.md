@@ -88,6 +88,8 @@ succeeds. The days are kept in memory for each account, so the first refresh aft
 yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
 once every day it covers has been read.
 
+Total Usage and Today are the default menu-bar stars.
+
 ## Antigravity
 
 Sign in with Google in your browser. The card reads the Cloud Code quota API for the Gemini and Claude

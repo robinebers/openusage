@@ -67,6 +67,24 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(starredApp.stars(starredApp.add(.devin)), ["extra"])
     }
 
+    func testCursorStarsTotalUsageAndTodayUnlessZeroSevenSavedItsOwnStars() throws {
+        let fresh = MigrationApp(defaults: isolatedDefaults())
+        XCTAssertEqual(fresh.stars(fresh.add(.cursor)), ["today", "usage"])
+
+        let untouched = isolatedDefaults()
+        try Self.savePlaced(["cursor.usage", "cursor.auto", "cursor.api", "cursor.today"], to: untouched)
+        untouched.set(["cursor"], forKey: "openusage.enabledProviders.v1")
+        let app = MigrationApp(defaults: untouched)
+        XCTAssertEqual(app.stars(app.add(.cursor)), ["today", "usage"], "an upgrader who never saved stars takes the new defaults")
+
+        let starred = isolatedDefaults()
+        try Self.savePlaced(["cursor.usage", "cursor.auto", "cursor.api", "cursor.today"], to: starred)
+        starred.set(["cursor"], forKey: "openusage.enabledProviders.v1")
+        starred.set(["cursor.auto", "cursor.api"], forKey: "openusage.layout.v1.menuBarPins")
+        let starredApp = MigrationApp(defaults: starred)
+        XCTAssertEqual(starredApp.stars(starredApp.add(.cursor)), ["api", "auto"])
+    }
+
     func testAnEmptyStarListStaysEmpty() {
         let defaults = isolatedDefaults()
         defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")

@@ -44,13 +44,12 @@ extension AccountProviderRuntime {
         case .cursor:
             [
                 .percent(key: "usage", provider: provider, title: "Total Usage", metricLabel: "Total usage")
-                    .exportingLimit("totalUsage", unit: "percent"),
+                    .exportingLimit("totalUsage", unit: "percent")
+                    .pinnedByDefault(),
                 .percent(key: "auto", provider: provider, title: "Cursor Models")
-                    .exportingLimit("autoUsage", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("autoUsage", unit: "percent"),
                 .percent(key: "api", provider: provider, title: "Other Models")
-                    .exportingLimit("apiUsage", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("apiUsage", unit: "percent"),
                 .boundedDollars(key: "onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand",
                                 limit: 100, valueWord: "spent")
                     .exportingLimit("onDemand", unit: "usd", source: .progressOrValue(kind: .dollars)),
@@ -61,7 +60,8 @@ extension AccountProviderRuntime {
                     .exportingLimit("requests", unit: "requests"),
                 .dollarBalance(key: "credits", provider: provider, title: "Credits", valueWord: "left")
                     .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .values(key: "today", provider: provider, title: "Today"),
+                .values(key: "today", provider: provider, title: "Today")
+                    .pinnedByDefault(),
                 .values(key: "yesterday", provider: provider, title: "Yesterday"),
                 .values(key: "last30", provider: provider, title: "Last 30 Days")
             ]

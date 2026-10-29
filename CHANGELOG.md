@@ -51,6 +51,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
+- Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
+  them.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
