@@ -29,7 +29,10 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
   by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
+  `displayName` names the account the way the app does (`ChatGPT · Work`).
   The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
+  `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
+  the app shows its clock next to the account.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.

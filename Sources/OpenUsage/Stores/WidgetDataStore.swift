@@ -216,16 +216,15 @@ final class WidgetDataStore {
         snapshots[providerID]?.plan
     }
 
-    static let stalenessThreshold = RefreshSetting.interval * 2
-
     func stalenessHint(for providerID: String) -> String? {
         if let backoff = backoffs[providerID], backoff.providerAsked, now() < backoff.retryAt {
             let name = providersByID[providerID]?.provider.displayName ?? "The provider"
             return "\(name) asked OpenUsage to wait. Retrying at \(Formatters.compactClock(backoff.retryAt, now: now()))."
         }
-        guard let refreshedAt = snapshots[providerID]?.refreshedAt else { return nil }
-        let age = now().timeIntervalSince(refreshedAt)
-        guard age >= Self.stalenessThreshold, let duration = Formatters.compactDuration(age) else {
+        guard let snapshot = snapshots[providerID] else { return nil }
+        let date = now()
+        guard snapshot.isStale(at: date),
+              let duration = Formatters.compactDuration(date.timeIntervalSince(snapshot.refreshedAt)) else {
             return nil
         }
         return "Last updated \(duration) ago"
