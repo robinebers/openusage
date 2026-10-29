@@ -29,6 +29,26 @@ final class CursorUsageEventsParserTests: XCTestCase {
         XCTAssertEqual(page.events.last?.date, Date(timeIntervalSince1970: 1_793_000_005))
     }
 
+    func testADayOfFreeCreditEventsSumsToZeroAndIntegerCentsParse() throws {
+        let freeCredit = #"{"timestamp":"1793000000000","model":"composer-2","kind":"USAGE_EVENT_KIND_FREE_CREDIT","isChargeable":false,"chargedCents":0}"#
+        let freeCreditWithValue = freeCredit.replacingOccurrences(of: #""chargedCents":0"#, with: #""chargedCents":40"#)
+        let freeDay = try XCTUnwrap(CursorUsageEvents.parsePage(Data(
+            #"{"totalUsageEventsCount":3,"usageEventsDisplay":[\#(freeCredit),\#(freeCredit),\#(freeCreditWithValue)]}"#.utf8
+        )))
+        XCTAssertEqual(freeDay.events.map(\.chargedCents), [0, 0, 0])
+        let day = Date(timeIntervalSince1970: 1_792_972_800)
+        let spend = CursorSpendDay(chargedCents: freeDay.events.reduce(0) { $0 + $1.chargedCents }, isComplete: true)
+        XCTAssertEqual(CursorUsageEvents.spendLines([day: spend], window: [day]),
+                       [.values(label: "Today", values: [MetricValue(number: 0, kind: .dollars)]),
+                        .values(label: "Last 30 Days", values: [MetricValue(number: 0, kind: .dollars)])])
+
+        let mixed = try XCTUnwrap(CursorUsageEvents.parsePage(Data(#"""
+        {"totalUsageEventsCount":2,"usageEventsDisplay":[\#(freeCredit),
+         {"timestamp":"1793000001000","model":"claude-4.6-opus","kind":"USAGE_EVENT_KIND_USAGE_BASED","isChargeable":true,"chargedCents":125}]}
+        """#.utf8)))
+        XCTAssertEqual(mixed.events.map(\.chargedCents), [0, 125])
+    }
+
     func testAnEmptyPageLeavesOutItsEventListButNotItsCount() throws {
         XCTAssertEqual(CursorUsageEvents.parsePage(Data(#"{"totalUsageEventsCount":0}"#.utf8))?.events, [])
         for body in [
