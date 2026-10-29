@@ -159,6 +159,72 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         }
     }
 
+    func testConcurrentRenewalsForOneAccountSendItsRefreshTokenOnce() async throws {
+        let account = Account(kind: .claude, label: "Claude")
+        let vault = InMemoryCredentialVault()
+        let expired = AccountCredential.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast))
+        try vault.save(expired, for: account.id)
+        let renewal = HeldResponse()
+        let http = RoutingHTTPClient { _ in
+            await renewal.hold()
+            return Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#)
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+
+        let first = Task { try await runtime.freshTokens(expired, grant: ClaudeLogin.refresh) }
+        await renewal.waitUntilHeld()
+        let second = Task { try await runtime.freshTokens(expired, grant: ClaudeLogin.refresh) }
+        await Task.yield()
+        await renewal.release()
+
+        let tokens = try await [first.value, second.value]
+        XCTAssertEqual(tokens.map(\.accessToken), ["new-access", "new-access"])
+        XCTAssertEqual(http.requests.map(\.url), [ClaudeLogin.tokenURL], "the second caller waits for the first renewal")
+    }
+
+    func testALate401AfterAnotherRenewalRetriesWithTheStoredTokens() async throws {
+        let account = Account(kind: .claude, label: "Claude")
+        let vault = InMemoryCredentialVault()
+        let old = AccountCredential.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh"))
+        try vault.save(old, for: account.id)
+        let http = RoutingHTTPClient { _ in Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let read: (OAuthTokens) async throws -> HTTPResponse = { tokens in
+            Self.json("{}", status: tokens.accessToken == "old-access" ? 401 : 200)
+        }
+
+        _ = try await runtime.authorizedRead(old, grant: ClaudeLogin.refresh, read: read)
+        let late = try await runtime.authorizedRead(old, grant: ClaudeLogin.refresh, read: read)
+
+        XCTAssertEqual(late.response.statusCode, 200)
+        XCTAssertEqual(late.tokens.accessToken, "new-access")
+        XCTAssertEqual(http.requests.map(\.url), [ClaudeLogin.tokenURL], "the old refresh token is sent once")
+    }
+
+    func testClaudeIdentityWriteBackKeepsATokenRenewedDuringTheProfileRead() async throws {
+        let account = Account(kind: .claude, label: "Claude")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh")), for: account.id)
+        let profile = HeldResponse()
+        let http = RoutingHTTPClient { request in
+            guard request.url.path == "/api/oauth/profile" else { return HTTPResponse(statusCode: 404, headers: [:], body: Data()) }
+            await profile.hold()
+            return Self.json(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org"}}"#)
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let renewed = OAuthTokens(accessToken: "new-access", refreshToken: "rotated-refresh")
+
+        let hourly = Task { await runtime.refreshHourlyReads(of: ProviderSnapshot(providerID: account.cardID, displayName: "Claude", lines: [])) }
+        await profile.waitUntilHeld()
+        try vault.save(.oauth(renewed), for: account.id)
+        await profile.release()
+        _ = await hourly.value
+
+        var identified = renewed
+        identified.extras[OAuthTokens.identityKey] = "acct/org"
+        XCTAssertEqual(try vault.load(account.id), .oauth(identified))
+    }
+
     private static let renewals: [(kind: ProviderKind, tokenURL: URL)] = [
         (.claude, ClaudeLogin.tokenURL),
         (.codex, CodexLogin.tokenURL),
