@@ -4,10 +4,15 @@ struct Provider: Identifiable, Hashable {
     let id: String
     let kind: ProviderKind
     var accountLabel: String? = nil
+    var organization: String? = nil
 
     var displayName: String { kind.displayName }
     var icon: String { kind.rawValue }
     var links: [ProviderLink] { kind.links }
+
+    var organizationBillingPage: URL? {
+        organization.map { URL(string: "https://github.com/organizations")!.appending(components: $0, "settings", "billing") }
+    }
 
     var accountName: String {
         guard let accountLabel, !accountLabel.isEmpty else { return displayName }

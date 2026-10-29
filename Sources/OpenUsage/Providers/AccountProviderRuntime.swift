@@ -41,7 +41,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label)
+        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization)
     }
 
     func resetClaimService(

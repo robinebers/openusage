@@ -58,12 +58,11 @@ menu starts with the reason too.
 - A provider's card: **Refresh**, **Manage Accounts…**, **Share Screenshot**, and the provider's links,
   such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. If the account
-  shows a warning or stale icon, the menu starts with the reason. **Show Hidden Metrics** appears when
-  you have hidden any.
+  shows a warning or stale icon, the menu starts with the reason. A Copilot organization account also
+  has **Organization Billing**, which opens the organization's billing page on GitHub. **Show Hidden
+  Metrics** appears when you have hidden any.
 - A metric: **Star for Menu Bar** (or **Unstar**) and **Hide**. Hiding a metric, here or on the
   Accounts screen, also takes its star off the menu bar. Starring a hidden metric shows it again.
-
-On a card with one account, the header's menu combines the provider and account items.
 
 ## Reordering
 
