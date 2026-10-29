@@ -25,8 +25,8 @@ final class LayoutMigrationTests: XCTestCase {
         let app = try MigrationApp(defaults: zeroSevenDefaults())
 
         let openRouter = app.add(.openrouter)
-        XCTAssertEqual(app.stars(openRouter), ["balance"], "0.7.x starred only Credits, which is gone")
-        XCTAssertEqual(app.hidden(openRouter), ["month", "week"])
+        XCTAssertEqual(app.stars(openRouter), ["credits"], "0.7.x's Credits star lands on the restored Credits meter")
+        XCTAssertEqual(app.hidden(openRouter), ["keyLimit", "month", "week"])
 
         let cursor = app.add(.cursor)
         XCTAssertEqual(app.hidden(cursor), ["api", "auto", "grokBot", "onDemand", "requests", "usage"])
