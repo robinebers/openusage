@@ -202,3 +202,30 @@ extension XCTestCase {
         return defaults
     }
 }
+
+/// A response the test holds open until it calls `release()`.
+actor HeldResponse {
+    private var released = false
+    private var held: [CheckedContinuation<Void, Never>] = []
+    private var arrived = false
+    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func hold() async {
+        arrived = true
+        for waiter in arrivalWaiters { waiter.resume() }
+        arrivalWaiters = []
+        guard !released else { return }
+        await withCheckedContinuation { held.append($0) }
+    }
+
+    func waitUntilHeld() async {
+        guard !arrived else { return }
+        await withCheckedContinuation { arrivalWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        for continuation in held { continuation.resume() }
+        held = []
+    }
+}

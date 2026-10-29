@@ -293,4 +293,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
     }
+
+    func validate(_ credential: AccountCredential) async throws {
+        _ = try await refresh(credential)
+    }
 }

@@ -31,6 +31,12 @@ Click the name at the top of the account's page, double-click it on the dashboar
 **Rename** from its right-click menu. The field opens with the whole name selected. Return or a click
 elsewhere saves; Esc cancels.
 
+## Replace an API key
+
+**Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
+before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
+old key stays and the page shows why.
+
 ## Hide and star metrics
 
 An account's page lists its metrics with a switch and a star each. Turn a metric off to hide it from
