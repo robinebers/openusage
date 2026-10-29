@@ -60,6 +60,9 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         XCTAssertEqual(flow.provider, .codex)
     }
 
+    /// Before macOS 26 a prominent button drops its accent fill in a window that isn't key, as AppKit's
+    /// inactive appearance asks, and the test's window never becomes key, so the fill is checked on
+    /// macOS 26 only.
     func testSignInStepsPutTheCloseButtonTopRightAndTheStatusCentredUnderTheButtons() async throws {
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
@@ -95,7 +98,9 @@ final class AddAccountSheetTests: QuietWindowTestCase {
                 let status = try XCTUnwrap(ink.bounds(y: size.height - 40..<size.height - 18), "\(label): nothing under the buttons")
                 XCTAssertEqual(status.midX, size.width / 2, accuracy: 3, "\(label): the status line isn't centred")
                 let buttons = (size.height - 80)..<(size.height - 44)
-                XCTAssertGreaterThan(accent(rep, size: size, x: size.width / 2..<size.width - 20, y: buttons), 400, "\(label): the primary button isn't accent-filled")
+                if #available(macOS 26, *) {
+                    XCTAssertGreaterThan(accent(rep, size: size, x: size.width / 2..<size.width - 20, y: buttons), 400, "\(label): the primary button isn't accent-filled")
+                }
                 XCTAssertEqual(accent(rep, size: size, x: 20..<size.width / 2, y: buttons), 0, "\(label): the secondary button is accent-filled")
             }
         }
