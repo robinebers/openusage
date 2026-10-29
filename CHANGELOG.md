@@ -50,6 +50,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
+- Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
