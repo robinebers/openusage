@@ -297,10 +297,4 @@ final class AccountProviderRuntime: ProviderRuntime {
     func validate(_ credential: AccountCredential) async throws {
         _ = try await refresh(credential)
     }
-
-    /// Saves rather than updates: a pasted key is the whole credential, so it also restores an account
-    /// whose Keychain item has gone missing.
-    func saveCredential(_ credential: AccountCredential) async throws {
-        try await loadOffMainActor { [vault, account] in try vault.save(credential, for: account.id) }
-    }
 }

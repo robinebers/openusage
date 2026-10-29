@@ -87,8 +87,7 @@ final class AppContainer {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
         try await runtime.validate(credential)
-        guard providers.contains(where: { $0 === runtime }) else { return }
-        try await runtime.saveCredential(credential)
+        try accounts.replaceCredential(credential, for: runtime.account.id)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 
