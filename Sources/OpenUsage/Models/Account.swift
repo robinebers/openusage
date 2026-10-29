@@ -49,7 +49,8 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .opencodeGo: [.init(label: "Status Page", url: URL(string: "https://status.opencode.ai/")!),
                            .init(label: "Usage Dashboard", url: URL(string: "https://opencode.ai/console")!)]
         case .openrouter: [.init(label: "Status Page", url: URL(string: "https://status.openrouter.ai/")!),
-                           .init(label: "Usage Dashboard", url: URL(string: "https://openrouter.ai/activity")!)]
+                           .init(label: "Usage Dashboard", url: URL(string: "https://openrouter.ai/activity")!),
+                           .init(label: "Credits", url: URL(string: "https://openrouter.ai/settings/credits")!)]
         case .zai: [.init(label: "Usage Dashboard", url: URL(string: "https://z.ai/manage-apikey/coding-plan/personal/my-plan")!)]
         }
     }

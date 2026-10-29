@@ -59,6 +59,14 @@ final class AccountStore {
         }
     }
 
+    /// Writes on the main actor, as `add` and `remove` do, so a removal can never fall between the
+    /// check that the account is still added and the write. It saves rather than updates: a pasted key
+    /// is the whole credential, so it also restores an account whose Keychain item has gone missing.
+    func replaceCredential(_ credential: AccountCredential, for id: UUID) throws {
+        guard accounts.contains(where: { $0.id == id }) else { return }
+        try credentialVault.save(credential, for: id)
+    }
+
     func credential(for id: UUID) throws -> AccountCredential? {
         try credentialVault.load(id)
     }

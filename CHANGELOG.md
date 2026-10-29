@@ -21,10 +21,15 @@ shows only what each provider's API reports for the accounts you sign in to.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
+- Accounts: replace an API-key account's key from its page; the new key is saved only once a usage
+  read accepts it.
 - Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
+- Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
+  by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
+  The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
@@ -36,8 +41,11 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
+- Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
+  screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
+- OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 
 ## v0.7.16
 

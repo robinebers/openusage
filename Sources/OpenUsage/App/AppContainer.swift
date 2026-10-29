@@ -9,6 +9,7 @@ final class AppContainer {
     let dataStore: WidgetDataStore
     let renaming: AccountRenameStore
     let popover = PopoverState()
+    let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -28,6 +29,7 @@ final class AppContainer {
         self.accounts = accounts
         self.http = http
         self.defaults = defaults
+        self.hideFromScreenShare = HideFromScreenShareSetting(defaults: defaults)
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
@@ -76,6 +78,23 @@ final class AppContainer {
         return runtime.resetClaimService { [dataStore] in
             await dataStore.refresh(providerID: providerID, force: true)
         }
+    }
+
+    /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
+    /// so a refused key never replaces one that works and a removed account's key never comes back.
+    func replaceKey(_ key: String, for providerID: String) async throws {
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
+        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
+            throw ProviderError.unavailable("This account is already added as \(existing.label).")
+        }
+        do {
+            try await runtime.validate(credential)
+        } catch ProviderError.signInExpired(let kind) {
+            throw ProviderError.unavailable("\(kind.displayName) rejected the API key.")
+        }
+        try accounts.replaceCredential(credential, for: runtime.account.id)
+        await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 
     func startRefreshing() {

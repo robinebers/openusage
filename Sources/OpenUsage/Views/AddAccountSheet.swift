@@ -294,7 +294,7 @@ private struct DeviceCodeBox: View {
     }
 }
 
-private struct ErrorText: View {
+struct ErrorText: View {
     let message: String
     var alignment: Alignment = .leading
 
