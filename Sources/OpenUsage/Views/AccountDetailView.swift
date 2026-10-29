@@ -48,20 +48,14 @@ struct AccountDetailView: View {
                 }
                 if hasAdminToken {
                     Divider()
-                    Button(role: .destructive) {
+                    destructiveRow("Remove Admin Token") {
                         Task {
-                            guard (try? await container.saveAdminToken(nil, for: providerID)) != nil else { return }
-                            hasAdminToken = false
+                            do {
+                                try await container.saveAdminToken(nil, for: providerID)
+                                hasAdminToken = false
+                            } catch {}
                         }
-                    } label: {
-                        Text("Remove Admin Token")
-                            .foregroundStyle(Color(nsColor: .systemRed))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, PanelMetrics.controlRowPadding)
-                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .cardSurface()
@@ -76,11 +70,9 @@ struct AccountDetailView: View {
         .task(id: providerID) { hasAdminToken = await container.hasAdminToken(for: providerID) }
     }
 
-    private func removeAccountRow(_ provider: Provider) -> some View {
-        Button(role: .destructive) {
-            isConfirmingRemoval = true
-        } label: {
-            Text("Remove Account…")
+    private func destructiveRow(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(role: .destructive, action: action) {
+            Text(title)
                 .foregroundStyle(Color(nsColor: .systemRed))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -88,6 +80,10 @@ struct AccountDetailView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func removeAccountRow(_ provider: Provider) -> some View {
+        destructiveRow("Remove Account…") { isConfirmingRemoval = true }
         .cardSurface()
         .confirmationDialog(
             "Remove \(provider.fullName)?",

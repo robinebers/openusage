@@ -7,8 +7,8 @@ final class CopilotOrgBillingTests: XCTestCase {
     nonisolated private static let usageBody = #"""
     {"copilot_plan":"business","token_based_billing":true,
      "quota_snapshots":{"premium_interactions":{"entitlement":0,"remaining":0,"unlimited":false,"credits_used":42}},
-     "organization_login_list":["no-copilot","acme"],
-     "organization_list":[{"login":"no-copilot","name":"No Copilot"},{"login":"acme","name":"Acme"}]}
+     "organization_login_list":["other-org","acme"],
+     "organization_list":[{"login":"other-org","name":"Other"},{"login":"acme","name":"Acme"}]}
     """#
     nonisolated private static let orgBody = #"""
     {"timePeriod":{"year":2025},"organization":"GitHub","usageItems":[{"product":"Copilot","sku":"Copilot AI Credits",
@@ -24,12 +24,14 @@ final class CopilotOrgBillingTests: XCTestCase {
 
     func testOrgUsageCountsCopilotCreditsAndSpendOnly() {
         XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.orgBody)), Self.orgLines)
-        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.noCopilotBody)), [])
+        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.noCopilotBody)), [
+            .values(label: "Org Credits", values: [MetricValue(number: 0, kind: .count, label: "credits")]),
+            .values(label: "Org Spend", values: [MetricValue(number: 0, kind: .dollars)])
+        ], "an org with no Copilot usage yet shows zero")
     }
 
     func testOrgLoginsComeFromTheCopilotUsageBody() {
-        XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(Self.usageBody)), ["no-copilot", "acme"])
-        XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(#"{"organization_list":[{"login":"acme","name":"Acme"}]}"#)), ["acme"])
+        XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(Self.usageBody)), ["other-org", "acme"])
         XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(#"{"copilot_plan":"pro"}"#)), [])
     }
 
@@ -39,13 +41,13 @@ final class CopilotOrgBillingTests: XCTestCase {
         XCTAssertFalse(http.requests.contains { $0.url.path.hasSuffix("ai_credit/usage") })
     }
 
-    func testAnAdminTokenAddsTheFirstOrgWithCopilotUsageAndKeepsItBetweenHourlyReads() async throws {
+    func testAnAdminTokenAddsTheFirstOrgItCanReadAndKeepsItBetweenHourlyReads() async throws {
         let (snapshot, http) = try await refreshed(adminToken: "admin")
         XCTAssertEqual(snapshot.lines.map(\.label), ["Credits", "Org Credits", "Org Spend"])
         XCTAssertEqual(Array(snapshot.lines.dropFirst()), Self.orgLines)
         let orgReads = http.requests.filter { $0.url.path.hasSuffix("ai_credit/usage") }
         XCTAssertEqual(orgReads.map(\.url), [
-            CopilotUsageClient.orgCreditsURL(org: "no-copilot"), CopilotUsageClient.orgCreditsURL(org: "acme")
+            CopilotUsageClient.orgCreditsURL(org: "other-org"), CopilotUsageClient.orgCreditsURL(org: "acme")
         ])
         XCTAssertEqual(orgReads.last?.url.absoluteString, "https://api.github.com/organizations/acme/settings/billing/ai_credit/usage")
         XCTAssertEqual(orgReads.last?.headers["Authorization"], "Bearer admin")
@@ -57,7 +59,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         XCTAssertEqual(snapshot.lines.map(\.label), ["Credits"])
     }
 
-    func testSavingAnAdminTokenStoresOnlyOneGitHubAcceptsAndRemovingItDropsTheRows() async throws {
+    func testSavingAnAdminTokenStoresOneThatReadsAnyOrgAndRemovingItDropsTheRows() async throws {
         let (container, vault, account) = makeContainer(usageBody: Self.usageBody)
         let signIn = OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])
 
@@ -67,7 +69,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error.localizedDescription,
-                "GitHub rejected the admin token for no-copilot. Use one from an owner or billing manager with Administration read access."
+                "GitHub did not let this token read any of your organizations' billing. Use a token from an organization owner or billing manager with Administration read access."
             )
         }
         XCTAssertEqual(try vault.load(account.id), .oauth(signIn))
@@ -81,7 +83,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .oauth(withToken))
         let tokenStored = await container.hasAdminToken(for: account.cardID)
         XCTAssertTrue(tokenStored)
-        XCTAssertEqual(container.dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Credits", "Org Credits", "Org Spend"])
+        XCTAssertEqual(container.dataStore.snapshots[account.cardID]?.lines.dropFirst().map { $0 }, Self.orgLines, "the rows come from acme, the org the token reads")
 
         try await container.saveAdminToken(nil, for: account.cardID)
 
@@ -107,7 +109,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url {
             case CopilotUsageClient.orgCreditsURL(org: "acme"): Self.response(orgStatus, Self.orgBody)
-            case CopilotUsageClient.orgCreditsURL(org: "no-copilot"): Self.response(orgStatus, Self.noCopilotBody)
+            case CopilotUsageClient.orgCreditsURL(org: "other-org"): Self.response(403, "{}")
             default: Self.ok(Self.usageBody)
             }
         }
@@ -128,7 +130,8 @@ final class CopilotOrgBillingTests: XCTestCase {
         let accounts = AccountStore(defaults: defaults, vault: vault)
         let http = RoutingHTTPClient { request in
             guard request.url.path.hasSuffix("ai_credit/usage") else { return Self.ok(usageBody) }
-            return request.headers["Authorization"] == "Bearer admin" ? Self.ok(Self.orgBody) : Self.response(403, "{}")
+            let readable = request.url == CopilotUsageClient.orgCreditsURL(org: "acme") && request.headers["Authorization"] == "Bearer admin"
+            return readable ? Self.ok(Self.orgBody) : Self.response(403, "{}")
         }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
         let account = accounts.add(kind: .copilot, label: "Work", credential: .oauth(OAuthTokens(
