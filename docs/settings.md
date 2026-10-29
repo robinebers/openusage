@@ -42,6 +42,7 @@ Each notification names the trigger, the provider, and the metric, and fires onc
 
 | Setting | Control | What it changes |
 |---|---|---|
+| Hide From Screen Share | switch | While your screen is shared or recorded, the menu bar shows the app icon instead of your usage. Off by default. See [Privacy](privacy.md). |
 | Help Make OpenUsage Better | switch | Whether the app sends the optional daily provider-refresh summaries described in [Privacy](privacy.md). The anonymous daily active ping and crash reports do not depend on this switch. |
 
 ## Command Line

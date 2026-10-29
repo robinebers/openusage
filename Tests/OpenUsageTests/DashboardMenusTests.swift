@@ -39,6 +39,17 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
+    func testOpenRouterLinksIncludeCredits() {
+        let openRouter = Provider(id: "openrouter@1", kind: .openrouter, accountLabel: "Personal")
+        let family = DashboardFamily(id: "openrouter", provider: openRouter, accounts: [DashboardAccount(provider: openRouter, lines: [])])
+
+        XCTAssertEqual(DashboardMenus.provider(family).last, [
+            DashboardMenuItem(title: "Status Page", command: .open(URL(string: "https://status.openrouter.ai/")!)),
+            DashboardMenuItem(title: "Usage Dashboard", command: .open(URL(string: "https://openrouter.ai/activity")!)),
+            DashboardMenuItem(title: "Credits", command: .open(URL(string: "https://openrouter.ai/settings/credits")!)),
+        ])
+    }
+
     func testThePlainAccountMenu() {
         let menu = DashboardMenus.account(account(), status: nil, hasHiddenMetrics: false)
         XCTAssertEqual(commands(menu), [

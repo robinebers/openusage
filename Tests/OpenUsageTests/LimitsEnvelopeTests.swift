@@ -34,8 +34,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             }
           }
         }
-      },
-      "errors": []
+      }
     }
     """
 
@@ -143,11 +142,11 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(expiredProvider["stale"] as? Bool, true)
     }
 
-    func testCardWithoutSnapshotHasNoEntryAndErrorsStayEmpty() throws {
+    func testCardWithoutSnapshotHasNoEntryAndTheEnvelopeHasOnlyFilledKeys() throws {
         let input = LimitsEnvelope.Input(providerIDs: ["codex@ab12cd34"], snapshots: [:], generatedAt: generatedAt)
         let pending = try json(LimitsEnvelope.encode(input))
         XCTAssertTrue((pending["providers"] as? [String: Any])?.isEmpty == true)
-        XCTAssertTrue((pending["errors"] as? [Any])?.isEmpty == true)
+        XCTAssertEqual(Set(pending.keys), ["schema", "generatedAt", "providers"])
     }
 
     func testProvidersPrintInTheRequestedOrderAndOnlyThoseRequested() throws {

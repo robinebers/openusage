@@ -9,6 +9,7 @@ final class AppContainer {
     let dataStore: WidgetDataStore
     let renaming: AccountRenameStore
     let popover = PopoverState()
+    let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -28,6 +29,7 @@ final class AppContainer {
         self.accounts = accounts
         self.http = http
         self.defaults = defaults
+        self.hideFromScreenShare = HideFromScreenShareSetting(defaults: defaults)
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
