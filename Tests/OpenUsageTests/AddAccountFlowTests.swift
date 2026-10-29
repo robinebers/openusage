@@ -202,6 +202,26 @@ final class AddAccountFlowTests: XCTestCase {
         XCTAssertEqual(opened, [url, url], "the new attempt's prompt opens the browser again")
     }
 
+    func testATokenPageOpensOnItsOwnAndThePastedTokenFinishesTheSignIn() async throws {
+        let store = makeStore()
+        let url = try XCTUnwrap(URL(string: "https://example.com/show-auth-token"))
+        var opened: [URL] = []
+        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _ in
+            StubLogin(prompt: .browserToken(url)) { input in
+                var iterator = input.makeAsyncIterator()
+                return ("token:\(await iterator.next() ?? "")", .oauth(OAuthTokens(accessToken: "key")))
+            }
+        }
+        flow.choose(.claude)
+        try await waitUntil { flow.prompt != nil }
+        XCTAssertEqual(opened, [url])
+
+        flow.pastedCode = "abc123"
+        flow.submitCode()
+        try await waitUntil { flow.isFinished }
+        XCTAssertEqual(store.accounts.map(\.label), ["token:abc123"])
+    }
+
     func testTheDeviceCodePageOpensOnlyOnRequest() async throws {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/device"))
