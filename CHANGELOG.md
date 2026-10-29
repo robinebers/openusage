@@ -22,8 +22,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
-- Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
-  star, undo, share screenshot, and quick links.
+- Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
+  right-click menus hold hide, star, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
@@ -32,6 +32,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
   `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
   the app shows its clock next to the account.
+  Exit code `4` now means nothing has been fetched yet for the named accounts, not that a refresh failed.
+  ChatGPT's `creditValue` resource is gone; `credits` still reports the credit count.
+  Copilot's `orgCredits` and `orgSpend` moved to an organization account; a personal account no
+  longer reports them.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
