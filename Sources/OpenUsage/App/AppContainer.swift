@@ -11,12 +11,14 @@ final class AppContainer {
     let popover = PopoverState()
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
+    let hubs: CLIProxyHubSync
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
     @ObservationIgnored private let http: any HTTPClient
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let claudeSessions: ClaudeSessions
+    @ObservationIgnored private let hubGate = CLIProxyHubGate()
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
     init(
@@ -33,7 +35,7 @@ final class AppContainer {
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
-            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, claudeSessions: claudeSessions
+            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, hubGate: hubGate, claudeSessions: claudeSessions
         )
         let registry = WidgetRegistry.from(providers)
         let layout = LayoutStore(registry: registry, defaults: defaults)
@@ -47,6 +49,7 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
+        self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,
@@ -98,10 +101,18 @@ final class AppContainer {
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 
+    /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.
+    func replaceHubKey(_ key: String, for hubID: UUID) async throws {
+        try await hubs.replaceKey(key, for: hubID)
+        let ids = Set(accounts.accounts(onHub: hubID).map(\.cardID))
+        await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
+    }
+
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {
             while !Task.isCancelled {
+                await hubs.syncDue()
                 await dataStore.refreshAll()
                 await quotaNotifications.evaluate(
                     layout.visibleDescriptors,
@@ -121,11 +132,12 @@ final class AppContainer {
     }
 
     private func syncAccounts() {
-        let previousIDs = Set(providers.map(\.provider.id))
+        let previous = providers.map { ObjectIdentifier($0) }
         providers = ProviderCatalog.make(
             accounts: accounts.accounts,
             vault: accounts.credentialVault,
             http: http,
+            hubGate: hubGate,
             claudeSessions: claudeSessions,
             reusing: providers
         )
@@ -135,8 +147,8 @@ final class AppContainer {
             popover.customizeProviderID = nil
         }
         dataStore.apply(providers: providers, registry: registry)
-        for id in providers.map(\.provider.id) where !previousIDs.contains(id) {
-            Task { await dataStore.refresh(providerID: id, force: true) }
+        for runtime in providers where !previous.contains(ObjectIdentifier(runtime)) {
+            Task { await dataStore.refresh(providerID: runtime.provider.id, force: true) }
         }
     }
 }

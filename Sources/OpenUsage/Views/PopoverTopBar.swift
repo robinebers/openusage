@@ -75,7 +75,7 @@ struct PopoverTopBar: View {
     }
 
     private func logo(for provider: Provider) -> some View {
-        ProviderIcon(id: provider.icon, side: 22, inset: 0.04)
+        AccountIcon(provider: provider, side: 22, inset: 0.04)
             .frame(width: 28, height: 28)
             .accessibilityHidden(true)
     }

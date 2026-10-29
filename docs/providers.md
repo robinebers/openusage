@@ -169,4 +169,5 @@ usage to report, as for a Grok team account; the account's right-click menu star
 "Sign-in expired" means the provider rejected the stored sign-in: remove the account and add it
 again. "Rejected the API key" means the key no longer works: use **Replace API Key…** on the account's
 page. "Rate limited" and HTTP errors clear on a later refresh. See
-[Refreshing](refreshing.md).
+[Refreshing](refreshing.md). An account from a CLIProxyAPI hub has its own messages, which point to
+the hub; see [CLIProxyAPI hubs](cliproxyapi.md#when-something-goes-wrong).

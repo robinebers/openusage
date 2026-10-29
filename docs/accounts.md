@@ -25,6 +25,9 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
      billing managers, and click **Add Account**. The account is named after the organization, and the
      same organization is not added twice.
 
+To add the Claude and ChatGPT logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom of
+the list and enter the hub's address and management key. See [CLIProxyAPI hubs](cliproxyapi.md).
+
 If a sign-in fails, **Try Again** starts it over. The close button in a sign-in step's corner (or Esc)
 goes back to the provider list; **Cancel** on the list closes the sheet.
 
@@ -58,12 +61,13 @@ bar; see [Menu bar](menu-bar.md).
 
 **Remove Account…** sits at the bottom of the account's page. Removing an account deletes its sign-in
 from this Mac. You can add the account again at any time. If the Keychain refuses to delete the
-sign-in, the account stays and its page shows why.
+sign-in, the account stays and its page shows why. An account from a CLIProxyAPI hub has no
+**Remove Account…**: remove the login on the hub, or remove the whole hub from its row in Accounts.
 
 ## Where things are stored
 
 Account names and the dashboard layout live in the app's own preferences. OAuth tokens and API keys
-live in the app's own Keychain service. OpenUsage never reads credentials, files, Keychain items,
+live in the app's own Keychain service, and so does a CLIProxyAPI hub's management key. OpenUsage never reads credentials, files, Keychain items,
 databases, or environment variables that belong to other tools.
 
 A version of OpenUsage that cannot read one of your accounts, such as one for a provider that version
