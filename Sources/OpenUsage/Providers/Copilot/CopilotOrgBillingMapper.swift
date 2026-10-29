@@ -10,12 +10,19 @@ enum CopilotOrgBillingMapper {
         return logins.compactMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
     }
 
-    static func usageLines(_ response: HTTPResponse) -> [MetricLine] {
-        let items = (ProviderParse.jsonObject(response.body)?["usageItems"] as? [[String: Any]] ?? []).filter { item in
-            (item["product"] as? String)?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Copilot") == .orderedSame
+    /// `nil` for a report that isn't GitHub's shape, so it never shows as zero usage.
+    static func usageLines(_ response: HTTPResponse) -> [MetricLine]? {
+        guard let items = ProviderParse.jsonObject(response.body)?["usageItems"] as? [[String: Any]] else { return nil }
+        var credits = 0.0
+        var spend = 0.0
+        for item in items
+        where (item["product"] as? String)?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Copilot") == .orderedSame {
+            guard let quantity = ProviderParse.number(item["grossQuantity"]), let amount = ProviderParse.number(item["netAmount"]) else {
+                return nil
+            }
+            credits += max(0, quantity)
+            spend += max(0, amount)
         }
-        let credits = items.reduce(0.0) { $0 + max(0, ProviderParse.number($1["grossQuantity"]) ?? 0) }
-        let spend = items.reduce(0.0) { $0 + max(0, ProviderParse.number($1["netAmount"]) ?? 0) }
         return [
             .values(label: "Org Credits", values: [MetricValue(number: credits, kind: .count, label: "credits")]),
             .values(label: "Org Spend", values: [MetricValue(number: spend, kind: .dollars)])

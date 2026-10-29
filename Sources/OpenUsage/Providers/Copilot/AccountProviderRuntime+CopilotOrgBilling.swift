@@ -3,8 +3,8 @@ import Foundation
 extension AccountProviderRuntime {
     func copilotOrgLines(after usage: HTTPResponse, adminToken: String) async -> [MetricLine] {
         if copilotOrgRead.isDue(at: now()) {
-            let billing = await copilotOrgBilling(orgs: CopilotOrgBillingMapper.orgLogins(usage), adminToken: adminToken)
-            copilotOrgRead.record(billing.map(CopilotOrgBillingMapper.usageLines) ?? [], at: now())
+            let lines = await copilotOrgLines(orgs: CopilotOrgBillingMapper.orgLogins(usage), adminToken: adminToken)
+            copilotOrgRead.record(lines ?? [], at: now())
         }
         return copilotOrgRead.value ?? []
     }
@@ -18,7 +18,7 @@ extension AccountProviderRuntime {
             try ProviderError.requireSuccess(usage, kind: .copilot)
             let orgs = CopilotOrgBillingMapper.orgLogins(usage)
             guard !orgs.isEmpty else { throw ProviderError.unavailable("Copilot lists no organization for this account, so there is no org billing to read.") }
-            guard await copilotOrgBilling(orgs: orgs, adminToken: adminToken) != nil else {
+            guard await copilotOrgLines(orgs: orgs, adminToken: adminToken) != nil else {
                 throw ProviderError.unavailable(
                     "GitHub did not let this token read any of your organizations' billing. Use a token from an organization owner or billing manager with Administration read access."
                 )
@@ -28,12 +28,13 @@ extension AccountProviderRuntime {
         try await replaceCredential(.oauth(tokens))
     }
 
-    /// The billing of the first organization the token can read: a fine-grained token reads only the
-    /// one organization it was made for.
-    private func copilotOrgBilling(orgs: [String], adminToken: String) async -> HTTPResponse? {
+    /// The rows of the first organization whose report the token can read and that parses: a
+    /// fine-grained token reads only the one organization it was made for.
+    private func copilotOrgLines(orgs: [String], adminToken: String) async -> [MetricLine]? {
         for org in orgs {
             if let response = try? await CopilotUsageClient(http: http).fetchOrgCredits(org: org, adminToken: adminToken),
-               (200..<300).contains(response.statusCode) { return response }
+               (200..<300).contains(response.statusCode),
+               let lines = CopilotOrgBillingMapper.usageLines(response) { return lines }
         }
         return nil
     }

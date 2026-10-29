@@ -30,6 +30,12 @@ final class CopilotOrgBillingTests: XCTestCase {
         ], "an org with no Copilot usage yet shows zero")
     }
 
+    func testAnInvalidOrgReportMapsToNothing() {
+        for body in ["not json", "{}", #"{"usageItems":{"product":"Copilot"}}"#, #"{"usageItems":[{"product":"Copilot","grossQuantity":100}]}"#] {
+            XCTAssertNil(CopilotOrgBillingMapper.usageLines(Self.ok(body)), body)
+        }
+    }
+
     func testOrgLoginsComeFromTheCopilotUsageBody() {
         XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(Self.usageBody)), ["other-org", "acme"])
         XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(#"{"copilot_plan":"pro"}"#)), [])
@@ -102,6 +108,17 @@ final class CopilotOrgBillingTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])))
     }
 
+    func testATokenWhoseReportDoesNotParseIsNotSaved() async throws {
+        let (container, vault, account) = makeContainer(usageBody: Self.usageBody, orgBody: "<html>")
+        do {
+            try await container.saveAdminToken("admin", for: account.cardID)
+            XCTFail("a token was saved on an unreadable report")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.hasPrefix("GitHub did not let this token read"), error.localizedDescription)
+        }
+        XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])))
+    }
+
     private func refreshed(adminToken: String?, orgStatus: Int = 200) async throws -> (ProviderSnapshot, RoutingHTTPClient) {
         let account = Account(kind: .copilot, label: "Work")
         let vault = InMemoryCredentialVault()
@@ -124,14 +141,14 @@ final class CopilotOrgBillingTests: XCTestCase {
         return (second, http)
     }
 
-    private func makeContainer(usageBody: String) -> (AppContainer, InMemoryCredentialVault, Account) {
+    private func makeContainer(usageBody: String, orgBody: String = orgBody) -> (AppContainer, InMemoryCredentialVault, Account) {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let accounts = AccountStore(defaults: defaults, vault: vault)
         let http = RoutingHTTPClient { request in
             guard request.url.path.hasSuffix("ai_credit/usage") else { return Self.ok(usageBody) }
             let readable = request.url == CopilotUsageClient.orgCreditsURL(org: "acme") && request.headers["Authorization"] == "Bearer admin"
-            return readable ? Self.ok(Self.orgBody) : Self.response(403, "{}")
+            return readable ? Self.ok(orgBody) : Self.response(403, "{}")
         }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
         let account = accounts.add(kind: .copilot, label: "Work", credential: .oauth(OAuthTokens(

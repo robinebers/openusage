@@ -53,7 +53,9 @@ struct AccountDetailView: View {
                             do {
                                 try await container.saveAdminToken(nil, for: providerID)
                                 hasAdminToken = false
-                            } catch {}
+                            } catch {
+                                AppLog.error(LogTag.plugin("copilot"), "\(providerID) could not remove the admin token: \(error.localizedDescription)")
+                            }
                         }
                     }
                 }
