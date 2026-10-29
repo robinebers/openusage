@@ -25,8 +25,8 @@ final class AccountStore {
     }
 
     @discardableResult
-    func add(kind: ProviderKind, label: String, credential: AccountCredential) -> Account {
-        let account = Account(kind: kind, label: label)
+    func add(kind: ProviderKind, label: String, organization: String? = nil, credential: AccountCredential) -> Account {
+        let account = Account(kind: kind, label: label, organization: organization)
         do {
             try credentialVault.save(credential, for: account.id)
             accounts.append(account)
@@ -76,6 +76,10 @@ final class AccountStore {
         return accounts.first { account in
             account.kind == kind && (try? credentialVault.load(account.id))??.identity == identity
         }
+    }
+
+    func account(kind: ProviderKind, organization: String) -> Account? {
+        accounts.first { $0.kind == kind && $0.organization?.caseInsensitiveCompare(organization) == .orderedSame }
     }
 
     func account(cardID: String) -> Account? {

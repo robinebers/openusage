@@ -130,7 +130,7 @@ struct CopilotOrganizationLogin: ProviderLogin {
         } catch ProviderError.requestFailed(404) {
             throw ProviderError.unavailable("GitHub has no organization “\(organization)” this token can read.")
         }
-        return (organization, .organizationToken(token, organization: organization))
+        return (organization, .apiKey(token))
     }
 }
 

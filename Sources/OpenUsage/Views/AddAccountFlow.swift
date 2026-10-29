@@ -130,11 +130,19 @@ final class AddAccountFlow {
     }
 
     private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind) {
-        if let existing = store.account(kind: kind, signedInAs: result.credential) {
+        let organization = method == .organizationToken ? self.organization.trimmed : nil
+        let existing = if let organization {
+            store.account(kind: kind, organization: organization)
+        } else {
+            store.account(kind: kind, signedInAs: result.credential)
+        }
+        if let existing {
             return fail("This account is already added as \(existing.label).")
         }
         let name = accountName.trimmed
-        let account = store.add(kind: kind, label: name.isEmpty ? result.label : name, credential: result.credential)
+        let account = store.add(
+            kind: kind, label: name.isEmpty ? result.label : name, organization: organization, credential: result.credential
+        )
         guard store.accounts.contains(where: { $0.id == account.id }) else {
             return fail(store.lastError ?? "The account could not be saved.")
         }

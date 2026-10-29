@@ -305,7 +305,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "rateLimitResets"],
             "cursor": ["totalUsage", "grokBot", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "argonWeekly", "nonGeminiSession", "nonGeminiWeekly"],
-            "copilot": ["premiumCredits", "extraUsage", "orgCredits", "orgSpend", "chat", "completions"],
+            "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],
             "grok": ["weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
@@ -314,5 +314,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         ]
 
         XCTAssertEqual(actual, expected)
+        let organization = AccountProviderRuntime.widgetDescriptors(for: Account(kind: .copilot, label: "acme", organization: "acme"))
+        XCTAssertEqual(Set(organization.flatMap(\.limitResources).map(\.key)), ["orgCredits", "orgSpend"])
     }
 }

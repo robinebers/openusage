@@ -29,9 +29,9 @@ final class DuplicateLoginTests: XCTestCase {
 
     func testTheSameOrganizationIsNotAddedTwice() async throws {
         let store = makeStore()
-        store.add(kind: .copilot, label: "acme", credential: .organizationToken("first", organization: "acme"))
+        store.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("first"))
 
-        let flow = flow(store) { .organizationToken("second", organization: "ACME") }
+        let flow = flow(store) { .apiKey("second") }
         flow.choose(.copilot)
         flow.choose(.organizationToken)
         flow.organization = "ACME"

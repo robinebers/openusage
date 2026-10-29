@@ -11,7 +11,6 @@ struct AccountDetailView: View {
 
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
-    @State private var isOrganizationAccount = false
 
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
@@ -27,7 +26,7 @@ struct AccountDetailView: View {
                         try await container.replaceKey($0, for: providerID)
                     }
                     .cardSurface()
-                } else if isOrganizationAccount {
+                } else if container.accounts.account(cardID: providerID)?.organization != nil {
                     ReplaceKeyRow(title: "Replace Token…", field: "Token") {
                         try await container.replaceKey($0, for: providerID)
                     }
@@ -36,10 +35,6 @@ struct AccountDetailView: View {
                 removeAccountRow(group.provider)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .task(id: providerID) {
-                guard group.provider.kind.authMethods.contains(.organizationToken) else { return }
-                isOrganizationAccount = await container.isOrganizationAccount(providerID)
-            }
         } else {
             EmptyView()
         }

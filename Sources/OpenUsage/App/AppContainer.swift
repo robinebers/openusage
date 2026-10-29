@@ -82,13 +82,9 @@ final class AppContainer {
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
-        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        let credential: AccountCredential = if case .organizationToken(_, let organization)? = try? await runtime.loadCredential() {
-            .organizationToken(key, organization: organization)
-        } else {
-            .apiKey(key)
-        }
-        if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
+        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        if runtime.account.organization == nil,
+           let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
         do {
@@ -100,13 +96,6 @@ final class AppContainer {
         }
         try accounts.replaceCredential(credential, for: runtime.account.id)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
-    }
-
-    func isOrganizationAccount(_ providerID: String) async -> Bool {
-        guard let runtime = providers.first(where: { $0.provider.id == providerID }),
-              case .organizationToken? = try? await runtime.loadCredential()
-        else { return false }
-        return true
     }
 
     func startRefreshing() {

@@ -98,7 +98,7 @@ final class AddAccountFlowTests: XCTestCase {
             return StubLogin { input in
                 var iterator = input.makeAsyncIterator()
                 let token = await iterator.next() ?? ""
-                return (organization, .organizationToken(token, organization: organization))
+                return (organization, .apiKey(token))
             }
         }
         flow.choose(.copilot)
@@ -117,8 +117,8 @@ final class AddAccountFlowTests: XCTestCase {
         let account = try XCTUnwrap(store.accounts.first)
         XCTAssertEqual(account.kind, .copilot)
         XCTAssertEqual(account.label, "Acme")
-        XCTAssertEqual(try vault.load(account.id), .organizationToken("github_pat_1", organization: "Acme"))
-        XCTAssertEqual(try vault.load(account.id)?.identity, "org:acme")
+        XCTAssertEqual(account.organization, "Acme")
+        XCTAssertEqual(try vault.load(account.id), .apiKey("github_pat_1"))
     }
 
     func testCancelStopsTheSignInWithoutAddingAnAccount() async throws {

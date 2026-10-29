@@ -41,7 +41,7 @@ final class CopilotOrgBillingTests: XCTestCase {
 
         let added = try await login("good", http: http)
         XCTAssertEqual(added.label, "acme")
-        XCTAssertEqual(added.credential, .organizationToken("good", organization: "acme"))
+        XCTAssertEqual(added.credential, .apiKey("good"))
         let request = try XCTUnwrap(http.requests.first)
         XCTAssertEqual(http.requests.count, 1)
         XCTAssertEqual(request.url.absoluteString, "https://api.github.com/organizations/acme/settings/billing/ai_credit/usage")
@@ -63,9 +63,9 @@ final class CopilotOrgBillingTests: XCTestCase {
     }
 
     func testAnOrganizationAccountShowsItsCreditsAndSpend() async throws {
-        let account = Account(kind: .copilot, label: "acme")
+        let account = Account(kind: .copilot, label: "acme", organization: "acme")
         let vault = InMemoryCredentialVault()
-        try vault.save(.organizationToken("good", organization: "acme"), for: account.id)
+        try vault.save(.apiKey("good"), for: account.id)
         let http = RoutingHTTPClient { _ in Self.ok(Self.orgBody) }
         let snapshot = try await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().get()
 
@@ -82,10 +82,8 @@ final class CopilotOrgBillingTests: XCTestCase {
             request.headers["Authorization"] == "Bearer refused" ? Self.response(403, "{}") : Self.ok(Self.orgBody)
         }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
-        let acme = accounts.add(kind: .copilot, label: "acme", credential: .organizationToken("old", organization: "acme"))
-        accounts.add(kind: .copilot, label: "beta", credential: .organizationToken("classic", organization: "beta"))
-        let isOrganization = await container.isOrganizationAccount(acme.cardID)
-        XCTAssertTrue(isOrganization)
+        let acme = accounts.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("old"))
+        let beta = accounts.add(kind: .copilot, label: "beta", organization: "beta", credential: .apiKey("classic"))
 
         do {
             try await container.replaceKey("refused", for: acme.cardID)
@@ -93,10 +91,13 @@ final class CopilotOrgBillingTests: XCTestCase {
         } catch {
             XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
         }
-        XCTAssertEqual(try vault.load(acme.id), .organizationToken("old", organization: "acme"))
+        XCTAssertEqual(try vault.load(acme.id), .apiKey("old"))
 
         try await container.replaceKey(" classic ", for: acme.cardID)
-        XCTAssertEqual(try vault.load(acme.id), .organizationToken("classic", organization: "acme"))
+        XCTAssertEqual(try vault.load(acme.id), .apiKey("classic"))
+        XCTAssertEqual(try vault.load(beta.id), .apiKey("classic"))
+        XCTAssertEqual(accounts.accounts.map(\.organization), ["acme", "beta"])
+        XCTAssertEqual(accounts.accounts.map(\.label), ["acme", "beta"])
         XCTAssertEqual(container.dataStore.snapshots[acme.cardID]?.lines, Self.orgLines)
     }
 

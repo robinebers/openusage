@@ -71,16 +71,20 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
     let kind: ProviderKind
     var label: String
+    /// A Copilot organization account carries the login whose billing its token reads; every other
+    /// account has none.
+    let organization: String?
     let addedAt: Date
 
     var cardID: String {
         "\(kind.rawValue)@\(id.uuidString.lowercased().prefix(8))"
     }
 
-    init(id: UUID = UUID(), kind: ProviderKind, label: String, addedAt: Date = Date()) {
+    init(id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, addedAt: Date = Date()) {
         self.id = id
         self.kind = kind
         self.label = label
+        self.organization = organization
         self.addedAt = addedAt
     }
 }
@@ -111,7 +115,6 @@ struct OAuthTokens: Codable, Sendable, Equatable {
 enum AccountCredential: Codable, Sendable, Equatable {
     case oauth(OAuthTokens)
     case apiKey(String)
-    case organizationToken(String, organization: String)
 
     var identity: String? {
         switch self {
@@ -119,8 +122,6 @@ enum AccountCredential: Codable, Sendable, Equatable {
             tokens.extras[OAuthTokens.identityKey]
         case .apiKey(let key):
             "key:" + SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
-        case .organizationToken(_, let organization):
-            "org:" + organization.lowercased()
         }
     }
 }

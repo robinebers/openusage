@@ -156,17 +156,14 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {
-        let client = CopilotUsageClient(http: http)
-        switch credential {
-        case .oauth(let tokens):
-            let response = try await client.fetchUsage(token: tokens.accessToken)
-            try ProviderError.requireSuccess(response, kind: .copilot)
-            return try CopilotUsageMapper.map(response)
-        case .organizationToken(let token, let organization):
-            return ProviderUsage(plan: nil, lines: try await client.organizationUsage(organization, token: token))
-        case .apiKey:
-            throw ProviderError.invalidResponse
+        if let organization = account.organization {
+            guard case .apiKey(let token) = credential else { throw ProviderError.invalidResponse }
+            return ProviderUsage(plan: nil, lines: try await CopilotUsageClient(http: http).organizationUsage(organization, token: token))
         }
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
+        let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
+        try ProviderError.requireSuccess(response, kind: .copilot)
+        return try CopilotUsageMapper.map(response)
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {
