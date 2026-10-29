@@ -49,8 +49,9 @@ while they have any. The count turns orange when the next reset expires within 7
 one, choose **Use** on it, then **Reset**.
 
 A spinner after an account's name means it is refreshing. A warning icon means its last refresh failed,
-and a clock means its values are more than two refresh cycles old. Rest the pointer on the warning or
-the clock to read why (the error, or when the values were last updated); the account's right-click
+or that the provider has no usage to report for it, as for a Grok team account. A clock means its
+values are more than two refresh cycles old. Rest the pointer on the warning or the clock to read why
+(the error or the provider's notice, or when the values were last updated); the account's right-click
 menu starts with the reason too.
 
 ## Right-click menus

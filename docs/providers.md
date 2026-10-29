@@ -49,8 +49,8 @@ popover says this sign-in can't use resets, and you can spend the reset in Claud
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows
 one instead of returning to the app. The card reads `/api/oauth/usage` for the session, weekly,
 Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
-plan (Pro, Max, Team). Team seats get no personal quota from the API, and the card says so. Extra
-Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the account sets none.
+plan (Pro, Max, Team). Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent`
+when the account sets none.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
 when each expires; choose **Use**, then **Reset** to spend one.
@@ -90,7 +90,8 @@ has not yet been tried against a real organization token.
 ## Grok
 
 Sign in with an xAI device code. The card reads the Grok settings and billing endpoints for the weekly
-shared pool, pay-as-you-go extra usage, and the plan.
+shared pool, pay-as-you-go extra usage, and the plan. A team account has no personal quota to read.
+Its card shows the plan and says so, with no rows.
 
 ## Ollama
 
@@ -120,8 +121,8 @@ quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the
 
 ## Errors
 
-A warning icon next to the account's name means the last refresh failed; the account's right-click menu
-starts with the reason.
+A warning icon next to the account's name means the last refresh failed, or that the provider has no
+usage to report, as for a Grok team account; the account's right-click menu starts with the reason.
 "Sign-in expired" means the provider rejected the stored sign-in: remove the account and add it
 again. "Rejected the API key" means the key no longer works: use **Replace API Key…** on the account's
 page. "Rate limited" and HTTP errors clear on a later refresh. See
