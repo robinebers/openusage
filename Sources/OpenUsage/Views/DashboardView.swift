@@ -111,12 +111,14 @@ struct DashboardView: View {
                     }
                 }
             }
+            // A screen mounted by the slide can measure before its bars are inset (macOS 15 does), so the
+            // slide's co-target may be short: follow the corrected height mid-slide, not after it.
             .onChange(of: measuredIdeal[popover.screen]) { _, _ in
                 guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
                     didEstablishHeight = true
                     animatedHeight = target
-                } else if !isSliding, abs(target - animatedHeight) > 1 {
+                } else if abs(target - animatedHeight) > 1 {
                     withAnimation(Motion.spring) { animatedHeight = target }
                 }
             }
