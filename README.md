@@ -73,13 +73,15 @@ what each one shows and what each sign-in grants.
   the app last fetched as JSON, for scripts and agents.
 - **[Automatic updates](docs/updates.md).** Signed, notarized in-app updates, with an optional beta
   channel.
+- **[Proxy](docs/proxy.md).** Send provider requests through a SOCKS5, HTTP, or HTTPS proxy set in
+  `~/.openusage/config.json`.
 
 ## Documentation
 
 Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md),
 [accounts](docs/accounts.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
 the [command line](docs/cli.md), [refreshing](docs/refreshing.md), [providers](docs/providers.md),
-[updates](docs/updates.md), and [privacy](docs/privacy.md).
+[updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
 
 For working on the code, see [architecture](docs/architecture.md),
 [adding a provider](docs/adding-a-provider.md), and [debugging](docs/debugging.md).

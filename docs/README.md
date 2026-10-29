@@ -13,6 +13,7 @@ with the behaviour they describe. If the app and a page here disagree, that is a
 - [Refreshing](refreshing.md): when data updates and what happens when a fetch fails
 - [Providers](providers.md): how each provider signs in and what it shows
 - [Updates](updates.md): automatic updates, manual checks, and the beta channel
+- [Proxy](proxy.md): sending provider requests through a SOCKS5, HTTP, or HTTPS proxy
 - [Privacy](privacy.md): what stays on your Mac and what the anonymous telemetry sends
 
 ## For developers

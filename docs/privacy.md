@@ -11,7 +11,8 @@ OAuth tokens and API keys live in the app's own Keychain service (`com.robineber
 one item per account. Removing an account deletes its item. Account names, the layout, settings, and
 the last fetched usage live in the app's own preferences. Nothing is synced to iCloud. The
 [`openusage` command](cli.md) reads that last fetched usage and nothing else: no Keychain item, no
-network request.
+network request. A [proxy](proxy.md) user name and password stay in your own
+`~/.openusage/config.json`, which OpenUsage reads but never writes or logs.
 
 ## Screen sharing
 
