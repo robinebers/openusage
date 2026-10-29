@@ -25,7 +25,7 @@ final class DefaultStarsTests: XCTestCase {
 
     func testPinsSavedUnderTheOldFamilyIDsDoNotStandInForAnAccountsOwn() {
         let defaults = isolatedDefaults()
-        LayoutPersistence(defaults: defaults, storageKey: "openusage.layout.v1").savePins(["claude.session", "claude.weekly"])
+        defaults.set(["claude.session", "claude.weekly"], forKey: "openusage.layout.v1.menuBarPins")
         let app = StarsApp(defaults: defaults)
 
         let account = app.add(.claude)

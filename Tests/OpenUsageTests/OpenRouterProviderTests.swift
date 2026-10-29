@@ -117,7 +117,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
         let registry = WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors)
 
-        let layout = LayoutStore(registry: registry, defaults: isolatedDefaults(), storageKey: "layout")
+        let layout = LayoutStore(registry: registry, defaults: isolatedDefaults())
 
         XCTAssertEqual(runtime.widgetDescriptors.map(\.title), ["Credits", "Balance", "Today", "This Week", "This Month", "Key Limit"])
         XCTAssertEqual(layout.pinnedMetricIDs, ["\(runtime.provider.id).credits"])

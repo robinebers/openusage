@@ -3,45 +3,19 @@ import XCTest
 
 @MainActor
 final class LayoutPersistenceTests: XCTestCase {
-    func testLoadsEveryExistingKeyAndFormat() throws {
+    func testSavesTheWholeLayoutUnderOneKey() {
         let defaults = isolatedDefaults()
-        defaults.set(["claude.session"], forKey: "layout.hiddenMetrics")
-        defaults.set(try JSONEncoder().encode(["cursor", "claude"]), forKey: "layout.providerOrder")
-        defaults.set(
-            try JSONEncoder().encode(["claude": ["claude.weekly", "claude.session"]]),
-            forKey: "layout.metricOrderByProvider"
+        let state = LayoutState(
+            hiddenMetricIDs: ["claude@1.extra"],
+            providerOrder: ["cursor@2", "claude@1"],
+            metricOrderByProvider: ["claude@1": ["claude@1.weekly", "claude@1.session"]],
+            pinnedMetricIDs: ["claude@1.session"],
+            seededProviderIDs: ["claude@1", "cursor@2"]
         )
-        defaults.set(["claude.session"], forKey: "layout.menuBarPins")
 
-        let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
+        LayoutPersistence(defaults: defaults).save(state)
 
-        XCTAssertEqual(persistence.loadHidden(), ["claude.session"])
-        XCTAssertEqual(persistence.loadProviderOrder(), ["cursor", "claude"])
-        XCTAssertEqual(persistence.loadMetricOrder()?["claude"], ["claude.weekly", "claude.session"])
-        XCTAssertEqual(persistence.loadPins(), ["claude.session"])
+        XCTAssertEqual(LayoutPersistence(defaults: defaults).load(), state)
+        XCTAssertEqual(defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("openusage.layout") }, ["openusage.layout.v2"])
     }
-
-    func testSavesEveryExistingKeyAndFormat() throws {
-        let defaults = isolatedDefaults()
-        let persistence = LayoutPersistence(defaults: defaults, storageKey: "layout")
-
-        persistence.saveHidden(["claude.weekly", "claude.session"])
-        persistence.saveProviderOrder(["cursor", "claude"])
-        persistence.saveMetricOrder(["claude": ["claude.weekly", "claude.session"]])
-        persistence.savePins(["claude.session"])
-
-        XCTAssertEqual(defaults.stringArray(forKey: "layout.hiddenMetrics"), ["claude.session", "claude.weekly"])
-        XCTAssertEqual(try decode([String].self, key: "layout.providerOrder", defaults: defaults), ["cursor", "claude"])
-        XCTAssertEqual(
-            try decode([String: [String]].self, key: "layout.metricOrderByProvider", defaults: defaults)["claude"],
-            ["claude.weekly", "claude.session"]
-        )
-        XCTAssertEqual(Set(defaults.stringArray(forKey: "layout.menuBarPins") ?? []), ["claude.session"])
-    }
-
-    private func decode<T: Decodable>(_ type: T.Type, key: String, defaults: UserDefaults) throws -> T {
-        let data = try XCTUnwrap(defaults.data(forKey: key))
-        return try JSONDecoder().decode(type, from: data)
-    }
-
 }

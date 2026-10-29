@@ -2,13 +2,13 @@ extension LayoutStore {
     func provider(id: String) -> Provider? { registry.provider(id: id) }
 
     func isMetricEnabled(_ descriptorID: String) -> Bool {
-        !hiddenMetricIDs.contains(descriptorID)
+        !state.hiddenMetricIDs.contains(descriptorID)
     }
 
     var visibleDescriptors: [WidgetDescriptor] { displayGroups.flatMap(\.metrics) }
 
     func orderedProviderIDs() -> [String] {
-        registry.orderedProviderIDs(savedOrder: providerOrder)
+        registry.orderedProviderIDs(savedOrder: state.providerOrder)
     }
 
     func orderedProviders() -> [Provider] {
@@ -17,7 +17,7 @@ extension LayoutStore {
 
     var displayGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
-            let metrics = orderedSupportedMetrics(for: provider.id).filter { !hiddenMetricIDs.contains($0.id) }
+            let metrics = orderedSupportedMetrics(for: provider.id).filter { !state.hiddenMetricIDs.contains($0.id) }
             return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
         }
     }
@@ -34,7 +34,7 @@ extension LayoutStore {
 
     var pinnedGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
-            let metrics = orderedSupportedMetrics(for: provider.id).filter { pinnedMetricIDs.contains($0.id) }
+            let metrics = orderedSupportedMetrics(for: provider.id).filter { state.pinnedMetricIDs.contains($0.id) }
             return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
         }
     }
@@ -44,8 +44,8 @@ extension LayoutStore {
         recordingUndoStep {
             let ordered = orderedProviderIDs()
             guard let next = Self.reordered(ordered, dragged: dragged, target: target) else { return false }
-            providerOrder = next
-            persistProviderOrder()
+            state.providerOrder = next
+            persist()
             return true
         }
     }
@@ -61,8 +61,8 @@ extension LayoutStore {
                 members[family, default: []].append(provider.id)
             }
             guard let next = Self.reordered(families, dragged: dragged, target: target) else { return false }
-            providerOrder = next.flatMap { members[$0] ?? [] }
-            persistProviderOrder()
+            state.providerOrder = next.flatMap { members[$0] ?? [] }
+            persist()
             return true
         }
     }
@@ -73,8 +73,8 @@ extension LayoutStore {
             guard let next = Self.reordered(metricOrder(for: providerID), dragged: dragged, target: target) else {
                 return false
             }
-            metricOrderByProvider[providerID] = next
-            persistMetricOrder()
+            state.metricOrderByProvider[providerID] = next
+            persist()
             return true
         }
     }
