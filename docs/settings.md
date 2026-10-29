@@ -65,8 +65,13 @@ See [Updates](updates.md).
 
 ## Upgrading from 0.7.x
 
-0.7.x found your accounts on its own, so you add them again on the Accounts screen. When you add the
-only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
+0.7.x found your accounts on its own, so you add them again on the Accounts screen. The exception is an
+OpenRouter or Z.ai key you typed into 0.7.x, which it saved in `~/.config/openusage/openrouter.json` or
+`~/.config/openusage/zai.json`. On the first launch after the update, OpenUsage adds each saved key as
+an account when that provider has no account yet and a usage read accepts the key. It does this once,
+so an account you remove later doesn't come back.
+
+When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
 
 - **Stars.** It keeps the provider's 0.7.x stars on its metrics, or gets the default stars if none of
   those stars is on a metric it has.

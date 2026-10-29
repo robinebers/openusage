@@ -33,6 +33,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let container = AppContainer(telemetry: PostHogTelemetrySink(), telemetryDefaults: TelemetryRecorder.suite)
         self.container = container
         container.startRefreshing()
+        Task { await APIKeyV1Files.importOnce(into: container.accounts) }
         statusItemController = StatusItemController(container: container, updater: updater)
         let launchDurationMS = Int((ProcessInfo.processInfo.systemUptime - processStartedAt) * 1_000)
         AppLog.info(.lifecycle, "launch to status item ready: \(launchDurationMS) ms")
