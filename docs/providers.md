@@ -98,6 +98,8 @@ Paste a **Management** key from
 [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). A regular
 inference key cannot read the balance. The card reads `/api/v1/credits` for the balance and
 `/api/v1/key` for today's, this week's, and this month's spend. Balance is the default menu-bar star.
+The card's right-click menu adds a **Credits** link to
+[openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai
 
@@ -109,6 +111,7 @@ quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the
 
 A warning icon next to the account's name means the last refresh failed; the account's right-click menu
 starts with the reason.
-"Not logged in" or "sign in again" means the provider rejected the stored credential: remove the
-account and add it again. "Rate limited" and HTTP errors clear on a later refresh. See
+"Sign-in expired" means the provider rejected the stored sign-in: remove the account and add it
+again. "Rejected the API key" means the key no longer works: use **Replace API Key…** on the account's
+page. "Rate limited" and HTTP errors clear on a later refresh. See
 [Refreshing](refreshing.md).

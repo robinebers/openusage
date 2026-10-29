@@ -169,11 +169,13 @@ final class StatusItemController: NSObject {
 
     private func updateImage() {
         let content = withObservationTracking {
-            MenuBarContentBuilder.build(
-                groups: container.layout.pinnedGroups,
-                isStale: container.dataStore.hasStaleAccount,
-                data: { container.dataStore.data(for: $0) }
-            )
+            container.hideFromScreenShare.isConcealing
+                ? MenuBarContent(groups: [])
+                : MenuBarContentBuilder.build(
+                    groups: container.layout.pinnedGroups,
+                    isStale: container.dataStore.hasStaleAccount,
+                    data: { container.dataStore.data(for: $0) }
+                )
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))

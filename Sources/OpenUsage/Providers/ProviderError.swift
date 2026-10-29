@@ -10,7 +10,12 @@ enum ProviderError: Error, LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .signInExpired(let kind): "\(kind.displayName) sign-in expired. Remove the account and add it again."
+        case .signInExpired(let kind):
+            if case .apiKey = kind.authMethod {
+                "\(kind.displayName) rejected the API key. Replace it on the account's page."
+            } else {
+                "\(kind.displayName) sign-in expired. Remove the account and add it again."
+            }
         case .connectionFailed: "Connection failed. Check your internet connection and try again."
         case .invalidResponse: "The provider returned an invalid response."
         case .requestFailed(let status): "The provider request failed (HTTP \(status))."

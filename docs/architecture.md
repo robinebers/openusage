@@ -22,6 +22,7 @@ environment:
 | `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
 | `AccountRenameStore` | Which account name is being edited. |
 | `TelemetryRecorder` | The daily ping and per-provider rollups (see `Services/Telemetry.swift`). |
+| `HideFromScreenShareSetting` | The Hide From Screen Share switch and, while it is on, whether the screen is being captured (`Services/ScreenCaptureProbe.swift`). |
 
 Accounts are the source of truth. Every `AccountStore` change runs `AppContainer.syncAccounts`
 synchronously, which rebuilds the runtimes with `ProviderCatalog.make(accounts:vault:http:reusing:)`,
