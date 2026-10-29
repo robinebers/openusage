@@ -20,7 +20,8 @@ extension AccountProviderRuntime {
                     .exportingLimit("sonnet", unit: "percent"),
                 .percent(key: "fable", provider: provider, title: "Fable")
                     .exportingLimit("fable", unit: "percent"),
-                .boundedDollars(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100)
+                .boundedDollars(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent",
+                                limit: 100, valueWord: "spent")
                     .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
                 rateLimitResets(key: "rateLimitResets", provider: provider)
             ]

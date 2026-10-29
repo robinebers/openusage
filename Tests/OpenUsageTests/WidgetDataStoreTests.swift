@@ -326,30 +326,21 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(used.menuBarValue, remaining.menuBarValue)
     }
 
-    func testUncappedExtraUsageRendersCompactAndUnbounded() async {
-        let provider = Provider(id: "claude", kind: .claude)
-        let descriptor = WidgetDescriptor.boundedDollars(
-            key: "extra", provider: provider, title: "Extra Usage",
-            metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
-        )
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.values(label: "Extra usage spent",
-                                values: [MetricValue(number: 1234.56, kind: .dollars)])]
-            )
-        )
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
+    func testClaudesUncappedExtraUsageReadsCompactDollarsSpent() async throws {
+        let account = Account(kind: .claude, label: "Max")
+        let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "extra" })
+        let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(
+            statusCode: 200, headers: [:],
+            body: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":123456,"monthly_limit":null}}"#.utf8)
+        ))
+        let provider = AccountProviderRuntime.provider(for: account)
+        let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
+                                  snapshot: ProviderSnapshot(provider: provider, plan: nil, lines: lines))
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
-        XCTAssertTrue(data.hasData)
-        XCTAssertFalse(data.isBounded)
-        XCTAssertEqual(data.unboundedDetail, "$1.2K spent")
+        XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
         XCTAssertEqual(data.menuBarValue, "$1.2K")
     }
 
