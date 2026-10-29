@@ -68,15 +68,18 @@ struct HubLink: Codable, Hashable, Sendable {
     }
 }
 
-/// What it takes to make a hub's mirrored accounts match its login list, in the listing's order.
+/// What it takes to make a hub's mirrored accounts match its login list, in the listing's order. A new
+/// login already signed in directly (its `kind:identity` is in `direct`) is skipped: the account that
+/// was there first wins.
 struct HubReconciliation: Equatable {
     var added: [(kind: ProviderKind, login: HubLogin)] = []
     var removed: [UUID] = []
     var relinked: [UUID: HubLink] = [:]
+    var alreadyAdded = 0
 
     var isEmpty: Bool { added.isEmpty && removed.isEmpty && relinked.isEmpty }
 
-    init(hub: CLIProxyHub, logins: [HubLogin], accounts: [Account]) {
+    init(hub: CLIProxyHub, logins: [HubLogin], accounts: [Account], direct: Set<String> = []) {
         let supported = logins.compactMap { login in login.kind.map { (kind: $0, login: login) } }
         let byID = Dictionary(supported.map { ($0.login.id, $0) }, uniquingKeysWith: { first, _ in first })
         var mirroredIDs = Set<String>()
@@ -89,7 +92,16 @@ struct HubReconciliation: Equatable {
             let current = HubLink(hub: hub, login: match.login)
             if current != link { relinked[account.id] = current }
         }
-        added = supported.filter { mirroredIDs.insert($0.login.id).inserted }
+        var alreadyAdded = 0
+        added = supported.filter { kind, login in
+            guard !mirroredIDs.contains(login.id) else { return false }
+            if let identity = login.identity, direct.contains("\(kind.rawValue):\(identity)") {
+                alreadyAdded += 1
+                return false
+            }
+            return mirroredIDs.insert(login.id).inserted
+        }
+        self.alreadyAdded = alreadyAdded
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
@@ -106,6 +118,9 @@ struct HubLogin: Equatable, Sendable {
     let isOAuth: Bool
     let isDisabled: Bool
     let chatGPTAccountID: String?
+    /// The same identity a direct sign-in stores, when known: a ChatGPT login's `<account id>/<email>` from
+    /// the listing, or a Claude login's from one profile read through the hub.
+    var identity: String? = nil
 
     /// The OpenUsage provider a login is mirrored as, or nil for a login OpenUsage doesn't support yet.
     var kind: ProviderKind? {
@@ -126,6 +141,7 @@ struct HubLogin: Equatable, Sendable {
         return listing.files.compactMap { entry in
             guard let id = entry.id, !id.isEmpty, let authIndex = entry.authIndex, !authIndex.isEmpty else { return nil }
             let provider = (entry.provider ?? entry.type ?? "").lowercased()
+            let identity = provider == "codex" ? entry.idToken?.chatgptAccountId.flatMap { id in entry.email.map { "\(id)/\($0)" } } : nil
             let label = [entry.email, entry.account, entry.label, entry.name].lazy
                 .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .first { !$0.isEmpty } ?? id
@@ -136,7 +152,8 @@ struct HubLogin: Equatable, Sendable {
                 label: label,
                 isOAuth: (entry.accountType ?? "oauth").lowercased() == "oauth",
                 isDisabled: entry.disabled ?? false,
-                chatGPTAccountID: entry.idToken?.chatgptAccountId
+                chatGPTAccountID: entry.idToken?.chatgptAccountId,
+                identity: identity
             )
         }
     }

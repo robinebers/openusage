@@ -101,15 +101,15 @@ final class AccountStore {
     }
 
     /// The added account a new sign-in would duplicate: an organization account by its organization,
-    /// in any case, and every other account by its credential's identity. An account mirrored from a hub
-    /// never counts, so a login signed in both directly and on a hub shows twice.
+    /// in any case, and every other account by its credential's identity, an account mirrored from a
+    /// CLIProxyAPI hub included.
     func account(kind: ProviderKind, organization: String?, signedInAs credential: AccountCredential) -> Account? {
         if let organization {
             return accounts.first { $0.kind == kind && $0.organization?.caseInsensitiveCompare(organization) == .orderedSame }
         }
         guard let identity = credential.identity else { return nil }
         return accounts.first { account in
-            account.kind == kind && account.hub == nil && (try? credentialVault.load(account.id))??.identity == identity
+            account.kind == kind && (try? credentialVault.load(account.id))??.identity == identity
         }
     }
 
@@ -152,11 +152,13 @@ final class AccountStore {
 
     /// Makes the hub's mirrored accounts match its login list: a new login is added at the bottom of its
     /// provider's accounts, a login gone from the hub is removed, and a renamed or disabled one is
-    /// relinked. The same listing applied twice changes nothing the second time.
-    func mirror(_ logins: [HubLogin], from hubID: UUID) {
-        guard let hub = hubs.first(where: { $0.id == hubID }) else { return }
-        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts)
-        guard !plan.isEmpty else { return }
+    /// relinked. A new login already signed in directly gets no account. The same listing applied twice
+    /// changes nothing the second time. Returns how many logins were skipped as already signed in directly.
+    @discardableResult
+    func mirror(_ logins: [HubLogin], from hubID: UUID) -> Int {
+        guard let hub = hubs.first(where: { $0.id == hubID }) else { return 0 }
+        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts, direct: directIdentities())
+        guard !plan.isEmpty else { return plan.alreadyAdded }
         var removed = Set<UUID>()
         for id in plan.removed {
             do {
@@ -172,7 +174,8 @@ final class AccountStore {
         }
         for (kind, login) in plan.added {
             let account = Account(kind: kind, label: login.label, hub: HubLink(hub: hub, login: login))
-            let extras = login.chatGPTAccountID.map { ["chatgpt_account_id": $0] } ?? [:]
+            var extras = login.chatGPTAccountID.map { ["chatgpt_account_id": $0] } ?? [:]
+            extras[OAuthTokens.identityKey] = login.identity
             do {
                 try credentialVault.save(.oauth(OAuthTokens(accessToken: CLIProxyHubClient.tokenPlaceholder, extras: extras)), for: account.id)
                 accounts.append(account)
@@ -183,6 +186,14 @@ final class AccountStore {
         AppLog.info(LogTag.auth("cliproxy"), "\(hub.host): \(plan.added.count) added, \(removed.count) removed, \(plan.relinked.count) relinked")
         persist()
         didChange?()
+        return plan.alreadyAdded
+    }
+
+    /// The `kind:identity` of every account signed in directly.
+    func directIdentities() -> Set<String> {
+        Set(accounts.filter { $0.hub == nil }.compactMap { account in
+            (try? credentialVault.load(account.id))??.identity.map { "\(account.kind.rawValue):\($0)" }
+        })
     }
 
     private func persistHubs() {

@@ -40,7 +40,8 @@ sign-in links to the page where you create the key. You can add several accounts
 
 If your Claude and ChatGPT logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 server, connect it once with its address and management key, and every login on it shows as an
-account. OpenUsage keeps the list in step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
+account; a login you already added directly stays as it is, never twice. OpenUsage keeps the list in
+step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
 
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
 app's own Keychain service.
