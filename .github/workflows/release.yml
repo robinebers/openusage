@@ -116,7 +116,7 @@ jobs:
         run: ./script/release.sh
 
       # Upload the dSYM produced by release.sh so PostHog can symbolicate crash reports (the in-app
-      # crash autocapture is anonymous and honors the Share-Anonymous-Usage opt-out; see docs/privacy.md).
+      # crash autocapture is anonymous and always on; no opt-out covers it; see docs/privacy.md).
       # posthog-cli is a CI-only build tool (npm), never shipped in the app bundle. Skips with a loud
       # warning when POSTHOG_CLI_API_KEY is unset (e.g. forks), so a missing key never blocks a release;
       # when the key IS set, an upload failure fails the step so we never silently ship unsymbolicated.

@@ -48,6 +48,25 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.hidden(app.add(.devin)), ["daily", "extra"])
     }
 
+    func testDevinKeepsItsZeroSevenStarsAndOnlyANewAccountTakesTheDefaults() throws {
+        let fresh = MigrationApp(defaults: isolatedDefaults())
+        XCTAssertEqual(fresh.stars(fresh.add(.devin)), ["daily", "weekly"])
+
+        let untouched = isolatedDefaults()
+        try Self.savePlaced(["devin.daily", "devin.weekly", "devin.extra"], to: untouched)
+        untouched.set(["devin"], forKey: "openusage.enabledProviders.v1")
+        let app = MigrationApp(defaults: untouched)
+        XCTAssertEqual(app.stars(app.add(.devin)), [], "0.7.x starred no Devin metric unless the user did")
+        XCTAssertEqual(app.stars(app.add(.devin)), ["daily", "weekly"], "a provider's later accounts start with the default stars")
+
+        let starred = isolatedDefaults()
+        try Self.savePlaced(["devin.daily", "devin.weekly", "devin.extra"], to: starred)
+        starred.set(["devin"], forKey: "openusage.enabledProviders.v1")
+        starred.set(["devin.extra"], forKey: "openusage.layout.v1.menuBarPins")
+        let starredApp = MigrationApp(defaults: starred)
+        XCTAssertEqual(starredApp.stars(starredApp.add(.devin)), ["extra"])
+    }
+
     func testAnEmptyStarListStaysEmpty() {
         let defaults = isolatedDefaults()
         defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")

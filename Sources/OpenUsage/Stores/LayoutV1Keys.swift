@@ -59,6 +59,10 @@ extension LayoutV1Keys {
         .zai: ["session", "weekly", "webSearches"]
     ]
 
+    /// Default stars added since 0.7.16. A 0.7.x layout that never saved its stars showed 0.7.16's
+    /// defaults, which had none of these, so a carried-over account does not take them.
+    static let defaultStarsSinceZeroSeven: Set<String> = ["devin.daily", "devin.weekly"]
+
     /// The layout of the account 0.7.x showed first for `provider`'s kind, mapped onto `metrics` and placed
     /// among `others`, the providers already shown, in order. Nil when 0.7.x had the provider off.
     func carriedOver(to provider: Provider, metrics: [WidgetDescriptor], among others: [Provider]) -> CarriedLayout? {
@@ -79,7 +83,10 @@ extension LayoutV1Keys {
 
         return CarriedLayout(
             hidden: hidden.map(\.id),
-            stars: (starred ?? metrics.filter { $0.isPinnedByDefault && !hidden.contains($0) }).map(\.id),
+            stars: (starred ?? metrics.filter { metric in
+                metric.isPinnedByDefault && !hidden.contains(metric)
+                    && !Self.defaultStarsSinceZeroSeven.contains(metric.kindScopedKey)
+            }).map(\.id),
             metricOrder: metricOrderByProvider?[account].map { ids in
                 Self.keys(of: account, in: ids).compactMap { key in metrics.first { $0.key == key }?.id }
             },

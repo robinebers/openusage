@@ -7,8 +7,8 @@ compute spend from logs or model pricing.
 ## 1. Declare the kind
 
 In `Sources/OpenUsage/Models/Account.swift`, add a case to `ProviderKind` with its `displayName`,
-`links` (Status Page, Usage Dashboard), and `authMethod`: `.oauth`, or `.apiKey(keyPage:)` with the
-page where the user creates the key.
+`links` (Status Page, Usage Dashboard), and `authMethods`: `[.oauth]`, or `[.apiKey(keyPage:)]` with
+the page where the user creates the key.
 
 Add the provider's mark as `Sources/OpenUsage/Resources/ProviderIcons/<kind>.svg`.
 The macOS widget picker uses the accounts exported by the app, so a new provider needs no separate
@@ -32,20 +32,29 @@ Create `Sources/OpenUsage/Providers/<Name>/` with:
 
 - `<Name>UsageClient`: the HTTP calls, through the injected `HTTPClient`, which also sends them
   through the user's [proxy](proxy.md). Throw a `ProviderError`
-  (`signInExpired`, `connectionFailed`, `invalidResponse`, `requestFailed`, or `unavailable` with the
-  account-specific reason); `ProviderError.requireSuccess` triages a non-2xx for you. Never log a
-  credential or a response body.
-- `<Name>UsageMapper`: a pure function from the response to `(plan: String?, lines: [MetricLine])`.
-  Validate the response here.
+  (`signInExpired`, `connectionFailed`, `invalidResponse`, `requestFailed`, `rateLimited`,
+  `unavailable` with the account-specific reason, or `keyRejected` for a key or token the user can
+  replace); `ProviderError.requireSuccess` triages a non-2xx for you. Never log a credential or a
+  response body.
+- `<Name>UsageMapper`: a pure function from the response to `ProviderUsage` (plan, lines, and an
+  optional notice), as `DevinUsageMapper.map` does, or to `[MetricLine]` when the plan comes from a
+  separate read. Validate the response here.
 
-In `AccountProviderRuntime`, add the kind's `widgetDescriptors` (the card's metrics, each named
-by a key such as `"session"`) and a `refresh<Name>` case. If the provider needs a token
-refresh, add it as an extension in the provider folder, as `AccountProviderRuntime+CursorAuth` does.
+In `AccountProviderRuntime+Descriptors.swift`, add the kind's `widgetDescriptors` (the card's
+metrics, each named by a key such as `"session"`). Chain `.exportingLimit(...)` on each metric the
+[command line](cli.md) exports. In `AccountProviderRuntime.swift`, add a `refresh<Name>` function and
+its case in `refresh(_:)`, and add the kind to the `nil` case of `resetClaimService`. If the provider
+needs a token refresh, add it as an extension in the provider folder, as
+`AccountProviderRuntime+CursorAuth` does. `ProviderCatalog` builds a runtime for every account, so it
+needs no change.
 
 ## 4. Defaults
 
-Every metric starts shown. Chain `.pinnedByDefault()` on the one or two descriptors that should start in
-the menu bar, and confirm them with the owner.
+Every metric starts shown. Confirm two defaults with the owner before you choose them, never
+silently:
+
+1. Which descriptors, if any, start in the menu bar: chain `.pinnedByDefault()` on them.
+2. The metric order: the `widgetDescriptors` declaration order.
 
 ## 5. Test
 
@@ -55,5 +64,5 @@ an empty plan, an error body), and the login's response parsing. Run `script/tes
 ## 6. Document
 
 Add the provider to the table and a section in `docs/providers.md`: sign-in method, what the card
-shows, where the plan comes from, and what its errors mean. Add it to the provider list in
-`README.md`.
+shows, where the plan comes from, and what its errors mean. Add the kind and its resource keys to
+`docs/cli.md`. Add it to the provider lists in `README.md` and `AGENTS.md`.

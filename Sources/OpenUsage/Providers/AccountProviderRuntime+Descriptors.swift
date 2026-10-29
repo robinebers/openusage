@@ -102,9 +102,11 @@ extension AccountProviderRuntime {
         case .devin:
             [
                 .percent(key: "daily", provider: provider, title: "Daily", metricLabel: "Daily quota")
-                    .exportingLimit("daily", unit: "percent"),
+                    .exportingLimit("daily", unit: "percent")
+                    .pinnedByDefault(),
                 .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota")
-                    .exportingLimit("weekly", unit: "percent"),
+                    .exportingLimit("weekly", unit: "percent")
+                    .pinnedByDefault(),
                 .dollarBalance(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
                     .exportingLimit("extraUsageBalance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
             ]

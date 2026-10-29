@@ -10,7 +10,8 @@ and reset timeline helpers.
 ## Composition root
 
 `AppDelegate` (`App/OpenUsageApp.swift`) acquires the single-instance lock, applies the appearance
-setting, builds `AppContainer`, starts the refresh loop, creates `StatusItemController`, and starts
+setting, builds `AppContainer`, starts the refresh loop, imports the OpenRouter and Z.ai keys 0.7.x
+saved, once (`Stores/APIKeyV1Files.swift`), creates `StatusItemController`, and starts
 the Sparkle updater.
 
 `AppContainer` (`App/AppContainer.swift`) owns the long-lived stores and is injected into the SwiftUI

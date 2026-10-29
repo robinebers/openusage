@@ -17,13 +17,14 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The Pi provider, which has no account sign-in.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
+- The Density setting and Reset All Customization.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
-- Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
-  star, undo, share screenshot, and quick links.
+- Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
+  right-click menus hold hide, star, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
@@ -32,6 +33,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
   `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
   the app shows its clock next to the account.
+  Exit code `4` now means nothing has been fetched yet for the named accounts, not that a refresh failed.
+  ChatGPT's `creditValue` resource is gone; `credits` still reports the credit count.
+  Copilot's `orgCredits` and `orgSpend` moved to an organization account; a personal account no
+  longer reports them.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
@@ -47,12 +52,15 @@ shows only what each provider's API reports for the accounts you sign in to.
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
-- Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
+- Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
+  are always sent; they are not optional.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
   each provider. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
+- The OpenRouter and Z.ai keys you typed into 0.7.x, added once as accounts on the first launch when
+  the provider has no account yet and the key still passes a usage read. The key files stay unchanged.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
@@ -61,6 +69,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The `openusage` command, which now prints what the app last fetched and nothing computed. `--force`
   is accepted and does nothing.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
+- Ollama's and Z.ai's **API Keys** quick link, after Usage Dashboard.
 - Z.ai's notice when a key has no GLM Coding Plan.
 - Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.
 - A Grok team account's plan, shown beside the notice that the account has no personal quota.
