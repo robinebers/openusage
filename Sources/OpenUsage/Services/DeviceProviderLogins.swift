@@ -113,9 +113,29 @@ struct APIKeyLogin: ProviderLogin {
     }
 }
 
+/// Adds an organization's Copilot billing as its own account, checked with one read of the report.
+struct CopilotOrganizationLogin: ProviderLogin {
+    let organization: String
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        var iterator = pastedCode.makeAsyncIterator()
+        guard let value = await iterator.next() else { throw LoginError.cancelled }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { throw LoginError.invalidCode }
+        do {
+            _ = try await CopilotUsageClient(http: http).organizationUsage(organization, token: token)
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
+        }
+        return (organization, .apiKey(token))
+    }
+}
+
 enum ProviderLoginCatalog {
-    static func login(for kind: ProviderKind) -> any ProviderLogin {
-        switch kind {
+    static func login(for kind: ProviderKind, method: ProviderAuthMethod, organization: String) -> any ProviderLogin {
+        if method == .organizationToken { return CopilotOrganizationLogin(organization: organization) }
+        return switch kind {
         case .claude: ClaudeLogin()
         case .codex: CodexLogin()
         case .cursor: CursorLogin()

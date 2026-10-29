@@ -7,6 +7,8 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
 
 1. Click **+** at the top of the Accounts screen.
 2. Click a provider, or select it with the arrow keys and press Return. The sign-in starts at once.
+   Copilot asks first: **Sign In with GitHub** for your own seat, or **Organization Billing** for an
+   organization's credits and spend.
 3. Finish the sign-in:
    - **Browser** (Claude, ChatGPT, Cursor, Antigravity): your browser opens on its own. **Open Browser**
      opens it again, and **Copy Link** lets you open the link in another browser. The sheet closes
@@ -16,6 +18,9 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
      and enter the code. The sheet closes when the provider confirms.
    - **API key** (Ollama, OpenCode, OpenRouter, Z.ai): create a key on the page the sheet links to,
      paste it, and click **Add Account**.
+   - **Organization Billing** (Copilot): enter the organization and a token from one of its owners or
+     billing managers, and click **Add Account**. The account is named after the organization, and the
+     same organization is not added twice.
 
 If a sign-in fails, **Try Again** starts it over. The close button in a sign-in step's corner (or Esc)
 goes back to the provider list; **Cancel** on the list closes the sheet.
@@ -35,7 +40,7 @@ elsewhere saves; Esc cancels.
 
 **Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
 before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
-old key stays and the page shows why.
+old key stays and the page shows why. A Copilot organization account has **Replace Token…** instead.
 
 ## Hide and star metrics
 

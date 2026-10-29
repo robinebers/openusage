@@ -313,5 +313,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         ]
 
         XCTAssertEqual(actual, expected)
+        let organization = AccountProviderRuntime.widgetDescriptors(for: Account(kind: .copilot, label: "acme", organization: "acme"))
+        XCTAssertEqual(Set(organization.flatMap(\.limitResources).map(\.key)), ["orgCredits", "orgSpend"])
     }
 }

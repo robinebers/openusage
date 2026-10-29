@@ -25,8 +25,8 @@ final class AccountStore {
     }
 
     @discardableResult
-    func add(kind: ProviderKind, label: String, credential: AccountCredential) -> Account {
-        let account = Account(kind: kind, label: label)
+    func add(kind: ProviderKind, label: String, organization: String? = nil, credential: AccountCredential) -> Account {
+        let account = Account(kind: kind, label: label, organization: organization)
         do {
             try credentialVault.save(credential, for: account.id)
             accounts.append(account)
@@ -71,7 +71,12 @@ final class AccountStore {
         try credentialVault.load(id)
     }
 
-    func account(kind: ProviderKind, signedInAs credential: AccountCredential) -> Account? {
+    /// The added account a new sign-in would duplicate: an organization account by its organization,
+    /// in any case, and every other account by its credential's identity.
+    func account(kind: ProviderKind, organization: String?, signedInAs credential: AccountCredential) -> Account? {
+        if let organization {
+            return accounts.first { $0.kind == kind && $0.organization?.caseInsensitiveCompare(organization) == .orderedSame }
+        }
         guard let identity = credential.identity else { return nil }
         return accounts.first { account in
             account.kind == kind && (try? credentialVault.load(account.id))??.identity == identity

@@ -85,13 +85,14 @@ final class AppContainer {
     func replaceKey(_ key: String, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
         let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
-        if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
+        if let existing = accounts.account(kind: runtime.account.kind, organization: runtime.account.organization, signedInAs: credential),
+           existing.id != runtime.account.id {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
         do {
             try await runtime.validate(credential)
-        } catch ProviderError.signInExpired(let kind) {
-            throw ProviderError.unavailable("\(kind.displayName) rejected the API key.")
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
         }
         try accounts.replaceCredential(credential, for: runtime.account.id)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)

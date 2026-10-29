@@ -27,18 +27,34 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 2)
     }
 
+    func testTheSameOrganizationIsNotAddedTwice() async throws {
+        let store = makeStore()
+        store.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("first"))
+
+        let flow = flow(store) { .apiKey("second") }
+        flow.choose(.copilot)
+        flow.choose(.organizationToken)
+        flow.organization = "ACME"
+        flow.apiKey = "second"
+        flow.addKey()
+        try await waitUntil { flow.errorMessage != nil }
+
+        XCTAssertEqual(flow.errorMessage, "This account is already added as acme.")
+        XCTAssertEqual(store.accounts.map(\.label), ["acme"])
+    }
+
     func testSigningInToAnAddedCursorAccountAgainNamesTheExistingOne() async throws {
         let token = "eyJhbGciOiJub25lIn0." + Data(#"{"sub":"auth0|user_abc"}"#.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "") + ".sig"
         let http = RoutingHTTPClient { _ in
             HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"accessToken":"\#(token)","refreshToken":"r","authId":"auth0|user_abc"}"#.utf8))
         }
         let store = makeStore()
-        let first = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        let first = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
         first.choose(.cursor)
         try await waitUntil { first.isFinished }
         XCTAssertEqual(store.accounts.map(\.label), ["Cursor Account"])
 
-        let again = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        let again = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
         again.choose(.cursor)
         try await waitUntil { again.errorMessage != nil }
 
@@ -91,7 +107,7 @@ final class DuplicateLoginTests: XCTestCase {
     }
 
     private func flow(_ store: AccountStore, credential: @escaping @Sendable () -> AccountCredential) -> AddAccountFlow {
-        AddAccountFlow(store: store, openURL: { _ in }) { _ in IdentityLogin(credential: credential) }
+        AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in IdentityLogin(credential: credential) }
     }
 
     private func makeStore() -> AccountStore {

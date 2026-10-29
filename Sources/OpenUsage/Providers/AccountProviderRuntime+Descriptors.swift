@@ -78,6 +78,14 @@ extension AccountProviderRuntime {
                 .percent(key: "claudeWeekly", provider: provider, title: "Claude", metricLabel: AntigravityMetric.claudeWeeklyLabel)
                     .exportingLimit("nonGeminiWeekly", unit: "percent")
             ]
+        case .copilot where account.organization != nil:
+            [
+                .values(key: "orgCredits", provider: provider, title: "Org Credits")
+                    .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits"))
+                    .pinnedByDefault(),
+                .values(key: "orgSpend", provider: provider, title: "Org Spend", valueWord: "spent")
+                    .exportingLimit("orgSpend", unit: "usd", source: .value(kind: .dollars))
+            ]
         case .copilot:
             [
                 .percent(key: "premium", provider: provider, title: "Credits", metricLabel: "Credits")

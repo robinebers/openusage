@@ -44,6 +44,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
+- Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
+  manager's token.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 - Z.ai's notice when a key has no GLM Coding Plan.

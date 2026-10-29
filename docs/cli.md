@@ -96,7 +96,7 @@ the account's right-click menu.
 | ChatGPT (`codex`) | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `rateLimitResets` |
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
-| Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions` |
+| Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions`; an organization account: `orgCredits`, `orgSpend` |
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |

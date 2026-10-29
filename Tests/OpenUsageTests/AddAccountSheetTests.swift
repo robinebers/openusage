@@ -10,7 +10,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         var opened: [URL] = []
-        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { opened.append($0) }) { _ in
+        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { opened.append($0) }) { _, _, _ in
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
         }
         let presentation = SheetPresentation()
@@ -42,7 +42,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
     func testArrowKeysAndReturnChooseAProvider() async throws {
         let defaults = isolatedDefaults()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
-        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }) { _ in
+        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }) { _, _, _ in
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
         }
         let presentation = SheetPresentation()
@@ -66,12 +66,12 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         let steps: [(name: String, provider: ProviderKind, prompt: LoginPrompt)] = [
             ("browser", .claude, .browser(url, acceptsPastedCode: true)),
-            ("device-code", .copilot, .deviceCode(userCode: "ABCD-1234", verificationURL: url)),
+            ("device-code", .grok, .deviceCode(userCode: "ABCD-1234", verificationURL: url)),
         ]
         let renderDirectory = ProcessInfo.processInfo.environment["OPENUSAGE_RENDER_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         for step in steps {
             for (scheme, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                let flow = AddAccountFlow(store: store, openURL: { _ in }) { _ in SlowLogin(prompt: step.prompt) }
+                let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in SlowLogin(prompt: step.prompt) }
                 addTeardownBlock { flow.cancel() }
                 flow.choose(step.provider)
                 try await waitUntil { flow.prompt != nil }

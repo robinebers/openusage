@@ -21,14 +21,22 @@ struct AccountDetailView: View {
                     }
                 }
                 .cardSurface()
-                if case .apiKey = group.provider.kind.authMethod {
-                    ReplaceKeyRow(providerID: providerID)
+                if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
+                    ReplaceKeyRow(providerID: providerID, field: field)
                 }
                 removeAccountRow(group.provider)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             EmptyView()
+        }
+    }
+
+    private static func replacedField(_ account: Account) -> String? {
+        switch account.authMethod {
+        case .apiKey: "API Key"
+        case .organizationToken: "Token"
+        case .oauth: nil
         }
     }
 
@@ -111,6 +119,7 @@ struct AccountDetailView: View {
 
 private struct ReplaceKeyRow: View {
     let providerID: String
+    let field: String
     @Environment(AppContainer.self) private var container
     @State private var isEditing = false
     @State private var key = ""
@@ -129,7 +138,7 @@ private struct ReplaceKeyRow: View {
         Button {
             isEditing = true
         } label: {
-            Text("Replace API Key…")
+            Text("Replace \(field)…")
                 .foregroundStyle(.tint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -141,7 +150,7 @@ private struct ReplaceKeyRow: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("API Key", text: $key, prompt: Text("New API Key"))
+            SecureField(field, text: $key, prompt: Text("New \(field)"))
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
                 .onSubmit(save)
