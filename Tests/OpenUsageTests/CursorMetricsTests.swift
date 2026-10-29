@@ -63,7 +63,8 @@ final class CursorMetricsTests: XCTestCase {
         usage: String,
         planName: String,
         summary: String? = nil,
-        requests: String? = nil
+        requests: String? = nil,
+        events: String? = nil
     ) async throws -> (plan: String?, data: [String: WidgetData], paths: [String]) {
         let account = Account(kind: .cursor, label: "Cursor")
         let vault = InMemoryCredentialVault()
@@ -78,6 +79,7 @@ final class CursorMetricsTests: XCTestCase {
             case CursorUsageClient.grokBotUsageURL.path: Self.grokBot
             case CursorUsageClient.usageSummaryURL.path: summary
             case CursorUsageClient.restUsageURL.path: requests
+            case CursorUsageClient.usageEventsURL.path: events
             default: nil
             }
             guard let body else { return HTTPResponse(statusCode: 404, headers: [:], body: Data()) }
@@ -201,7 +203,7 @@ final class CursorMetricsTests: XCTestCase {
     }
 
     func testTheTwoAccountShapesTogetherFillEveryCursorMetric() async throws {
-        let individual = try await refresh(usage: Self.individualUsage, planName: "Ultra")
+        let individual = try await refresh(usage: Self.individualUsage, planName: "Ultra", events: #"{"totalUsageEventsCount":0}"#)
         let enterprise = try await refresh(
             usage: Self.enterpriseUsage, planName: "Enterprise",
             summary: Self.enterpriseSummary, requests: Self.requestUsage
