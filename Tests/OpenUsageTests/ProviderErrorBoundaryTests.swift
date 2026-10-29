@@ -31,20 +31,27 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         return await AccountProviderRuntime(account: account, vault: vault, http: RoutingHTTPClient(handler: handler)).refresh()
     }
 
-    func testAnUnauthorizedResponseIsAnExpiredSignInWhateverTheBodySays() async throws {
+    func testAnUnauthorizedResponseIsARefusedCredentialWhateverTheBodySays() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(401, openCodeUsage) }
-            XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(kind).localizedDescription, "\(kind)")
+            let expected = kind == .copilot
+                ? "Copilot sign-in expired. Remove the account and add it again."
+                : "\(kind.displayName) rejected the API key. Replace it on the account's page."
+            XCTAssertEqual(snapshot.failure?.message, expected, "\(kind)")
         }
     }
 
-    func testAMissingKeychainItemIsAnExpiredSignIn() async {
-        let account = Account(kind: .claude, label: "Work")
-        let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault(), http: RoutingHTTPClient { _ in response(200) })
-
-        let snapshot = await runtime.refresh()
-
-        XCTAssertEqual(snapshot.failure?.message, ProviderError.signInExpired(.claude).localizedDescription)
+    func testAMissingKeychainItemSaysHowToFixThatAccount() async {
+        let accounts = [
+            (Account(kind: .claude, label: "Work"), "Claude sign-in expired. Remove the account and add it again."),
+            (Account(kind: .openrouter, label: "Work"), "OpenRouter rejected the API key. Replace it on the account's page."),
+            (Account(kind: .copilot, label: "acme", organization: "acme"), "GitHub rejected the token. Replace it on the account's page.")
+        ]
+        for (account, message) in accounts {
+            let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault(), http: RoutingHTTPClient { _ in response(200) })
+            let snapshot = await runtime.refresh()
+            XCTAssertEqual(snapshot.failure?.message, message)
+        }
     }
 
     func testAServerErrorNamesItsStatus() async throws {
@@ -88,7 +95,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
 
     func testOpenRouterCallsTheKeyInvalidOnlyWhenBothEndpointsRejectIt() async throws {
         let rejected = try await refresh(.openrouter) { _ in response(401, #"{"error":{"message":"No auth credentials found","code":401}}"#) }
-        XCTAssertEqual(rejected.failure?.message, ProviderError.signInExpired(.openrouter).localizedDescription)
+        XCTAssertEqual(rejected.failure?.message, "OpenRouter rejected the API key. Replace it on the account's page.")
 
         let gated = try await refresh(.openrouter) { request in
             request.url.absoluteString == OpenRouterUsageClient.creditsURL

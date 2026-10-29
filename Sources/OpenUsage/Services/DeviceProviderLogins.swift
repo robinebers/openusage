@@ -127,8 +127,6 @@ struct CopilotOrganizationLogin: ProviderLogin {
             _ = try await CopilotUsageClient(http: http).organizationUsage(organization, token: token)
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
-        } catch ProviderError.requestFailed(404) {
-            throw ProviderError.unavailable("GitHub has no organization “\(organization)” this token can read.")
         }
         return (organization, .apiKey(token))
     }

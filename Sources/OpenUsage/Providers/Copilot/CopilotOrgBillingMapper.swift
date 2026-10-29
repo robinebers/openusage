@@ -9,13 +9,12 @@ enum CopilotOrgBillingMapper {
         guard let items = ProviderParse.jsonObject(response.body)?["usageItems"] as? [[String: Any]] else { return nil }
         var credits = 0.0
         var spend = 0.0
-        for item in items
-        where (item["product"] as? String)?.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare("Copilot") == .orderedSame {
+        for item in items where item["product"] as? String == "Copilot" {
             guard let quantity = ProviderParse.number(item["grossQuantity"]), let amount = ProviderParse.number(item["netAmount"]) else {
                 return nil
             }
-            credits += max(0, quantity)
-            spend += max(0, amount)
+            credits += quantity
+            spend += amount
         }
         return [
             .values(label: "Org Credits", values: [MetricValue(number: credits, kind: .count, label: "credits")]),

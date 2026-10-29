@@ -85,23 +85,36 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func loadCredential() async throws -> AccountCredential {
         guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw ProviderError.signInExpired(account.kind)
+            throw refusedCredential
         }
         return credential
     }
 
+    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page.
+    private var refusedCredential: ProviderError {
+        switch account.authMethod {
+        case .oauth: .signInExpired(account.kind)
+        case .apiKey: .keyRejected("\(account.kind.displayName) rejected the API key.")
+        case .organizationToken: .keyRejected("GitHub rejected the token.")
+        }
+    }
+
     private func refresh(_ credential: AccountCredential) async throws -> ProviderUsage {
-        switch account.kind {
-        case .claude: try await refreshClaude(credential)
-        case .codex: try await refreshCodex(credential)
-        case .cursor: try await refreshCursor(credential)
-        case .antigravity: try await refreshAntigravity(credential)
-        case .copilot: try await refreshCopilot(credential)
-        case .grok: try await refreshGrok(credential)
-        case .ollama: try await refreshOllama(credential)
-        case .opencodeGo: try await refreshOpenCode(credential)
-        case .openrouter: try await refreshOpenRouter(credential)
-        case .zai: try await refreshZAI(credential)
+        do {
+            return switch account.kind {
+            case .claude: try await refreshClaude(credential)
+            case .codex: try await refreshCodex(credential)
+            case .cursor: try await refreshCursor(credential)
+            case .antigravity: try await refreshAntigravity(credential)
+            case .copilot: try await refreshCopilot(credential)
+            case .grok: try await refreshGrok(credential)
+            case .ollama: try await refreshOllama(credential)
+            case .opencodeGo: try await refreshOpenCode(credential)
+            case .openrouter: try await refreshOpenRouter(credential)
+            case .zai: try await refreshZAI(credential)
+            }
+        } catch ProviderError.signInExpired {
+            throw refusedCredential
         }
     }
 

@@ -52,6 +52,9 @@ struct CopilotUsageClient: Sendable {
             timeout: 15
         ))
         if ProviderError.isAuthFailure(response) { throw ProviderError.keyRejected("GitHub rejected the token.") }
+        if response.statusCode == 404 {
+            throw ProviderError.unavailable("GitHub has no organization “\(organization)” this token can read.")
+        }
         guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
         guard let lines = CopilotOrgBillingMapper.usageLines(response) else { throw ProviderError.invalidResponse }
         return lines

@@ -76,6 +76,10 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     let organization: String?
     let addedAt: Date
 
+    var authMethod: ProviderAuthMethod {
+        organization != nil ? .organizationToken : kind.authMethods[0]
+    }
+
     var cardID: String {
         "\(kind.rawValue)@\(id.uuidString.lowercased().prefix(8))"
     }

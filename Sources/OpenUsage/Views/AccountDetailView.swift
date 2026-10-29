@@ -21,22 +21,22 @@ struct AccountDetailView: View {
                     }
                 }
                 .cardSurface()
-                if case .apiKey = group.provider.kind.authMethods.first {
-                    ReplaceKeyRow(title: "Replace API Key…", field: "API Key") {
-                        try await container.replaceKey($0, for: providerID)
-                    }
-                    .cardSurface()
-                } else if container.accounts.account(cardID: providerID)?.organization != nil {
-                    ReplaceKeyRow(title: "Replace Token…", field: "Token") {
-                        try await container.replaceKey($0, for: providerID)
-                    }
-                    .cardSurface()
+                if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
+                    ReplaceKeyRow(providerID: providerID, field: field)
                 }
                 removeAccountRow(group.provider)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             EmptyView()
+        }
+    }
+
+    private static func replacedField(_ account: Account) -> String? {
+        switch account.authMethod {
+        case .apiKey: "API Key"
+        case .organizationToken: "Token"
+        case .oauth: nil
         }
     }
 
@@ -118,9 +118,9 @@ struct AccountDetailView: View {
 }
 
 private struct ReplaceKeyRow: View {
-    let title: String
+    let providerID: String
     let field: String
-    let saveKey: @MainActor (String) async throws -> Void
+    @Environment(AppContainer.self) private var container
     @State private var isEditing = false
     @State private var key = ""
     @State private var isSaving = false
@@ -131,13 +131,14 @@ private struct ReplaceKeyRow: View {
         Group {
             if isEditing { editor } else { replaceButton }
         }
+        .cardSurface()
     }
 
     private var replaceButton: some View {
         Button {
             isEditing = true
         } label: {
-            Text(title)
+            Text("Replace \(field)…")
                 .foregroundStyle(.tint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -184,7 +185,7 @@ private struct ReplaceKeyRow: View {
         errorMessage = nil
         Task {
             do {
-                try await saveKey(key)
+                try await container.replaceKey(key, for: providerID)
                 close()
             } catch {
                 errorMessage = error.localizedDescription

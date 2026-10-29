@@ -107,7 +107,8 @@ final class AddAccountFlow {
         prompt = nil
         errorMessage = nil
         isWorking = true
-        let login = login(kind, method, organization.trimmed)
+        let organization = method == .organizationToken ? self.organization.trimmed : nil
+        let login = login(kind, method, organization ?? "")
         task = Task {
             do {
                 let result = try await login.login(
@@ -115,7 +116,7 @@ final class AddAccountFlow {
                     pastedCode: input
                 )
                 guard !Task.isCancelled else { return }
-                save(result, for: kind)
+                save(result, for: kind, organization: organization)
             } catch {
                 guard !Task.isCancelled else { return }
                 fail(error.localizedDescription)
@@ -129,14 +130,8 @@ final class AddAccountFlow {
         if case .browser(let url, _) = prompt { openURL(url) }
     }
 
-    private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind) {
-        let organization = method == .organizationToken ? self.organization.trimmed : nil
-        let existing = if let organization {
-            store.account(kind: kind, organization: organization)
-        } else {
-            store.account(kind: kind, signedInAs: result.credential)
-        }
-        if let existing {
+    private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) {
+        if let existing = store.account(kind: kind, organization: organization, signedInAs: result.credential) {
             return fail("This account is already added as \(existing.label).")
         }
         let name = accountName.trimmed
