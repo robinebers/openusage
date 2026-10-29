@@ -71,7 +71,7 @@ struct HubLink: Codable, Hashable, Sendable {
 /// What it takes to make a hub's mirrored accounts match its login list, in the listing's order. A new
 /// login already signed in directly (its `kind:identity` is in `direct`) is skipped: the account that
 /// was there first wins.
-struct HubReconciliation: Equatable {
+struct HubReconciliation {
     var added: [(kind: ProviderKind, login: HubLogin)] = []
     var removed: [UUID] = []
     var relinked: [UUID: HubLink] = [:]
@@ -102,10 +102,6 @@ struct HubReconciliation: Equatable {
             return mirroredIDs.insert(login.id).inserted
         }
         self.alreadyAdded = alreadyAdded
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.added.map(\.login) == rhs.added.map(\.login) && lhs.removed == rhs.removed && lhs.relinked == rhs.relinked
     }
 }
 

@@ -107,14 +107,6 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         }
     }
 
-    func testAMissingLoginAsksForAResync() async throws {
-        let http = RoutingHTTPClient { _ in Self.json(400, #"{"error":"auth credential not found for auth_index"}"#) }
-        let (runtimes, _, hub) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
-        _ = await runtimes[0].refresh()
-        let requested = await gate.takeSyncRequests()
-        XCTAssertEqual(requested, [hub.id])
-    }
-
     func testAnUpstreamRateLimitKeepsItsRetryAfter() async throws {
         let http = Self.hub { _, _ in (429, "{}", ["Retry-After": ["120"]]) }
         let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("b", "codex")])

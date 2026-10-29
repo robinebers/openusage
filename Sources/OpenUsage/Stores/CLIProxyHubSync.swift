@@ -2,8 +2,7 @@ import Foundation
 import Observation
 
 /// Keeps each connected CLIProxyAPI hub's mirrored accounts in step with its login list, and holds what
-/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, about once an hour,
-/// and soon after a call finds one of its logins gone.
+/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, and about once an hour.
 @MainActor
 @Observable
 final class CLIProxyHubSync {
@@ -65,12 +64,9 @@ final class CLIProxyHubSync {
         Task { [gate = client.gate] in await gate.reopen(hubID) }
     }
 
-    /// Re-reads every hub not read within `maxAge`, and every hub a call asked to have re-read.
+    /// Re-reads every hub not read within `maxAge`.
     func syncDue(maxAge: TimeInterval = RefreshSetting.secondaryReadInterval) async {
-        let requested = await client.gate.takeSyncRequests()
-        let due = accounts.hubs.filter { hub in
-            requested.contains(hub.id) || syncedAt[hub.id].map { now().timeIntervalSince($0) >= maxAge } ?? true
-        }
+        let due = accounts.hubs.filter { hub in syncedAt[hub.id].map { now().timeIntervalSince($0) >= maxAge } ?? true }
         await withTaskGroup(of: Void.self) { group in
             for hub in due { group.addTask { await self.sync(hub.id) } }
         }

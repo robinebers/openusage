@@ -28,7 +28,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         pressEscape(in: sheet)
         try await waitUntil { flow.provider == nil }
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(flow.selection, .codex)
+        XCTAssertEqual(flow.selection, .provider(.codex))
         XCTAssertNil(flow.prompt)
         XCTAssertFalse(flow.isWorking)
         XCTAssertTrue(presentation.isPresented)
@@ -52,7 +52,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
 
         press(keyCode: 125, character: "\u{F701}", in: sheet)
         press(keyCode: 125, character: "\u{F701}", in: sheet)
-        try await waitUntil { flow.selection == .codex }
+        try await waitUntil { flow.selection == .provider(.codex) }
         XCTAssertNil(flow.provider, "Moving the selection must not choose the provider")
 
         press(keyCode: 36, character: "\r", in: sheet)
