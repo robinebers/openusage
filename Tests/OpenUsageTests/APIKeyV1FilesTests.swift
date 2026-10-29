@@ -34,12 +34,14 @@ final class APIKeyV1FilesTests: XCTestCase {
     func testSkipsAKeyTheProviderRejects() async throws {
         let home = try makeHome(openRouter: #"{"apiKey":"sk-or-revoked"}"#)
         let (store, _) = makeStore()
+        let defaults = isolatedDefaults()
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 401, headers: [:], body: Data()) }
 
-        await APIKeyV1Files.importOnce(into: store, defaults: isolatedDefaults(), home: home, http: http)
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
 
         XCTAssertTrue(store.accounts.isEmpty)
-        XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer sk-or-revoked"])
+        XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer sk-or-revoked"], "a rejected key is checked once")
     }
 
     func testAKeyCheckThatCouldNotReachTheProviderIsTriedAgainOnTheNextLaunch() async throws {
