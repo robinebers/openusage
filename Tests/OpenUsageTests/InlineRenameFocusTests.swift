@@ -68,7 +68,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
             try await Task.sleep(for: .milliseconds(5))
         }
 
-        let hosting = NSHostingController(rootView: AnyView(
+        let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
                 .reduceAnimationsWhenRequested()
                 .environment(container)
@@ -85,7 +85,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.appearance = NSAppearance(named: .aqua)
-        panel.contentViewController = hosting
+        panel.host(hosting)
         panel.setFrame(frame, display: false)
         container.popover.popoverShown = true
         panel.makeKeyAndOrderFront(nil)
@@ -96,7 +96,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
             container.popover.screen = .accounts
             try await Task.sleep(for: .milliseconds(1200))
         }
-        return Hosted(panel: panel, host: hosting.view, container: container, accounts: accounts)
+        return Hosted(panel: panel, host: hosting, container: container, accounts: accounts)
     }
 
     private func resignKey(_ hosted: Hosted) async throws {

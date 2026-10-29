@@ -233,7 +233,7 @@ extension QuietWindowTestCase {
                 }
             )
         }
-        let hosting = NSHostingController(rootView: AnyView(
+        let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
                 .environment(\.reduceAnimations, false)
                 .environment(container)
@@ -246,16 +246,13 @@ extension QuietWindowTestCase {
         ))
         let panel = QuietMenuBarPanel(contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelHeightController.defaultHeight))
         panel.appearance = NSAppearance(named: .aqua)
-        let host = hosting.view
-        host.wantsLayer = true
-        host.layerContentsRedrawPolicy = .duringViewResize
-        panel.contentViewController = hosting
+        panel.host(hosting)
         addTeardownBlock {
             MenuBarPopover.applyHeight = nil
             MenuBarPopover.clampHeight = nil
         }
         QuietTestProcess.show(panel, in: self)
-        return HostedPopover(panel: panel, host: host, popover: container.popover, defaults: defaults)
+        return HostedPopover(panel: panel, host: hosting, popover: container.popover, defaults: defaults)
     }
 }
 
