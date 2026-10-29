@@ -2,6 +2,14 @@ import Foundation
 
 extension AccountProviderRuntime {
     func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> ProviderUsage {
+        let calendar = Calendar.current
+        let spendWindow = CursorSpendHistoryFetcher.window(now: now(), calendar: calendar)
+        let fetcher = CursorSpendHistoryFetcher(client: client)
+        let storedSpendDays = cursorSpendDays
+        let accountID = account.cardID
+        async let spendDays = fetcher.refresh(
+            storedSpendDays, window: spendWindow, accessToken: accessToken, calendar: calendar, accountID: accountID
+        )
         var summary: [String: Any]?
         var summaryWasRead = false
         func readSummary() async -> [String: Any]? {
@@ -67,6 +75,8 @@ extension AccountProviderRuntime {
            let line = CursorUsageMapper.mapGrokBotUsage(grokBot) {
             mapped.lines.append(line)
         }
+        cursorSpendDays = await spendDays
+        mapped.lines += CursorUsageEvents.spendLines(cursorSpendDays, window: spendWindow.map(\.start))
         return mapped
     }
 

@@ -24,6 +24,8 @@ Cursor's membership (Enterprise, Team, or a personal plan), ChatGPT's list of re
 expiry times (the count still updates every refresh), and Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.
+Cursor's spend history is read a day at a time: today and yesterday on every refresh, and each older
+day until one read of it succeeds (see [Cursor](providers.md#cursor)).
 
 The last snapshot of every account is saved on disk and shown at launch, so you see your last-known
 values before the first fetch finishes. A value counts as fresh for one interval (5 minutes) after it

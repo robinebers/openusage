@@ -51,6 +51,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
+- Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
+  them.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
@@ -79,6 +81,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor Enterprise and Team seats that Cursor's plan endpoint reports as Pro keep their Enterprise or
   Team label, Extra Usage, and request-based usage. The membership now comes from Cursor's
   `usage-summary`, read once an hour, not from Cursor's local database.
+- Cursor's Today, Yesterday, and Last 30 Days rows, now the dollars Cursor reports it charged for
+  on-demand usage. Usage your plan includes counts as $0, and the Usage Trend chart is gone.
 - Devin's Daily, Weekly, and Extra Usage rows. Sign in on windsurf.com and paste the token it shows,
   or paste a Windsurf API key.
 - Claiming a Claude or ChatGPT rate-limit reset refreshes that account right away, so its meters and

@@ -11,6 +11,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var cursorMembershipRead = SecondaryRead<String>()
+    var cursorSpendDays: [Date: CursorSpendDay] = [:]
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with

@@ -29,8 +29,8 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.hidden(openRouter), ["keyLimit", "month", "week"])
 
         let cursor = app.add(.cursor)
-        XCTAssertEqual(app.hidden(cursor), ["api", "auto", "grokBot", "onDemand", "requests", "usage"])
-        XCTAssertEqual(app.stars(cursor), [], "the default stars sit on metrics 0.7.x hid")
+        XCTAssertEqual(app.hidden(cursor), ["api", "auto", "grokBot", "last30", "onDemand", "requests", "usage"])
+        XCTAssertEqual(app.stars(cursor), ["today", "yesterday"], "0.7.x's stars land on the restored Today and Yesterday rows")
 
         let grok = app.add(.grok)
         XCTAssertEqual(app.hidden(grok), [], "0.7.x showed only Grok metrics that are gone")
@@ -65,6 +65,17 @@ final class LayoutMigrationTests: XCTestCase {
         starred.set(["devin.extra"], forKey: "openusage.layout.v1.menuBarPins")
         let starredApp = MigrationApp(defaults: starred)
         XCTAssertEqual(starredApp.stars(starredApp.add(.devin)), ["extra"])
+    }
+
+    func testCursorStarsTotalUsageAndTodayWhenZeroSevenSavedNoStars() throws {
+        let fresh = MigrationApp(defaults: isolatedDefaults())
+        XCTAssertEqual(fresh.stars(fresh.add(.cursor)), ["today", "usage"])
+
+        let untouched = isolatedDefaults()
+        try Self.savePlaced(["cursor.usage", "cursor.auto", "cursor.api", "cursor.today"], to: untouched)
+        untouched.set(["cursor"], forKey: "openusage.enabledProviders.v1")
+        let app = MigrationApp(defaults: untouched)
+        XCTAssertEqual(app.stars(app.add(.cursor)), ["today", "usage"], "an upgrader who never saved stars takes the new defaults")
     }
 
     func testAnEmptyStarListStaysEmpty() {
