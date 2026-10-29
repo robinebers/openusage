@@ -78,13 +78,17 @@ final class AppContainer {
         }
     }
 
+    /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
+    /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
         let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
         if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
-        try await runtime.replaceKey(credential)
+        try await runtime.validate(credential)
+        guard providers.contains(where: { $0 === runtime }) else { return }
+        try await runtime.saveCredential(credential)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 

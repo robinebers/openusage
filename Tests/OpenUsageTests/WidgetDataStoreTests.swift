@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import OpenUsage
 
 @MainActor
@@ -17,6 +18,41 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
         let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
         XCTAssertEqual(Set(persisted.keys), Set(ids))
+    }
+
+    func testForcedRefreshesWaitingOnOneReadTakeTurns() async throws {
+        let account = Account(kind: .openrouter, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.apiKey("key"), for: account.id)
+        let firstRead = HeldResponse()
+        let active = OSAllocatedUnfairLock(initialState: (now: 0, most: 0))
+        let http = RoutingHTTPClient { _ in
+            active.withLock { $0.now += 1; $0.most = max($0.most, $0.now) }
+            await firstRead.hold()
+            try await Task.sleep(for: .milliseconds(20))
+            active.withLock { $0.now -= 1 }
+            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+        let id = runtime.provider.id
+
+        let first = Task { await store.refresh(providerID: id) }
+        await firstRead.waitUntilHeld()
+        let forced = (0..<2).map { _ in Task { await store.refresh(providerID: id, force: true) } }
+        try await Task.sleep(for: .milliseconds(50))
+        await firstRead.release()
+        var untracked = false
+        for _ in 0..<2000 where http.requests.count < 6 || active.withLock({ $0.now }) > 0 {
+            if active.withLock({ $0.now }) > 0, !store.refreshingProviderIDs.contains(id) { untracked = true }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        _ = await first.value
+        for task in forced { _ = await task.value }
+
+        XCTAssertEqual(http.requests.count, 6, "three reads of two requests each")
+        XCTAssertEqual(active.withLock { $0.most }, 1, "two reads of one account ran at once")
+        XCTAssertFalse(untracked, "a read ran while the account was not marked refreshing")
     }
 
     func testSingleProviderRefreshPersistsImmediately() async {

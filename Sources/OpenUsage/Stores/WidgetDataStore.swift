@@ -121,6 +121,9 @@ final class WidgetDataStore {
                 return .skipped
             }
             _ = await running.value
+            if let next = inFlight[providerID], next != running {
+                return await refresh(providerID: providerID, force: force, rereadHourly: rereadHourly)
+            }
         }
         guard let provider = providersByID[providerID] else { return .skipped }
         if rereadHourly { provider.forgetHourlyReads() }
