@@ -86,7 +86,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         let slot: CGFloat = 28
         let leading = CGRect(x: PanelMetrics.margin, y: (height - slot) / 2, width: slot, height: slot)
         let trailing = CGRect(x: PanelMetrics.width - PanelMetrics.margin - slot, y: leading.minY, width: slot, height: slot)
-        let controls = hostedViews(in: host).map { host.convert($0.bounds, from: $0) }.filter { !$0.isEmpty && $0.width < PanelMetrics.width }
+        let controls = hostedViews(in: host).filter { $0.layer?.contents == nil }.map { host.convert($0.bounds, from: $0) }.filter { !$0.isEmpty && $0.width < PanelMetrics.width }
         XCTAssertTrue(controls.contains { $0 == leading }, "no Back button filling the leading slot: \(controls)")
         XCTAssertFalse(controls.contains { $0.intersects(trailing) }, "a control sits in the trailing slot: \(controls)")
 
@@ -103,7 +103,8 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     }
 
     /// Every AppKit view SwiftUI hosts under `view`: its own containers at the full width, and a focus
-    /// ring, key-view proxy and tooltip anchor sized to each control.
+    /// ring, key-view proxy and tooltip anchor sized to each control. Before macOS 26 SwiftUI also hosts
+    /// some images and text in views that draw them, which the test tells apart by their layer contents.
     private func hostedViews(in view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + hostedViews(in: $0) }
     }
