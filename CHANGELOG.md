@@ -45,6 +45,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   screen is shared or recorded.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
+- Z.ai's notice when a key has no GLM Coding Plan.
 
 ## v0.7.16
 
