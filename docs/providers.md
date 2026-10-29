@@ -1,6 +1,7 @@
 # Providers
 
-How each provider signs in and what its card shows. Every value comes from the provider's own API.
+How each provider signs in and what its card shows. Every value comes from the provider's own API,
+except ChatGPT's credit value, an estimate at 4¢ a credit.
 OpenUsage computes no spend from logs and applies no model pricing; a metric the provider does not
 report stays hidden.
 
@@ -58,8 +59,9 @@ when each expires; choose **Use**, then **Reset** to spend one.
 Sign in through OpenAI in your browser. The account shows as ChatGPT; its provider id, as the command line
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
-windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). Rate-limit reset credits
-work like Claude's Limit Resets row.
+windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
+with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
+Limit Resets row.
 
 ## Cursor
 
@@ -113,7 +115,7 @@ The card's right-click menu adds a **Credits** link to
 
 Paste an API key from the [Z.ai key list](https://z.ai/manage-apikey/apikey-list). The card reads the
 GLM Coding Plan subscription and quota endpoints for the session and weekly windows, the web-search
-quota, and the plan.
+quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the card says so.
 
 ## Errors
 

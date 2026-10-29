@@ -7,7 +7,8 @@ balances, in one panel. Star the metrics you watch most and they appear in the m
 
 You add each account in the app. OpenUsage reads nothing that belongs to other tools: no Keychain
 items, auth files, logs, databases, or environment variables. It shows only the limits and dollar
-values that the provider's own API reports.
+values that the provider's own API reports, except ChatGPT's credits, which also show their dollar
+value at 4¢ a credit.
 
 <!-- assets/screenshot.jpg needs a new capture of the account-based dashboard before release. -->
 <p align="center">

@@ -9,7 +9,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Account discovery. OpenUsage no longer reads other tools' credentials, config files, Keychain items,
   databases, or logs. Sign in to each account from the new **Accounts** screen instead.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
-  and dollar values a provider reports, nothing computed.
+  and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
 - iCloud sync of settings and layout.
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
@@ -43,10 +43,12 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
+- ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
 - Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
   manager's token.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
+- Z.ai's notice when a key has no GLM Coding Plan.
 
 ## v0.7.16
 
