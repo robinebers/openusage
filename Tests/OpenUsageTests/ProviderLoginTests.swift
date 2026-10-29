@@ -161,6 +161,36 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertFalse(pollQuery?.first { $0.name == "verifier" }?.value?.isEmpty ?? true)
     }
 
+    func testCursorLoginNamesTheAccountByTheProfileEmail() async throws {
+        let accessToken = Self.jwt(#"{"sub":"auth0|user_abc"}"#)
+        let http = RoutingHTTPClient { request in
+            request.url.path == "/api/auth/me"
+                ? Self.response(#"{"email":"dev@example.com","name":"Dev","sub":"auth0|user_abc"}"#)
+                : Self.response(#"{"accessToken":"\#(accessToken)","refreshToken":"cursor-refresh"}"#)
+        }
+
+        let result = try await CursorLogin(http: http).login(prompt: { _ in }, pastedCode: emptyInput())
+
+        XCTAssertEqual(result.label, "dev@example.com")
+        let profile = try XCTUnwrap(http.requests.first { $0.url.path == "/api/auth/me" })
+        XCTAssertEqual(profile.url.host, "cursor.com")
+        XCTAssertEqual(profile.headers["Cookie"], "WorkosCursorSessionToken=user_abc%3A%3A\(accessToken)")
+    }
+
+    func testCursorLoginKeepsTheDefaultNameWhenTheProfileReadFails() async throws {
+        let http = RoutingHTTPClient { request in
+            request.url.path == "/api/auth/me"
+                ? Self.response("{}", status: 500)
+                : Self.response(#"{"accessToken":"\#(Self.jwt(#"{"sub":"auth0|user_abc"}"#))","refreshToken":"cursor-refresh"}"#)
+        }
+
+        let result = try await CursorLogin(http: http).login(prompt: { _ in }, pastedCode: emptyInput())
+
+        XCTAssertNotNil(http.requests.first { $0.url.path == "/api/auth/me" })
+        XCTAssertEqual(result.label, "Cursor Account")
+        XCTAssertEqual(result.credential.identity, "cursor:user_abc")
+    }
+
     func testAntigravityLoginExchangesCodeAndMapsGoogleProfile() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.path {

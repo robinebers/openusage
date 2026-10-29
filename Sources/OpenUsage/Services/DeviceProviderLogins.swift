@@ -92,12 +92,25 @@ struct CursorLogin: ProviderLogin {
             return .failed("Cursor sign-in failed.")
         }
         let userID = CursorUsageClient.session(from: token.accessToken)?.userID
-        return ("Cursor Account", .oauth(OAuthTokens(
+        return (await profileName(accessToken: token.accessToken) ?? "Cursor Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: ProviderParse.jwtExpiry(token.accessToken),
             extras: userID.map { [OAuthTokens.identityKey: "cursor:\($0)"] } ?? [:]
         )))
+    }
+
+    private func profileName(accessToken: String) async -> String? {
+        do {
+            guard let response = try await CursorUsageClient(http: http).fetchProfile(accessToken: accessToken) else {
+                throw LoginError.invalidResponse
+            }
+            let profile = try LoginHTTP.decode(CursorProfile.self, from: response)
+            return [profile.email, profile.name].compactMap { $0 }.first { !$0.isEmpty }
+        } catch {
+            AppLog.warn(LogTag.auth("cursor"), "profile read failed, naming the account Cursor Account: \(error.localizedDescription)")
+            return nil
+        }
     }
 }
 
@@ -207,6 +220,11 @@ private struct GitHubUser: Decodable {
 private struct CursorTokenResponse: Decodable, Sendable {
     let accessToken: String
     let refreshToken: String
+}
+
+private struct CursorProfile: Decodable {
+    let email: String?
+    let name: String?
 }
 
 private struct GrokIDClaims: Decodable {
