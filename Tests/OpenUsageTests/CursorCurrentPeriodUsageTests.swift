@@ -24,6 +24,8 @@ final class CursorCurrentPeriodUsageTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url {
             case CursorUsageClient.usageURL: return usage
+            case CursorUsageClient.refreshURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"renewed"}"#.utf8))
             case CursorUsageClient.planURL:
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"planInfo":{"planName":"Pro"}}"#.utf8))
             case CursorUsageClient.creditsURL:
@@ -61,5 +63,9 @@ final class CursorCurrentPeriodUsageTests: XCTestCase {
 
         guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
         XCTAssertEqual(text, ProviderError.signInExpired(.cursor).localizedDescription)
+        let usageTokens = (runtime.http as? RoutingHTTPClient)?.requests
+            .filter { $0.url == CursorUsageClient.usageURL }
+            .map { $0.headers["Authorization"] }
+        XCTAssertEqual(usageTokens, ["Bearer access", "Bearer renewed"], "the renewed token is rejected too")
     }
 }
