@@ -69,6 +69,7 @@ final class AccountChangeTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "This account is already added as Work.")
         }
         XCTAssertEqual(try vault.load(personal.id), .apiKey("old-key"))
+        try vault.delete(personal.id)
 
         try await container.replaceKey(" new-key ", for: personal.cardID)
 
@@ -78,6 +79,38 @@ final class AccountChangeTests: XCTestCase {
         XCTAssertEqual(container.layout.pinnedMetricIDs, stars)
         XCTAssertNil(dataStore.errorMessage(for: personal.cardID))
         XCTAssertNotNil(dataStore.snapshots[personal.cardID])
+    }
+
+    func testAReplacedKeyOutlastsARefreshStillReadingTheOldKey() async throws {
+        let defaults = isolatedDefaults()
+        let vault = InMemoryCredentialVault()
+        let accounts = AccountStore(defaults: defaults, vault: vault)
+        let oldRead = HeldResponse()
+        let http = RoutingHTTPClient { request in
+            guard request.headers["Authorization"] == "Bearer new-key" else {
+                await oldRead.hold()
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            let body = request.url.absoluteString == OpenRouterUsageClient.creditsURL
+                ? #"{"data":{"total_credits":100,"total_usage":22.23}}"#
+                : #"{"data":{"usage_daily":1.5,"usage_weekly":4,"usage_monthly":12}}"#
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
+        }
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+        let account = accounts.add(kind: .openrouter, label: "Personal", credential: .apiKey("old-key"))
+        let dataStore = container.dataStore
+        await oldRead.waitUntilHeld()
+        XCTAssertEqual(dataStore.refreshingProviderIDs, [account.cardID])
+
+        let replace = Task { try await container.replaceKey("new-key", for: account.cardID) }
+        try await waitUntil { (try? vault.load(account.id)) == .apiKey("new-key") }
+        await oldRead.release()
+        try await replace.value
+        try await waitUntil { dataStore.refreshingProviderIDs.isEmpty }
+
+        XCTAssertEqual(try vault.load(account.id), .apiKey("new-key"))
+        XCTAssertNil(dataStore.errorMessage(for: account.cardID))
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Balance", "Today", "This Week", "This Month"])
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {

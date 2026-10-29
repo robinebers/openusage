@@ -294,10 +294,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
     }
 
-    /// Saves a pasted key over the account's own only once the account's usage read accepts it, so a
-    /// refused key never replaces one that works.
+    /// Saves a pasted key only once the account's usage read accepts it, so a refused key never
+    /// replaces one that works. It saves rather than updates: a key is the whole credential, so it also
+    /// restores an account whose Keychain item has gone missing.
     func replaceKey(_ credential: AccountCredential) async throws {
         _ = try await refresh(credential)
-        try await replaceCredential(credential)
+        try await loadOffMainActor { [vault, account] in try vault.save(credential, for: account.id) }
     }
 }

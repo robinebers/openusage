@@ -115,11 +115,14 @@ final class WidgetDataStore {
             return .backedOff
         }
 
-        guard let provider = providersByID[providerID] else { return .skipped }
-        guard inFlight[providerID] == nil else {
-            AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
-            return .skipped
+        if let running = inFlight[providerID] {
+            guard force else {
+                AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
+                return .skipped
+            }
+            _ = await running.value
         }
+        guard let provider = providersByID[providerID] else { return .skipped }
         if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout] in
