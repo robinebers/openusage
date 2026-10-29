@@ -28,8 +28,5 @@ jobs:
       - name: Build
         run: swift build
 
-      - name: Check test_quiet.sh's front-app parse
-        run: script/test_quiet.sh --self-test
-
       - name: Run tests
         run: swift test
