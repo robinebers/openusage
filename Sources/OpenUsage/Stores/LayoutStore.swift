@@ -13,10 +13,12 @@ final class LayoutStore {
     private var isApplyingUndo = false
 
     private(set) var registry: WidgetRegistry
+    private let defaults: UserDefaults
     private let persistence: LayoutPersistence
 
     init(registry: WidgetRegistry, defaults: UserDefaults = .standard) {
         self.registry = registry
+        self.defaults = defaults
         self.persistence = LayoutPersistence(defaults: defaults)
         loadLayout()
     }
@@ -43,10 +45,30 @@ final class LayoutStore {
         )
     }
 
+    /// The only account of its provider takes that provider's 0.7.x layout. Any other account starts
+    /// with its default stars.
     private func seed(_ provider: Provider, into saved: inout LayoutState) {
         saved.seededProviderIDs.insert(provider.id)
-        let stars = registry.descriptors(for: provider.id).filter { $0.isPinnedByDefault && !saved.hiddenMetricIDs.contains($0.id) }
-        saved.pinnedMetricIDs.formUnion(stars.map(\.id))
+        let metrics = registry.descriptors(for: provider.id)
+        let others = registry.orderedProviderIDs(savedOrder: saved.providerOrder)
+            .filter { $0 != provider.id }
+            .compactMap { registry.provider(id: $0) }
+        guard !others.contains(where: { $0.kind == provider.kind }),
+              let carried = LayoutV1Keys(defaults: defaults).carriedOver(to: provider, metrics: metrics, among: others)
+        else {
+            let stars = metrics.filter { $0.isPinnedByDefault && !saved.hiddenMetricIDs.contains($0.id) }
+            saved.pinnedMetricIDs.formUnion(stars.map(\.id))
+            return
+        }
+        saved.hiddenMetricIDs.formUnion(carried.hidden)
+        saved.pinnedMetricIDs.formUnion(carried.stars)
+        if let order = carried.metricOrder { saved.metricOrderByProvider[provider.id] = order }
+        if let index = carried.providerIndex {
+            var providers = others.map(\.id)
+            providers.insert(provider.id, at: index)
+            saved.providerOrder = providers
+        }
+        AppLog.notice(.config, "layout: \(provider.id) takes its provider's 0.7.x layout")
     }
 
     func setMetricEnabled(_ descriptorID: String, _ enabled: Bool) {

@@ -3,6 +3,68 @@ import XCTest
 
 @MainActor
 final class LayoutMigrationTests: XCTestCase {
+    func testTheFirstAccountOfAProviderTakesItsZeroSevenStarsHiddenMetricsAndOrder() throws {
+        let app = try MigrationApp(defaults: zeroSevenDefaults())
+
+        let claude = app.add(.claude)
+        XCTAssertEqual(app.stars(claude), ["weekly"])
+        XCTAssertEqual(app.hidden(claude), ["extra", "sonnet"])
+        XCTAssertEqual(app.order(claude), ["session", "weekly", "sonnet", "extra", "fable", "rateLimitResets"])
+
+        let codex = app.add(.codex)
+        XCTAssertEqual(app.stars(codex), ["session", "weekly"])
+        XCTAssertEqual(app.hidden(codex), ["spark", "sparkWeekly"], "a star 0.7.x showed only in the menu bar shows its metric")
+        XCTAssertEqual(app.order(codex), ["weekly", "session", "credits", "rateLimitResets", "spark", "sparkWeekly"])
+
+        let secondClaude = app.add(.claude)
+        XCTAssertEqual(app.stars(secondClaude), ["session", "weekly"], "a provider's later accounts start with the default stars")
+        XCTAssertEqual(app.hidden(secondClaude), [])
+    }
+
+    func testStarsOnGoneMetricsFallBackToDefaultsAndNoAccountStartsEmpty() throws {
+        let app = try MigrationApp(defaults: zeroSevenDefaults())
+
+        let openRouter = app.add(.openrouter)
+        XCTAssertEqual(app.stars(openRouter), ["balance"], "0.7.x starred only Credits, which is gone")
+        XCTAssertEqual(app.hidden(openRouter), ["month", "week"])
+
+        let cursor = app.add(.cursor)
+        XCTAssertEqual(app.hidden(cursor), ["api", "auto", "grokBot", "onDemand", "requests", "usage"])
+        XCTAssertEqual(app.stars(cursor), [], "the default stars sit on metrics 0.7.x hid")
+
+        let grok = app.add(.grok)
+        XCTAssertEqual(app.hidden(grok), [], "0.7.x showed only Grok metrics that are gone")
+        XCTAssertEqual(app.stars(grok), [], "0.7.x had no Grok stars")
+
+        let ollama = app.add(.ollama)
+        XCTAssertEqual(app.stars(ollama), ["monthly"], "0.7.x had Ollama off")
+    }
+
+    func testAnEmptyStarListStaysEmpty() {
+        let defaults = isolatedDefaults()
+        defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")
+        defaults.set([String](), forKey: "openusage.layout.v1.menuBarPins")
+        let app = MigrationApp(defaults: defaults)
+        XCTAssertEqual(app.stars(app.add(.claude)), [], "0.7.x had every star taken off")
+    }
+
+    func testProvidersTakeZeroSevensOrderAndTheUsersLaterOrderWins() throws {
+        let app = try MigrationApp(defaults: zeroSevenDefaults())
+
+        app.add(.grok)
+        app.add(.ollama)
+        app.add(.cursor)
+        app.add(.claude)
+        XCTAssertEqual(app.families, ["claude", "cursor", "grok", "ollama"])
+
+        XCTAssertTrue(app.layout.reorderFamily(dragged: "grok", target: "claude"))
+        app.add(.codex)
+        XCTAssertEqual(app.families, ["grok", "claude", "codex", "cursor", "ollama"])
+
+        app.relaunch()
+        XCTAssertEqual(app.families, ["grok", "claude", "codex", "cursor", "ollama"])
+    }
+
     func testZeroSevenKeysStayByteIdenticalThroughTheMoveAndLaterEdits() throws {
         let defaults = try zeroSevenDefaults()
         let before = Self.v1Values(defaults)
@@ -18,6 +80,25 @@ final class LayoutMigrationTests: XCTestCase {
         app.relaunch()
 
         XCTAssertEqual(Self.v1Values(defaults), before)
+    }
+
+    func testASecondRunChangesNothingAndLaterEditsWin() throws {
+        let defaults = try zeroSevenDefaults()
+        let app = MigrationApp(defaults: defaults)
+        let claude = app.add(.claude)
+        let saved = defaults.data(forKey: "openusage.layout.v2")
+
+        app.layout.apply(registry: app.layout.registry)
+        app.relaunch()
+        XCTAssertEqual(app.stars(claude), ["weekly"])
+        XCTAssertEqual(app.hidden(claude), ["extra", "sonnet"])
+        XCTAssertEqual(defaults.data(forKey: "openusage.layout.v2"), saved, "a second run writes nothing")
+
+        app.layout.setPinned(false, for: "\(claude.cardID).weekly")
+        app.layout.setMetricEnabled("\(claude.cardID).sonnet", true)
+        app.relaunch()
+        XCTAssertEqual(app.stars(claude), [])
+        XCTAssertEqual(app.hidden(claude), ["extra"])
     }
 
     /// Shaped like a real 0.7.16 layout: a second Claude account's `@` id beside bare ids, a star on a

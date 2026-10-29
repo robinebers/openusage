@@ -23,14 +23,18 @@ final class DefaultStarsTests: XCTestCase {
                        "a star the user took off is not put back")
     }
 
-    func testPinsSavedUnderTheOldFamilyIDsDoNotStandInForAnAccountsOwn() {
+    func testZeroSevenStarsUnderAProviderIDGoToItsFirstAccount() {
         let defaults = isolatedDefaults()
-        defaults.set(["claude.session", "claude.weekly"], forKey: "openusage.layout.v1.menuBarPins")
+        defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")
+        defaults.set(["claude.weekly"], forKey: "openusage.layout.v1.menuBarPins")
         let app = StarsApp(defaults: defaults)
 
-        let account = app.add(.claude)
+        let first = app.add(.claude)
+        let second = app.add(.claude)
 
-        XCTAssertEqual(app.layout.pinnedMetricIDs, ["\(account.cardID).session", "\(account.cardID).weekly"])
+        XCTAssertEqual(app.layout.pinnedMetricIDs, [
+            "\(first.cardID).weekly", "\(second.cardID).session", "\(second.cardID).weekly"
+        ], "the first Claude account takes 0.7.x's stars and the second its default stars")
     }
 
     private func makeApp() -> StarsApp {
