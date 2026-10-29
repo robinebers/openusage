@@ -126,9 +126,10 @@ final class ResetClaimServiceTests: XCTestCase {
         }
     }
 
-    func testCodexClaimRefreshesTheDashboardPastItsCache() async throws {
+    func testCodexClaimRereadsTheUsageAndTheResetCountAtOnce() async throws {
         let expiry = Date(timeIntervalSince1970: 1_800_000_000)
-        let runtime = try makeCodexRuntime(http: Self.codexHTTP(expiry: expiry, claimed: TestSwitch(false)))
+        let http = Self.codexHTTP(expiry: expiry, claimed: TestSwitch(false))
+        let runtime = try makeCodexRuntime(http: http)
         let defaults = isolatedDefaults()
         let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
         let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.sample.showsResetExpiries })
@@ -137,15 +138,19 @@ final class ResetClaimServiceTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).expiriesAt, [expiry])
 
         let refreshed = expectation(description: "the post-claim refresh")
-        var service = try XCTUnwrap(runtime.resetClaimService {
+        let service = try XCTUnwrap(runtime.resetClaimService {
             defer { refreshed.fulfill() }
             return await store.refresh(providerID: runtime.provider.id, force: true)
         })
-        service.pause = { _ in }
+        let sentBefore = http.requests.count
         let outcome = await service.claim(creditExpiringAt: expiry, redeemRequestID: "redeem-1")
-        await fulfillment(of: [refreshed], timeout: 5)
+        await fulfillment(of: [refreshed], timeout: 1)
 
         XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(
+            http.requests.dropFirst(sentBefore).map(\.url),
+            [CodexUsageClient.resetCreditsURL, CodexUsageClient.consumeResetCreditURL, CodexUsageClient.usageURL, CodexUsageClient.resetCreditsURL]
+        )
         XCTAssertEqual(store.data(for: descriptor).unboundedDetail, "0 available")
         XCTAssertEqual(store.data(for: descriptor).expiriesAt, [])
     }
