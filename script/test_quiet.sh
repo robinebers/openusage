@@ -6,12 +6,27 @@
 # not, so that alone fails nothing. It is the only way to run tests on a Mac someone is using.
 # Arguments go to `swift test` (for example --filter DashboardSectionTests).
 #
-# Usage: script/test_quiet.sh [swift test arguments]
+# `--self-test` checks only the lsappinfo parse below, without lsappinfo or a test run.
+#
+# Usage: script/test_quiet.sh [--self-test | swift test arguments]
 set -uo pipefail
 
-front_app() {
-  lsappinfo info -only name "$(lsappinfo front)" | head -1 | sed -E 's/^"([^"]*)".*$/\1/'
+display_name() {
+  sed -nE 's/^"?LSDisplayName"? *= *"(.*)" *$/\1/p'
 }
+
+front_app() {
+  lsappinfo info -only name "$(lsappinfo front)" | display_name
+}
+
+if [ "${1:-}" = --self-test ]; then
+  for line in '"LSDisplayName"="Safari"' 'LSDisplayName = "Safari"'; do
+    name="$(display_name <<< "$line")"
+    [ "$name" = Safari ] || { echo "test_quiet: parsed '$line' as '$name', not 'Safari'" >&2; exit 1; }
+  done
+  echo "test_quiet: self-test passed"
+  exit 0
+fi
 
 before="$(front_app)"
 seen="$(mktemp -t test_quiet)"
