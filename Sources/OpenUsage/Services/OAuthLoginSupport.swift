@@ -76,6 +76,29 @@ struct OAuthTokenResponse: Decodable {
     }
 }
 
+extension OAuthTokenResponse {
+    /// Only a refusal of the refresh token itself is an expired sign-in; an outage, a rate limit, or a
+    /// malformed answer fails this refresh like any provider request, so the next pass renews again.
+    init(renewal response: HTTPResponse, kind: ProviderKind) throws {
+        if [400, 401, 403].contains(response.statusCode), let code = Self.errorCode(response.body),
+           ["invalid_grant", "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"].contains(code) {
+            throw ProviderError.signInExpired(kind)
+        }
+        guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
+        guard let token = try? JSONDecoder().decode(Self.self, from: response.body), !token.accessToken.isEmpty else {
+            throw ProviderError.invalidResponse
+        }
+        self = token
+    }
+
+    /// RFC 6749 sends `error` as a string; OpenAI also sends `error.code` or a top-level `code`.
+    private static func errorCode(_ body: Data) -> String? {
+        let json = ProviderParse.jsonObject(body)
+        let error = json?["error"]
+        return error as? String ?? (error as? [String: Any])?["code"] as? String ?? json?["code"] as? String
+    }
+}
+
 struct OAuthGrant: Sendable {
     var accessToken: String
     var refreshToken: String?

@@ -69,5 +69,13 @@ OAuth accounts renew their own sign-in with the provider's refresh token, 5 minu
 provider's expiry (the margin Claude Code uses), so a refresh never sends a token that is about to
 expire. Cursor renews its sign-in in the last 7 days of its 60-day token. When Claude, ChatGPT or Grok
 refuses the access token anyway (a 401 on the usage read, for an expiry the sign-in never reported or
-one the provider cut short), the sign-in is renewed once and the read retried; a second refusal, or a
-rejected renewal, shows a warning with the reason. Remove the account and add it again to sign in afresh.
+one the provider cut short), the sign-in is renewed once and the read retried.
+
+The warning says the sign-in expired when the usage read still refuses the token, or when the provider
+refuses the renewal itself: an `invalid_grant` answer, one of ChatGPT's own refresh-token errors, or
+Cursor asking OpenUsage to sign out. Remove the account and add it again to sign in afresh.
+
+A renewal that fails for any other reason, such as an outage (HTTP 5xx), a rate limit (HTTP 429), or no
+connection, does not mean the sign-in expired. While the current token still works, the account keeps
+using it and tries the renewal again on the next pass. Once the token has expired, the refresh fails
+with that error and is tried again like any failed fetch (see [When a fetch fails](#when-a-fetch-fails)).
