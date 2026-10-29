@@ -104,6 +104,8 @@ the extra-usage balance, and the plan. A plan that hides its daily quota shows i
 the plan has no weekly quota. An account with neither quota nor a balance has nothing to show, and the
 card says so.
 
+Daily and Weekly are the default menu-bar stars.
+
 ## Grok
 
 Sign in with an xAI device code. The card reads the Grok settings and billing endpoints for the weekly
