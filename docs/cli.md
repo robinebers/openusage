@@ -70,7 +70,8 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
 
 `providers` has one entry per account, keyed by account id (`jq '.providers["codex@1a2b3c4d"]'`;
 `openusage codex | jq '.providers[]'` for every ChatGPT account). An account the app has not fetched
-yet has no entry.
+yet has no entry, and neither does an account this version cannot read, such as one for a provider it
+lacks.
 `displayName` is the provider's name and the account's name as the app shows them, for example
 `ChatGPT · Work`. `plan` is the plan the provider reports.
 `fetchedAt` is when the app last fetched the account. `expiresAt` is 10 minutes later, two refresh

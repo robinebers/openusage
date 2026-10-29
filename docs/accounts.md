@@ -58,3 +58,6 @@ from this Mac. You can add the account again at any time.
 Account names and the dashboard layout live in the app's own preferences. OAuth tokens and API keys
 live in the app's own Keychain service. OpenUsage never reads credentials, files, Keychain items,
 databases, or environment variables that belong to other tools.
+
+A version of OpenUsage that cannot read one of your accounts, such as one for a provider that version
+lacks, leaves it out of the list and keeps it saved, with its sign-in, for a version that reads it.

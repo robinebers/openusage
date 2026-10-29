@@ -35,6 +35,10 @@ is new. The status item and the panel are never rebuilt on an account change.
 `ProviderKind` (`Models/Account.swift`) is the enum of providers. It carries each provider's display
 name, icon, quick links, and `authMethod` (OAuth or an API key with its key page).
 
+`AccountStore.load` decodes each entry of `accounts.v1` on its own. An entry this build cannot decode,
+such as one whose `kind` is a provider it lacks, is logged and kept as its JSON value, and every save
+writes it back after the known accounts.
+
 `ProviderLogin` (`Services/ProviderLogin.swift`) is the sign-in contract: `login(prompt:pastedCode:)`
 drives a browser or device-code prompt and returns the account's label and credential.
 `ProviderLoginCatalog` maps a kind to its login. Browser logins live in
