@@ -53,6 +53,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
 - Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
   them.
+- Accounts: connect a CLIProxyAPI server with its address and management key, and its Claude and
+  ChatGPT logins show as accounts, kept in step with the server.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
