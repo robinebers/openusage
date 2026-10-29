@@ -60,7 +60,10 @@ extension AccountProviderRuntime {
                               periodDurationMs: CursorUsageMapper.billingPeriodMs)
                     .exportingLimit("requests", unit: "requests"),
                 .dollarBalance(key: "credits", provider: provider, title: "Credits", valueWord: "left")
-                    .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+                    .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
+                .values(key: "today", provider: provider, title: "Today"),
+                .values(key: "yesterday", provider: provider, title: "Yesterday"),
+                .values(key: "last30", provider: provider, title: "Last 30 Days")
             ]
         case .antigravity:
             [
