@@ -14,6 +14,24 @@ enum APIKeyV1Files {
         home: URL = .homeDirectory,
         http: any HTTPClient = URLSessionHTTPClient()
     ) async {
+        guard !defaults.bool(forKey: importedKey) else { return }
+        for (kind, file) in [(ProviderKind.openrouter, "openrouter.json"), (.zai, "zai.json")] {
+            guard !accounts.accounts.contains(where: { $0.kind == kind }),
+                  let key = key(at: home.appending(path: ".config/openusage/\(file)"))
+            else { continue }
+            let (input, continuation) = AsyncStream.makeStream(of: String.self)
+            continuation.yield(key)
+            continuation.finish()
+            do {
+                let result = try await APIKeyLogin(kind: kind, http: http).login(prompt: { _ in }, pastedCode: input)
+                guard !accounts.accounts.contains(where: { $0.kind == kind }) else { continue }
+                accounts.add(kind: kind, label: result.label, credential: result.credential)
+                AppLog.notice(.config, "imported the \(kind.displayName) key 0.7.x saved in \(file)")
+            } catch {
+                AppLog.warn(.config, "skipped the \(kind.displayName) key 0.7.x saved in \(file): \(error.localizedDescription)")
+            }
+        }
+        defaults.set(true, forKey: importedKey)
     }
 
     /// The key 0.7.x's key editor wrote, as `{"apiKey": "…"}`.
