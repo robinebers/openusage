@@ -12,7 +12,7 @@ public enum UsageReaderError: Error, Sendable {
 @MainActor
 public enum UsageReader {
     public static func read(_ defaults: UserDefaults, providerID: String? = nil) throws -> UsageReadResult {
-        var accounts = AccountStore.load(from: defaults)
+        var accounts = AccountStore.load(from: defaults).accounts
         if let token = providerID?.lowercased() {
             accounts = accounts.filter { $0.cardID == token || $0.kind.rawValue == token }
             guard !accounts.isEmpty else { throw UsageReaderError.unknownProvider(token) }

@@ -9,19 +9,38 @@ final class AccountStore {
     private(set) var accounts: [Account]
     private(set) var lastError: String?
     @ObservationIgnored var didChange: (() -> Void)?
+    /// The stored entries this build cannot decode, as JSON values. Saving writes them back after the
+    /// accounts, so a build that reads them still finds them.
+    @ObservationIgnored private var unreadableEntries: [Any]
     private let defaults: UserDefaults
     let credentialVault: any CredentialVault
 
     init(defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault()) {
         self.defaults = defaults
         credentialVault = vault
-        accounts = Self.load(from: defaults)
+        let stored = Self.load(from: defaults)
+        accounts = stored.accounts
+        unreadableEntries = stored.unreadableEntries
     }
 
-    static func load(from defaults: UserDefaults) -> [Account] {
-        guard let data = defaults.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([Account].self, from: data) else { return [] }
-        return decoded.sorted { $0.addedAt < $1.addedAt }
+    static func load(from defaults: UserDefaults) -> (accounts: [Account], unreadableEntries: [Any]) {
+        guard let data = defaults.data(forKey: storageKey) else { return ([], []) }
+        guard let entries = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else {
+            AppLog.error(LogTag.auth("accounts"), "cannot read the stored account list, which is not a JSON array")
+            return ([], [])
+        }
+        var accounts: [Account] = []
+        var unreadableEntries: [Any] = []
+        for (index, entry) in entries.enumerated() {
+            do {
+                let entryData = try JSONSerialization.data(withJSONObject: entry, options: .fragmentsAllowed)
+                accounts.append(try JSONDecoder().decode(Account.self, from: entryData))
+            } catch {
+                AppLog.error(LogTag.auth("accounts"), "cannot read stored account entry \(index), keeping it unchanged: \(error)")
+                unreadableEntries.append(entry)
+            }
+        }
+        return (accounts.sorted { $0.addedAt < $1.addedAt }, unreadableEntries)
     }
 
     @discardableResult
@@ -88,9 +107,10 @@ final class AccountStore {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(accounts) else {
+        guard let known = try? JSONSerialization.jsonObject(with: JSONEncoder().encode(accounts)) as? [Any],
+              let list = try? JSONSerialization.data(withJSONObject: known + unreadableEntries) else {
             return AppLog.error(LogTag.auth("accounts"), "could not encode the account list")
         }
-        defaults.set(data, forKey: Self.storageKey)
+        defaults.set(list, forKey: Self.storageKey)
     }
 }
