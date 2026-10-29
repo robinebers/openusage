@@ -41,7 +41,7 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
   "generatedAt": "2026-07-13T01:40:00.000Z",
   "providers": {
     "codex@1a2b3c4d": {
-      "displayName": "ChatGPT",
+      "displayName": "ChatGPT · Work",
       "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
       "expiresAt": "2026-07-13T01:44:30.000Z",
@@ -71,7 +71,8 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
 `providers` has one entry per account, keyed by account id (`jq '.providers["codex@1a2b3c4d"]'`;
 `openusage codex | jq '.providers[]'` for every ChatGPT account). An account the app has not fetched
 yet has no entry.
-`displayName` is the provider's name and `plan` the plan the provider reports.
+`displayName` is the provider's name and the account's name as the app shows them, for example
+`ChatGPT · Work`. `plan` is the plan the provider reports.
 `fetchedAt` is when the app last fetched the account, `expiresAt` is when it expects to fetch it
 again (5 minutes after `fetchedAt`), and `stale` says whether that instant has passed at `generatedAt`: a stale
 entry means the app is not running or its refreshes are failing.

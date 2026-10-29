@@ -76,11 +76,12 @@ fetched snapshot is written to the cache as it lands.
 
 `OpenUsageCLI` parses its arguments, finds the app bundle it ships inside (`AppBundleLocator`,
 `ContainingAppBundle`) to open that app's defaults domain, and hands the rest to `UsageReader` in the
-library: the stored accounts (`AccountStore.load`), their descriptors
-(`AccountProviderRuntime.widgetDescriptors(for:)`), and the snapshot cache, projected by
-`LimitsEnvelope` into the `openusage.limits.v1` JSON that `exportingLimit` declares resource by
-resource. The command never refreshes and never opens the Keychain. `CommandLineToolInstaller` is the
-Settings-side symlink installer.
+library. `UsageReader` builds a `WidgetRegistry` from the stored accounts (`AccountStore.load`) with
+the same `AccountProviderRuntime.provider(for:)` and `widgetDescriptors(for:)` the app's runtimes use,
+and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v1` JSON that
+`exportingLimit` declares resource by resource. Each entry's `displayName` is the account's
+`Provider.fullName`. The command never refreshes and never opens the Keychain.
+`CommandLineToolInstaller` is the Settings-side symlink installer.
 
 ## Views
 

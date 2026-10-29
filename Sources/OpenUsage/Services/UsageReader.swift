@@ -12,23 +12,17 @@ public enum UsageReaderError: Error, Sendable {
 @MainActor
 public enum UsageReader {
     public static func read(_ defaults: UserDefaults, providerID: String? = nil) throws -> UsageReadResult {
-        let accounts = AccountStore.load(from: defaults)
-        var providerIDs = accounts.map(\.cardID)
+        var accounts = AccountStore.load(from: defaults)
         if let token = providerID?.lowercased() {
-            providerIDs = accounts.filter { $0.cardID == token || $0.kind.rawValue == token }.map(\.cardID)
-            guard !providerIDs.isEmpty else { throw UsageReaderError.unknownProvider(token) }
+            accounts = accounts.filter { $0.cardID == token || $0.kind.rawValue == token }
+            guard !accounts.isEmpty else { throw UsageReaderError.unknownProvider(token) }
         }
-        var limitDescriptors: [String: [WidgetDescriptor]] = [:]
-        for descriptor in accounts.flatMap(AccountProviderRuntime.widgetDescriptors(for:))
-        where !descriptor.limitResources.isEmpty {
-            limitDescriptors[descriptor.providerID, default: []].append(descriptor)
-        }
-        let snapshots = ProviderSnapshotCache(userDefaults: defaults).load().filter { providerIDs.contains($0.key) }
-        let data = LimitsEnvelope.encode(LimitsEnvelope.Input(
-            providerIDs: providerIDs,
-            snapshots: snapshots,
-            limitDescriptors: limitDescriptors
-        ))
-        return UsageReadResult(data: data, hasSnapshots: !snapshots.isEmpty)
+        let registry = WidgetRegistry(
+            providers: accounts.map(AccountProviderRuntime.provider(for:)),
+            descriptors: accounts.flatMap(AccountProviderRuntime.widgetDescriptors(for:))
+        )
+        let snapshots = ProviderSnapshotCache(userDefaults: defaults).load()
+        let data = LimitsEnvelope.encode(LimitsEnvelope.Input(registry: registry, snapshots: snapshots))
+        return UsageReadResult(data: data, hasSnapshots: accounts.contains { snapshots[$0.cardID] != nil })
     }
 }
