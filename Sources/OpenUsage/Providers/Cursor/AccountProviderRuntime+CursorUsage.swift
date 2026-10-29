@@ -2,28 +2,44 @@ import Foundation
 
 extension AccountProviderRuntime {
     func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> ProviderUsage {
+        var summary: [String: Any]?
+        var summaryWasRead = false
+        func readSummary() async -> [String: Any]? {
+            if !summaryWasRead {
+                summaryWasRead = true
+                summary = await optionalJSON("usage-summary") { try await client.fetchUsageSummary(accessToken: accessToken) }
+            }
+            return summary
+        }
+
         if planRead.isDue(at: now()) {
             let fresh = await optionalJSON("plan") { try await client.fetchPlan(accessToken: accessToken) }
                 .flatMap { ($0["planInfo"] as? [String: Any])?["planName"] as? String }
                 .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
             planRead.record(fresh, at: now())
         }
+        if cursorMembershipRead.isDue(at: now()) {
+            cursorMembershipRead.record(CursorUsageMapper.membershipType(in: await readSummary()), at: now())
+        }
         let planName = planRead.value
+        let membership = cursorMembershipRead.value
+        let isOrgSeat = membership.map(CursorUsageMapper.orgMembershipTypes.contains) ?? false
+        let displayPlanName = CursorUsageMapper.resolvedPlanName(planInfoName: planName, membershipType: membership)
         let facts = CursorPlanUsageFacts(usage: usage)
-        let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(facts: facts, planName: planName)
+        let fallback = CursorUsageMapper.shouldUseRequestBasedFallback(facts: facts, planName: isOrgSeat ? membership : planName)
 
         var mapped: ProviderUsage
         if fallback.shouldFallback {
             mapped = try CursorUsageSummaryMapper.map(
-                summary: await optionalJSON("usage-summary") { try await client.fetchUsageSummary(accessToken: accessToken) },
+                summary: await readSummary(),
                 requestUsage: await optionalJSON("request-based usage") { try await client.fetchRequestBasedUsage(accessToken: accessToken) },
-                planName: planName,
+                planName: displayPlanName,
                 unavailableMessage: fallback.message
             )
         } else if facts.shouldTryGenericRequestFallback,
                   let requestUsage = await optionalJSON("request-based usage", { try await client.fetchRequestBasedUsage(accessToken: accessToken) }),
                   let requestBased = try? CursorUsageSummaryMapper.map(
-                      summary: nil, requestUsage: requestUsage, planName: planName, unavailableMessage: ""
+                      summary: nil, requestUsage: requestUsage, planName: displayPlanName, unavailableMessage: ""
                   ) {
             mapped = requestBased
         } else {
@@ -34,13 +50,15 @@ extension AccountProviderRuntime {
                 creditGrants: await optionalJSON("credit-grants") { try await client.fetchCredits(accessToken: accessToken) },
                 stripeBalanceCents: CursorUsageMapper.stripeBalanceCents(from: stripe)
             )
-            if facts.isTeamByShape,
-               let summary = await optionalJSON("usage-summary", { try await client.fetchUsageSummary(accessToken: accessToken) }),
+            mapped.plan = CursorUsageMapper.resolvedPlanLabel(planInfoName: planName, membershipType: membership)
+            let needsOnDemand = !mapped.lines.contains { $0.label == "On-demand" }
+            if isOrgSeat ? needsOnDemand : facts.isTeamByShape,
+               let summary = await readSummary(),
                CursorUsageSummaryMapper.hasUsableSummaryPayload(summary) {
                 CursorUsageSummaryMapper.appendMissingOnDemand(from: summary, to: &mapped.lines)
                 mapped.plan = CursorUsageMapper.resolvedPlanLabel(
                     planInfoName: planName,
-                    membershipType: summary["membershipType"] as? String
+                    membershipType: CursorUsageMapper.membershipType(in: summary) ?? membership
                 ) ?? mapped.plan
             }
         }

@@ -237,6 +237,10 @@ enum CursorUsageMapper {
 
     static let orgMembershipTypes: Set<String> = ["enterprise", "team"]
 
+    static func membershipType(in summary: [String: Any]?) -> String? {
+        normalizedMembership(summary?["membershipType"] as? String)
+    }
+
     /// Badge / display plan. Prefer org billing membership over GetPlanInfo when it still says Pro.
     static func resolvedPlanName(planInfoName: String?, membershipType: String?) -> String? {
         let membership = normalizedMembership(membershipType)

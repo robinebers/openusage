@@ -57,6 +57,9 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Z.ai's notice when a key has no GLM Coding Plan.
 - Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.
 - A Grok team account's plan, shown beside the notice that the account has no personal quota.
+- Cursor Enterprise and Team seats that Cursor's plan endpoint reports as Pro keep their Enterprise or
+  Team label, Extra Usage, and request-based usage. The membership now comes from Cursor's
+  `usage-summary`, read once an hour, not from Cursor's local database.
 
 ## v0.7.16
 
