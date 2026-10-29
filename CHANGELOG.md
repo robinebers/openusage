@@ -47,7 +47,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
-- Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
+- Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
+  are always sent; they are not optional.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
