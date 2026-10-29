@@ -10,6 +10,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         AppLog.bootstrap()
+        URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)
         if let bundleID = Bundle.main.bundleIdentifier {
             switch SingleInstanceLock.acquire(bundleIdentifier: bundleID) {
             case .acquired(let token):

@@ -45,7 +45,9 @@ struct URLSessionHTTPClient: HTTPClient {
     private static let session = URLSession(configuration: sessionConfiguration(proxy: ProxyConfig.load()))
 
     static func sessionConfiguration(proxy: ProxyConfig?) -> URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.default
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.proxyConfigurations = proxy.map { [$0.proxyConfiguration] } ?? []
         return configuration
     }
