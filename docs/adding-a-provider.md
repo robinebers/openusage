@@ -20,7 +20,8 @@ For OAuth, write a `ProviderLogin` in `Services/BrowserProviderLogins.swift` (a 
 `LoopbackCallbackServer` and `PKCE`) or `Services/DeviceProviderLogins.swift` (a device-code flow
 with `DeviceCodePoller`). A browser flow sends `UUID().uuidString` as its `state`, never the PKCE
 verifier. The state travels in the browser's URLs, and the verifier stays in the app until the token
-request. Return the account's label (an email or the provider's account name) and its
+request. A provider whose page shows a token for the user to paste prompts `.browserToken`, as
+`DevinLogin` does. Return the account's label (an email or the provider's account name) and its
 `AccountCredential`. Map the kind in `ProviderLoginCatalog`.
 
 ## 3. Fetch and map usage

@@ -14,7 +14,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
-- The Devin and Pi providers, which have no account sign-in.
+- The Pi provider, which has no account sign-in.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
 
@@ -62,6 +62,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor Enterprise and Team seats that Cursor's plan endpoint reports as Pro keep their Enterprise or
   Team label, Extra Usage, and request-based usage. The membership now comes from Cursor's
   `usage-summary`, read once an hour, not from Cursor's local database.
+- Devin's Daily, Weekly, and Extra Usage rows. Sign in on windsurf.com and paste the token it shows,
+  or paste a Windsurf API key.
 
 ## v0.7.16
 

@@ -14,6 +14,9 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
      opens it again, and **Copy Link** lets you open the link in another browser. The sheet closes
      when you are signed in. If your browser shows a code instead, paste it into the sheet and click
      **Continue**.
+   - **Browser and token** (Devin): your browser opens Windsurf's sign-in. Sign in, copy the token the
+     page shows, paste it into the sheet, and click **Continue**. A token expires after 5 minutes. A
+     Windsurf API key works in place of the token.
    - **Device code** (Copilot, Grok): the sheet shows a code. **Copy Code**, click **Open Browser**,
      and enter the code. The sheet closes when the provider confirms.
    - **API key** (Ollama, OpenCode, OpenRouter, Z.ai): create a key on the page the sheet links to,
@@ -28,7 +31,8 @@ goes back to the provider list; **Cancel** on the list closes the sheet.
 You can add several accounts for the same provider. A new account goes to the bottom of its
 provider's accounts and starts refreshing right away. Signing in to an account that's already added
 (the same provider account, or the same API key) adds no second copy; the sheet says "This account is
-already added as <name>." A Claude account in two organizations counts as two accounts.
+already added as <name>." A Claude account in two organizations counts as two accounts, and so does a
+Devin email in two organizations.
 
 ## Rename an account
 
