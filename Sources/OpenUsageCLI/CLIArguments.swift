@@ -4,6 +4,7 @@ struct CLIArguments: Equatable, Sendable {
     var providerID: String?
     var showHelp = false
     var showVersion = false
+    var force = false
 
     static func parse(_ arguments: [String]) throws -> CLIArguments {
         var parsed = CLIArguments()
@@ -11,6 +12,7 @@ struct CLIArguments: Equatable, Sendable {
             switch argument {
             case "-h", "--help": parsed.showHelp = true
             case "-v", "--version": parsed.showVersion = true
+            case "--force": parsed.force = true
             default:
                 if argument.hasPrefix("-") {
                     throw CLIError.usage("Unknown option: \(argument)")

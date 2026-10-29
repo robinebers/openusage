@@ -19,6 +19,9 @@ struct OpenUsageCLI {
                 return
             }
 
+            if arguments.force {
+                FileHandle.standardError.write(Data("openusage: --force does nothing; the command prints what the app last fetched\n".utf8))
+            }
             guard let defaults = UserDefaults(suiteName: app.bundleIdentifier) else {
                 fail("Could not open the OpenUsage settings domain.", code: 4)
             }

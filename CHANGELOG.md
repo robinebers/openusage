@@ -56,7 +56,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
 - Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
   manager's token.
-- The `openusage` command, which now prints what the app last fetched and nothing computed.
+- The `openusage` command, which now prints what the app last fetched and nothing computed. `--force`
+  is accepted and does nothing.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 - Z.ai's notice when a key has no GLM Coding Plan.
 - Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.
