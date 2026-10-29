@@ -143,27 +143,24 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertEqual(kinds(http).suffix(3), ["usage", "grants", "profile"])
     }
 
-    func testAClaimRefreshesTheMetersOnceThirtySecondsLaterWithoutAGrantsRead() async throws {
+    func testAClaimRefreshesTheMetersAtOnceWithoutAGrantsRead() async throws {
         let clock = TestClock(Self.start)
         let http = Self.anthropic(claim: { Self.json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#) })
         let runtime = try makeRuntime(http: http, clock: clock)
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
         await store.refreshAll()
         await store.refreshHourlyReads()
-        let pauses = TestSwitch<[Duration]>([])
         let refreshed = expectation(description: "the post-claim refresh")
-        var service = try XCTUnwrap(runtime.resetClaimService {
+        let service = try XCTUnwrap(runtime.resetClaimService {
             defer { refreshed.fulfill() }
             return await store.refresh(providerID: runtime.provider.id, force: true)
         })
-        service.pause = { pauses.value.append($0) }
         let sentBefore = http.requests.count
 
         let outcome = await service.claim(creditExpiringAt: Self.start, redeemRequestID: "redeem-1")
-        await fulfillment(of: [refreshed], timeout: 5)
+        await fulfillment(of: [refreshed], timeout: 1)
 
         XCTAssertEqual(outcome, .success)
-        XCTAssertEqual(pauses.value, [.seconds(30)])
         XCTAssertEqual(kinds(http).dropFirst(sentBefore), ["claim", "usage"])
         XCTAssertEqual(resetsAvailable(store.snapshots[runtime.provider.id]?.lines ?? []), 0)
     }

@@ -61,8 +61,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 isClaimable: status?.claimableGrantID != nil,
                 confirmDetail: status?.confirmDetail,
                 claimReset: { [self] _, redeemRequestID in await claimClaudeResetGrant(redeemRequestID: redeemRequestID) },
-                refreshAccount: refreshAccount,
-                refreshDelay: .seconds(30)
+                refreshAccount: refreshAccount
             )
         case .codex:
             return ResetClaimService(
@@ -72,8 +71,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 claimReset: { [self] expiry, redeemRequestID in
                     await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: redeemRequestID)
                 },
-                refreshAccount: refreshAccount,
-                refreshDelay: .seconds(5)
+                refreshAccount: refreshAccount
             )
         case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
             return nil
