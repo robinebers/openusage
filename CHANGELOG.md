@@ -35,6 +35,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   too, and cards signed in to one login share one usage request.
 - Menu bar: the strip, or the app icon in its place, dims while an account's values are out of date
   because refreshes fail or a provider asked OpenUsage to wait.
+- Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
+  an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

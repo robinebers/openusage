@@ -123,8 +123,13 @@ final class AccountProviderRuntime: ProviderRuntime {
         grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
-        guard tokens.needsRefresh(at: now()) else { return tokens }
-        return try await renewedTokens(tokens, grant: grant)
+        guard tokens.needsRefresh(at: now()), let expiresAt = tokens.expiresAt else { return tokens }
+        do {
+            return try await renewedTokens(tokens, grant: grant)
+        } catch let error where expiresAt > now() {
+            AppLog.warn(.auth, "\(account.cardID) early token renewal failed; keeping the current token: \(error.localizedDescription)")
+            return tokens
+        }
     }
 
     /// The usage read with the sign-in renewed once when the provider refuses the access token (401):

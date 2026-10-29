@@ -25,12 +25,6 @@ enum ProviderError: Error, LocalizedError, Equatable {
         response.statusCode == 401 || response.statusCode == 403
     }
 
-    /// A token endpoint refusing the refresh token itself (RFC 6749 `invalid_grant`), which only a new sign-in cures.
-    static func refusedGrant(_ response: HTTPResponse) -> Bool {
-        (response.statusCode == 400 || response.statusCode == 401)
-            && ProviderParse.jsonObject(response.body)?["error"] as? String == "invalid_grant"
-    }
-
     static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {
         if isAuthFailure(response) { throw ProviderError.signInExpired(kind) }
         guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }

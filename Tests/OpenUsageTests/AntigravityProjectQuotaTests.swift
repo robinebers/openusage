@@ -60,6 +60,18 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
     }
 
+    func testEveryBaseOfflineIsUnreachable() async throws {
+        let account = Account(kind: .antigravity, label: "Google Account")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture)), for: account.id)
+        let http = RoutingHTTPClient { _ in throw URLError(.notConnectedToInternet) }
+
+        let failure = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().failure
+
+        XCTAssertEqual(http.requests.filter { $0.url.path == AntigravityUsageClient.quotaSummaryPath }.count, 2)
+        XCTAssertEqual(failure?.kind, .unreachable)
+    }
+
     func testPaidTiersReadAsGoogleSellsThem() {
         func plan(id: String, name: String) -> String? {
             AntigravityUsageMapper.parseLoadCodeAssistPlan(Data(#"{"paidTier":{"id":"\#(id)","name":"\#(name)"}}"#.utf8))

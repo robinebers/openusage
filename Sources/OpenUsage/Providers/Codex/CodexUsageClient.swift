@@ -14,38 +14,11 @@ extension CodexLogin {
             body: Data(body.utf8),
             timeout: 15
         ))
-
-        if response.statusCode == 400 || response.statusCode == 401 {
-            let errorBody = ProviderParse.jsonObject(response.body)
-            let code = errorBody?["error"].flatMap { errorValue -> String? in
-                if let error = errorValue as? [String: Any] {
-                    return error["code"] as? String ?? error["error"] as? String
-                }
-                return errorValue as? String
-            } ?? errorBody?["code"] as? String
-
-            switch code {
-            case "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated":
-                throw ProviderError.signInExpired(.codex)
-            default:
-                throw ProviderError.requestFailed(response.statusCode)
-            }
-        }
-
-        guard (200..<300).contains(response.statusCode) else {
-            throw ProviderError.failed(response)
-        }
-        guard let body = ProviderParse.jsonObject(response.body),
-              let accessToken = body["access_token"] as? String,
-              !accessToken.isEmpty
-        else {
-            throw ProviderError.signInExpired(.codex)
-        }
-
+        let token = try OAuthTokenResponse(renewal: response, kind: .codex)
         return OAuthGrant(
-            accessToken: accessToken,
-            refreshToken: body["refresh_token"] as? String,
-            expiresAt: ProviderParse.jwtExpiry(accessToken)
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+            expiresAt: ProviderParse.jwtExpiry(token.accessToken)
         )
     }
 }

@@ -70,71 +70,127 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(saved.expiresAt).timeIntervalSinceNow, 3600, accuracy: 5, "the provider's own expiry; the refresh margin applies when it is read")
     }
 
-    func testAntigravityRefusedRefreshTokenReadsAsExpiredSignIn() async throws {
+    func testOutageWhileRenewingEarlyKeepsTheStillValidToken() async throws {
+        let now = Date()
         let account = Account(kind: .antigravity, label: "Google")
         let vault = InMemoryCredentialVault()
-        try vault.save(
-            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "revoked", expiresAt: .distantPast)),
-            for: account.id
+        let stored = AccountCredential.oauth(
+            OAuthTokens(accessToken: "old-access", refreshToken: "google-refresh", expiresAt: now.addingTimeInterval(120))
         )
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+        try vault.save(stored, for: account.id)
+        let http = RoutingHTTPClient { request in
+            switch request.url.absoluteString {
+            case "https://oauth2.googleapis.com/token":
+                return HTTPResponse(statusCode: 503, headers: [:], body: Data())
+            case "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary":
+                let body = #"{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","remainingFraction":0.8}]}]}"#
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
         }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { now })
 
-        let snapshot = await runtime.refresh()
+        _ = try await runtime.refresh().get()
 
-        XCTAssertEqual(http.requests.map(\.url.absoluteString), ["https://oauth2.googleapis.com/token"])
-        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
-        XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
-        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
-        XCTAssertEqual(saved.accessToken, "old-access", "a refused refresh must not touch the stored credential")
-    }
-    func testClaudeRefusedRefreshTokenReadsAsExpiredSignIn() async throws {
-        try await assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: .claude, tokenURL: "https://platform.claude.com/v1/oauth/token")
+        XCTAssertEqual(http.requests.filter { $0.url == AntigravityLogin.tokenURL }.count, 1)
+        let quotaRequests = http.requests.filter { $0.url.path.hasSuffix("retrieveUserQuotaSummary") }
+        XCTAssertFalse(quotaRequests.isEmpty)
+        XCTAssertTrue(quotaRequests.allSatisfy { $0.headers["Authorization"] == "Bearer old-access" }, "\(quotaRequests)")
+        XCTAssertEqual(try vault.load(account.id), stored)
     }
 
-    func testGrokRefusedRefreshTokenReadsAsExpiredSignIn() async throws {
-        try await assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: .grok, tokenURL: "https://auth.x.ai/oauth2/token")
-    }
-
-    func testClaudeRefreshRefusedWithoutInvalidGrantStaysARequestFailure() async throws {
-        let account = Account(kind: .claude, label: "Personal")
-        let vault = InMemoryCredentialVault()
-        try vault.save(
-            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)),
-            for: account.id
-        )
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_request"}"#.utf8))
+    func testRenewalRefusedWithInvalidGrantIsAnExpiredSignIn() async throws {
+        for status in [400, 401, 403] {
+            let failures = try await renewalFailures { Self.json(#"{"error":"invalid_grant"}"#, status: status) }
+            for (kind, _) in Self.renewals {
+                XCTAssertEqual(failures[kind]?.message, ProviderError.signInExpired(kind).localizedDescription, "\(kind) \(status)")
+            }
         }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-
-        let snapshot = await runtime.refresh()
-
-        XCTAssertEqual(snapshot.failure?.message, ProviderError.requestFailed(400).localizedDescription)
-        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
-        XCTAssertEqual(saved.accessToken, "old-access")
     }
 
-    private func assertRefusedRefreshTokenReadsAsExpiredSignIn(kind: ProviderKind, tokenURL: String) async throws {
-        let account = Account(kind: kind, label: "Personal")
-        let vault = InMemoryCredentialVault()
-        try vault.save(
-            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "revoked", expiresAt: .distantPast)),
-            for: account.id
-        )
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"invalid_grant"}"#.utf8))
+    func testRenewalRejectedForAnotherReasonIsARequestFailure() async throws {
+        let failures = try await renewalFailures { Self.json(#"{"error":"invalid_request"}"#, status: 400) }
+        for (kind, _) in Self.renewals {
+            XCTAssertEqual(
+                failures[kind],
+                RefreshFailure(message: ProviderError.requestFailed(400).localizedDescription, kind: .refused),
+                "\(kind)"
+            )
         }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+    }
 
-        let snapshot = await runtime.refresh()
+    func testRenewalDuringAnOutageIsARequestFailure() async throws {
+        let failures = try await renewalFailures { Self.json("<html>Service Unavailable</html>", status: 503) }
+        for (kind, _) in Self.renewals {
+            XCTAssertEqual(
+                failures[kind],
+                RefreshFailure(message: ProviderError.requestFailed(503).localizedDescription, kind: .refused),
+                "\(kind)"
+            )
+        }
+    }
 
-        XCTAssertEqual(http.requests.map(\.url.absoluteString), [tokenURL])
-        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
-        XCTAssertEqual(text, ProviderError.signInExpired(kind).localizedDescription)
-        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected the credential to survive") }
-        XCTAssertEqual(saved.accessToken, "old-access", "a refused refresh must not touch the stored credential")
+    func testRenewalRateLimitWaitsAsTheProviderAsks() async throws {
+        let failures = try await renewalFailures { HTTPResponse(statusCode: 429, headers: ["retry-after": "120"], body: Data()) }
+        for (kind, _) in Self.renewals {
+            XCTAssertEqual(
+                failures[kind],
+                RefreshFailure(
+                    message: ProviderError.rateLimited(retryAfter: 120).localizedDescription,
+                    kind: .rateLimited(retryAfter: 120)
+                ),
+                "\(kind)"
+            )
+        }
+    }
+
+    func testRenewalWhileOfflineIsUnreachable() async throws {
+        let failures = try await renewalFailures { throw URLError(.notConnectedToInternet) }
+        for (kind, _) in Self.renewals {
+            XCTAssertEqual(failures[kind]?.kind, .unreachable, "\(kind)")
+        }
+    }
+
+    func testRenewalAnswerWithoutATokenIsAnInvalidResponse() async throws {
+        let failures = try await renewalFailures { Self.json(#"{"token_type":"Bearer"}"#) }
+        for (kind, _) in Self.renewals {
+            XCTAssertEqual(failures[kind]?.message, ProviderError.invalidResponse.localizedDescription, "\(kind)")
+        }
+    }
+
+    private static let renewals: [(kind: ProviderKind, tokenURL: URL)] = [
+        (.claude, ClaudeLogin.tokenURL),
+        (.codex, CodexLogin.tokenURL),
+        (.cursor, CursorUsageClient.refreshURL),
+        (.antigravity, AntigravityLogin.tokenURL),
+        (.grok, GrokLogin.tokenURL)
+    ]
+
+    private func renewalFailures(
+        _ answer: @escaping @Sendable () throws -> HTTPResponse,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws -> [ProviderKind: RefreshFailure] {
+        var failures: [ProviderKind: RefreshFailure] = [:]
+        for (kind, tokenURL) in Self.renewals {
+            let account = Account(kind: kind, label: "Personal")
+            let vault = InMemoryCredentialVault()
+            let stored = AccountCredential.oauth(
+                OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)
+            )
+            try vault.save(stored, for: account.id)
+            let http = RoutingHTTPClient { _ in try answer() }
+
+            failures[kind] = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().failure
+
+            XCTAssertEqual(http.requests.map(\.url), [tokenURL], "\(kind)", file: file, line: line)
+            XCTAssertEqual(try vault.load(account.id), stored, "\(kind)", file: file, line: line)
+        }
+        return failures
+    }
+
+    nonisolated private static func json(_ text: String, status: Int = 200) -> HTTPResponse {
+        HTTPResponse(statusCode: status, headers: [:], body: Data(text.utf8))
     }
 }
