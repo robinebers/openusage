@@ -40,6 +40,14 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.stars(ollama), ["monthly"], "0.7.x had Ollama off")
     }
 
+    func testDevinTakesItsZeroSevenHiddenMetrics() throws {
+        let defaults = isolatedDefaults()
+        try Self.savePlaced(["devin.weekly"], to: defaults)
+        defaults.set(["devin"], forKey: "openusage.enabledProviders.v1")
+        let app = MigrationApp(defaults: defaults)
+        XCTAssertEqual(app.hidden(app.add(.devin)), ["daily", "extra"])
+    }
+
     func testAnEmptyStarListStaysEmpty() {
         let defaults = isolatedDefaults()
         defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")

@@ -51,6 +51,7 @@ extension LayoutV1Keys {
         .cursor: ["usage", "auto", "api", "grokBot", "onDemand", "requests", "credits", "trend", "today", "yesterday", "last30"],
         .antigravity: ["geminiPro", "geminiWeekly", "argonWeekly", "claude", "claudeWeekly", "trend", "today", "yesterday", "last30"],
         .copilot: ["premium", "extra", "orgCredits", "orgSpend", "chat", "completions"],
+        .devin: ["daily", "weekly", "extra"],
         .grok: ["weekly", "payAsYouGo", "trend", "today", "yesterday", "last30"],
         .ollama: ["session", "weekly", "monthly", "purchasedCredits"],
         .opencodeGo: ["session", "weekly", "monthly", "trend", "today", "yesterday", "last30"],
