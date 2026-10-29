@@ -69,7 +69,9 @@ menu starts with the reason too.
 
 Drag a provider by its header, an account by its name inside the card, or a metric by its row. A new provider goes to the
 bottom of the dashboard and of the Accounts list, and a new account goes to the bottom of its
-provider's accounts. The app never sorts providers or accounts for you.
+provider's accounts. The app never sorts providers or accounts for you. After an update from 0.7.x, a
+provider in the order you saved in 0.7.x goes to that place instead. See
+[Upgrading from 0.7.x](settings.md#upgrading-from-07x).
 
 Press **⌘Z** to undo the last layout change (hiding or showing a metric, reordering, starring). Undo is
 per session.

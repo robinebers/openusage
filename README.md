@@ -41,6 +41,11 @@ sign-in links to the page where you create the key. You can add several accounts
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
 app's own Keychain service.
 
+After an update from 0.7.x, the first account you add for each provider takes that provider's 0.7.x
+stars, hidden metrics, and order. OpenUsage never changes 0.7.x's saved
+layout, so going back to 0.7.x finds its stars and order as you left them. See
+[Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
+
 ## Providers
 
 Claude, ChatGPT, Cursor, Antigravity, Copilot, Devin, Grok, Ollama, OpenCode, OpenRouter, and Z.ai.
