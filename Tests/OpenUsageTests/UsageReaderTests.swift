@@ -91,6 +91,16 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertThrowsError(try UsageReader.read(defaults, providerID: "codex@00000000"))
     }
 
+    func testAnEntryThisBuildCannotReadLeavesTheOtherAccountsReadable() throws {
+        let defaults = isolatedDefaults()
+        defaults.set(StoredAccountList.data, forKey: AccountStore.storageKey)
+        cache(weekly(StoredAccountList.claude, used: 20), in: defaults)
+
+        let result = try UsageReader.read(defaults)
+
+        XCTAssertEqual(Set(try providers(in: result).keys), [StoredAccountList.claude.cardID])
+    }
+
     func testNothingFetchedYetPrintsTheEmptyEnvelope() throws {
         let defaults = isolatedDefaults()
         let empty = try UsageReader.read(defaults)

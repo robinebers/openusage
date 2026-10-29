@@ -194,6 +194,19 @@ final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
     }
 }
 
+/// A stored account list with a Claude account and an entry of a kind this build does not have, with a
+/// field this build does not know, as a build with another provider would save it.
+enum StoredAccountList {
+    static let claude = Account(
+        id: UUID(uuidString: "8AD3B217-0000-4000-8000-000000000000")!,
+        kind: .claude,
+        label: "Work",
+        addedAt: Date(timeIntervalSinceReferenceDate: 0)
+    )
+    static let futureEntry = #"{"id":"F00DF00D-0000-4000-8000-000000000000","kind":"future-provider","label":"Future","seats":[{"id":1}],"addedAt":1}"#
+    static let data = Data((#"[{"id":"8AD3B217-0000-4000-8000-000000000000","kind":"claude","label":"Work","addedAt":0},"# + futureEntry + "]").utf8)
+}
+
 @MainActor
 func scrollViews(in view: NSView) -> [NSScrollView] {
     [view as? NSScrollView].compactMap { $0 } + view.subviews.flatMap(scrollViews)
