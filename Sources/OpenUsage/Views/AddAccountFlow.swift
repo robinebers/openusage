@@ -2,10 +2,17 @@ import AppKit
 import Foundation
 import Observation
 
+/// A row of the provider list: a provider to sign in to, or a CLIProxyAPI hub whose logins arrive as
+/// accounts of their own providers.
+enum AddAccountChoice: Hashable {
+    case provider(ProviderKind)
+    case cliproxyHub
+}
+
 @MainActor
 @Observable
 final class AddAccountFlow {
-    var selection: ProviderKind?
+    var selection: AddAccountChoice?
     var apiKey = ""
     var accountName = ""
     var pastedCode = ""
@@ -47,7 +54,7 @@ final class AddAccountFlow {
     var isCodeSubmitted: Bool { isWorking && prompt != nil && codeInput == nil }
 
     func choose(_ kind: ProviderKind) {
-        selection = kind
+        selection = .provider(kind)
         provider = kind
         if kind.authMethods.count == 1 { choose(kind.authMethods[0]) }
     }
@@ -58,7 +65,7 @@ final class AddAccountFlow {
     }
 
     func chooseHub() {
-        selection = nil
+        selection = .cliproxyHub
         isConnectingHub = true
     }
 

@@ -103,7 +103,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// hub's login is fixed on the hub.
     private var refusedCredential: ProviderError {
         if let hub = account.hub {
-            return .unavailable("The CLIProxyAPI hub at \(hub.host) has no working sign-in for this login. Sign it in again on the hub.")
+            return HubRefusal.noToken.error(host: hub.host, upstream: nil)
         }
         return switch account.authMethod {
         case .oauth: .signInExpired(account.kind)

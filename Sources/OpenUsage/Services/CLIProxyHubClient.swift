@@ -90,13 +90,12 @@ struct CLIProxyHubClient: Sendable {
             LogTag.auth("cliproxy"),
             "\(host) \(path) -> HTTP \(response.statusCode) (\(refusal)), hub \(response.header("X-CPA-VERSION") ?? "version unknown")"
         )
-        if refusal == .loginMissing { await gate.requestSync(hubID) }
         throw refusal.error(host: host, upstream: upstream)
     }
 }
 
 /// A management answer that isn't a success, sorted by what the user can do about it.
-enum HubRefusal: Equatable, CustomStringConvertible {
+enum HubRefusal: Equatable {
     case keyRejected
     case banned
     case remoteManagementOff
@@ -123,19 +122,6 @@ enum HubRefusal: Equatable, CustomStringConvertible {
 
     /// A refusal that a repeat would turn into another strike toward the hub's IP ban.
     var closesGate: Bool { self == .keyRejected || self == .banned }
-
-    var description: String {
-        switch self {
-        case .keyRejected: "key rejected"
-        case .banned: "IP banned"
-        case .remoteManagementOff: "remote management disabled"
-        case .managementOff: "management API off"
-        case .loginMissing: "login not found"
-        case .noToken: "login has no usable token"
-        case .upstreamUnreachable: "upstream unreachable"
-        case .failed: "failed"
-        }
-    }
 
     func error(host: String, upstream: String?) -> ProviderError {
         switch self {
@@ -167,7 +153,6 @@ actor CLIProxyHubGate {
     private var busy: Set<UUID> = []
     private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
     private var refused: [UUID: ProviderError] = [:]
-    private var syncRequests: Set<UUID> = []
 
     func send(hub: UUID, host: String, _ request: @Sendable () async throws -> HTTPResponse) async throws -> HTTPResponse {
         if let error = refused[hub] { throw error }
@@ -189,13 +174,6 @@ actor CLIProxyHubGate {
     /// Lets the hub be called again: its key was replaced, or the hub was removed.
     func reopen(_ hub: UUID) {
         refused[hub] = nil
-    }
-
-    func requestSync(_ hub: UUID) { syncRequests.insert(hub) }
-
-    func takeSyncRequests() -> Set<UUID> {
-        defer { syncRequests.removeAll() }
-        return syncRequests
     }
 
     private func handOff(_ hub: UUID) {

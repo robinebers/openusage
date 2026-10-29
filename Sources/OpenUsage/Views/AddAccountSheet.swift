@@ -42,23 +42,15 @@ struct AddAccountSheet: View {
     }
 }
 
-/// A row of the provider list: a provider to sign in to, or a CLIProxyAPI hub whose logins arrive as
-/// accounts of their own providers.
-private enum AddAccountChoice: Hashable {
-    case provider(ProviderKind)
-    case cliproxyHub
-}
-
 private struct ProviderChoiceStep: View {
     @Bindable var flow: AddAccountFlow
     let cancel: () -> Void
-    @State private var isHubSelected = false
 
     var body: some View {
         SheetHeader(provider: nil, title: "Add Account", message: "Choose a provider to sign in to.")
         ChoiceList(
             items: ProviderKind.allCases.map(AddAccountChoice.provider) + [.cliproxyHub],
-            selection: selection,
+            selection: $flow.selection,
             choose: { choice in
                 switch choice {
                 case .provider(let kind): flow.choose(kind)
@@ -76,16 +68,6 @@ private struct ProviderChoiceStep: View {
             }
         }
         CancelRow(cancel: cancel)
-    }
-
-    private var selection: Binding<AddAccountChoice?> {
-        Binding(
-            get: { isHubSelected ? .cliproxyHub : flow.selection.map(AddAccountChoice.provider) },
-            set: { choice in
-                isHubSelected = choice == .cliproxyHub
-                if case .provider(let kind) = choice { flow.selection = kind } else { flow.selection = nil }
-            }
-        )
     }
 }
 

@@ -97,7 +97,7 @@ final class AddAccountFlowTests: XCTestCase {
         XCTAssertTrue(started.isEmpty)
 
         flow.back()
-        XCTAssertEqual(flow.selection, .zai)
+        XCTAssertEqual(flow.selection, .provider(.zai))
         flow.choose(.claude)
         XCTAssertEqual(flow.provider, .claude)
         try await waitUntil { flow.prompt != nil }
@@ -178,7 +178,7 @@ final class AddAccountFlowTests: XCTestCase {
         flow.back()
 
         XCTAssertNil(flow.provider)
-        XCTAssertEqual(flow.selection, .codex)
+        XCTAssertEqual(flow.selection, .provider(.codex))
         XCTAssertNil(flow.prompt)
         XCTAssertNil(flow.errorMessage)
         XCTAssertFalse(flow.isWorking)

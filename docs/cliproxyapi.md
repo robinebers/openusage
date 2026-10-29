@@ -42,8 +42,8 @@ The account that was in OpenUsage first wins, so no login shows twice:
 
 ## Staying in sync
 
-OpenUsage reads the hub's login list at launch, when the Accounts screen opens, about once an hour,
-and shortly after a refresh finds one of the hub's logins gone. Then:
+OpenUsage reads the hub's login list at launch, when the Accounts screen opens, and about once an
+hour. Then:
 
 - A login added on the hub appears at the bottom of its provider's accounts.
 - A login removed on the hub disappears, with its stars.
