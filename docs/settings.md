@@ -32,9 +32,9 @@ links to System Settings.
 
 | Setting | What it sends |
 |---|---|
-| Under 10% Remaining | The first time a metric with a limit drops under 10% left in its period. |
-| Healthy Pace Changes | When a metric's pace worsens from on course to close to the limit. |
-| Near-Limit Pace Changes | When a metric's pace worsens from close to the limit to running out. |
+| Almost Out | The first time a metric with a limit drops under 10% left in its period. |
+| Cutting It Close | When a metric's pace worsens from on course to close to the limit. |
+| Will Run Out | When a metric's pace worsens from close to the limit to running out. |
 
 Each notification names the trigger, the provider, and the metric, and fires once per metric per reset window.
 
