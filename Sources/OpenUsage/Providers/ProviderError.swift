@@ -8,6 +8,8 @@ enum ProviderError: Error, LocalizedError, Equatable {
     case rateLimited(retryAfter: TimeInterval?)
     case unavailable(String)
     case keyRejected(String)
+    /// A server between OpenUsage and the provider, such as a CLIProxyAPI hub, can't be reached.
+    case unreachable(String)
 
     var errorDescription: String? {
         switch self {
@@ -18,6 +20,7 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .rateLimited: "The provider asked OpenUsage to wait before asking again."
         case .unavailable(let message): message
         case .keyRejected(let message): "\(message) Replace it on the account's page."
+        case .unreachable(let message): message
         }
     }
 

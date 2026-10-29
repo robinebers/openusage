@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AccountListView: View {
+    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
@@ -11,10 +12,11 @@ struct AccountListView: View {
 
     var body: some View {
         let providers = layout.orderedProviders()
-        Group {
-            if providers.isEmpty {
+        let hubs = container.accounts.hubs
+        VStack(spacing: PanelMetrics.sectionSpacing) {
+            if providers.isEmpty, hubs.isEmpty {
                 ContentUnavailableView { Label("No Accounts", systemImage: "person.crop.circle") }
-            } else {
+            } else if !providers.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(providers) { provider in
                         accountRow(provider)
@@ -22,8 +24,12 @@ struct AccountListView: View {
                 }
                 .cardSurface()
             }
+            ForEach(hubs) { hub in
+                CLIProxyHubRow(hub: hub)
+            }
         }
         .animation(Motion.spring, value: providers.map(\.id))
+        .animation(Motion.spring, value: hubs.map(\.id))
     }
 
     private func accountRow(_ provider: Provider) -> some View {

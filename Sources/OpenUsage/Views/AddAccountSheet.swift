@@ -11,7 +11,9 @@ struct AddAccountSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let provider = flow.provider {
+            if flow.isConnectingHub {
+                HubConnectStep(flow: flow, cancel: { flow.back() })
+            } else if let provider = flow.provider {
                 switch flow.method {
                 case nil: MethodChoiceStep(flow: flow, provider: provider, cancel: { flow.back() })
                 case .oauth: BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.back() })
@@ -40,17 +42,50 @@ struct AddAccountSheet: View {
     }
 }
 
+/// A row of the provider list: a provider to sign in to, or a CLIProxyAPI hub whose logins arrive as
+/// accounts of their own providers.
+private enum AddAccountChoice: Hashable {
+    case provider(ProviderKind)
+    case cliproxyHub
+}
+
 private struct ProviderChoiceStep: View {
     @Bindable var flow: AddAccountFlow
     let cancel: () -> Void
+    @State private var isHubSelected = false
 
     var body: some View {
         SheetHeader(provider: nil, title: "Add Account", message: "Choose a provider to sign in to.")
-        ChoiceList(items: ProviderKind.allCases, selection: $flow.selection, choose: { flow.choose($0) }) { provider in
-            ProviderIcon(id: provider.rawValue, side: 20, inset: 0.06)
-            Text(provider.displayName)
+        ChoiceList(
+            items: ProviderKind.allCases.map(AddAccountChoice.provider) + [.cliproxyHub],
+            selection: selection,
+            choose: { choice in
+                switch choice {
+                case .provider(let kind): flow.choose(kind)
+                case .cliproxyHub: flow.chooseHub()
+                }
+            }
+        ) { choice in
+            switch choice {
+            case .provider(let provider):
+                ProviderIcon(id: provider.rawValue, side: 20, inset: 0.06)
+                Text(provider.displayName)
+            case .cliproxyHub:
+                ProviderIcon(id: CLIProxyHub.markID, side: 20, inset: 0.06)
+                Text("CLIProxyAPI")
+            }
         }
         CancelRow(cancel: cancel)
+    }
+
+    private var selection: Binding<AddAccountChoice?> {
+        Binding(
+            get: { isHubSelected ? .cliproxyHub : flow.selection.map(AddAccountChoice.provider) },
+            set: { choice in
+                isHubSelected = choice == .cliproxyHub
+                if case .provider(let kind) = choice { flow.selection = kind } else { flow.selection = nil }
+            }
+        )
     }
 }
 
@@ -293,16 +328,17 @@ private struct OrganizationTokenStep: View {
     }
 }
 
-private struct SheetHeader: View {
+struct SheetHeader: View {
     let provider: ProviderKind?
+    var icon: String?
     let title: String
     let message: String
     var link: Link<Text>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let provider {
-                ProviderIcon(id: provider.rawValue, side: 32, inset: 0.04)
+            if let icon = icon ?? provider?.rawValue {
+                ProviderIcon(id: icon, side: 32, inset: 0.04)
                     .padding(.bottom, 8)
             }
             Text(title)
@@ -323,14 +359,14 @@ private struct SheetHeader: View {
     }
 }
 
-private struct SheetAction {
+struct SheetAction {
     let title: String
     var isDisabled = false
     var shortcut: KeyboardShortcut?
     let action: () -> Void
 }
 
-private struct SheetButtons: View {
+struct SheetButtons: View {
     let secondary: SheetAction
     let primary: SheetAction
 

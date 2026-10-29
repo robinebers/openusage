@@ -48,7 +48,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization)
+        Provider(
+            id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization,
+            hubHost: account.hub?.host
+        )
     }
 
     func resetClaimService(
@@ -82,7 +85,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
+            let disabled = account.hub.flatMap { $0.isDisabled ? "This login is disabled on the CLIProxyAPI hub at \($0.host)." : nil }
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: disabled ?? usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
@@ -95,9 +99,13 @@ final class AccountProviderRuntime: ProviderRuntime {
         return credential
     }
 
-    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page.
+    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page; a
+    /// hub's login is fixed on the hub.
     private var refusedCredential: ProviderError {
-        switch account.authMethod {
+        if let hub = account.hub {
+            return .unavailable("The CLIProxyAPI hub at \(hub.host) has no working sign-in for this login. Sign it in again on the hub.")
+        }
+        return switch account.authMethod {
         case .oauth: .signInExpired(account.kind)
         case .apiKey: .keyRejected("\(account.kind.displayName) rejected the API key.")
         case .organizationToken: .keyRejected("GitHub rejected the token.")
