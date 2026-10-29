@@ -18,7 +18,9 @@ For an API-key provider, `APIKeyLogin` already covers it; map the kind in `Provi
 
 For OAuth, write a `ProviderLogin` in `Services/BrowserProviderLogins.swift` (a browser flow with
 `LoopbackCallbackServer` and `PKCE`) or `Services/DeviceProviderLogins.swift` (a device-code flow
-with `DeviceCodePoller`). Return the account's label (an email or the provider's account name) and its
+with `DeviceCodePoller`). A browser flow sends `UUID().uuidString` as its `state`, never the PKCE
+verifier. The state travels in the browser's URLs, and the verifier stays in the app until the token
+request. Return the account's label (an email or the provider's account name) and its
 `AccountCredential`. Map the kind in `ProviderLoginCatalog`.
 
 ## 3. Fetch and map usage
