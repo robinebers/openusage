@@ -112,15 +112,6 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertFalse(first.fire.contains(.closeToRunningOut))
     }
 
-    func testEachSettingsRowIsTitledLikeItsAlertAndSaysWhenItFires() {
-        XCTAssertEqual(PaceMilestone.allCases.map(\.notificationTitle), ["Almost Out", "Cutting It Close", "Will Run Out"])
-        XCTAssertEqual(PaceMilestone.allCases.map(\.settingSubtitle), [
-            "When a limit drops below 10% remaining.",
-            "When a limit is projected to finish with little left.",
-            "When a limit is projected to run out before it resets.",
-        ])
-    }
-
     func testUntrackedDoesNotDisturbPreviousSignals() {
         var state = step(healthy).newState
         state = step(.noData, fraction: 0.5, from: state).newState

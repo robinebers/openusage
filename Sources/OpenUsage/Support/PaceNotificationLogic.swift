@@ -19,9 +19,9 @@ extension PaceMilestone {
 
     var settingSubtitle: String {
         switch self {
-        case .underTenPercent: return "When a limit drops below 10% remaining."
-        case .healthyToClose: return "When a limit is projected to finish with little left."
-        case .closeToRunningOut: return "When a limit is projected to run out before it resets."
+        case .underTenPercent: return "Alert when a limit drops below 10% remaining."
+        case .healthyToClose: return "Alert when a limit is projected to finish with little left."
+        case .closeToRunningOut: return "Alert when a limit is projected to finish before it resets."
         }
     }
 
