@@ -7,7 +7,8 @@ balances, in one panel. Star the metrics you watch most and they appear in the m
 
 You add each account in the app. OpenUsage reads nothing that belongs to other tools: no Keychain
 items, auth files, logs, databases, or environment variables. It shows only the limits and dollar
-values that the provider's own API reports.
+values that the provider's own API reports, except ChatGPT's credits, which also show their dollar
+value at 4¢ a credit.
 
 <!-- assets/screenshot.jpg needs a new capture of the account-based dashboard before release. -->
 <p align="center">
@@ -40,12 +41,18 @@ sign-in links to the page where you create the key. You can add several accounts
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
 app's own Keychain service.
 
+After an update from 0.7.x, the first account you add for each provider takes that provider's 0.7.x
+stars, hidden metrics, and order. OpenUsage never changes 0.7.x's saved
+layout, so going back to 0.7.x finds its stars and order as you left them. See
+[Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
+
 ## Providers
 
-Claude, ChatGPT, Cursor, Antigravity, Copilot, Grok, Ollama, OpenCode, OpenRouter, and Z.ai. Claude,
-ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Ollama, OpenCode, OpenRouter, and
-Z.ai use API keys. OpenRouter's balance needs a Management key. [Providers](docs/providers.md) lists
-what each one shows and what each sign-in grants.
+Claude, ChatGPT, Cursor, Antigravity, Copilot, Devin, Grok, Ollama, OpenCode, OpenRouter, and Z.ai.
+Claude, ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Devin signs in on
+Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, OpenRouter, and Z.ai use
+API keys. OpenRouter's balance and account-wide spend need a Management key.
+[Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features
 
@@ -75,6 +82,8 @@ what each one shows and what each sign-in grants.
   the app last fetched as JSON, for scripts and agents.
 - **[Automatic updates](docs/updates.md).** Signed, notarized in-app updates, with an optional beta
   channel.
+- **[Proxy](docs/proxy.md).** Send provider requests through a SOCKS5, HTTP, or HTTPS proxy set in
+  `~/.openusage/config.json`.
 
 ## Documentation
 
@@ -82,7 +91,7 @@ Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.m
 [accounts](docs/accounts.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
 the [macOS widgets](docs/macos-widgets.md), [command line](docs/cli.md), [refreshing](docs/refreshing.md),
 [providers](docs/providers.md),
-[updates](docs/updates.md), and [privacy](docs/privacy.md).
+[updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
 
 For working on the code, see [architecture](docs/architecture.md),
 [adding a provider](docs/adding-a-provider.md), and [debugging](docs/debugging.md).

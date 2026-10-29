@@ -116,6 +116,10 @@ final class AccountRenameStoreTests: XCTestCase {
             Provider(id: "claude@2", kind: .claude, accountLabel: "").fullName,
             "Claude"
         )
+        XCTAssertEqual(
+            Provider(id: "openrouter@1", kind: .openrouter, accountLabel: "openrouter").fullName,
+            "OpenRouter"
+        )
     }
 
     private func makeStores() -> (AccountStore, AccountRenameStore) {

@@ -13,8 +13,10 @@ Star a metric from its right-click menu on the dashboard, or with the star on it
 page in Accounts.
 
 - Each provider ships with default stars (for example Claude Session and Weekly, ChatGPT Session and
-  Weekly, Cursor Models and Other Models, OpenRouter Balance), so the strip shows numbers as soon as
+  Weekly, Cursor Models and Other Models, OpenRouter Credits), so the strip shows numbers as soon as
   an account refreshes. Change them any time.
+- After an update from 0.7.x, a provider's first account takes its 0.7.x stars instead. See
+  [Upgrading from 0.7.x](settings.md#upgrading-from-07x).
 - At most **two stars per provider**.
 - When a star is not allowed, the star stays clickable. Clicking it shows the reason in a short pill.
 - Hiding a metric takes its star off the menu bar. Starring a hidden metric shows it again.
@@ -24,9 +26,10 @@ page in Accounts.
 Each starred metric shows its provider's mark and the value. Two starred metrics from the same
 account stack as a labelled pair. The strip only renders real data: a starred metric with nothing
 fetched yet is skipped, and an account whose stars all lack data disappears from the strip. When
-nothing has data, the strip shows the app icon. The strip, or the app icon in its place, dims while an
-account's values are out of date because its refreshes fail or a provider asked OpenUsage to wait (see
-[Refreshing](refreshing.md)), and VoiceOver adds "waiting for a provider".
+nothing has data, the strip shows the app icon. With [Hide From Screen Share](privacy.md#screen-sharing)
+on, it also shows the app icon while your screen is shared or recorded. The strip, or the app icon in
+its place, dims while an account's values are out of date because its refreshes fail or a provider
+asked OpenUsage to wait (see [Refreshing](refreshing.md)), and VoiceOver adds "waiting for a provider".
 
 When the strip shows more than one account of a provider, each mark carries the account name's
 initials: the first letter of its first word and of its last, so "Personal" reads P and "Attention

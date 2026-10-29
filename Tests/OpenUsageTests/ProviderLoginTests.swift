@@ -34,7 +34,10 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(body["code"] as? String, "fake-authorization-code")
         XCTAssertEqual(body["client_id"] as? String, ClaudeLogin.clientID)
         XCTAssertEqual((body["redirect_uri"] as? String).flatMap(URL.init(string:))?.host, "localhost")
-        XCTAssertEqual(body["code_verifier"] as? String, body["state"] as? String)
+        let verifier = try XCTUnwrap(body["code_verifier"] as? String)
+        XCTAssertNotEqual(body["state"] as? String, verifier)
+        XCTAssertEqual(body["state"] as? String, query.first { $0.name == "state" }?.value)
+        XCTAssertFalse(authorizeURL.absoluteString.contains(verifier), "the authorize URL carries the challenge, never the verifier")
     }
 
     func testCodexLoginUsesPiOriginatorAndMapsAccountClaims() async throws {
@@ -158,6 +161,36 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertFalse(pollQuery?.first { $0.name == "verifier" }?.value?.isEmpty ?? true)
     }
 
+    func testCursorLoginNamesTheAccountByTheProfileEmail() async throws {
+        let accessToken = Self.jwt(#"{"sub":"auth0|user_abc"}"#)
+        let http = RoutingHTTPClient { request in
+            request.url.path == "/api/auth/me"
+                ? Self.response(#"{"email":"dev@example.com","name":"Dev","sub":"auth0|user_abc"}"#)
+                : Self.response(#"{"accessToken":"\#(accessToken)","refreshToken":"cursor-refresh"}"#)
+        }
+
+        let result = try await CursorLogin(http: http).login(prompt: { _ in }, pastedCode: emptyInput())
+
+        XCTAssertEqual(result.label, "dev@example.com")
+        let profile = try XCTUnwrap(http.requests.first { $0.url.path == "/api/auth/me" })
+        XCTAssertEqual(profile.url.host, "cursor.com")
+        XCTAssertEqual(profile.headers["Cookie"], "WorkosCursorSessionToken=user_abc%3A%3A\(accessToken)")
+    }
+
+    func testCursorLoginKeepsTheDefaultNameWhenTheProfileReadFails() async throws {
+        let http = RoutingHTTPClient { request in
+            request.url.path == "/api/auth/me"
+                ? Self.response("{}", status: 500)
+                : Self.response(#"{"accessToken":"\#(Self.jwt(#"{"sub":"auth0|user_abc"}"#))","refreshToken":"cursor-refresh"}"#)
+        }
+
+        let result = try await CursorLogin(http: http).login(prompt: { _ in }, pastedCode: emptyInput())
+
+        XCTAssertNotNil(http.requests.first { $0.url.path == "/api/auth/me" })
+        XCTAssertEqual(result.label, "Cursor Account")
+        XCTAssertEqual(result.credential.identity, "cursor:user_abc")
+    }
+
     func testAntigravityLoginExchangesCodeAndMapsGoogleProfile() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
@@ -191,6 +224,9 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(body["code"], "fake-authorization-code")
         XCTAssertEqual(body["redirect_uri"], "http://localhost:51121/oauth-callback")
         XCTAssertFalse(body["code_verifier", default: ""].isEmpty)
+        let verifier = try XCTUnwrap(body["code_verifier"])
+        XCTAssertNotEqual(query.first { $0.name == "state" }?.value, verifier)
+        XCTAssertFalse(authorizeURL.absoluteString.contains(verifier), "the authorize URL carries the challenge, never the verifier")
     }
 
     private func emptyInput() -> AsyncStream<String> {

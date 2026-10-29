@@ -1,58 +1,31 @@
 import Foundation
 
+/// Saves the layout under a key 0.7.x never reads, so its own layout stays as it left it for a downgrade.
 @MainActor
 final class LayoutPersistence {
+    static let key = "openusage.layout.v2"
+
     private let defaults: UserDefaults
-    private let keys: Keys
 
-    init(defaults: UserDefaults, storageKey: String) {
+    init(defaults: UserDefaults) {
         self.defaults = defaults
-        self.keys = Keys(storageKey: storageKey)
     }
 
-    func loadHidden() -> [String]? { defaults.stringArray(forKey: keys.hidden) }
-    func loadProviderOrder() -> [String]? { decode([String].self, forKey: keys.providerOrder) }
-    func loadMetricOrder() -> [String: [String]]? {
-        decode([String: [String]].self, forKey: keys.metricOrder)
-    }
-
-    func loadPins() -> [String]? { defaults.stringArray(forKey: keys.pins) }
-
-    func saveHidden(_ value: Set<String>) { defaults.set(value.sorted(), forKey: keys.hidden) }
-    func saveProviderOrder(_ value: [String]) { encode(value, forKey: keys.providerOrder) }
-    func saveMetricOrder(_ value: [String: [String]]) { encode(value, forKey: keys.metricOrder) }
-
-    func savePins(_ value: Set<String>) { defaults.set(Array(value), forKey: keys.pins) }
-
-    private func encode<T: Encodable>(_ value: T, forKey key: String) {
+    func load() -> LayoutState? {
+        guard let data = defaults.data(forKey: Self.key) else { return nil }
         do {
-            defaults.set(try JSONEncoder().encode(value), forKey: key)
+            return try JSONDecoder().decode(LayoutState.self, from: data)
         } catch {
-            AppLog.warn(.config, "failed to persist layout '\(key)': \(error.localizedDescription)")
-        }
-    }
-
-    private func decode<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        do {
-            return try JSONDecoder().decode(type, from: data)
-        } catch {
-            AppLog.warn(.config, "saved layout '\(key)' failed to decode; reseeding default: \(error.localizedDescription)")
+            AppLog.warn(.config, "saved layout failed to decode; starting a new one: \(error.localizedDescription)")
             return nil
         }
     }
 
-    private struct Keys {
-        let hidden: String
-        let providerOrder: String
-        let metricOrder: String
-        let pins: String
-
-        init(storageKey: String) {
-            hidden = "\(storageKey).hiddenMetrics"
-            providerOrder = "\(storageKey).providerOrder"
-            metricOrder = "\(storageKey).metricOrderByProvider"
-            pins = "\(storageKey).menuBarPins"
+    func save(_ state: LayoutState) {
+        do {
+            defaults.set(try JSONEncoder().encode(state), forKey: Self.key)
+        } catch {
+            AppLog.warn(.config, "failed to persist layout: \(error.localizedDescription)")
         }
     }
 }

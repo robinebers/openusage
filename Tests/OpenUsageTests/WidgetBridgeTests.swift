@@ -98,7 +98,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
         }
         let registry = WidgetRegistry.from(runtimes)
         let layout = LayoutStore(registry: registry, defaults: defaults)
-        layout.providerOrder = [personal.id, work.id, chatGPT.id]
+        layout.state.providerOrder = [personal.id, work.id, chatGPT.id]
         let dataStore = WidgetDataStore.forTesting(runtimes, defaults: defaults)
         let document = WidgetBridgeExporter(layout: layout, dataStore: dataStore).makeDocument()
 

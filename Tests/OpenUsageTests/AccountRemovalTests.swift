@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import XCTest
 @testable import OpenUsage
 
@@ -46,6 +47,19 @@ final class AccountRemovalTests: XCTestCase {
         XCTAssertTrue(container.layout.displayGroups.isEmpty)
     }
 
+    func testAFailedRemovalKeepsTheAccountAndExplainsTheKeychainError() {
+        let accounts = AccountStore(defaults: isolatedDefaults(), vault: UndeletableVault())
+        let account = accounts.add(kind: .ollama, label: "Ollama", credential: .apiKey("key"))
+
+        accounts.remove(account.id)
+
+        XCTAssertEqual(accounts.accounts.map(\.id), [account.id])
+        XCTAssertEqual(
+            accounts.lastError,
+            "OpenUsage couldn't use its Keychain item for this account (User interaction is not allowed.)."
+        )
+    }
+
     func testTheVaultOnlyUpdatesAnExistingCredential() throws {
         let vault = InMemoryCredentialVault()
         let id = UUID()
@@ -61,28 +75,11 @@ final class AccountRemovalTests: XCTestCase {
     }
 }
 
-private actor HeldResponse {
-    private var released = false
-    private var held: [CheckedContinuation<Void, Never>] = []
-    private var arrived = false
-    private var arrivalWaiters: [CheckedContinuation<Void, Never>] = []
+private final class UndeletableVault: CredentialVault {
+    private let stored = InMemoryCredentialVault()
 
-    func hold() async {
-        arrived = true
-        for waiter in arrivalWaiters { waiter.resume() }
-        arrivalWaiters = []
-        guard !released else { return }
-        await withCheckedContinuation { held.append($0) }
-    }
-
-    func waitUntilHeld() async {
-        guard !arrived else { return }
-        await withCheckedContinuation { arrivalWaiters.append($0) }
-    }
-
-    func release() {
-        released = true
-        for continuation in held { continuation.resume() }
-        held = []
-    }
+    func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
+    func save(_ credential: AccountCredential, for id: UUID) throws { try stored.save(credential, for: id) }
+    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
+    func delete(_ id: UUID) throws { throw KeychainVaultError.status(errSecInteractionNotAllowed) }
 }

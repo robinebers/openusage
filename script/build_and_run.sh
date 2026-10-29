@@ -237,9 +237,27 @@ launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"
 }
 
+# Every build with this bundle id shares one single-instance lock, so the copy launched here hands off
+# to one already running from another folder and quits.
+confirm_launch() {
+  sleep 1
+  pgrep -f "^$APP_BINARY" >/dev/null && return
+  for pid in $(pgrep -x "$TARGET_NAME"); do
+    running="$(ps -o comm= -p "$pid")"
+    running="${running%/Contents/MacOS/$TARGET_NAME}"
+    if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$BUNDLE_ID" ]; then
+      echo "error: dist/$APP_DISPLAY.app quit because another $BUNDLE_ID build is running: $running" >&2
+      exit 1
+    fi
+  done
+  echo "error: dist/$APP_DISPLAY.app is not running" >&2
+  exit 1
+}
+
 case "$MODE" in
   run)
     launch_app
+    confirm_launch
     echo "==> launched $APP_DISPLAY (dist/$APP_DISPLAY.app)"
     ;;
   build)
@@ -251,8 +269,8 @@ case "$MODE" in
     ;;
   verify)
     launch_app
-    sleep 1
-    pgrep -f "^$APP_BINARY" >/dev/null && echo "==> running"
+    confirm_launch
+    echo "==> running"
     ;;
   *)
     echo "usage: $0 [run|build|logs|verify]" >&2

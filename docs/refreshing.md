@@ -20,8 +20,8 @@ its name and in the footer.
 
 Usage is read on every refresh. Reads that rarely change are read at most once an hour and reused in
 between: the plan name (Claude, Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project),
-ChatGPT's list of reset credits with their expiry times (the count still updates every refresh), and
-Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
+Cursor's membership (Enterprise, Team, or a personal plan), ChatGPT's list of reset credits with their
+expiry times (the count still updates every refresh), and Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.
 
@@ -64,7 +64,8 @@ An account that stops responding is given up on after two minutes. Its spinner s
 "Refresh timed out after 120s", and it is tried again on a later pass.
 
 Once an account's values are more than two refresh cycles old, a clock appears next to its name, and
-the account's right-click menu starts with their age. A successful refresh clears it.
+the account's right-click menu starts with their age. A successful refresh clears it. The
+[`openusage` command](cli.md) marks the account `"stale": true` at the same moment.
 
 While any account's values are older than one refresh cycle because its refreshes fail or a provider
 asked OpenUsage to wait, the menu bar strip dims, or the app icon when nothing is starred. A refresh
@@ -76,5 +77,13 @@ OAuth accounts renew their own sign-in with the provider's refresh token, 5 minu
 provider's expiry (the margin Claude Code uses), so a refresh never sends a token that is about to
 expire. Cursor renews its sign-in in the last 7 days of its 60-day token. When Claude, ChatGPT or Grok
 refuses the access token anyway (a 401 on the usage read, for an expiry the sign-in never reported or
-one the provider cut short), the sign-in is renewed once and the read retried; a second refusal, or a
-rejected renewal, shows a warning with the reason. Remove the account and add it again to sign in afresh.
+one the provider cut short), the sign-in is renewed once and the read retried.
+
+The warning says the sign-in expired when the usage read still refuses the token, or when the provider
+refuses the renewal itself: an `invalid_grant` answer, one of ChatGPT's own refresh-token errors, or
+Cursor asking OpenUsage to sign out. Remove the account and add it again to sign in afresh.
+
+A renewal that fails for any other reason, such as an outage (HTTP 5xx), a rate limit (HTTP 429), or no
+connection, does not mean the sign-in expired. While the current token still works, the account keeps
+using it and tries the renewal again on the next pass. Once the token has expired, the refresh fails
+with that error and is tried again like any failed fetch (see [When a fetch fails](#when-a-fetch-fails)).

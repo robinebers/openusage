@@ -249,8 +249,8 @@ private struct WidgetMetricView: View {
     private func countdownText(_ countdown: WidgetResetCountdown) -> Text {
         switch countdown {
         case .remaining(let interval):
-            // The system renderer knows this timer type. Pause at zero even if the deadline entry
-            // arrives late; a timer without an explicit pause date would count upward afterward.
+            // The system renderer knows this timer type. Explicitly pause at zero even if the
+            // deadline entry arrives late.
             Text(timerInterval: interval, pauseTime: interval.upperBound, countsDown: true, showsHours: true)
         case .due:
             Text("soon")

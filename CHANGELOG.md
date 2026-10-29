@@ -9,34 +9,66 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Account discovery. OpenUsage no longer reads other tools' credentials, config files, Keychain items,
   databases, or logs. Sign in to each account from the new **Accounts** screen instead.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
-  and dollar values a provider reports, nothing computed.
-- iCloud sync of settings and layout.
+  and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
+- iCloud sync of usage history (daily tokens and spend).
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
-- The proxy setting.
-- The Devin and Pi providers, which have no account sign-in.
+- The Pi provider, which has no account sign-in.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
+- Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
+  once a usage read accepts it.
 - Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
+- Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
+  by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
+  `displayName` names the account the way the app does (`ChatGPT · Work`).
+  The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
+  `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
+  the app shows its clock next to the account.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
 - Menu bar: the strip, or the app icon in its place, dims while an account's values are out of date
   because refreshes fail or a provider asked OpenUsage to wait.
+- Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
+  an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
+- OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
+  workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
+- Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
+  account shows its provider's name once, not `OpenRouter · OpenRouter`.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
-- The `openusage` command, which now prints what the app last fetched and nothing computed.
+- The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
+  when the file is invalid.
+- Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
+  each provider. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
+- Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
+  screen is shared or recorded.
+- ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
+- Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
+  manager's token.
+- The `openusage` command, which now prints what the app last fetched and nothing computed. `--force`
+  is accepted and does nothing.
+- OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
+- Z.ai's notice when a key has no GLM Coding Plan.
+- Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.
+- A Grok team account's plan, shown beside the notice that the account has no personal quota.
+- Cursor Enterprise and Team seats that Cursor's plan endpoint reports as Pro keep their Enterprise or
+  Team label, Extra Usage, and request-based usage. The membership now comes from Cursor's
+  `usage-summary`, read once an hour, not from Cursor's local database.
+- Devin's Daily, Weekly, and Extra Usage rows. Sign in on windsurf.com and paste the token it shows,
+  or paste a Windsurf API key.
 
 ## v0.7.16
 

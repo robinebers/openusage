@@ -62,9 +62,10 @@ extension AccountProviderRuntime {
             if ProviderError.isAuthFailure(response) { throw ProviderError.signInExpired(.claude) }
             let profile = try ClaudeUsageClient.decodeProfile(response)
             if tokens.extras[OAuthTokens.identityKey] == nil {
-                var identified = tokens
-                identified.extras[OAuthTokens.identityKey] = profile.identity
-                try? await replaceCredential(.oauth(identified))
+                if case .oauth(var stored)? = try? await loadCredential() {
+                    stored.extras[OAuthTokens.identityKey] = profile.identity
+                    try? await replaceCredential(.oauth(stored))
+                }
                 claude.sessions.rekey(session, to: profile.identity)
             }
             if let uuid = profile.organization?.uuid, UUID(uuidString: uuid) != nil { session.organizationUUID = uuid }

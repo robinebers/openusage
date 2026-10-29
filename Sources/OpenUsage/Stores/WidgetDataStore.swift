@@ -115,11 +115,17 @@ final class WidgetDataStore {
             return .backedOff
         }
 
-        guard let provider = providersByID[providerID] else { return .skipped }
-        guard inFlight[providerID] == nil else {
-            AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
-            return .skipped
+        if let running = inFlight[providerID] {
+            guard force else {
+                AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
+                return .skipped
+            }
+            _ = await running.value
+            if let next = inFlight[providerID], next != running {
+                return await refresh(providerID: providerID, force: force, rereadHourly: rereadHourly)
+            }
         }
+        guard let provider = providersByID[providerID] else { return .skipped }
         if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout] in
@@ -186,6 +192,10 @@ final class WidgetDataStore {
         backoffs[providerID].flatMap { $0.providerAsked ? nil : $0.message }
     }
 
+    func notice(for providerID: String) -> String? {
+        backoffs[providerID] == nil ? snapshots[providerID]?.notice : errorMessage(for: providerID)
+    }
+
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
         var result: WidgetData
         if let snapshot = snapshots[descriptor.providerID],
@@ -206,16 +216,15 @@ final class WidgetDataStore {
         snapshots[providerID]?.plan
     }
 
-    static let stalenessThreshold = RefreshSetting.interval * 2
-
     func stalenessHint(for providerID: String) -> String? {
         if let backoff = backoffs[providerID], backoff.providerAsked, now() < backoff.retryAt {
             let name = providersByID[providerID]?.provider.displayName ?? "The provider"
             return "\(name) asked OpenUsage to wait. Retrying at \(Formatters.compactClock(backoff.retryAt, now: now()))."
         }
-        guard let refreshedAt = snapshots[providerID]?.refreshedAt else { return nil }
-        let age = now().timeIntervalSince(refreshedAt)
-        guard age >= Self.stalenessThreshold, let duration = Formatters.compactDuration(age) else {
+        guard let snapshot = snapshots[providerID] else { return nil }
+        let date = now()
+        guard snapshot.isStale(at: date),
+              let duration = Formatters.compactDuration(date.timeIntervalSince(snapshot.refreshedAt)) else {
             return nil
         }
         return "Last updated \(duration) ago"

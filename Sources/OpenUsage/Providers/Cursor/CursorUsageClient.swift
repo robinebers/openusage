@@ -14,6 +14,7 @@ struct CursorUsageClient: Sendable {
     static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
     static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let stripeURL = URL(string: "https://cursor.com/api/auth/stripe")!
+    static let profileURL = URL(string: "https://cursor.com/api/auth/me")!
     static let clientID = "KbZUR41cY7W6zRSdpSUJ7I7mLYBKOCmB"
 
     var http: any HTTPClient
@@ -68,20 +69,22 @@ struct CursorUsageClient: Sendable {
     }
 
     func fetchUsageSummary(accessToken: String) async throws -> HTTPResponse? {
-        guard let session = Self.session(from: accessToken) else { return nil }
-        return try await http.send(HTTPRequest(
-            method: "GET",
-            url: Self.usageSummaryURL,
-            headers: ["Cookie": "WorkosCursorSessionToken=\(session.sessionToken)"],
-            timeout: 10
-        ))
+        try await sessionGet(Self.usageSummaryURL, accessToken: accessToken)
     }
 
     func fetchStripeBalance(accessToken: String) async throws -> HTTPResponse? {
+        try await sessionGet(Self.stripeURL, accessToken: accessToken)
+    }
+
+    func fetchProfile(accessToken: String) async throws -> HTTPResponse? {
+        try await sessionGet(Self.profileURL, accessToken: accessToken)
+    }
+
+    private func sessionGet(_ url: URL, accessToken: String) async throws -> HTTPResponse? {
         guard let session = Self.session(from: accessToken) else { return nil }
         return try await http.send(HTTPRequest(
             method: "GET",
-            url: Self.stripeURL,
+            url: url,
             headers: ["Cookie": "WorkosCursorSessionToken=\(session.sessionToken)"],
             timeout: 10
         ))

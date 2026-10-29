@@ -12,6 +12,10 @@ launches it, and confirms the process is up. The dev bundle id is `com.robineber
 it keeps its own settings and Keychain items and runs beside an installed OpenUsage. It has no update
 feed, so the Updates section does not show.
 
+Every dev build shares one single-instance lock, so a copy launched while a dev build from another
+folder runs hands off to that copy and quits. `run` and `verify` then fail and print the running
+copy's path.
+
 `./script/build_and_run.sh logs` launches the app and streams its log lines.
 
 Widgets need an Apple Development identity and team id. The script infers the team from the signing

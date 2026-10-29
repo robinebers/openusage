@@ -20,7 +20,8 @@ extension AccountProviderRuntime {
                     .exportingLimit("sonnet", unit: "percent"),
                 .percent(key: "fable", provider: provider, title: "Fable")
                     .exportingLimit("fable", unit: "percent"),
-                .boundedDollars(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent", limit: 100)
+                .boundedDollars(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent",
+                                limit: 100, valueWord: "spent")
                     .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
                 rateLimitResets(key: "rateLimitResets", provider: provider)
             ]
@@ -78,6 +79,14 @@ extension AccountProviderRuntime {
                 .percent(key: "claudeWeekly", provider: provider, title: "Claude", metricLabel: AntigravityMetric.claudeWeeklyLabel)
                     .exportingLimit("nonGeminiWeekly", unit: "percent")
             ]
+        case .copilot where account.organization != nil:
+            [
+                .values(key: "orgCredits", provider: provider, title: "Org Credits")
+                    .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits"))
+                    .pinnedByDefault(),
+                .values(key: "orgSpend", provider: provider, title: "Org Spend", valueWord: "spent")
+                    .exportingLimit("orgSpend", unit: "usd", source: .value(kind: .dollars))
+            ]
         case .copilot:
             [
                 .percent(key: "premium", provider: provider, title: "Credits", metricLabel: "Credits")
@@ -89,6 +98,15 @@ extension AccountProviderRuntime {
                     .exportingLimit("chat", unit: "percent"),
                 .boundedCount(key: "completions", provider: provider, title: "Completions", limit: 0)
                     .exportingLimit("completions", unit: "percent")
+            ]
+        case .devin:
+            [
+                .percent(key: "daily", provider: provider, title: "Daily", metricLabel: "Daily quota")
+                    .exportingLimit("daily", unit: "percent"),
+                .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota")
+                    .exportingLimit("weekly", unit: "percent"),
+                .dollarBalance(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
+                    .exportingLimit("extraUsageBalance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
             ]
         case .grok:
             [
@@ -121,12 +139,16 @@ extension AccountProviderRuntime {
             ]
         case .openrouter:
             [
-                .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
-                    .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+                .boundedDollars(key: "credits", provider: provider, title: "Credits", limit: 100)
+                    .exportingLimit("credits", unit: "usd")
                     .pinnedByDefault(),
+                .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
+                    .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .values(key: "today", provider: provider, title: "Today"),
                 .values(key: "week", provider: provider, title: "This Week"),
-                .values(key: "month", provider: provider, title: "This Month")
+                .values(key: "month", provider: provider, title: "This Month"),
+                .boundedDollars(key: "keyLimit", provider: provider, title: "Key Limit", limit: 100)
+                    .exportingLimit("keyLimit", unit: "usd")
             ]
         case .zai:
             [

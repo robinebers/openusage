@@ -7,6 +7,7 @@ enum ProviderError: Error, LocalizedError, Equatable {
     case requestFailed(Int)
     case rateLimited(retryAfter: TimeInterval?)
     case unavailable(String)
+    case keyRejected(String)
 
     var errorDescription: String? {
         switch self {
@@ -16,17 +17,12 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .requestFailed(let status): "The provider request failed (HTTP \(status))."
         case .rateLimited: "The provider asked OpenUsage to wait before asking again."
         case .unavailable(let message): message
+        case .keyRejected(let message): "\(message) Replace it on the account's page."
         }
     }
 
     static func isAuthFailure(_ response: HTTPResponse) -> Bool {
         response.statusCode == 401 || response.statusCode == 403
-    }
-
-    /// A token endpoint refusing the refresh token itself (RFC 6749 `invalid_grant`), which only a new sign-in cures.
-    static func refusedGrant(_ response: HTTPResponse) -> Bool {
-        (response.statusCode == 400 || response.statusCode == 401)
-            && ProviderParse.jsonObject(response.body)?["error"] as? String == "invalid_grant"
     }
 
     static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {

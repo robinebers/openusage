@@ -49,8 +49,9 @@ while they have any. The count turns orange when the next reset expires within 7
 one, choose **Use** on it, then **Reset**.
 
 A spinner after an account's name means it is refreshing. A warning icon means its last refresh failed,
-and a clock means its values are more than two refresh cycles old. Rest the pointer on the warning or
-the clock to read why (the error, or when the values were last updated); the account's right-click
+or that the provider has no usage to report for it, as for a Grok team account. A clock means its
+values are more than two refresh cycles old. Rest the pointer on the warning or the clock to read why
+(the error or the provider's notice, or when the values were last updated); the account's right-click
 menu starts with the reason too.
 
 ## Right-click menus
@@ -58,18 +59,19 @@ menu starts with the reason too.
 - A provider's card: **Refresh**, **Manage Accounts…**, **Share Screenshot**, and the provider's links,
   such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. If the account
-  shows a warning or stale icon, the menu starts with the reason. **Show Hidden Metrics** appears when
-  you have hidden any.
+  shows a warning or stale icon, the menu starts with the reason. A Copilot organization account also
+  has **Organization Billing**, which opens the organization's billing page on GitHub. **Show Hidden
+  Metrics** appears when you have hidden any.
 - A metric: **Star for Menu Bar** (or **Unstar**) and **Hide**. Hiding a metric, here or on the
   Accounts screen, also takes its star off the menu bar. Starring a hidden metric shows it again.
-
-On a card with one account, the header's menu combines the provider and account items.
 
 ## Reordering
 
 Drag a provider by its header, an account by its name inside the card, or a metric by its row. A new provider goes to the
 bottom of the dashboard and of the Accounts list, and a new account goes to the bottom of its
-provider's accounts. The app never sorts providers or accounts for you.
+provider's accounts. The app never sorts providers or accounts for you. After an update from 0.7.x, a
+provider in the order you saved in 0.7.x goes to that place instead. See
+[Upgrading from 0.7.x](settings.md#upgrading-from-07x).
 
 Press **⌘Z** to undo the last layout change (hiding or showing a metric, reordering, starring). Undo is
 per session.

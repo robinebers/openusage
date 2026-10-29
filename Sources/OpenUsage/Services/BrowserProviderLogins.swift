@@ -12,9 +12,10 @@ struct ClaudeLogin: ProviderLogin {
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let pkce = PKCE.generate()
-        let server = try await LoopbackCallbackServer.start(state: pkce.verifier)
+        let state = UUID().uuidString
+        let server = try await LoopbackCallbackServer.start(state: state)
         let code = try await authorizeInBrowser(
-            Self.authorizeURL, clientID: Self.clientID, scopes: Self.scopes, state: pkce.verifier, pkce: pkce, server: server,
+            Self.authorizeURL, clientID: Self.clientID, scopes: Self.scopes, state: state, pkce: pkce, server: server,
             extraQuery: [URLQueryItem(name: "code", value: "true")],
             prompt: prompt, pastedCode: pastedCode
         )
@@ -22,7 +23,7 @@ struct ClaudeLogin: ProviderLogin {
             "grant_type": "authorization_code",
             "client_id": Self.clientID,
             "code": code,
-            "state": pkce.verifier,
+            "state": state,
             "redirect_uri": server.redirectURI,
             "code_verifier": pkce.verifier
         ], using: http)
@@ -137,10 +138,11 @@ struct AntigravityLogin: ProviderLogin {
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         let pkce = PKCE.generate()
-        let server = try await LoopbackCallbackServer.start(state: pkce.verifier, port: 51121, path: "/oauth-callback")
+        let state = UUID().uuidString
+        let server = try await LoopbackCallbackServer.start(state: state, port: 51121, path: "/oauth-callback")
         let code = try await authorizeInBrowser(
             URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!,
-            clientID: Self.clientID, scopes: Self.scopes, state: pkce.verifier, pkce: pkce, server: server,
+            clientID: Self.clientID, scopes: Self.scopes, state: state, pkce: pkce, server: server,
             extraQuery: [URLQueryItem(name: "access_type", value: "offline"), URLQueryItem(name: "prompt", value: "consent")],
             prompt: prompt, pastedCode: pastedCode
         )

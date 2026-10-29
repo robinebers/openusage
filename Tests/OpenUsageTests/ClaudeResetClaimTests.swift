@@ -142,8 +142,28 @@ final class ClaudeResetClaimTests: XCTestCase {
 
         XCTAssertEqual(outcome, .failed(.signInExpired))
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
-        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a"])
+        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a", "Bearer token-b"])
         XCTAssertNotNil(runtime.claude.session?.resetGrants.check?.status)
+    }
+
+    func testAClaimRefusedWithACutShortTokenRenewsTheSignInOnceAndRetries() async throws {
+        let http = makeHTTP(claim: { request in
+            request.headers["Authorization"] == "Bearer token-a"
+                ? HTTPResponse(statusCode: 401, headers: [:], body: Data())
+                : Self.json(#"{"result":"reset","resets_left":0}"#)
+        })
+        let (runtime, vault, account) = try makeRuntimeWithVault(http: http)
+        await prime(runtime)
+
+        let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .success)
+        let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
+        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a", "Bearer token-b"])
+        XCTAssertEqual(try claims.map(requestID), [Self.requestID, Self.requestID])
+        XCTAssertEqual(http.requests.filter { $0.url.path == "/v1/oauth/token" }.count, 1)
+        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("expected saved tokens") }
+        XCTAssertEqual(saved.accessToken, "token-b")
     }
 
     func testScopeRefusedClaimSaysTheSignInCantUseResetsAndKeepsTheCheck() async throws {

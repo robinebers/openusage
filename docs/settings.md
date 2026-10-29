@@ -42,6 +42,7 @@ Each notification names the trigger, the provider, and the metric, and fires onc
 
 | Setting | Control | What it changes |
 |---|---|---|
+| Hide From Screen Share | switch | While your screen is shared or recorded, the menu bar shows the app icon instead of your usage. Off by default. See [Privacy](privacy.md). |
 | Help Make OpenUsage Better | switch | Whether the app sends the optional daily provider-refresh summaries described in [Privacy](privacy.md). The anonymous daily active ping and crash reports do not depend on this switch. |
 
 ## Command Line
@@ -61,3 +62,21 @@ This section appears in the released build only; the dev build has no update fee
 | Check for Updates… | button | Checks now and opens the update window. |
 
 See [Updates](updates.md).
+
+## Upgrading from 0.7.x
+
+0.7.x found your accounts on its own, so you add them again on the Accounts screen. When you add the
+only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
+
+- **Stars.** It keeps the provider's 0.7.x stars on its metrics, or gets the default stars if none of
+  those stars is on a metric it has.
+- **Hidden metrics.** A metric that 0.7.x had and you turned off stays hidden. An account never starts
+  with every metric hidden.
+- **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
+- **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
+
+When 0.7.x showed several accounts of a provider, the one it showed first gives the layout. Any other
+account of that provider starts with the default stars, as on a new install.
+
+OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
+back to 0.7.x, it finds its stars and order as you left them.

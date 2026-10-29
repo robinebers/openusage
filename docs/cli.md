@@ -13,8 +13,11 @@ openusage codex@1a2b3c4d   # one account, by its id
 
 The provider argument names accounts by plain string matching. An account id (the `providers` key in
 the output, `codex@1a2b3c4d`) names that account. A provider kind (`claude`, `codex`, `cursor`,
-`antigravity`, `copilot`, `grok`, `ollama`, `opencode`, `openrouter`, `zai`) names every account of
-that kind. Anything else is an error. There is no aliasing or account-picking logic.
+`antigravity`, `copilot`, `devin`, `grok`, `ollama`, `opencode`, `openrouter`, `zai`) names every
+account of that kind. Anything else is an error. There is no aliasing or account-picking logic.
+
+`--force`, which made 0.7.x refresh first, is accepted for old scripts and does nothing. The command
+says so on stderr and prints what the app last fetched.
 
 ## Install on `PATH`
 
@@ -41,10 +44,10 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
   "generatedAt": "2026-07-13T01:40:00.000Z",
   "providers": {
     "codex@1a2b3c4d": {
-      "displayName": "ChatGPT",
+      "displayName": "ChatGPT · Work",
       "plan": "Pro 200",
       "fetchedAt": "2026-07-13T01:39:30.000Z",
-      "expiresAt": "2026-07-13T01:44:30.000Z",
+      "expiresAt": "2026-07-13T01:49:30.000Z",
       "stale": false,
       "resources": {
         "session": {
@@ -64,16 +67,21 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
         }
       }
     }
-  },
-  "errors": []
+  }
 }
 ```
 
-`providers` has one entry per account, keyed by account id; an account the app has not fetched yet
-has no entry. `displayName` is the provider's name and `plan` the plan the provider reports.
-`fetchedAt` is when the app last fetched the account, `expiresAt` is when it expects to fetch it
-again (5 minutes after `fetchedAt`), and `stale` says whether that instant has passed at `generatedAt`: a stale
-entry means the app is not running or its refreshes are failing.
+`providers` has one entry per account, keyed by account id (`jq '.providers["codex@1a2b3c4d"]'`;
+`openusage codex | jq '.providers[]'` for every ChatGPT account). An account the app has not fetched
+yet has no entry, and neither does an account this version cannot read, such as one for a provider it
+lacks.
+`displayName` is the provider's name and the account's name as the app shows them, for example
+`ChatGPT · Work`. `plan` is the plan the provider reports.
+`fetchedAt` is when the app last fetched the account. `expiresAt` is 10 minutes later, two refresh
+intervals, because a refresh between passes, such as ⌘R, makes the next 5-minute pass skip the account.
+`stale` says whether `expiresAt` has passed at `generatedAt`. The app shows a clock next to the account
+from the same moment. A stale entry means the app is not running or its refreshes of that account are
+failing.
 
 Each resource is one scalar with an explicit `unit`. `kind` is `consumption` (`used`) or `balance`
 (`available`). Bounded consumption also carries `limit`, `remaining`, and a 0–1 `utilization`.
@@ -84,8 +92,8 @@ is `percent` on percentage-based plans and `requests` on request-based Enterpris
 `premiumCredits` is `percent` on paid plans and a `credits` count on org-managed seats that only report
 personal usage.
 
-`errors` is always empty. The command reads the last successful fetch; a failed refresh shows in the
-app, with its reason in the account's right-click menu.
+The command reads the last successful fetch; a failed refresh shows in the app, with its reason in
+the account's right-click menu.
 
 ### Resources
 
@@ -95,11 +103,12 @@ app, with its reason in the account's right-click menu.
 | ChatGPT (`codex`) | `session`, `weekly`, `spark`, `sparkWeekly`, `credits`, `rateLimitResets` |
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
-| Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions` |
+| Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions`; an organization account: `orgCredits`, `orgSpend` |
+| Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
-| OpenRouter | `balance` |
+| OpenRouter | `credits`, `balance`, `keyLimit` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
 Antigravity's `argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.

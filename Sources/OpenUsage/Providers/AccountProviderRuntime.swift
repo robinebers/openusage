@@ -10,8 +10,13 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
+    var cursorMembershipRead = SecondaryRead<String>()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
+    /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
+    /// the same one, so a caller that needs a renewal while one is in flight waits for its tokens, and a
+    /// caller whose tokens another renewal already replaced takes the stored ones.
+    private var renewal: Task<OAuthTokens, Error>?
 
     init(
         account: Account,
@@ -37,11 +42,12 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
+        cursorMembershipRead.forget()
         claude.forcedReadsPending = true
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label)
+        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization)
     }
 
     func resetClaimService(
@@ -69,7 +75,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 refreshAccount: refreshAccount,
                 refreshDelay: .seconds(5)
             )
-        case .cursor, .antigravity, .copilot, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+        case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
             return nil
         }
     }
@@ -77,7 +83,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines))
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
@@ -85,33 +91,52 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func loadCredential() async throws -> AccountCredential {
         guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw ProviderError.signInExpired(account.kind)
+            throw refusedCredential
         }
         return credential
     }
 
+    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page.
+    private var refusedCredential: ProviderError {
+        switch account.authMethod {
+        case .oauth: .signInExpired(account.kind)
+        case .apiKey: .keyRejected("\(account.kind.displayName) rejected the API key.")
+        case .organizationToken: .keyRejected("GitHub rejected the token.")
+        }
+    }
+
     private func refresh(_ credential: AccountCredential) async throws -> ProviderUsage {
-        switch account.kind {
-        case .claude: try await refreshClaude(credential)
-        case .codex: try await refreshCodex(credential)
-        case .cursor: try await refreshCursor(credential)
-        case .antigravity: try await refreshAntigravity(credential)
-        case .copilot: try await refreshCopilot(credential)
-        case .grok: try await refreshGrok(credential)
-        case .ollama: try await refreshOllama(credential)
-        case .opencodeGo: try await refreshOpenCode(credential)
-        case .openrouter: try await refreshOpenRouter(credential)
-        case .zai: try await refreshZAI(credential)
+        do {
+            return switch account.kind {
+            case .claude: try await refreshClaude(credential)
+            case .codex: try await refreshCodex(credential)
+            case .cursor: try await refreshCursor(credential)
+            case .antigravity: try await refreshAntigravity(credential)
+            case .copilot: try await refreshCopilot(credential)
+            case .devin: try await refreshDevin(credential)
+            case .grok: try await refreshGrok(credential)
+            case .ollama: try await refreshOllama(credential)
+            case .opencodeGo: try await refreshOpenCode(credential)
+            case .openrouter: try await refreshOpenRouter(credential)
+            case .zai: try await refreshZAI(credential)
+            }
+        } catch ProviderError.signInExpired {
+            throw refusedCredential
         }
     }
 
     func freshTokens(
         _ credential: AccountCredential,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
-        guard tokens.needsRefresh(at: now()) else { return tokens }
-        return try await renewedTokens(tokens, grant: grant)
+        guard tokens.needsRefresh(at: now()), let expiresAt = tokens.expiresAt else { return tokens }
+        do {
+            return try await renewedTokens(tokens, grant: grant)
+        } catch let error where expiresAt > now() {
+            AppLog.warn(.auth, "\(account.cardID) early token renewal failed; keeping the current token: \(error.localizedDescription)")
+            return tokens
+        }
     }
 
     /// The usage read with the sign-in renewed once when the provider refuses the access token (401):
@@ -120,7 +145,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// other answer renews.
     func authorizedRead(
         _ credential: AccountCredential,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant,
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant,
         read: (OAuthTokens) async throws -> HTTPResponse
     ) async throws -> (tokens: OAuthTokens, response: HTTPResponse) {
         var tokens = try await freshTokens(credential, grant: grant)
@@ -134,16 +159,23 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     private func renewedTokens(
         _ tokens: OAuthTokens,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
+        if let renewal { return try await renewal.value }
         guard let refreshToken = tokens.refreshToken else { return tokens }
-        var tokens = tokens
-        let granted = try await grant(refreshToken, http, now())
-        tokens.accessToken = granted.accessToken
-        if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
-        tokens.expiresAt = granted.expiresAt
-        try await replaceCredential(.oauth(tokens))
-        return tokens
+        let renewal = Task {
+            defer { self.renewal = nil }
+            if case .oauth(let stored)? = try? await loadCredential(), stored.accessToken != tokens.accessToken { return stored }
+            var tokens = tokens
+            let granted = try await grant(refreshToken, http, now())
+            tokens.accessToken = granted.accessToken
+            if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
+            tokens.expiresAt = granted.expiresAt
+            try await replaceCredential(.oauth(tokens))
+            return tokens
+        }
+        self.renewal = renewal
+        return try await renewal.value
     }
 
     private func refreshCodex(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -156,10 +188,21 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {
+        if let organization = account.organization {
+            guard case .apiKey(let token) = credential else { throw ProviderError.invalidResponse }
+            return ProviderUsage(plan: nil, lines: try await CopilotUsageClient(http: http).organizationUsage(organization, token: token))
+        }
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
         try ProviderError.requireSuccess(response, kind: .copilot)
         return try CopilotUsageMapper.map(response)
+    }
+
+    private func refreshDevin(_ credential: AccountCredential) async throws -> ProviderUsage {
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
+        let response = try await DevinUsageClient(http: http).fetchUserStatus(tokens)
+        try ProviderError.requireSuccess(response, kind: .devin)
+        return try DevinUsageMapper.map(response.body)
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -172,7 +215,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             let settings = try? await client.fetchSettings(accessToken: tokens.accessToken)
             planRead.record(settings.flatMap(GrokUsageMapper.planName(from:)), at: now())
         }
-        return ProviderUsage(plan: planRead.value, lines: mapped.lines)
+        return ProviderUsage(plan: planRead.value, lines: mapped.lines, notice: mapped.notice)
     }
 
     private func refreshCursor(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -226,54 +269,6 @@ final class AccountProviderRuntime: ProviderRuntime {
         return ProviderUsage(plan: OpenCodeUsageMapper.plan, lines: try OpenCodeUsageMapper.meterLines(response))
     }
 
-    private enum OpenRouterEndpoint {
-        case data([String: Any])
-        case keyRejected
-        case failed(Error)
-    }
-
-    private func openRouterEndpoint(_ call: () async throws -> HTTPResponse) async -> OpenRouterEndpoint {
-        do {
-            let response = try await call()
-            if ProviderError.isAuthFailure(response) { return .keyRejected }
-            try ProviderError.requireSuccess(response, kind: .openrouter)
-            guard let data = OpenRouterUsageMapper.dataObject(response.body) else {
-                return .failed(ProviderError.invalidResponse)
-            }
-            return .data(data)
-        } catch {
-            return .failed(error)
-        }
-    }
-
-    private func refreshOpenRouter(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
-        let client = OpenRouterUsageClient(http: http)
-        let credits = await openRouterEndpoint { try await client.fetchCredits(apiKey: key) }
-        let keyInfo = await openRouterEndpoint { try await client.fetchKey(apiKey: key) }
-        var lines: [MetricLine] = []
-        var plan: String?
-        if case .data(let data) = credits {
-            lines += OpenRouterUsageMapper.creditsLines(from: data)
-        }
-        if case .data(let data) = keyInfo {
-            let mapped = OpenRouterUsageMapper.keyMetrics(from: data)
-            plan = mapped.plan
-            lines += mapped.lines
-        }
-        if !lines.isEmpty { return ProviderUsage(plan: plan, lines: lines) }
-        // The key is only invalid when both endpoints reject it: OpenRouter gates some endpoints to
-        // specific key types, so a lone 403 is a valid key that cannot read that endpoint.
-        if case .keyRejected = credits, case .keyRejected = keyInfo {
-            throw ProviderError.signInExpired(.openrouter)
-        }
-        let failures = [credits, keyInfo].compactMap { outcome -> Error? in
-            if case .failed(let error) = outcome { return error }
-            return nil
-        }
-        throw failures.first ?? ProviderError.invalidResponse
-    }
-
     private func refreshZAI(_ credential: AccountCredential) async throws -> ProviderUsage {
         guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
         let client = ZAIUsageClient(http: http)
@@ -292,5 +287,9 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+    }
+
+    func validate(_ credential: AccountCredential) async throws {
+        _ = try await refresh(credential)
     }
 }

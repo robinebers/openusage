@@ -1,9 +1,10 @@
 import CryptoKit
 import Foundation
 
-enum ProviderAuthMethod: Sendable, Equatable {
+enum ProviderAuthMethod: Sendable, Hashable {
     case oauth
     case apiKey(keyPage: URL)
+    case organizationToken
 }
 
 enum ProviderKind: String, Codable, CaseIterable, Sendable {
@@ -12,6 +13,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
     case cursor
     case antigravity
     case copilot
+    case devin
     case grok
     case ollama
     case opencodeGo = "opencode"
@@ -25,6 +27,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .cursor: "Cursor"
         case .antigravity: "Antigravity"
         case .copilot: "Copilot"
+        case .devin: "Devin"
         case .grok: "Grok"
         case .ollama: "Ollama"
         case .opencodeGo: "OpenCode"
@@ -44,23 +47,26 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .antigravity: []
         case .copilot: [.init(label: "Status Page", url: URL(string: "https://www.githubstatus.com/")!),
                         .init(label: "Usage Dashboard", url: URL(string: "https://github.com/settings/billing")!)]
+        case .devin: [.init(label: "Usage Dashboard", url: URL(string: "https://app.devin.ai/settings/plans")!)]
         case .grok: [.init(label: "Usage Dashboard", url: URL(string: "https://grok.com/?_s=usage")!)]
         case .ollama: [.init(label: "Usage Dashboard", url: URL(string: "https://ollama.com/settings")!)]
         case .opencodeGo: [.init(label: "Status Page", url: URL(string: "https://status.opencode.ai/")!),
                            .init(label: "Usage Dashboard", url: URL(string: "https://opencode.ai/console")!)]
         case .openrouter: [.init(label: "Status Page", url: URL(string: "https://status.openrouter.ai/")!),
-                           .init(label: "Usage Dashboard", url: URL(string: "https://openrouter.ai/activity")!)]
+                           .init(label: "Usage Dashboard", url: URL(string: "https://openrouter.ai/activity")!),
+                           .init(label: "Credits", url: URL(string: "https://openrouter.ai/settings/credits")!)]
         case .zai: [.init(label: "Usage Dashboard", url: URL(string: "https://z.ai/manage-apikey/coding-plan/personal/my-plan")!)]
         }
     }
 
-    var authMethod: ProviderAuthMethod {
+    var authMethods: [ProviderAuthMethod] {
         switch self {
-        case .claude, .codex, .cursor, .antigravity, .copilot, .grok: .oauth
-        case .ollama: .apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)
-        case .opencodeGo: .apiKey(keyPage: URL(string: "https://opencode.ai/console")!)
-        case .openrouter: .apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)
-        case .zai: .apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)
+        case .claude, .codex, .cursor, .antigravity, .devin, .grok: [.oauth]
+        case .copilot: [.oauth, .organizationToken]
+        case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
+        case .opencodeGo: [.apiKey(keyPage: URL(string: "https://opencode.ai/console")!)]
+        case .openrouter: [.apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)]
+        case .zai: [.apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)]
         }
     }
 }
@@ -69,16 +75,24 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     let id: UUID
     let kind: ProviderKind
     var label: String
+    /// A Copilot organization account carries the login whose billing its token reads; every other
+    /// account has none.
+    let organization: String?
     let addedAt: Date
+
+    var authMethod: ProviderAuthMethod {
+        organization != nil ? .organizationToken : kind.authMethods[0]
+    }
 
     var cardID: String {
         "\(kind.rawValue)@\(id.uuidString.lowercased().prefix(8))"
     }
 
-    init(id: UUID = UUID(), kind: ProviderKind, label: String, addedAt: Date = Date()) {
+    init(id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, addedAt: Date = Date()) {
         self.id = id
         self.kind = kind
         self.label = label
+        self.organization = organization
         self.addedAt = addedAt
     }
 }

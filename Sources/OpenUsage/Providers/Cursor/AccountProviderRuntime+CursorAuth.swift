@@ -30,16 +30,12 @@ extension AccountProviderRuntime {
     func refreshCursorTokens(_ tokens: OAuthTokens) async throws -> OAuthTokens {
         guard let refreshToken = tokens.refreshToken else { throw ProviderError.signInExpired(.cursor) }
         let response = try await CursorUsageClient(http: http).refreshToken(refreshToken)
-        let body = ProviderParse.jsonObject(response.body)
-        if body?["shouldLogout"] as? Bool == true { throw ProviderError.signInExpired(.cursor) }
-        guard (200..<300).contains(response.statusCode),
-              let accessToken = body?["access_token"] as? String,
-              !accessToken.isEmpty
-        else { throw ProviderError.signInExpired(.cursor) }
+        if ProviderParse.jsonObject(response.body)?["shouldLogout"] as? Bool == true { throw ProviderError.signInExpired(.cursor) }
+        let token = try OAuthTokenResponse(renewal: response, kind: .cursor)
         var refreshed = tokens
-        refreshed.accessToken = accessToken
-        refreshed.refreshToken = body?["refresh_token"] as? String ?? accessToken
-        refreshed.expiresAt = ProviderParse.jwtExpiry(accessToken)
+        refreshed.accessToken = token.accessToken
+        refreshed.refreshToken = token.refreshToken ?? token.accessToken
+        refreshed.expiresAt = ProviderParse.jwtExpiry(token.accessToken)
         try await replaceCredential(.oauth(refreshed))
         return refreshed
     }

@@ -20,7 +20,7 @@ extension AccountProviderRuntime {
     func claimCodexResetCredit(expiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
         let tag = LogTag.plugin("codex")
         let cardID = account.cardID
-        let tokens: OAuthTokens
+        var tokens: OAuthTokens
         do {
             tokens = try await freshTokens(try await loadCredential(), grant: CodexLogin.refresh)
         } catch {
@@ -40,7 +40,9 @@ extension AccountProviderRuntime {
         } else {
             let list: HTTPResponse
             do {
-                list = try await client.fetchResetCredits(accessToken: tokens.accessToken, accountID: accountID)
+                (tokens, list) = try await authorizedRead(.oauth(tokens), grant: CodexLogin.refresh) { tokens in
+                    try await client.fetchResetCredits(accessToken: tokens.accessToken, accountID: accountID)
+                }
             } catch {
                 AppLog.error(tag, "\(cardID) reset claim: credit list fetch failed: \(error.localizedDescription)")
                 return .failed(ResetClaimFailure(error))
@@ -63,10 +65,12 @@ extension AccountProviderRuntime {
 
         let response: HTTPResponse
         do {
-            response = try await client.consumeResetCredit(
-                accessToken: tokens.accessToken, accountID: accountID,
-                creditID: creditID, redeemRequestID: redeemRequestID
-            )
+            response = try await authorizedRead(.oauth(tokens), grant: CodexLogin.refresh) { tokens in
+                try await client.consumeResetCredit(
+                    accessToken: tokens.accessToken, accountID: accountID,
+                    creditID: creditID, redeemRequestID: redeemRequestID
+                )
+            }.response
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: consume request failed: \(error.localizedDescription)")
             return .failed(ResetClaimFailure(error))

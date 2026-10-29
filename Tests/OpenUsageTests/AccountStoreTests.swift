@@ -41,4 +41,24 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertEqual(AccountStore(defaults: defaults, vault: vault).accounts.first?.label, "New")
     }
 
+    func testAnEntryThisBuildCannotReadStaysStoredThroughAddRenameAndRemove() throws {
+        let defaults = isolatedDefaults()
+        defaults.set(StoredAccountList.data, forKey: AccountStore.storageKey)
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let futureEntry = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(StoredAccountList.futureEntry.utf8)) as? NSDictionary)
+        func storedList() throws -> NSArray {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(defaults.data(forKey: AccountStore.storageKey))) as? NSArray)
+        }
+
+        XCTAssertEqual(store.accounts, [StoredAccountList.claude])
+        let added = store.add(kind: .codex, label: "Home", credential: .apiKey("key"))
+        XCTAssertTrue(try storedList().contains(futureEntry), "kept through an add")
+        store.rename(StoredAccountList.claude.id, to: "Renamed")
+        XCTAssertTrue(try storedList().contains(futureEntry), "kept through a rename")
+        store.remove(added.id)
+        XCTAssertTrue(try storedList().contains(futureEntry), "kept through a remove")
+
+        XCTAssertEqual(try storedList().count, 2, "the renamed account and the kept entry")
+        XCTAssertEqual(AccountStore(defaults: defaults, vault: InMemoryCredentialVault()).accounts.map(\.label), ["Renamed"])
+    }
 }

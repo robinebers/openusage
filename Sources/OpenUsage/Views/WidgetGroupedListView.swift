@@ -48,7 +48,7 @@ struct WidgetGroupedListView: View {
     private func status(for accountID: String) -> AccountStatus {
         AccountStatus(
             refreshing: dataStore.refreshingProviderIDs.contains(accountID),
-            notice: dataStore.errorMessage(for: accountID),
+            notice: dataStore.notice(for: accountID),
             staleness: dataStore.stalenessHint(for: accountID)
         )
     }
@@ -107,7 +107,7 @@ struct WidgetGroupedListView: View {
     }
 
     private func statusReason(for accountID: String) -> String? {
-        dataStore.errorMessage(for: accountID) ?? dataStore.stalenessHint(for: accountID)
+        dataStore.notice(for: accountID) ?? dataStore.stalenessHint(for: accountID)
     }
 
     private func hiddenMetricIDs(for accountID: String) -> [String] {

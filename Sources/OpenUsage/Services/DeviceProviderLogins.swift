@@ -92,35 +92,76 @@ struct CursorLogin: ProviderLogin {
             return .failed("Cursor sign-in failed.")
         }
         let userID = CursorUsageClient.session(from: token.accessToken)?.userID
-        return ("Cursor Account", .oauth(OAuthTokens(
+        return (await profileName(accessToken: token.accessToken) ?? "Cursor Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: ProviderParse.jwtExpiry(token.accessToken),
             extras: userID.map { [OAuthTokens.identityKey: "cursor:\($0)"] } ?? [:]
         )))
     }
+
+    private func profileName(accessToken: String) async -> String? {
+        do {
+            guard let response = try await CursorUsageClient(http: http).fetchProfile(accessToken: accessToken) else {
+                throw LoginError.invalidResponse
+            }
+            let profile = try LoginHTTP.decode(CursorProfile.self, from: response)
+            return [profile.email, profile.name].compactMap { $0 }.first { !$0.isEmpty }
+        } catch {
+            AppLog.warn(LogTag.auth("cursor"), "profile read failed, naming the account Cursor Account: \(error.localizedDescription)")
+            return nil
+        }
+    }
 }
 
 struct APIKeyLogin: ProviderLogin {
     let kind: ProviderKind
+    var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         var iterator = pastedCode.makeAsyncIterator()
         guard let value = await iterator.next() else { throw LoginError.cancelled }
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw LoginError.invalidCode }
+        let account = Account(kind: kind, label: kind.displayName)
+        do {
+            try await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http).validate(.apiKey(key))
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
+        }
         return (kind.displayName, .apiKey(key))
     }
 }
 
+/// Adds an organization's Copilot billing as its own account, checked with one read of the report.
+struct CopilotOrganizationLogin: ProviderLogin {
+    let organization: String
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        var iterator = pastedCode.makeAsyncIterator()
+        guard let value = await iterator.next() else { throw LoginError.cancelled }
+        let token = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { throw LoginError.invalidCode }
+        do {
+            _ = try await CopilotUsageClient(http: http).organizationUsage(organization, token: token)
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
+        }
+        return (organization, .apiKey(token))
+    }
+}
+
 enum ProviderLoginCatalog {
-    static func login(for kind: ProviderKind) -> any ProviderLogin {
-        switch kind {
+    static func login(for kind: ProviderKind, method: ProviderAuthMethod, organization: String) -> any ProviderLogin {
+        if method == .organizationToken { return CopilotOrganizationLogin(organization: organization) }
+        return switch kind {
         case .claude: ClaudeLogin()
         case .codex: CodexLogin()
         case .cursor: CursorLogin()
         case .antigravity: AntigravityLogin()
         case .copilot: CopilotLogin()
+        case .devin: DevinLogin()
         case .grok: GrokLogin()
         case .ollama, .opencodeGo, .openrouter, .zai: APIKeyLogin(kind: kind)
         }
@@ -186,6 +227,11 @@ private struct GitHubUser: Decodable {
 private struct CursorTokenResponse: Decodable, Sendable {
     let accessToken: String
     let refreshToken: String
+}
+
+private struct CursorProfile: Decodable {
+    let email: String?
+    let name: String?
 }
 
 private struct GrokIDClaims: Decodable {

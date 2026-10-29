@@ -11,6 +11,7 @@ struct AccountDetailView: View {
 
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
+    @State private var removalError: String?
 
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
@@ -21,11 +22,25 @@ struct AccountDetailView: View {
                     }
                 }
                 .cardSurface()
+                if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
+                    ReplaceKeyRow(providerID: providerID, field: field)
+                }
                 removeAccountRow(group.provider)
+                if let removalError {
+                    ErrorText(removalError)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             EmptyView()
+        }
+    }
+
+    private static func replacedField(_ account: Account) -> String? {
+        switch account.authMethod {
+        case .apiKey: "API Key"
+        case .organizationToken: "Token"
+        case .oauth: nil
         }
     }
 
@@ -55,8 +70,12 @@ struct AccountDetailView: View {
 
     private func removeAccount() {
         guard let account = container.accounts.account(cardID: providerID) else { return }
-        withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         container.accounts.remove(account.id)
+        if container.accounts.account(cardID: providerID) != nil {
+            removalError = container.accounts.lastError ?? "The account could not be removed."
+        } else {
+            withAnimation(Motion.spring) { popover.customizeProviderID = nil }
+        }
     }
 
     private func metricRow(_ metric: WidgetDescriptor) -> some View {
@@ -103,6 +122,90 @@ struct AccountDetailView: View {
             orderedIDs: { layout.orderedSupportedMetrics(for: providerID).map(\.id) },
             reorder: { layout.reorderMetric(dragged: metric.id, target: $0, in: providerID) }
         )
+    }
+}
+
+private struct ReplaceKeyRow: View {
+    let providerID: String
+    let field: String
+    @Environment(AppContainer.self) private var container
+    @State private var isEditing = false
+    @State private var key = ""
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        Group {
+            if isEditing { editor } else { replaceButton }
+        }
+        .cardSurface()
+    }
+
+    private var replaceButton: some View {
+        Button {
+            isEditing = true
+        } label: {
+            Text("Replace \(field)…")
+                .foregroundStyle(.tint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, PanelMetrics.controlRowPadding)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SecureField(field, text: $key, prompt: Text("New \(field)"))
+                .textFieldStyle(.roundedBorder)
+                .focused($isFocused)
+                .onSubmit(save)
+                .onExitCommand(perform: close)
+                .onAppear { isFocused = true }
+            if let errorMessage {
+                ErrorText(errorMessage)
+            }
+            HStack {
+                if isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Spacer()
+                Button("Cancel", action: close)
+                Button("Save", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
+            }
+        }
+        .disabled(isSaving)
+        .padding(12)
+    }
+
+    private var canSave: Bool {
+        !isSaving && !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func save() {
+        guard canSave else { return }
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                try await container.replaceKey(key, for: providerID)
+                close()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            isSaving = false
+        }
+    }
+
+    private func close() {
+        isEditing = false
+        key = ""
+        errorMessage = nil
     }
 }
 

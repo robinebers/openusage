@@ -27,18 +27,34 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 2)
     }
 
+    func testTheSameOrganizationIsNotAddedTwice() async throws {
+        let store = makeStore()
+        store.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("first"))
+
+        let flow = flow(store) { .apiKey("second") }
+        flow.choose(.copilot)
+        flow.choose(.organizationToken)
+        flow.organization = "ACME"
+        flow.apiKey = "second"
+        flow.addKey()
+        try await waitUntil { flow.errorMessage != nil }
+
+        XCTAssertEqual(flow.errorMessage, "This account is already added as acme.")
+        XCTAssertEqual(store.accounts.map(\.label), ["acme"])
+    }
+
     func testSigningInToAnAddedCursorAccountAgainNamesTheExistingOne() async throws {
         let token = "eyJhbGciOiJub25lIn0." + Data(#"{"sub":"auth0|user_abc"}"#.utf8).base64EncodedString().replacingOccurrences(of: "=", with: "") + ".sig"
         let http = RoutingHTTPClient { _ in
             HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"accessToken":"\#(token)","refreshToken":"r","authId":"auth0|user_abc"}"#.utf8))
         }
         let store = makeStore()
-        let first = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        let first = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
         first.choose(.cursor)
         try await waitUntil { first.isFinished }
         XCTAssertEqual(store.accounts.map(\.label), ["Cursor Account"])
 
-        let again = AddAccountFlow(store: store, openURL: { _ in }) { _ in CursorLogin(http: http) }
+        let again = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
         again.choose(.cursor)
         try await waitUntil { again.errorMessage != nil }
 
@@ -46,11 +62,33 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 1)
     }
 
+    func testSigningInToAnAddedDevinAccountAgainNamesTheExistingOne() async throws {
+        let store = makeStore()
+        let first = try await signInToDevin(store, team: "devin-team$account-1")
+        XCTAssertTrue(first.isFinished)
+
+        let again = try await signInToDevin(store, team: "devin-team$account-1")
+
+        XCTAssertEqual(again.errorMessage, "This account is already added as rob@example.com.")
+        XCTAssertEqual(store.accounts.map(\.label), ["rob@example.com"])
+    }
+
+    func testTheSameDevinEmailInAnotherOrganizationIsAdded() async throws {
+        let store = makeStore()
+        _ = try await signInToDevin(store, team: "devin-team$account-1")
+
+        let other = try await signInToDevin(store, team: "devin-team$account-2")
+
+        XCTAssertTrue(other.isFinished)
+        XCTAssertEqual(store.accounts.count, 2)
+    }
+
     func testTheSameAPIKeyIsNotAddedTwice() async throws {
         let store = makeStore()
         store.add(kind: .openrouter, label: "Personal", credential: .apiKey("sk-or-1"))
 
-        let flow = AddAccountFlow(store: store)
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
         flow.apiKey = " sk-or-1 "
         flow.addKey()
@@ -91,7 +129,24 @@ final class DuplicateLoginTests: XCTestCase {
     }
 
     private func flow(_ store: AccountStore, credential: @escaping @Sendable () -> AccountCredential) -> AddAccountFlow {
-        AddAccountFlow(store: store, openURL: { _ in }) { _ in IdentityLogin(credential: credential) }
+        AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in IdentityLogin(credential: credential) }
+    }
+
+    /// Every sign-in is issued a new API key, so only the account's identity can tell it was added before.
+    private func signInToDevin(_ store: AccountStore, team: String) async throws -> AddAccountFlow {
+        let http = RoutingHTTPClient { request in
+            let body = request.url.host() == "api.codeium.com"
+                ? #"{"api_key":"devin-session-token$\#(UUID().uuidString)"}"#
+                : #"{"userStatus":{"email":"rob@example.com","teamId":"\#(team)"}}"#
+            return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
+        }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in DevinLogin(http: http) }
+        flow.choose(.devin)
+        try await waitUntil { flow.prompt != nil }
+        flow.pastedCode = "one-time-token"
+        flow.submitCode()
+        try await waitUntil { flow.isFinished || flow.errorMessage != nil }
+        return flow
     }
 
     private func makeStore() -> AccountStore {

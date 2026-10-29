@@ -4,19 +4,19 @@ enum LimitsEnvelope {
     static let schema = "openusage.limits.v1"
 
     struct Input: Sendable {
-        var providerIDs: [String]
+        var registry: WidgetRegistry
         var snapshots: [String: ProviderSnapshot]
-        var limitDescriptors: [String: [WidgetDescriptor]] = [:]
         var generatedAt = Date()
     }
 
     static func encode(_ input: Input) -> Data {
         var providers: [String: WireProvider] = [:]
-        for providerID in input.providerIDs {
-            guard let snapshot = input.snapshots[providerID] else { continue }
-            providers[providerID] = WireProvider(
+        for provider in input.registry.providers {
+            guard let snapshot = input.snapshots[provider.id] else { continue }
+            providers[provider.id] = WireProvider(
+                provider: provider,
                 snapshot: snapshot,
-                descriptors: input.limitDescriptors[providerID] ?? [],
+                descriptors: input.registry.descriptors(for: provider.id),
                 generatedAt: input.generatedAt
             )
         }
@@ -28,14 +28,13 @@ enum LimitsEnvelope {
             providers: providers
         )
         return (try? encoder.encode(envelope))
-            ?? Data(#"{"errors":[],"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
+            ?? Data(#"{"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
     }
 
     private struct WireEnvelope: Encodable {
         let schema: String
         let generatedAt: String
         let providers: [String: WireProvider]
-        let errors: [String] = []
     }
 
     private struct WireProvider: Encodable {
@@ -46,13 +45,12 @@ enum LimitsEnvelope {
         let stale: Bool
         let resources: [String: WireResource]
 
-        init(snapshot: ProviderSnapshot, descriptors: [WidgetDescriptor], generatedAt: Date) {
-            displayName = snapshot.displayName
+        init(provider: Provider, snapshot: ProviderSnapshot, descriptors: [WidgetDescriptor], generatedAt: Date) {
+            displayName = provider.fullName
             plan = snapshot.plan
             fetchedAt = OpenUsageISO8601.string(from: snapshot.refreshedAt)
-            let expiry = snapshot.refreshedAt.addingTimeInterval(RefreshSetting.interval)
-            expiresAt = OpenUsageISO8601.string(from: expiry)
-            stale = generatedAt >= expiry
+            expiresAt = OpenUsageISO8601.string(from: snapshot.staleAt)
+            stale = snapshot.isStale(at: generatedAt)
 
             var resources: [String: WireResource] = [:]
             for descriptor in descriptors {

@@ -19,11 +19,12 @@ environment:
 | Store | Owns |
 |---|---|
 | `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `addedAt`), persisted under `accounts.v1`, and the `CredentialVault`. |
-| `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history. |
+| `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history, saved as one `LayoutState`. A provider's only account starts from that provider's 0.7.x layout, which `LayoutV1Keys` reads. |
 | `PopoverState` | The popover's screen, the Accounts detail and Add Account sheet, the screen-slide bookkeeping, and the transient pills (star denial, Copied, the Accounts star notice). |
 | `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
 | `AccountRenameStore` | Which account name is being edited. |
 | `TelemetryRecorder` | The daily ping and per-provider rollups (see `Services/Telemetry.swift`). |
+| `HideFromScreenShareSetting` | The Hide From Screen Share switch and, while it is on, whether the screen is being captured (`Services/ScreenCaptureProbe.swift`). |
 
 Accounts are the source of truth. Every `AccountStore` change runs `AppContainer.syncAccounts`
 synchronously, which rebuilds the runtimes with `ProviderCatalog.make(accounts:vault:http:reusing:)`,
@@ -36,12 +37,18 @@ is new. The status item and the panel are never rebuilt on an account change.
 `ProviderKind` (`Models/Account.swift`) is the enum of providers. It carries each provider's display
 name, icon, quick links, and `authMethod` (OAuth or an API key with its key page).
 
+`AccountStore.load` decodes each entry of `accounts.v1` on its own. An entry this build cannot decode,
+such as one whose `kind` is a provider it lacks, is logged and kept as its JSON value, and every save
+writes it back after the known accounts.
+
 `ProviderLogin` (`Services/ProviderLogin.swift`) is the sign-in contract: `login(prompt:pastedCode:)`
-drives a browser or device-code prompt and returns the account's label and credential.
+drives a browser, token-page, or device-code prompt and returns the account's label and credential.
 `ProviderLoginCatalog` maps a kind to its login. Browser logins live in
 `Services/BrowserProviderLogins.swift` (Claude, Codex, Antigravity) and use `LoopbackCallbackServer`
 and `PKCE`; device-code logins and the Cursor and API-key logins live in
-`Services/DeviceProviderLogins.swift`. `AddAccountFlow` runs a login for the `AddAccountSheet`.
+`Services/DeviceProviderLogins.swift`. Devin's login opens a page that shows a token for the user to
+paste, and lives in `Providers/Devin/DevinLogin.swift`. `AddAccountFlow` runs a login for the
+`AddAccountSheet`.
 
 `CredentialVault` (`Services/AccountCredentialVault.swift`) stores one `AccountCredential` (OAuth
 tokens or an API key) per account id in the app's Keychain service.
@@ -96,11 +103,14 @@ fetched snapshot is written to the cache as it lands.
 
 `OpenUsageCLI` parses its arguments, finds the app bundle it ships inside (`AppBundleLocator`,
 `ContainingAppBundle`) to open that app's defaults domain, and hands the rest to `UsageReader` in the
-library: the stored accounts (`AccountStore.load`), their descriptors
-(`AccountProviderRuntime.widgetDescriptors(for:)`), and the snapshot cache, projected by
-`LimitsEnvelope` into the `openusage.limits.v1` JSON that `exportingLimit` declares resource by
-resource. The command never refreshes and never opens the Keychain. `CommandLineToolInstaller` is the
-Settings-side symlink installer.
+library. `UsageReader` builds a `WidgetRegistry` from the stored accounts (`AccountStore.load`) with
+the same `AccountProviderRuntime.provider(for:)` and `widgetDescriptors(for:)` the app's runtimes use,
+and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v1` JSON that
+`exportingLimit` declares resource by resource. Each entry's `displayName` is the account's
+`Provider.fullName`, and its `stale` and `expiresAt` come from `ProviderSnapshot.isStale(at:)` and
+`staleAt`, the rule `WidgetDataStore.stalenessHint` uses for the account's clock. The command never
+refreshes and never opens the Keychain.
+`CommandLineToolInstaller` is the Settings-side symlink installer.
 
 ## Views
 

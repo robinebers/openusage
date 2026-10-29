@@ -63,11 +63,16 @@ final class DashboardLabelFitTests: XCTestCase {
         let copilot = try ["individual", "business", "enterprise", "free", "individual_pro"].compactMap {
             try CopilotUsageMapper.map(body: ["copilot_plan": $0, "token_based_billing": true]).plan
         }
+        let devin = try ["Free", "Pro", "Max", "Teams", "Enterprise", "Pro Ultimate", "Teams Ultimate"].compactMap {
+            try DevinUsageMapper.map(try json(["userStatus": ["planStatus": ["planInfo": ["planName": $0], "weeklyQuotaRemainingPercent": 50]]])).plan
+        }
         let grok = try ["SuperGrok", "SuperGrok Heavy", "X Premium+", "Free"].compactMap {
             GrokUsageMapper.planName(from: HTTPResponse(statusCode: 200, headers: [:], body: try json(["subscription_tier_display": $0])))
         }
         let ollama = try ["free", "pro", "max"].compactMap { OllamaUsageMapper.plan(from: try json(["plan": $0])) }
-        let openRouter = [true, false].compactMap { OpenRouterUsageMapper.keyMetrics(from: ["is_free_tier": $0]).plan }
+        let openRouter = try [true, false].compactMap {
+            try OpenRouterUsageMapper.key(try json(["data": ["is_management_key": true, "is_free_tier": $0]])).plan
+        }
         let zai = try ["GLM Coding Lite", "GLM Coding Pro", "GLM Coding Max"].compactMap {
             ZAIUsageMapper.planName(from: try json(["data": [["productName": $0]]]))
         }
@@ -75,8 +80,8 @@ final class DashboardLabelFitTests: XCTestCase {
         XCTAssertEqual(openRouter, ["Free", "Pay-as-you-go"])
         XCTAssertEqual(zai, ["GLM Coding Lite", "GLM Coding Pro", "GLM Coding Max"])
         return [(.claude, claude), (.codex, codex), (.cursor, cursor), (.antigravity, antigravity), (.copilot, copilot),
-                (.grok, grok), (.ollama, ollama), (.opencodeGo, [OpenCodeUsageMapper.plan]), (.openrouter, openRouter),
-                (.zai, zai)]
+                (.devin, devin), (.grok, grok), (.ollama, ollama), (.opencodeGo, [OpenCodeUsageMapper.plan]),
+                (.openrouter, openRouter), (.zai, zai)]
     }
 
     private func account(_ kind: ProviderKind, _ name: String) -> DashboardAccount {

@@ -1,4 +1,5 @@
 import XCTest
+import os
 @testable import OpenUsage
 
 @MainActor
@@ -17,6 +18,41 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
         let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
         XCTAssertEqual(Set(persisted.keys), Set(ids))
+    }
+
+    func testForcedRefreshesWaitingOnOneReadTakeTurns() async throws {
+        let account = Account(kind: .openrouter, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.apiKey("key"), for: account.id)
+        let firstRead = HeldResponse()
+        let active = OSAllocatedUnfairLock(initialState: (now: 0, most: 0))
+        let http = RoutingHTTPClient { _ in
+            active.withLock { $0.now += 1; $0.most = max($0.most, $0.now) }
+            await firstRead.hold()
+            try await Task.sleep(for: .milliseconds(20))
+            active.withLock { $0.now -= 1 }
+            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+        let id = runtime.provider.id
+
+        let first = Task { await store.refresh(providerID: id) }
+        await firstRead.waitUntilHeld()
+        let forced = (0..<2).map { _ in Task { await store.refresh(providerID: id, force: true) } }
+        try await Task.sleep(for: .milliseconds(50))
+        await firstRead.release()
+        var untracked = false
+        for _ in 0..<2000 where http.requests.count < 3 || active.withLock({ $0.now }) > 0 {
+            if active.withLock({ $0.now }) > 0, !store.refreshingProviderIDs.contains(id) { untracked = true }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        _ = await first.value
+        for task in forced { _ = await task.value }
+
+        XCTAssertEqual(http.requests.count, 3, "three reads of one request each")
+        XCTAssertEqual(active.withLock { $0.most }, 1, "two reads of one account ran at once")
+        XCTAssertFalse(untracked, "a read ran while the account was not marked refreshing")
     }
 
     func testSingleProviderRefreshPersistsImmediately() async {
@@ -150,9 +186,9 @@ final class WidgetDataStoreTests: XCTestCase {
         store.meterStyle = .remaining
         let remaining = store.data(for: descriptor)
         XCTAssertFalse(remaining.isBounded)
-        XCTAssertEqual(remaining.unboundedDetail, "1K credits")
-        XCTAssertEqual(remaining.menuBarValue, "1K credits")
-        XCTAssertEqual(remaining.dashboardRow().mark, .value("1K credits"))
+        XCTAssertEqual(remaining.unboundedDetail, "$40 · 1K credits")
+        XCTAssertEqual(remaining.menuBarValue, "$40")
+        XCTAssertEqual(remaining.dashboardRow().mark, .value("$40 · 1K credits"))
 
         store.meterStyle = .used
         let used = store.data(for: descriptor)
@@ -290,39 +326,30 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(used.menuBarValue, remaining.menuBarValue)
     }
 
-    func testUncappedExtraUsageRendersCompactAndUnbounded() async {
-        let provider = Provider(id: "claude", kind: .claude)
-        let descriptor = WidgetDescriptor.boundedDollars(
-            key: "extra", provider: provider, title: "Extra Usage",
-            metricLabel: "Extra usage spent", limit: 100, valueWord: "spent"
-        )
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.values(label: "Extra usage spent",
-                                values: [MetricValue(number: 1234.56, kind: .dollars)])]
-            )
-        )
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
+    func testClaudesUncappedExtraUsageReadsCompactDollarsSpent() async throws {
+        let account = Account(kind: .claude, label: "Max")
+        let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "extra" })
+        let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(
+            statusCode: 200, headers: [:],
+            body: Data(#"{"extra_usage":{"is_enabled":true,"used_credits":123456,"monthly_limit":null}}"#.utf8)
+        ))
+        let provider = AccountProviderRuntime.provider(for: account)
+        let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
+                                  snapshot: ProviderSnapshot(provider: provider, plan: nil, lines: lines))
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
-        XCTAssertTrue(data.hasData)
-        XCTAssertFalse(data.isBounded)
-        XCTAssertEqual(data.unboundedDetail, "$1.2K spent")
+        XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
         XCTAssertEqual(data.menuBarValue, "$1.2K")
     }
 
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
-        data.values = CodexUsageMapper.creditValues(remaining: 820.9)
-        XCTAssertEqual(data.unboundedDetail, "820 credits")
+        data.values = CodexUsageMapper.creditValues(remaining: 821.6)
+        XCTAssertEqual(data.unboundedDetail, "$32.84 · 821 credits")
         data.values = CodexUsageMapper.creditValues(remaining: -5)
-        XCTAssertEqual(data.unboundedDetail, "0 credits")
+        XCTAssertEqual(data.unboundedDetail, "$0 · 0 credits")
     }
 
     func testUsesFreshCachedSnapshotInsteadOfRefreshingProvider() async {

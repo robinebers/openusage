@@ -46,6 +46,7 @@ enum DashboardMenus {
                 DashboardMenuItem(title: "Edit Account…", command: .editAccount(account.id)),
             ],
             [DashboardMenuItem(title: "Share Screenshot", command: .shareScreenshot([account.id]))],
+            account.provider.organizationBillingPage.map { [DashboardMenuItem(title: "Organization Billing", command: .open($0))] } ?? [],
             hasHiddenMetrics ? [DashboardMenuItem(title: "Show Hidden Metrics", command: .showHiddenMetrics(account.id))] : [],
         ].filter { !$0.isEmpty }
     }

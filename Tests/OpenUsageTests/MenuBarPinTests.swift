@@ -90,7 +90,7 @@ final class MenuBarPinTests: XCTestCase {
 
     func testInvalidPinnedIDsDroppedOnLoad() {
         let defaults = isolatedDefaults()
-        defaults.set(["a.m1", "ghost.metric"], forKey: "layout.menuBarPins")
+        LayoutPersistence(defaults: defaults).save(LayoutState(pinnedMetricIDs: ["a.m1", "ghost.metric"]))
         let store = makeStore(defaults: defaults)
 
         XCTAssertTrue(store.isPinned("a.m1"))
@@ -102,7 +102,7 @@ final class MenuBarPinTests: XCTestCase {
     }
 
     private func makeStore(defaults: UserDefaults) -> LayoutStore {
-        LayoutStore(registry: makeRegistry(), defaults: defaults, storageKey: "layout")
+        LayoutStore(registry: makeRegistry(), defaults: defaults)
     }
 
     private func makeRegistry() -> WidgetRegistry {
