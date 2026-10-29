@@ -191,6 +191,27 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(result.credential.identity, "cursor:user_abc")
     }
 
+    func testOllamaKeyLoginNamesTheAccountByTheEmailOfItsPlanRead() async throws {
+        for account in [#"{"Email":"dev@example.com","Name":"dev","Plan":"pro"}"#, #"{"email":"dev@example.com","name":"dev","plan":"pro"}"#] {
+            let http = Self.ollamaHTTP(account: account)
+
+            let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
+
+            XCTAssertEqual(result.label, "dev@example.com")
+            XCTAssertEqual(http.requests.filter { $0.url.path == "/api/me" }.count, 1, "the plan read names the account; no second request")
+        }
+    }
+
+    func testOllamaKeyLoginKeepsTheProviderNameWithoutAnEmail() async throws {
+        for (account, status) in [(#"{"Name":"dev","Plan":"free"}"#, 200), (#"{"Email":""}"#, 200), ("{}", 401)] {
+            let http = Self.ollamaHTTP(account: account, status: status)
+
+            let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
+
+            XCTAssertEqual(result.label, "Ollama")
+        }
+    }
+
     func testAntigravityLoginExchangesCodeAndMapsGoogleProfile() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
@@ -231,6 +252,18 @@ final class ProviderLoginTests: XCTestCase {
 
     private func emptyInput() -> AsyncStream<String> {
         AsyncStream { $0.finish() }
+    }
+
+    private func pastedInput(_ value: String) -> AsyncStream<String> {
+        AsyncStream { $0.yield(value); $0.finish() }
+    }
+
+    private static func ollamaHTTP(account: String, status: Int = 200) -> RoutingHTTPClient {
+        RoutingHTTPClient { request in
+            request.url.path == "/api/me"
+                ? Self.response(account, status: status)
+                : Self.response(#"{"included":{"balance_usd":72.5,"allowance_usd":100}}"#)
+        }
     }
 
     private static func browserPrompt(
