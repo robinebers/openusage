@@ -104,7 +104,7 @@ final class AccountChangeTests: XCTestCase {
 
         XCTAssertEqual(try vault.load(account.id), .apiKey("new-key"))
         XCTAssertNil(dataStore.errorMessage(for: account.cardID))
-        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Balance", "Today", "This Week", "This Month"])
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"])
     }
 
     func testAKeyAcceptedAfterTheAccountIsRemovedIsNotSaved() async throws {
@@ -133,10 +133,9 @@ final class AccountChangeTests: XCTestCase {
     }
 
     private nonisolated static func acceptedRead(_ request: HTTPRequest) -> HTTPResponse {
-        let body = request.url.absoluteString == OpenRouterUsageClient.creditsURL
-            ? #"{"data":{"total_credits":100,"total_usage":22.23}}"#
-            : #"{"data":{"usage_daily":1.5,"usage_weekly":4,"usage_monthly":12}}"#
-        return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
+        request.url.absoluteString == OpenRouterUsageClient.keyURL
+            ? OpenRouterFixtures.response(200, OpenRouterFixtures.standardKey)
+            : OpenRouterFixtures.response(403, OpenRouterFixtures.forbidden)
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {

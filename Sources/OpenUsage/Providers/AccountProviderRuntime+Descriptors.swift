@@ -130,12 +130,16 @@ extension AccountProviderRuntime {
             ]
         case .openrouter:
             [
-                .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
-                    .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+                .boundedDollars(key: "credits", provider: provider, title: "Credits", limit: 100)
+                    .exportingLimit("credits", unit: "usd")
                     .pinnedByDefault(),
+                .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
+                    .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .values(key: "today", provider: provider, title: "Today"),
                 .values(key: "week", provider: provider, title: "This Week"),
-                .values(key: "month", provider: provider, title: "This Month")
+                .values(key: "month", provider: provider, title: "This Month"),
+                .boundedDollars(key: "keyLimit", provider: provider, title: "Key Limit", limit: 100)
+                    .exportingLimit("keyLimit", unit: "usd")
             ]
         case .zai:
             [

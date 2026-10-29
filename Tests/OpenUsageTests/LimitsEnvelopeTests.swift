@@ -317,7 +317,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             "grok": ["weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
-            "openrouter": ["balance"],
+            "openrouter": ["credits", "balance", "keyLimit"],
             "zai": ["session", "weekly", "webSearches"]
         ]
 

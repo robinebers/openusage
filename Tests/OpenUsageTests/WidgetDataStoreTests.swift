@@ -43,14 +43,14 @@ final class WidgetDataStoreTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         await firstRead.release()
         var untracked = false
-        for _ in 0..<2000 where http.requests.count < 6 || active.withLock({ $0.now }) > 0 {
+        for _ in 0..<2000 where http.requests.count < 3 || active.withLock({ $0.now }) > 0 {
             if active.withLock({ $0.now }) > 0, !store.refreshingProviderIDs.contains(id) { untracked = true }
             try await Task.sleep(for: .milliseconds(1))
         }
         _ = await first.value
         for task in forced { _ = await task.value }
 
-        XCTAssertEqual(http.requests.count, 6, "three reads of two requests each")
+        XCTAssertEqual(http.requests.count, 3, "three reads of one request each")
         XCTAssertEqual(active.withLock { $0.most }, 1, "two reads of one account ran at once")
         XCTAssertFalse(untracked, "a read ran while the account was not marked refreshing")
     }
