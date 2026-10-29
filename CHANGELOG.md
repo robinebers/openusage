@@ -39,6 +39,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   because refreshes fail or a provider asked OpenUsage to wait.
 - Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
+- OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
+  workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

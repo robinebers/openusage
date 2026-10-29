@@ -67,7 +67,9 @@ final class DashboardLabelFitTests: XCTestCase {
             GrokUsageMapper.planName(from: HTTPResponse(statusCode: 200, headers: [:], body: try json(["subscription_tier_display": $0])))
         }
         let ollama = try ["free", "pro", "max"].compactMap { OllamaUsageMapper.plan(from: try json(["plan": $0])) }
-        let openRouter = [true, false].compactMap { OpenRouterUsageMapper.keyMetrics(from: ["is_free_tier": $0]).plan }
+        let openRouter = try [true, false].compactMap {
+            try OpenRouterUsageMapper.key(try json(["data": ["is_management_key": true, "is_free_tier": $0]])).plan
+        }
         let zai = try ["GLM Coding Lite", "GLM Coding Pro", "GLM Coding Max"].compactMap {
             ZAIUsageMapper.planName(from: try json(["data": [["productName": $0]]]))
         }

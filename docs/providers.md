@@ -16,7 +16,7 @@ report stays hidden.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
-| OpenRouter | Management API key | Balance, Today, This Week, This Month |
+| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, This Week, This Month, Key Limit |
 | Z.ai | API key | Session, Weekly, Web Searches |
 
 ## What you grant
@@ -107,10 +107,18 @@ Paste an API key from the [OpenCode console](https://opencode.ai/console). The c
 ## OpenRouter
 
 Paste a **Management** key from
-[openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys). A regular
-inference key cannot read the balance. The card reads `/api/v1/credits` for the balance and
-`/api/v1/key` for today's, this week's, and this month's spend. Balance is the default menu-bar star.
-The card's right-click menu adds a **Credits** link to
+[openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys) to see the
+whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
+bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
+your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
+workspaces don't count.
+
+A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, and **Key
+Limit** when the key has a credit limit. A daily, weekly, or monthly limit resets at midnight UTC, and
+weeks start on Monday. OpenRouter lets only a Management key read the credits, so a standard key's card
+has no Credits or Balance.
+
+Credits is the default menu-bar star. The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai

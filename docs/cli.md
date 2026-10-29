@@ -103,7 +103,7 @@ the account's right-click menu.
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
-| OpenRouter | `balance` |
+| OpenRouter | `credits`, `balance`, `keyLimit` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
 Antigravity's `argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.
