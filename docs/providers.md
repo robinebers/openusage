@@ -114,7 +114,8 @@ Its card shows the plan and says so, with no rows.
 
 Paste an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys). The card reads the
 balance API for the session, weekly, and monthly windows that your plan has, plus purchased credits,
-and the plan.
+and the plan. The card's right-click menu adds an **API Keys** link to
+[ollama.com/settings/keys](https://ollama.com/settings/keys).
 
 ## OpenCode
 
@@ -142,7 +143,9 @@ Credits is the default menu-bar star. The card's right-click menu adds a **Credi
 
 Paste an API key from the [Z.ai key list](https://z.ai/manage-apikey/apikey-list). The card reads the
 GLM Coding Plan subscription and quota endpoints for the session and weekly windows, the web-search
-quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the card says so.
+quota, and the plan. A key with no GLM Coding Plan has no quota to read, and the card says so. The
+card's right-click menu adds an **API Keys** link to the
+[Z.ai key list](https://z.ai/manage-apikey/apikey-list).
 
 ## Errors
 

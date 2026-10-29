@@ -50,6 +50,20 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
+    func testOllamaAndZaiLinksIncludeAPIKeys() {
+        let ollama = Provider(id: "ollama@1", kind: .ollama, accountLabel: "Personal")
+        let zai = Provider(id: "zai@1", kind: .zai, accountLabel: "Personal")
+
+        XCTAssertEqual(DashboardMenus.provider(DashboardFamily(id: "ollama", provider: ollama, accounts: [DashboardAccount(provider: ollama, lines: [])])).last, [
+            DashboardMenuItem(title: "Usage Dashboard", command: .open(URL(string: "https://ollama.com/settings")!)),
+            DashboardMenuItem(title: "API Keys", command: .open(URL(string: "https://ollama.com/settings/keys")!)),
+        ])
+        XCTAssertEqual(DashboardMenus.provider(DashboardFamily(id: "zai", provider: zai, accounts: [DashboardAccount(provider: zai, lines: [])])).last, [
+            DashboardMenuItem(title: "Usage Dashboard", command: .open(URL(string: "https://z.ai/manage-apikey/coding-plan/personal/my-plan")!)),
+            DashboardMenuItem(title: "API Keys", command: .open(URL(string: "https://z.ai/manage-apikey/apikey-list")!)),
+        ])
+    }
+
     func testACopilotOrganizationRowOpensItsBillingAndTheCardKeepsThePersonalPage() {
         let organization = AccountProviderRuntime.provider(for: Account(kind: .copilot, label: "acme", organization: "acme"))
         let seat = AccountProviderRuntime.provider(for: Account(kind: .copilot, label: "Personal"))
