@@ -48,6 +48,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
+- Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
+  and usage they carry stay off disk, and every read goes to the provider.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
