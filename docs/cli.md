@@ -16,6 +16,9 @@ the output, `codex@1a2b3c4d`) names that account. A provider kind (`claude`, `co
 `antigravity`, `copilot`, `devin`, `grok`, `ollama`, `opencode`, `openrouter`, `zai`) names every
 account of that kind. Anything else is an error. There is no aliasing or account-picking logic.
 
+`--force`, which made 0.7.x refresh first, is accepted for old scripts and does nothing. The command
+says so on stderr and prints what the app last fetched.
+
 ## Install on `PATH`
 
 In OpenUsage, open **Settings → Command Line** and click **Install…**. After the standard macOS

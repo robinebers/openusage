@@ -95,6 +95,32 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(payload["redeem_request_id"], "redeem-1", "the caller's idempotency key, verbatim")
     }
 
+    func testAClaimRefusedWithACutShortTokenRenewsTheSignInOnceAndRetries() async throws {
+        let http = RoutingHTTPClient { request in
+            switch request.url {
+            case CodexLogin.tokenURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"token-new","refresh_token":"refresh-new"}"#.utf8))
+            case _ where request.headers["Authorization"] == "Bearer token-123":
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            case CodexUsageClient.resetCreditsURL:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Self.listBody())
+            default:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Self.consumeBody(code: "reset"))
+            }
+        }
+        let runtime = try makeRuntime(http: http, credential: .oauth(OAuthTokens(
+            accessToken: "token-123", refreshToken: "refresh-123", extras: ["chatgpt_account_id": "acct-456"]
+        )))
+
+        let outcome = await runtime.claimCodexResetCredit(expiringAt: Self.expiry, redeemRequestID: "redeem-1")
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(http.requests.map(\.url), [
+            CodexUsageClient.resetCreditsURL, CodexLogin.tokenURL, CodexUsageClient.resetCreditsURL, CodexUsageClient.consumeResetCreditURL
+        ])
+        XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer token-new")
+    }
+
     func testClaimWithNoMatchingCreditIsNoCreditWithoutConsuming() async throws {
         let http = makeHTTP(listBody: Data(#"{"credits": [], "available_count": 0}"#.utf8))
         let runtime = try makeRuntime(http: http)

@@ -10,7 +10,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   databases, or logs. Sign in to each account from the new **Accounts** screen instead.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
   and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
-- iCloud sync of settings and layout.
+- iCloud sync of usage history (daily tokens and spend).
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
@@ -20,8 +20,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
-- Accounts: replace an API-key account's key from its page; the new key is saved only once a usage
-  read accepts it.
+- Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
+  once a usage read accepts it.
 - Dashboard: cards per provider with a section per account; right-click menus for reorder, hide,
   star, undo, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.
@@ -58,7 +58,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
 - Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
   manager's token.
-- The `openusage` command, which now prints what the app last fetched and nothing computed.
+- The `openusage` command, which now prints what the app last fetched and nothing computed. `--force`
+  is accepted and does nothing.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 - Z.ai's notice when a key has no GLM Coding Plan.
 - Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.

@@ -20,7 +20,7 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
    - **Device code** (Copilot, Grok): the sheet shows a code. **Copy Code**, click **Open Browser**,
      and enter the code. The sheet closes when the provider confirms.
    - **API key** (Ollama, OpenCode, OpenRouter, Z.ai): create a key on the page the sheet links to,
-     paste it, and click **Add Account**.
+     paste it, and click **Add Account**. The key is added only once a usage read accepts it.
    - **Organization Billing** (Copilot): enter the organization and a token from one of its owners or
      billing managers, and click **Add Account**. The account is named after the organization, and the
      same organization is not added twice.
@@ -56,7 +56,8 @@ bar; see [Menu bar](menu-bar.md).
 ## Remove an account
 
 **Remove Account…** sits at the bottom of the account's page. Removing an account deletes its sign-in
-from this Mac. You can add the account again at any time.
+from this Mac. You can add the account again at any time. If the Keychain refuses to delete the
+sign-in, the account stays and its page shows why.
 
 ## Where things are stored
 

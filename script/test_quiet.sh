@@ -17,7 +17,7 @@ before="$(front_app)"
 seen="$(mktemp -t test_quiet)"
 is_test_process() {
   case "$1" in
-    xctest|OpenUsage*|swift-*) return 0 ;;
+    xctest|swift-*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -32,6 +32,11 @@ is_test_process() {
 watcher=$!
 disown "$watcher"
 trap 'kill "$watcher" 2>/dev/null; rm -f "$seen"' EXIT
+
+# The Swift Build layout links the test bundle against PackageFrameworks/ but builds Sparkle one level up.
+frameworks="$(dirname "$0")/../.build/out/Products/Debug/PackageFrameworks"
+mkdir -p "$frameworks"
+[ -L "$frameworks/Sparkle.framework" ] || ln -s ../Sparkle.framework "$frameworks/Sparkle.framework"
 
 nice -n 19 swift test -j 2 "$@"
 status=$?

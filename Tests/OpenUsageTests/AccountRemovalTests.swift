@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import XCTest
 @testable import OpenUsage
 
@@ -46,6 +47,19 @@ final class AccountRemovalTests: XCTestCase {
         XCTAssertTrue(container.layout.displayGroups.isEmpty)
     }
 
+    func testAFailedRemovalKeepsTheAccountAndExplainsTheKeychainError() {
+        let accounts = AccountStore(defaults: isolatedDefaults(), vault: UndeletableVault())
+        let account = accounts.add(kind: .ollama, label: "Ollama", credential: .apiKey("key"))
+
+        accounts.remove(account.id)
+
+        XCTAssertEqual(accounts.accounts.map(\.id), [account.id])
+        XCTAssertEqual(
+            accounts.lastError,
+            "OpenUsage couldn't use its Keychain item for this account (User interaction is not allowed.)."
+        )
+    }
+
     func testTheVaultOnlyUpdatesAnExistingCredential() throws {
         let vault = InMemoryCredentialVault()
         let id = UUID()
@@ -59,4 +73,13 @@ final class AccountRemovalTests: XCTestCase {
         try vault.update(.apiKey("second"), for: id)
         XCTAssertEqual(try vault.load(id), .apiKey("second"))
     }
+}
+
+private final class UndeletableVault: CredentialVault {
+    private let stored = InMemoryCredentialVault()
+
+    func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
+    func save(_ credential: AccountCredential, for id: UUID) throws { try stored.save(credential, for: id) }
+    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
+    func delete(_ id: UUID) throws { throw KeychainVaultError.status(errSecInteractionNotAllowed) }
 }

@@ -82,10 +82,12 @@ extension AccountProviderRuntime {
 
         let response: HTTPResponse
         do {
-            response = try await ClaudeUsageClient(httpClient: http).claimResetGrant(
-                accessToken: tokens.accessToken, organizationUUID: organizationUUID,
-                grantID: grantID, requestID: requestID
-            )
+            response = try await authorizedRead(.oauth(tokens), grant: ClaudeLogin.refresh) { tokens in
+                try await ClaudeUsageClient(httpClient: http).claimResetGrant(
+                    accessToken: tokens.accessToken, organizationUUID: organizationUUID,
+                    grantID: grantID, requestID: requestID
+                )
+            }.response
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: request failed: \(error.localizedDescription)")
             session.resetGrants.unsettledClaim = (grantID, requestID)

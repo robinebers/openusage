@@ -8,8 +8,12 @@ protocol CredentialVault: Sendable {
     func delete(_ id: UUID) throws
 }
 
-enum CredentialVaultError: Error {
+enum CredentialVaultError: LocalizedError {
     case missingCredential
+
+    var errorDescription: String? {
+        "This account's sign-in is missing from the Keychain. Remove the account and add it again."
+    }
 }
 
 struct KeychainCredentialVault: CredentialVault {
@@ -66,6 +70,14 @@ struct KeychainCredentialVault: CredentialVault {
     }
 }
 
-enum KeychainVaultError: Error {
+enum KeychainVaultError: LocalizedError {
     case status(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .status(let status):
+            let reason = SecCopyErrorMessageString(status, nil) as String? ?? "error \(status)"
+            return "OpenUsage couldn't use its Keychain item for this account (\(reason))."
+        }
+    }
 }

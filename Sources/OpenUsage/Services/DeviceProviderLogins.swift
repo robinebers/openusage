@@ -116,12 +116,19 @@ struct CursorLogin: ProviderLogin {
 
 struct APIKeyLogin: ProviderLogin {
     let kind: ProviderKind
+    var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         var iterator = pastedCode.makeAsyncIterator()
         guard let value = await iterator.next() else { throw LoginError.cancelled }
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw LoginError.invalidCode }
+        let account = Account(kind: kind, label: kind.displayName)
+        do {
+            try await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http).validate(.apiKey(key))
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
+        }
         return (kind.displayName, .apiKey(key))
     }
 }

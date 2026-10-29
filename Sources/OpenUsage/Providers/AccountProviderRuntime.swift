@@ -13,6 +13,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     var cursorMembershipRead = SecondaryRead<String>()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
+    /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
+    /// the same one, so a caller that needs a renewal while one is in flight waits for its tokens, and a
+    /// caller whose tokens another renewal already replaced takes the stored ones.
+    private var renewal: Task<OAuthTokens, Error>?
 
     init(
         account: Account,
@@ -123,7 +127,7 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func freshTokens(
         _ credential: AccountCredential,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         guard tokens.needsRefresh(at: now()), let expiresAt = tokens.expiresAt else { return tokens }
@@ -141,7 +145,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// other answer renews.
     func authorizedRead(
         _ credential: AccountCredential,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant,
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant,
         read: (OAuthTokens) async throws -> HTTPResponse
     ) async throws -> (tokens: OAuthTokens, response: HTTPResponse) {
         var tokens = try await freshTokens(credential, grant: grant)
@@ -155,16 +159,23 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     private func renewedTokens(
         _ tokens: OAuthTokens,
-        grant: (String, any HTTPClient, Date) async throws -> OAuthGrant
+        grant: @escaping @Sendable (String, any HTTPClient, Date) async throws -> OAuthGrant
     ) async throws -> OAuthTokens {
+        if let renewal { return try await renewal.value }
         guard let refreshToken = tokens.refreshToken else { return tokens }
-        var tokens = tokens
-        let granted = try await grant(refreshToken, http, now())
-        tokens.accessToken = granted.accessToken
-        if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
-        tokens.expiresAt = granted.expiresAt
-        try await replaceCredential(.oauth(tokens))
-        return tokens
+        let renewal = Task {
+            defer { self.renewal = nil }
+            if case .oauth(let stored)? = try? await loadCredential(), stored.accessToken != tokens.accessToken { return stored }
+            var tokens = tokens
+            let granted = try await grant(refreshToken, http, now())
+            tokens.accessToken = granted.accessToken
+            if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
+            tokens.expiresAt = granted.expiresAt
+            try await replaceCredential(.oauth(tokens))
+            return tokens
+        }
+        self.renewal = renewal
+        return try await renewal.value
     }
 
     private func refreshCodex(_ credential: AccountCredential) async throws -> ProviderUsage {
