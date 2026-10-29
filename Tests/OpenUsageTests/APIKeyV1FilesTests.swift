@@ -42,6 +42,24 @@ final class APIKeyV1FilesTests: XCTestCase {
         XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer sk-or-revoked"])
     }
 
+    func testAKeyCheckThatCouldNotReachTheProviderIsTriedAgainOnTheNextLaunch() async throws {
+        let home = try makeHome(openRouter: #"{"apiKey":"sk-or-saved"}"#)
+        let (store, vault) = makeStore()
+        let defaults = isolatedDefaults()
+        let status = TestSwitch(503)
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: status.value, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
+
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+        XCTAssertTrue(store.accounts.isEmpty)
+
+        status.value = 200
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+
+        let account = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(store.accounts.map(\.kind), [.openrouter])
+        XCTAssertEqual(try vault.load(account.id), .apiKey("sk-or-saved"))
+    }
+
     func testARemovedImportedAccountDoesNotComeBack() async throws {
         let home = try makeHome(openRouter: #"{"apiKey":"sk-or-saved"}"#)
         let (store, _) = makeStore()
