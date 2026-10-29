@@ -41,6 +41,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
+- OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 
 ## v0.7.16
 
