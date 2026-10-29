@@ -9,13 +9,14 @@ import Observation
 final class CLIProxyHubSync {
     enum Status: Equatable {
         case checking
-        case synced(unsupported: Int)
+        case synced(unsupported: Int, alreadyAdded: Int)
         case failed(String)
     }
 
     private(set) var statuses: [UUID: Status] = [:]
     @ObservationIgnored private var syncedAt: [UUID: Date] = [:]
     @ObservationIgnored private var inFlight: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var claudeIdentities: [String: String] = [:]
     @ObservationIgnored private let accounts: AccountStore
     @ObservationIgnored private let client: CLIProxyHubClient
     @ObservationIgnored private let now: () -> Date
@@ -43,7 +44,7 @@ final class CLIProxyHubSync {
         try Task.checkCancellation()
         guard !accounts.hubs.contains(where: { $0.url == url }) else { return }
         try accounts.addHub(hub, key: key)
-        record(logins, for: hub.id)
+        await record(logins, for: hub)
     }
 
     /// Saves a new management key only once the hub accepts it, then lets the hub be called again.
@@ -53,7 +54,7 @@ final class CLIProxyHubSync {
         let logins = try await client.logins(hubID: UUID(), url: hub.url, key: key)
         try accounts.replaceHubKey(key, for: hubID)
         await client.gate.reopen(hubID)
-        record(logins, for: hubID)
+        await record(logins, for: hub)
     }
 
     func remove(_ hubID: UUID) {
@@ -90,17 +91,46 @@ final class CLIProxyHubSync {
             guard case .apiKey(let key) = try accounts.credential(for: hubID) else {
                 throw ProviderError.unavailable("The management key for this hub is missing. Replace it.")
             }
-            record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hubID)
+            await record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hub)
         } catch {
             guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
             statuses[hubID] = .failed(error.localizedDescription)
         }
     }
 
-    private func record(_ logins: [HubLogin], for hubID: UUID) {
-        guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
-        accounts.mirror(logins, from: hubID)
-        syncedAt[hubID] = now()
-        statuses[hubID] = .synced(unsupported: logins.count { $0.kind == nil })
+    private func record(_ logins: [HubLogin], for hub: CLIProxyHub) async {
+        let identified = await identifyingClaude(logins, on: hub)
+        guard accounts.hubs.contains(where: { $0.id == hub.id }) else { return }
+        let alreadyAdded = accounts.mirror(identified, from: hub.id)
+        syncedAt[hub.id] = now()
+        statuses[hub.id] = .synced(unsupported: logins.count { $0.kind == nil }, alreadyAdded: alreadyAdded)
+    }
+
+    /// The listing with each new Claude login's identity, read once through the hub, while a Claude
+    /// account signed in directly could be the same login. The listing has no Claude identity, and an
+    /// email can belong to two Claude organizations. A login whose identity can't be read is left out
+    /// until the next read, so it is never added twice.
+    private func identifyingClaude(_ logins: [HubLogin], on hub: CLIProxyHub) async -> [HubLogin] {
+        guard accounts.accounts.contains(where: { $0.kind == .claude && $0.hub == nil }) else { return logins }
+        let mirrored = Set(accounts.accounts(onHub: hub.id).compactMap { $0.hub?.loginID })
+        var identified: [HubLogin] = []
+        for var login in logins {
+            if login.kind == .claude, login.identity == nil, !mirrored.contains(login.id) {
+                let key = "\(hub.id)/\(login.id)/\(login.authIndex)"
+                if claudeIdentities[key] == nil {
+                    let tunnel = HubTunnel(link: HubLink(hub: hub, login: login), kind: .claude, vault: accounts.credentialVault, client: client)
+                    do {
+                        let response = try await ClaudeUsageClient(httpClient: tunnel).fetchProfile(accessToken: CLIProxyHubClient.tokenPlaceholder)
+                        claudeIdentities[key] = try ClaudeUsageClient.decodeProfile(response).identity
+                    } catch {
+                        AppLog.warn(LogTag.auth("cliproxy"), "\(hub.host) Claude login profile read failed; adding it after the next read: \(error.localizedDescription)")
+                        continue
+                    }
+                }
+                login.identity = claudeIdentities[key]
+            }
+            identified.append(login)
+        }
+        return identified
     }
 }
