@@ -86,7 +86,11 @@ final class AppContainer {
         if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
-        try await runtime.validate(credential)
+        do {
+            try await runtime.validate(credential)
+        } catch ProviderError.signInExpired(let kind) {
+            throw ProviderError.unavailable("\(kind.displayName) rejected the API key.")
+        }
         try accounts.replaceCredential(credential, for: runtime.account.id)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }

@@ -55,7 +55,7 @@ final class AccountChangeTests: XCTestCase {
             try await container.replaceKey("refused-key", for: personal.cardID)
             XCTFail("a refused key was accepted")
         } catch {
-            XCTAssertEqual(error.localizedDescription, "OpenRouter rejected the API key. Replace it on the account's page.")
+            XCTAssertEqual(error.localizedDescription, "OpenRouter rejected the API key.")
         }
         XCTAssertEqual(try vault.load(personal.id), .apiKey("old-key"))
 
