@@ -87,7 +87,8 @@ final class DuplicateLoginTests: XCTestCase {
         let store = makeStore()
         store.add(kind: .openrouter, label: "Personal", credential: .apiKey("sk-or-1"))
 
-        let flow = AddAccountFlow(store: store)
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
         flow.apiKey = " sk-or-1 "
         flow.addKey()

@@ -48,7 +48,8 @@ final class AddAccountFlowTests: XCTestCase {
     func testAPIKeyIsSavedUnderTheTypedName() async throws {
         let vault = InMemoryCredentialVault()
         let store = makeStore(vault: vault)
-        let flow = AddAccountFlow(store: store)
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
         XCTAssertFalse(flow.isWorking)
         XCTAssertFalse(flow.canAddKey)
@@ -60,6 +61,21 @@ final class AddAccountFlowTests: XCTestCase {
         let account = try XCTUnwrap(store.accounts.first)
         XCTAssertEqual(account.label, "Work")
         XCTAssertEqual(try vault.load(account.id), .apiKey("sk-or-key"))
+        XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer sk-or-key"])
+    }
+
+    func testARejectedAPIKeyIsNotAdded() async throws {
+        let store = makeStore()
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 401, headers: [:], body: Data()) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
+        flow.choose(.openrouter)
+
+        flow.apiKey = "sk-or-typo"
+        flow.addKey()
+        try await waitUntil { flow.errorMessage != nil }
+
+        XCTAssertEqual(flow.errorMessage, "OpenRouter rejected the API key.")
+        XCTAssertTrue(store.accounts.isEmpty)
     }
 
     func testChoosingAProviderGoesStraightToItsStep() async throws {
