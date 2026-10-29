@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import SwiftUI
 import XCTest
 import os
 @testable import OpenUsage
@@ -190,6 +191,71 @@ final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         credentials.removeValue(forKey: id)
+    }
+}
+
+@MainActor
+func scrollViews(in view: NSView) -> [NSScrollView] {
+    [view as? NSScrollView].compactMap { $0 } + view.subviews.flatMap(scrollViews)
+}
+
+struct HostedPopover {
+    let panel: QuietMenuBarPanel
+    let host: NSView
+    let popover: PopoverState
+    let defaults: UserDefaults
+
+    @MainActor
+    func open() async throws {
+        popover.popoverShown = true
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .seconds(1))
+    }
+}
+
+extension QuietWindowTestCase {
+    /// The popover as `StatusItemController` hosts it, on its dashboard, one Claude account of two rows
+    /// per label, in an offscreen panel. Motion is on whatever the Mac's Reduce Motion setting (the CI
+    /// runner image turns it on), since the tests watch the slide and the morph. The caller installs a
+    /// height bridge on `MenuBarPopover`, cleared when the test ends, and then calls `open()`.
+    func hostPopover(accounts labels: [String]) async throws -> HostedPopover {
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let container = AppContainer.forTesting(accounts: store, defaults: defaults)
+        let ids = labels.map { store.add(kind: .claude, label: $0, credential: .apiKey("key")).cardID }
+        for _ in 0..<400 where container.layout.displayGroups.count < ids.count { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(container.layout.displayGroups.count, ids.count, "the accounts never reached the dashboard")
+        for id in ids {
+            container.dataStore.snapshots[id] = ProviderSnapshot(
+                providerID: id, displayName: "Claude", plan: "Max 20x",
+                lines: ["Session", "Weekly"].map {
+                    .progress(label: $0, used: 30, limit: 100, format: .percent, resetsAt: Date().addingTimeInterval(3600), periodDurationMs: 5 * 3_600_000)
+                }
+            )
+        }
+        let hosting = NSHostingController(rootView: AnyView(
+            DashboardView()
+                .environment(\.reduceAnimations, false)
+                .environment(container)
+                .environment(container.layout)
+                .environment(container.popover)
+                .environment(container.dataStore)
+                .environment(container.renaming)
+                .environment(UpdaterController())
+                .environment(\.colorScheme, .light)
+        ))
+        let panel = QuietMenuBarPanel(contentRect: NSRect(x: 0, y: 0, width: PanelMetrics.width, height: PanelHeightController.defaultHeight))
+        panel.appearance = NSAppearance(named: .aqua)
+        let host = hosting.view
+        host.wantsLayer = true
+        host.layerContentsRedrawPolicy = .duringViewResize
+        panel.contentViewController = hosting
+        addTeardownBlock {
+            MenuBarPopover.applyHeight = nil
+            MenuBarPopover.clampHeight = nil
+        }
+        QuietTestProcess.show(panel, in: self)
+        return HostedPopover(panel: panel, host: host, popover: container.popover, defaults: defaults)
     }
 }
 
