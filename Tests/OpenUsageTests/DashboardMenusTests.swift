@@ -50,6 +50,23 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
+    func testACopilotOrganizationRowOpensItsBillingAndTheCardKeepsThePersonalPage() {
+        let organization = AccountProviderRuntime.provider(for: Account(kind: .copilot, label: "acme", organization: "acme"))
+        let seat = AccountProviderRuntime.provider(for: Account(kind: .copilot, label: "Personal"))
+        let family = DashboardFamily(id: "copilot", provider: organization, accounts: [
+            DashboardAccount(provider: organization, lines: []), DashboardAccount(provider: seat, lines: []),
+        ])
+
+        XCTAssertEqual(DashboardMenus.account(family.accounts[0], status: nil, hasHiddenMetrics: false).last, [
+            DashboardMenuItem(title: "Organization Billing", command: .open(URL(string: "https://github.com/organizations/acme/settings/billing")!)),
+        ])
+        XCTAssertEqual(DashboardMenus.account(family.accounts[1], status: nil, hasHiddenMetrics: false).last?.map(\.title), ["Share Screenshot"])
+        XCTAssertEqual(DashboardMenus.provider(family).last, [
+            DashboardMenuItem(title: "Status Page", command: .open(URL(string: "https://www.githubstatus.com/")!)),
+            DashboardMenuItem(title: "Usage Dashboard", command: .open(URL(string: "https://github.com/settings/billing")!)),
+        ])
+    }
+
     func testThePlainAccountMenu() {
         let menu = DashboardMenus.account(account(), status: nil, hasHiddenMetrics: false)
         XCTAssertEqual(commands(menu), [

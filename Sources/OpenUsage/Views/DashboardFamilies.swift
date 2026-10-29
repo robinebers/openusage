@@ -53,6 +53,6 @@ extension Provider {
 
     var hidingEmail: Provider {
         guard isNamedByEmail else { return self }
-        return Provider(id: id, kind: kind)
+        var copy = self; copy.accountLabel = nil; return copy
     }
 }
