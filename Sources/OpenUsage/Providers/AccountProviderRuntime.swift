@@ -10,6 +10,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
+    var cursorMembershipRead = SecondaryRead<String>()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
 
@@ -37,6 +38,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
+        cursorMembershipRead.forget()
         claude.forcedReadsPending = true
     }
 

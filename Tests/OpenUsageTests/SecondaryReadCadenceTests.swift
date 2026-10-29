@@ -77,14 +77,31 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.total, 13)
     }
 
-    func testCursorReadsThePlanHourly() async throws {
-        let token = "e30." + Data(#"{"sub":"auth0|user_fake"}"#.utf8).base64EncodedString()
-            .replacingOccurrences(of: "=", with: "") + ".sig"
-        let counts = try await hourOfRefreshes(.cursor, credential: .oauth(OAuthTokens(
-            accessToken: token, refreshToken: "refresh", expiresAt: start.addingTimeInterval(30 * 86_400)
-        ))) { _ in Self.ok(#"{"planUsage":{"limit":40000,"remaining":30000,"totalPercentUsed":25},"enabled":true}"#) }
+    func testCursorReadsThePlanAndTheMembershipHourly() async throws {
+        let counts = try await hourOfRefreshes(.cursor, credential: cursorCredential) { request in
+            Self.cursor(request, membership: "pro", usage: "{\(Self.cursorPools)}")
+        }
         XCTAssertEqual(counts.perHour[CursorUsageClient.usageURL.path], 12)
         XCTAssertEqual(counts.perHour[CursorUsageClient.planURL.path], 1)
+        XCTAssertEqual(
+            counts.perHour[CursorUsageClient.usageSummaryURL.path], 1, "a personal seat reads usage-summary for its membership only"
+        )
+        XCTAssertEqual(counts.nextHour[CursorUsageClient.planURL.path], 1, "read again once the hour is up")
+        XCTAssertEqual(counts.nextHour[CursorUsageClient.usageSummaryURL.path], 1, "read again once the hour is up")
+        XCTAssertEqual(counts.lastPlan, "Pro")
+    }
+
+    func testACursorOrgSeatReadsUsageSummaryEveryRefreshOnlyForExtraUsageItsMainReadLacks() async throws {
+        for (usage, perHour) in [
+            ("{\(Self.cursorPools)}", 12),
+            (#"{\#(Self.cursorPools),"spendLimitUsage":{"individualLimit":5000,"individualRemaining":4000}}"#, 1)
+        ] {
+            let counts = try await hourOfRefreshes(.cursor, credential: cursorCredential) { request in
+                Self.cursor(request, membership: "enterprise", usage: usage)
+            }
+            XCTAssertEqual(counts.perHour[CursorUsageClient.usageSummaryURL.path], perHour, usage)
+            XCTAssertEqual(counts.lastPlan, "Enterprise", usage)
+        }
     }
 
     func testAntigravityReadsCodeAssistHourly() async throws {
@@ -102,6 +119,33 @@ final class SecondaryReadCadenceTests: XCTestCase {
 
         let ollama = try await passThenForcedRefresh(.ollama, credential: .apiKey("key")) { _ in Self.ok("{}") }
         XCTAssertEqual(ollama.map { $0[OllamaUsageClient.accountPath] }, [1, 2])
+
+        let cursor = try await passThenForcedRefresh(.cursor, credential: cursorCredential) { request in
+            Self.cursor(request, membership: "pro", usage: #"{"planUsage":{"totalPercentUsed":25},"enabled":true}"#)
+        }
+        XCTAssertEqual(cursor.map { $0[CursorUsageClient.usageSummaryURL.path] }, [1, 2])
+    }
+
+    private var cursorCredential: AccountCredential {
+        let token = "e30." + Data(#"{"sub":"auth0|user_fake"}"#.utf8).base64EncodedString()
+            .replacingOccurrences(of: "=", with: "") + ".sig"
+        return .oauth(OAuthTokens(accessToken: token, refreshToken: "refresh", expiresAt: start.addingTimeInterval(30 * 86_400)))
+    }
+
+    nonisolated private static let cursorPools = #""planUsage":{"autoPercentUsed":20,"apiPercentUsed":40,"totalPercentUsed":25},"enabled":true"#
+
+    nonisolated private static func cursor(_ request: HTTPRequest, membership: String, usage: String) -> HTTPResponse {
+        switch request.url {
+        case CursorUsageClient.planURL:
+            return ok(#"{"planInfo":{"planName":"Pro"}}"#)
+        case CursorUsageClient.usageSummaryURL:
+            return ok(#"""
+            {"billingCycleStart":"2026-10-01T00:00:00Z","billingCycleEnd":"2026-11-01T00:00:00Z",
+             "membershipType":"\#(membership)","individualUsage":{"onDemand":{"enabled":true,"used":100,"limit":1000}}}
+            """#)
+        default:
+            return ok(usage)
+        }
     }
 
     private func passThenForcedRefresh(

@@ -20,8 +20,8 @@ its name and in the footer.
 
 Usage is read on every refresh. Reads that rarely change are read at most once an hour and reused in
 between: the plan name (Claude, Cursor, Grok, Ollama, Z.ai, and Antigravity's Cloud Code project),
-ChatGPT's list of reset credits with their expiry times (the count still updates every refresh), and
-Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
+Cursor's membership (Enterprise, Team, or a personal plan), ChatGPT's list of reset credits with their
+expiry times (the count still updates every refresh), and Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.
 

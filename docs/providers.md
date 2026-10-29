@@ -70,6 +70,12 @@ Sign in through cursor.com in your browser. The card reads Cursor's dashboard AP
 Cursor Models (auto), Other Models (API), on-demand Extra Usage, Grok Bot, Requests, and Credits, and
 the plan. Cursor stores the sign-in's expiry and renews it before then.
 
+Cursor's plan endpoint says Pro for some Enterprise and Team seats. Once an hour, together with the
+plan, the card reads Cursor's `usage-summary`, which names the seat's membership. A seat whose
+membership is Enterprise or Team shows that name where the plan endpoint says Pro or nothing. Any other
+plan name, such as Ultra, stays. When the seat's usage read has no Extra Usage, the card takes Extra
+Usage from `usage-summary` and reads it on every refresh.
+
 ## Antigravity
 
 Sign in with Google in your browser. The card reads the Cloud Code quota API for the Gemini and Claude
