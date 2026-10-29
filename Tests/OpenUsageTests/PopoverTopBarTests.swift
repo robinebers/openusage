@@ -5,6 +5,9 @@ import XCTest
 
 @MainActor
 final class PopoverTopBarTests: QuietWindowTestCase {
+    /// Before macOS 26 the + is an AppKit `NSButton`: its cell tracks a mouse-down in a modal loop that
+    /// a mouse-up sent after `sendEvent` returns never reaches, so there the test presses it with
+    /// `performClick`.
     func testTheAccountsBarsTrailingButtonOpensAddAccount() async throws {
         let defaults = isolatedDefaults()
         let container = AppContainer.forTesting(
@@ -27,13 +30,22 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         XCTAssertNil(window.attachedSheet)
 
         let point = NSPoint(x: host.bounds.width - PanelMetrics.margin - 14, y: host.bounds.height - 22)
-        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-            window.sendEvent(NSEvent.mouseEvent(
-                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
-                pressure: type == .leftMouseDown ? 1 : 0
-            )!)
-            try await Task.sleep(for: .milliseconds(50))
+        if #available(macOS 26, *) {
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                window.sendEvent(NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                    pressure: type == .leftMouseDown ? 1 : 0
+                )!)
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        } else {
+            let target = host.convert(point, from: nil)
+            let button = try XCTUnwrap(
+                hostedViews(in: host).compactMap { $0 as? NSButton }.first { host.convert($0.bounds, from: $0).contains(target) },
+                "no button under the +"
+            )
+            button.performClick(nil)
         }
         try await Task.sleep(for: .milliseconds(800))
 
@@ -74,7 +86,7 @@ final class PopoverTopBarTests: QuietWindowTestCase {
         let slot: CGFloat = 28
         let leading = CGRect(x: PanelMetrics.margin, y: (height - slot) / 2, width: slot, height: slot)
         let trailing = CGRect(x: PanelMetrics.width - PanelMetrics.margin - slot, y: leading.minY, width: slot, height: slot)
-        let controls = hostedViews(in: host).map { host.convert($0.bounds, from: $0) }.filter { !$0.isEmpty && $0.width < PanelMetrics.width }
+        let controls = hostedViews(in: host).filter { $0.layer?.contents == nil }.map { host.convert($0.bounds, from: $0) }.filter { !$0.isEmpty && $0.width < PanelMetrics.width }
         XCTAssertTrue(controls.contains { $0 == leading }, "no Back button filling the leading slot: \(controls)")
         XCTAssertFalse(controls.contains { $0.intersects(trailing) }, "a control sits in the trailing slot: \(controls)")
 
@@ -91,7 +103,8 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     }
 
     /// Every AppKit view SwiftUI hosts under `view`: its own containers at the full width, and a focus
-    /// ring, key-view proxy and tooltip anchor sized to each control.
+    /// ring, key-view proxy and tooltip anchor sized to each control. Before macOS 26 SwiftUI also hosts
+    /// some images and text in views that draw them, which the test tells apart by their layer contents.
     private func hostedViews(in view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + hostedViews(in: $0) }
     }
