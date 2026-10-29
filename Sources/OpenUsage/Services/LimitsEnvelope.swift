@@ -49,9 +49,8 @@ enum LimitsEnvelope {
             displayName = provider.fullName
             plan = snapshot.plan
             fetchedAt = OpenUsageISO8601.string(from: snapshot.refreshedAt)
-            let expiry = snapshot.refreshedAt.addingTimeInterval(RefreshSetting.interval)
-            expiresAt = OpenUsageISO8601.string(from: expiry)
-            stale = generatedAt >= expiry
+            expiresAt = OpenUsageISO8601.string(from: snapshot.staleAt)
+            stale = snapshot.isStale(at: generatedAt)
 
             var resources: [String: WireResource] = [:]
             for descriptor in descriptors {

@@ -28,6 +28,10 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines.first { $0.label == label }
     }
 
+    var staleAt: Date { refreshedAt.addingTimeInterval(RefreshSetting.stalenessThreshold) }
+
+    func isStale(at date: Date) -> Bool { date >= staleAt }
+
     init(provider: Provider, plan: String?, lines: [MetricLine], notice: String? = nil, refreshedAt: Date = Date()) {
         self.init(providerID: provider.id, displayName: provider.displayName, plan: plan, lines: lines, notice: notice,
                   refreshedAt: refreshedAt)

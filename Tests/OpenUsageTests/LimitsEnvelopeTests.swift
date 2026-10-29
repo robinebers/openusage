@@ -14,7 +14,7 @@ final class LimitsEnvelopeTests: XCTestCase {
           "displayName": "ChatGPT · Work",
           "plan": "Pro 200",
           "fetchedAt": "2026-07-13T01:39:30.000Z",
-          "expiresAt": "2026-07-13T01:44:30.000Z",
+          "expiresAt": "2026-07-13T01:49:30.000Z",
           "stale": false,
           "resources": {
             "session": {
@@ -121,7 +121,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(root["generatedAt"] as? String, "2026-07-13T01:40:00.000Z")
         XCTAssertEqual(providerJSON["plan"] as? String, "Pro 200")
         XCTAssertEqual(providerJSON["fetchedAt"] as? String, "2026-07-13T01:39:30.000Z")
-        XCTAssertEqual(providerJSON["expiresAt"] as? String, "2026-07-13T01:44:30.000Z")
+        XCTAssertEqual(providerJSON["expiresAt"] as? String, "2026-07-13T01:49:30.000Z")
         XCTAssertEqual(providerJSON["stale"] as? Bool, false)
         XCTAssertEqual(sessionJSON["kind"] as? String, "consumption")
         XCTAssertEqual(sessionJSON["unit"] as? String, "percent")
@@ -137,7 +137,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertNil(sessionJSON["label"])
 
         var expired = input
-        expired.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.interval)
+        expired.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.stalenessThreshold)
         let expiredRoot = try json(LimitsEnvelope.encode(expired))
         let expiredProvider = try XCTUnwrap((expiredRoot["providers"] as? [String: Any])?["codex"] as? [String: Any])
         XCTAssertEqual(expiredProvider["stale"] as? Bool, true)

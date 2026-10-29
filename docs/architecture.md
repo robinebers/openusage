@@ -80,7 +80,9 @@ library. `UsageReader` builds a `WidgetRegistry` from the stored accounts (`Acco
 the same `AccountProviderRuntime.provider(for:)` and `widgetDescriptors(for:)` the app's runtimes use,
 and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v1` JSON that
 `exportingLimit` declares resource by resource. Each entry's `displayName` is the account's
-`Provider.fullName`. The command never refreshes and never opens the Keychain.
+`Provider.fullName`, and its `stale` and `expiresAt` come from `ProviderSnapshot.isStale(at:)` and
+`staleAt`, the rule `WidgetDataStore.stalenessHint` uses for the account's clock. The command never
+refreshes and never opens the Keychain.
 `CommandLineToolInstaller` is the Settings-side symlink installer.
 
 ## Views
