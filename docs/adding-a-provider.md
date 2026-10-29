@@ -27,7 +27,8 @@ request. Return the account's label (an email or the provider's account name) an
 
 Create `Sources/OpenUsage/Providers/<Name>/` with:
 
-- `<Name>UsageClient`: the HTTP calls, through the injected `HTTPClient`. Throw a `ProviderError`
+- `<Name>UsageClient`: the HTTP calls, through the injected `HTTPClient`, which also sends them
+  through the user's [proxy](proxy.md). Throw a `ProviderError`
   (`signInExpired`, `connectionFailed`, `invalidResponse`, `requestFailed`, or `unavailable` with the
   account-specific reason); `ProviderError.requireSuccess` triages a non-2xx for you. Never log a
   credential or a response body.

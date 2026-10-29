@@ -42,7 +42,13 @@ protocol HTTPClient: Sendable {
 }
 
 struct URLSessionHTTPClient: HTTPClient {
-    private static let session = URLSession(configuration: .default)
+    private static let session = URLSession(configuration: sessionConfiguration(proxy: ProxyConfig.load()))
+
+    static func sessionConfiguration(proxy: ProxyConfig?) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.default
+        configuration.proxyConfigurations = proxy.map { [$0.proxyConfiguration] } ?? []
+        return configuration
+    }
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout)

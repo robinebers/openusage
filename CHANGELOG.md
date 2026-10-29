@@ -14,7 +14,6 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The log file and the Log Level setting. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
-- The proxy setting.
 - The Devin and Pi providers, which have no account sign-in.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
@@ -46,6 +45,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
+- The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
+  when the file is invalid.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
