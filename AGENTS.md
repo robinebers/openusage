@@ -45,7 +45,8 @@ on `gh-pages`). Cut releases with the release-swift skill.
   or accounts from other tools, and never read their files, Keychain items, SQLite databases, or
   environment variables.
 - Each account has one provider runtime. The runtime calls the provider API and maps its response to
-  dashboard metrics. Do not add log scanning, spend estimates, or external pricing.
+  dashboard metrics. Do not add log scanning, spend estimates, or external pricing; the one exception
+  is ChatGPT's credits, priced at 4¢ each in `CodexUsageMapper`.
 - The dashboard shows provider-supplied limits and dollar values only. Provider and account order is
   the user's saved order; a provider's first account goes to the bottom, and a new account goes to the
   bottom of its provider's accounts, in the order they were added. Never sort providers or accounts by
