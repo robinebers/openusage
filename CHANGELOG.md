@@ -49,6 +49,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
+- Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
+  each provider. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.

@@ -14,9 +14,11 @@ struct CustomizationNoticeContent {
     var tone: CustomizationNoticeTone
 }
 
-struct LayoutSnapshot: Equatable {
-    let hiddenMetricIDs: Set<String>
-    let providerOrder: [String]
-    let metricOrderByProvider: [String: [String]]
-    let pinnedMetricIDs: Set<String>
+struct LayoutState: Codable, Equatable {
+    var hiddenMetricIDs: Set<String> = []
+    var providerOrder: [String] = []
+    var metricOrderByProvider: [String: [String]] = [:]
+    var pinnedMetricIDs: Set<String> = []
+    /// Accounts that already got their first stars, so a star the user takes off is never put back.
+    var seededProviderIDs: Set<String> = []
 }

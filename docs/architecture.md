@@ -17,7 +17,7 @@ environment:
 | Store | Owns |
 |---|---|
 | `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `addedAt`), persisted under `accounts.v1`, and the `CredentialVault`. |
-| `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history. |
+| `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history, saved as one `LayoutState`. A provider's only account starts from that provider's 0.7.x layout, which `LayoutV1Keys` reads. |
 | `PopoverState` | The popover's screen, the Accounts detail and Add Account sheet, the screen-slide bookkeeping, and the transient pills (star denial, Copied, the Accounts star notice). |
 | `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
 | `AccountRenameStore` | Which account name is being edited. |

@@ -77,7 +77,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         )
         let registry = WidgetRegistry(providers: [provider], descriptors: [descriptor])
         let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
-        let layout = LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
+        let layout = LayoutStore(registry: registry, defaults: defaults)
         let dataStore = WidgetDataStore.forTesting([], registry: registry, defaults: defaults)
         dataStore.snapshots[provider.id] = ProviderSnapshot(
             providerID: provider.id, displayName: provider.displayName, plan: "Max 5x",

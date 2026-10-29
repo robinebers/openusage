@@ -287,13 +287,19 @@ final class LayoutStoreTests: XCTestCase {
 
     func testSavedStarOnAHiddenMetricIsDroppedAtLoad() {
         let defaults = isolatedDefaults()
-        defaults.set(["claude.session", "claude.weekly"], forKey: "layout.menuBarPins")
+        LayoutPersistence(defaults: defaults).save(LayoutState(
+            hiddenMetricIDs: ["claude.session"],
+            pinnedMetricIDs: ["claude.session", "claude.weekly"],
+            seededProviderIDs: Set(MockData.providers.map(\.id))
+        ))
 
-        let store = makeStore(defaults, hidden: ["claude.session"])
+        let store = makeStore(defaults)
         XCTAssertFalse(store.isMetricEnabled("claude.session"))
         XCTAssertEqual(store.pinnedMetricIDs, ["claude.weekly"])
         XCTAssertFalse(trayMetricIDs(store).contains("claude.session"))
-        XCTAssertEqual(defaults.stringArray(forKey: "layout.menuBarPins"), ["claude.weekly"])
+
+        store.setMetricEnabled("claude.session", true)
+        XCTAssertFalse(makeStore(defaults).isPinned("claude.session"), "showing the metric again does not bring the star back")
     }
 
     func testDisplayGroupsListEveryEnabledMetricInMetricOrder() {
@@ -346,8 +352,9 @@ final class LayoutStoreTests: XCTestCase {
         hidden: [String] = ["claude.today", "codex.today", "cursor.today"]
     ) -> LayoutStore {
         let defaults = defaults ?? isolatedDefaults()
-        if defaults.object(forKey: "layout.hiddenMetrics") == nil { defaults.set(hidden, forKey: "layout.hiddenMetrics") }
-        return LayoutStore(registry: registry, defaults: defaults, storageKey: "layout")
+        let persistence = LayoutPersistence(defaults: defaults)
+        if persistence.load() == nil { persistence.save(LayoutState(hiddenMetricIDs: Set(hidden))) }
+        return LayoutStore(registry: registry, defaults: defaults)
     }
 
     private func trayMetricIDs(_ store: LayoutStore) -> [String] {
