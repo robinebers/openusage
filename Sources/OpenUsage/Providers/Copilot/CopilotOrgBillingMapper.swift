@@ -4,12 +4,6 @@ import Foundation
 /// whole organization used this month (the endpoint reports no allotment, so no percentage), and
 /// **Org Spend** is the dollars billed beyond the included pool.
 enum CopilotOrgBillingMapper {
-    /// The account's organizations from the `/copilot_internal/user` body, in GitHub's order.
-    static func orgLogins(_ response: HTTPResponse) -> [String] {
-        let logins = ProviderParse.jsonObject(response.body)?["organization_login_list"] as? [String] ?? []
-        return logins.compactMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
-    }
-
     /// `nil` for a report that isn't GitHub's shape, so it never shows as zero usage.
     static func usageLines(_ response: HTTPResponse) -> [MetricLine]? {
         guard let items = ProviderParse.jsonObject(response.body)?["usageItems"] as? [[String: Any]] else { return nil }

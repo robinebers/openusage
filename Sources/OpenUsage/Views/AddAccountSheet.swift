@@ -12,10 +12,11 @@ struct AddAccountSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let provider = flow.provider {
-                if case .apiKey(let keyPage) = provider.authMethod {
-                    APIKeyStep(flow: flow, provider: provider, keyPage: keyPage, cancel: { flow.back() })
-                } else {
-                    BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.back() })
+                switch flow.method {
+                case nil: MethodChoiceStep(flow: flow, provider: provider, cancel: { flow.back() })
+                case .oauth: BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.back() })
+                case .apiKey(let keyPage): APIKeyStep(flow: flow, provider: provider, keyPage: keyPage, cancel: { flow.back() })
+                case .organizationToken: OrganizationTokenStep(flow: flow, provider: provider, cancel: { flow.back() })
                 }
             } else {
                 ProviderChoiceStep(flow: flow, cancel: { dismiss() })
@@ -42,34 +43,76 @@ struct AddAccountSheet: View {
 private struct ProviderChoiceStep: View {
     @Bindable var flow: AddAccountFlow
     let cancel: () -> Void
-    @FocusState private var isListFocused: Bool
 
     var body: some View {
         SheetHeader(provider: nil, title: "Add Account", message: "Choose a provider to sign in to.")
-        List(ProviderKind.allCases, id: \.self, selection: $flow.selection) { provider in
+        ChoiceList(items: ProviderKind.allCases, selection: $flow.selection, choose: { flow.choose($0) }) { provider in
+            ProviderIcon(id: provider.rawValue, side: 20, inset: 0.06)
+            Text(provider.displayName)
+        }
+        CancelRow(cancel: cancel)
+    }
+}
+
+private struct MethodChoiceStep: View {
+    let flow: AddAccountFlow
+    let provider: ProviderKind
+    let cancel: () -> Void
+    @State private var selection: ProviderAuthMethod?
+
+    var body: some View {
+        SheetHeader(
+            provider: provider,
+            title: "Add \(provider.displayName)",
+            message: "Sign in to your own seat, or add your organization’s billing with a token."
+        )
+        ChoiceList(items: provider.authMethods, selection: $selection, choose: { flow.choose($0) }) { method in
+            Text(method == .organizationToken ? "Organization Billing" : "Sign In with GitHub")
+        }
+        CancelRow(cancel: cancel)
+    }
+}
+
+/// A provider's or a sign-in method's list: an arrow key moves the selection, and a click or Return
+/// chooses.
+private struct ChoiceList<Item: Hashable, Label: View>: View {
+    let items: [Item]
+    @Binding var selection: Item?
+    let choose: (Item) -> Void
+    @ViewBuilder let label: (Item) -> Label
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        List(items, id: \.self, selection: $selection) { item in
             HStack(spacing: 10) {
-                ProviderIcon(id: provider.rawValue, side: 20, inset: 0.06)
-                Text(provider.displayName)
+                label(item)
                 Spacer()
                 Image(systemName: "chevron.forward")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
             .contentShape(.rect)
-            .onTapGesture { flow.choose(provider) }
+            .onTapGesture { choose(item) }
             .listItemTint(.monochrome)
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
         .scrollDisabled(true)
         .background(Theme.cardFill, in: .rect(cornerRadius: 10))
-        .frame(height: CGFloat(ProviderKind.allCases.count) * 28 + 20)
+        .frame(height: CGFloat(items.count) * 28 + 20)
         .padding(.horizontal, 20)
-        .focused($isListFocused)
-        .contextMenu(forSelectionType: ProviderKind.self, menu: { _ in }, primaryAction: { providers in
-            if let provider = providers.first { flow.choose(provider) }
+        .focused($isFocused)
+        .contextMenu(forSelectionType: Item.self, menu: { _ in }, primaryAction: { items in
+            if let item = items.first { choose(item) }
         })
-        .onAppear { isListFocused = true }
+        .onAppear { isFocused = true }
+    }
+}
+
+private struct CancelRow: View {
+    let cancel: () -> Void
+
+    var body: some View {
         HStack {
             Spacer()
             Button("Cancel", action: cancel)
@@ -190,6 +233,44 @@ private struct APIKeyStep: View {
                 if let errorMessage = flow.errorMessage {
                     ErrorText(errorMessage)
                 }
+            }
+        }
+        .inlineGroupedForm()
+        SheetButtons(
+            secondary: SheetAction(title: "Cancel", shortcut: .cancelAction, action: cancel),
+            primary: SheetAction(title: "Add Account", isDisabled: !flow.canAddKey) { flow.addKey() }
+        )
+        .padding(.bottom, 20)
+    }
+}
+
+private struct OrganizationTokenStep: View {
+    @Bindable var flow: AddAccountFlow
+    let provider: ProviderKind
+    let cancel: () -> Void
+
+    var body: some View {
+        SheetHeader(
+            provider: provider,
+            title: "Add \(provider.displayName)",
+            message: "Enter your organization and a token that can read its billing. It’s stored in your Keychain."
+        )
+        Form {
+            Section {
+                TextField("Organization", text: $flow.organization, prompt: Text("Required"))
+                    .onSubmit { flow.addKey() }
+                SecureField("Token", text: $flow.apiKey, prompt: Text("Required"))
+                    .onSubmit { flow.addKey() }
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Shows your organization’s Copilot credits and spend. Use a personal access token from an organization owner or billing manager: fine-grained, with Organization permissions → Administration → Read-only.")
+                        .foregroundStyle(.secondary)
+                    Link("Create a Token", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
+                    if let errorMessage = flow.errorMessage {
+                        ErrorText(errorMessage)
+                    }
+                }
+                .font(.footnote)
             }
         }
         .inlineGroupedForm()

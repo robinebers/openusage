@@ -9,7 +9,9 @@ final class AddAccountFlow {
     var apiKey = ""
     var accountName = ""
     var pastedCode = ""
+    var organization = ""
     private(set) var provider: ProviderKind?
+    private(set) var method: ProviderAuthMethod?
     private(set) var prompt: LoginPrompt?
     private(set) var isWorking = false
     private(set) var errorMessage: String?
@@ -17,21 +19,23 @@ final class AddAccountFlow {
 
     private let store: AccountStore
     private let openURL: (URL) -> Void
-    private let login: (ProviderKind) -> any ProviderLogin
+    private let login: (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin
     private var task: Task<Void, Never>?
     private var codeInput: AsyncStream<String>.Continuation?
 
     init(
         store: AccountStore,
         openURL: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) },
-        login: @escaping (ProviderKind) -> any ProviderLogin = ProviderLoginCatalog.login(for:)
+        login: @escaping (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:)
     ) {
         self.store = store
         self.openURL = openURL
         self.login = login
     }
 
-    var canAddKey: Bool { !apiKey.trimmed.isEmpty && !isWorking }
+    var canAddKey: Bool {
+        !apiKey.trimmed.isEmpty && !isWorking && (method != .organizationToken || !organization.trimmed.isEmpty)
+    }
     var hasPastedCode: Bool { !pastedCode.trimmed.isEmpty }
     var canSubmitCode: Bool { hasPastedCode && codeInput != nil }
     var isCodeSubmitted: Bool { isWorking && prompt != nil && codeInput == nil }
@@ -39,15 +43,20 @@ final class AddAccountFlow {
     func choose(_ kind: ProviderKind) {
         selection = kind
         provider = kind
-        if case .oauth = kind.authMethod { signIn() }
+        if kind.authMethods.count == 1 { choose(kind.authMethods[0]) }
+    }
+
+    func choose(_ method: ProviderAuthMethod) {
+        self.method = method
+        if method == .oauth { signIn() }
     }
 
     func signIn() {
-        guard let provider else { return }
+        guard let provider, let method else { return }
         let (input, continuation) = AsyncStream.makeStream(of: String.self)
         codeInput = continuation
         pastedCode = ""
-        run(provider, input: input)
+        run(provider, method, input: input)
     }
 
     func openBrowser() {
@@ -66,21 +75,23 @@ final class AddAccountFlow {
     }
 
     func addKey() {
-        guard let provider, canAddKey else { return }
+        guard let provider, let method, canAddKey else { return }
         let (input, continuation) = AsyncStream.makeStream(of: String.self)
         continuation.yield(apiKey)
         continuation.finish()
-        run(provider, input: input)
+        run(provider, method, input: input)
     }
 
     func back() {
         cancel()
         provider = nil
+        method = nil
         prompt = nil
         errorMessage = nil
         isWorking = false
         apiKey = ""
         accountName = ""
+        organization = ""
         pastedCode = ""
     }
 
@@ -91,12 +102,12 @@ final class AddAccountFlow {
         codeInput = nil
     }
 
-    private func run(_ kind: ProviderKind, input: AsyncStream<String>) {
+    private func run(_ kind: ProviderKind, _ method: ProviderAuthMethod, input: AsyncStream<String>) {
         task?.cancel()
         prompt = nil
         errorMessage = nil
         isWorking = true
-        let login = login(kind)
+        let login = login(kind, method, organization.trimmed)
         task = Task {
             do {
                 let result = try await login.login(

@@ -4,12 +4,6 @@ import XCTest
 
 @MainActor
 final class CopilotOrgBillingTests: XCTestCase {
-    nonisolated private static let usageBody = #"""
-    {"copilot_plan":"business","token_based_billing":true,
-     "quota_snapshots":{"premium_interactions":{"entitlement":0,"remaining":0,"unlimited":false,"credits_used":42}},
-     "organization_login_list":["other-org","acme"],
-     "organization_list":[{"login":"other-org","name":"Other"},{"login":"acme","name":"Acme"}]}
-    """#
     nonisolated private static let orgBody = #"""
     {"timePeriod":{"year":2025},"organization":"GitHub","usageItems":[{"product":"Copilot","sku":"Copilot AI Credits",
      "model":"GPT-5","unitType":"credits","pricePerUnit":0.01,"grossQuantity":100,"grossAmount":1.0,"discountQuantity":0,
@@ -20,7 +14,6 @@ final class CopilotOrgBillingTests: XCTestCase {
         .values(label: "Org Credits", values: [MetricValue(number: 100, kind: .count, label: "credits")]),
         .values(label: "Org Spend", values: [MetricValue(number: 1, kind: .dollars)])
     ]
-    private let start = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testOrgUsageCountsCopilotCreditsAndSpendOnly() {
         XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.orgBody)), Self.orgLines)
@@ -36,122 +29,82 @@ final class CopilotOrgBillingTests: XCTestCase {
         }
     }
 
-    func testOrgLoginsComeFromTheCopilotUsageBody() {
-        XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(Self.usageBody)), ["other-org", "acme"])
-        XCTAssertEqual(CopilotOrgBillingMapper.orgLogins(Self.ok(#"{"copilot_plan":"pro"}"#)), [])
-    }
-
-    func testWithoutAnAdminTokenTheOrgIsNeverRead() async throws {
-        let (snapshot, http) = try await refreshed(adminToken: nil)
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Credits"])
-        XCTAssertFalse(http.requests.contains { $0.url.path.hasSuffix("ai_credit/usage") })
-    }
-
-    func testAnAdminTokenAddsTheFirstOrgItCanReadAndKeepsItBetweenHourlyReads() async throws {
-        let (snapshot, http) = try await refreshed(adminToken: "admin")
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Credits", "Org Credits", "Org Spend"])
-        XCTAssertEqual(Array(snapshot.lines.dropFirst()), Self.orgLines)
-        let orgReads = http.requests.filter { $0.url.path.hasSuffix("ai_credit/usage") }
-        XCTAssertEqual(orgReads.map(\.url), [
-            CopilotUsageClient.orgCreditsURL(org: "other-org"), CopilotUsageClient.orgCreditsURL(org: "acme")
-        ])
-        XCTAssertEqual(orgReads.last?.url.absoluteString, "https://api.github.com/organizations/acme/settings/billing/ai_credit/usage")
-        XCTAssertEqual(orgReads.last?.headers["Authorization"], "Bearer admin")
-        XCTAssertEqual(orgReads.last?.headers["X-GitHub-Api-Version"], "2022-11-28")
-    }
-
-    func testARefusedOrgReadShowsNoOrgRowsAndNoError() async throws {
-        let (snapshot, _) = try await refreshed(adminToken: "admin", orgStatus: 403)
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Credits"])
-    }
-
-    func testSavingAnAdminTokenStoresOneThatReadsAnyOrgAndRemovingItDropsTheRows() async throws {
-        let (container, vault, account) = makeContainer(usageBody: Self.usageBody)
-        let signIn = OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])
-
-        do {
-            try await container.saveAdminToken("refused", for: account.cardID)
-            XCTFail("a refused admin token was saved")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
-        }
-        XCTAssertEqual(try vault.load(account.id), .oauth(signIn))
-        let refusedTokenStored = await container.hasAdminToken(for: account.cardID)
-        XCTAssertFalse(refusedTokenStored)
-
-        try await container.saveAdminToken(" admin ", for: account.cardID)
-
-        var withToken = signIn
-        withToken.extras[OAuthTokens.adminTokenKey] = "admin"
-        XCTAssertEqual(try vault.load(account.id), .oauth(withToken))
-        let tokenStored = await container.hasAdminToken(for: account.cardID)
-        XCTAssertTrue(tokenStored)
-        XCTAssertEqual(container.dataStore.snapshots[account.cardID]?.lines.dropFirst().map { $0 }, Self.orgLines, "the rows come from acme, the org the token reads")
-
-        try await container.saveAdminToken(nil, for: account.cardID)
-
-        XCTAssertEqual(try vault.load(account.id), .oauth(signIn))
-        XCTAssertEqual(container.dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Credits"])
-    }
-
-    func testAnAccountWithNoOrganizationIsToldSo() async throws {
-        let (container, vault, account) = makeContainer(usageBody: #"{"copilot_plan":"pro","token_based_billing":true}"#)
-        do {
-            try await container.saveAdminToken("admin", for: account.cardID)
-            XCTFail("an admin token was saved for an account with no organization")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "Copilot lists no organization for this account, so there is no org billing to read.")
-        }
-        XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])))
-    }
-
-    func testATokenWhoseReportDoesNotParseIsNotSaved() async throws {
-        let (container, vault, account) = makeContainer(usageBody: Self.usageBody, orgBody: "<html>")
-        do {
-            try await container.saveAdminToken("admin", for: account.cardID)
-            XCTFail("a token was saved on an unreadable report")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
-        }
-        XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])))
-    }
-
-    private func refreshed(adminToken: String?, orgStatus: Int = 200) async throws -> (ProviderSnapshot, RoutingHTTPClient) {
-        let account = Account(kind: .copilot, label: "Work")
-        let vault = InMemoryCredentialVault()
-        try vault.save(.oauth(OAuthTokens(accessToken: "gho-access", extras: adminToken.map { [OAuthTokens.adminTokenKey: $0] } ?? [:])), for: account.id)
+    func testAddingAnOrganizationChecksTheTokenWithOneRead() async throws {
         let http = RoutingHTTPClient { request in
-            switch request.url {
-            case CopilotUsageClient.orgCreditsURL(org: "acme"): Self.response(orgStatus, Self.orgBody)
-            case CopilotUsageClient.orgCreditsURL(org: "other-org"): Self.response(403, "{}")
-            default: Self.ok(Self.usageBody)
+            switch request.headers["Authorization"] {
+            case "Bearer good": Self.ok(Self.orgBody)
+            case "Bearer garbage": Self.ok("<html>")
+            case "Bearer elsewhere": Self.response(404, "{}")
+            default: Self.response(403, "{}")
             }
         }
-        let clock = TestClock(start)
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
-        let first = try await runtime.refresh().get()
-        let reads = http.requests.count
-        clock.set(start.addingTimeInterval(RefreshSetting.interval))
-        let second = try await runtime.refresh().get()
-        XCTAssertEqual(second.lines, first.lines, "the next pass keeps the hourly org rows")
-        XCTAssertEqual(http.requests.count, reads + 1, "the next pass reads only the account's own usage")
-        return (second, http)
+
+        let added = try await login("good", http: http)
+        XCTAssertEqual(added.label, "acme")
+        XCTAssertEqual(added.credential, .organizationToken("good", organization: "acme"))
+        let request = try XCTUnwrap(http.requests.first)
+        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(request.url.absoluteString, "https://api.github.com/organizations/acme/settings/billing/ai_credit/usage")
+        XCTAssertEqual(request.headers["X-GitHub-Api-Version"], "2022-11-28")
+        XCTAssertEqual(request.headers["Accept"], "application/vnd.github+json")
+
+        for (token, message) in [
+            ("refused", "GitHub rejected the token."),
+            ("elsewhere", "GitHub has no organization “acme” this token can read."),
+            ("garbage", ProviderError.invalidResponse.localizedDescription)
+        ] {
+            do {
+                _ = try await login(token, http: http)
+                XCTFail("\(token) was accepted")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, message, token)
+            }
+        }
     }
 
-    private func makeContainer(usageBody: String, orgBody: String = orgBody) -> (AppContainer, InMemoryCredentialVault, Account) {
+    func testAnOrganizationAccountShowsItsCreditsAndSpend() async throws {
+        let account = Account(kind: .copilot, label: "acme")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.organizationToken("good", organization: "acme"), for: account.id)
+        let http = RoutingHTTPClient { _ in Self.ok(Self.orgBody) }
+        let snapshot = try await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().get()
+
+        XCTAssertNil(snapshot.plan)
+        XCTAssertEqual(snapshot.lines, Self.orgLines)
+        XCTAssertEqual(http.requests.map(\.url), [CopilotUsageClient.organizationUsageURL("acme")])
+    }
+
+    func testReplacingTheTokenKeepsTheOrganizationAndAcceptsATokenAnotherOrganizationUses() async throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let accounts = AccountStore(defaults: defaults, vault: vault)
         let http = RoutingHTTPClient { request in
-            guard request.url.path.hasSuffix("ai_credit/usage") else { return Self.ok(usageBody) }
-            let readable = request.url == CopilotUsageClient.orgCreditsURL(org: "acme") && request.headers["Authorization"] == "Bearer admin"
-            return readable ? Self.ok(orgBody) : Self.response(403, "{}")
+            request.headers["Authorization"] == "Bearer refused" ? Self.response(403, "{}") : Self.ok(Self.orgBody)
         }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
-        let account = accounts.add(kind: .copilot, label: "Work", credential: .oauth(OAuthTokens(
-            accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"]
-        )))
-        return (container, vault, account)
+        let acme = accounts.add(kind: .copilot, label: "acme", credential: .organizationToken("old", organization: "acme"))
+        accounts.add(kind: .copilot, label: "beta", credential: .organizationToken("classic", organization: "beta"))
+        let isOrganization = await container.isOrganizationAccount(acme.cardID)
+        XCTAssertTrue(isOrganization)
+
+        do {
+            try await container.replaceKey("refused", for: acme.cardID)
+            XCTFail("a refused token was saved")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
+        }
+        XCTAssertEqual(try vault.load(acme.id), .organizationToken("old", organization: "acme"))
+
+        try await container.replaceKey(" classic ", for: acme.cardID)
+        XCTAssertEqual(try vault.load(acme.id), .organizationToken("classic", organization: "acme"))
+        XCTAssertEqual(container.dataStore.snapshots[acme.cardID]?.lines, Self.orgLines)
+    }
+
+    private func login(_ token: String, http: RoutingHTTPClient) async throws -> (label: String, credential: AccountCredential) {
+        let (input, continuation) = AsyncStream.makeStream(of: String.self)
+        continuation.yield(token)
+        continuation.finish()
+        return try await CopilotOrganizationLogin(organization: "acme", http: http).login(prompt: { _ in }, pastedCode: input)
     }
 
     nonisolated private static func ok(_ body: String) -> HTTPResponse {

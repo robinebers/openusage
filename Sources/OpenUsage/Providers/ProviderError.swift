@@ -7,11 +7,12 @@ enum ProviderError: Error, LocalizedError, Equatable {
     case requestFailed(Int)
     case rateLimited(retryAfter: TimeInterval?)
     case unavailable(String)
+    case keyRejected(String)
 
     var errorDescription: String? {
         switch self {
         case .signInExpired(let kind):
-            if case .apiKey = kind.authMethod {
+            if case .apiKey = kind.authMethods.first {
                 "\(kind.displayName) rejected the API key. Replace it on the account's page."
             } else {
                 "\(kind.displayName) sign-in expired. Remove the account and add it again."
@@ -21,6 +22,7 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .requestFailed(let status): "The provider request failed (HTTP \(status))."
         case .rateLimited: "The provider asked OpenUsage to wait before asking again."
         case .unavailable(let message): message
+        case .keyRejected(let message): "\(message) Replace it on the account's page."
         }
     }
 

@@ -32,24 +32,28 @@ struct CopilotUsageClient: Sendable {
         ))
     }
 
-    static func orgCreditsURL(org: String) -> URL {
+    static func organizationUsageURL(_ organization: String) -> URL {
         URL(string: "https://api.github.com/organizations")!
-            .appending(components: org, "settings", "billing", "ai_credit", "usage")
+            .appending(components: organization, "settings", "billing", "ai_credit", "usage")
     }
 
-    /// This month's AI-credit usage of one organization, read with the admin token pasted on the
-    /// account's page: the Copilot sign-in cannot read organization billing.
-    func fetchOrgCredits(org: String, adminToken: String) async throws -> HTTPResponse {
-        try await http.send(HTTPRequest(
+    /// One organization's Copilot credits and spend this month, read with a token from an owner or
+    /// billing manager of the organization: the Copilot sign-in itself cannot read organization billing.
+    func organizationUsage(_ organization: String, token: String) async throws -> [MetricLine] {
+        let response = try await http.send(HTTPRequest(
             method: "GET",
-            url: Self.orgCreditsURL(org: org),
+            url: Self.organizationUsageURL(organization),
             headers: [
-                "Authorization": "Bearer \(adminToken)",
+                "Authorization": "Bearer \(token)",
                 "Accept": "application/vnd.github+json",
                 "User-Agent": "OpenUsage",
                 "X-GitHub-Api-Version": "2022-11-28"
             ],
             timeout: 15
         ))
+        if ProviderError.isAuthFailure(response) { throw ProviderError.keyRejected("GitHub rejected the token.") }
+        guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
+        guard let lines = CopilotOrgBillingMapper.usageLines(response) else { throw ProviderError.invalidResponse }
+        return lines
     }
 }

@@ -11,7 +11,7 @@ struct AccountDetailView: View {
 
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
-    @State private var hasAdminToken = false
+    @State private var isOrganizationAccount = false
 
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
@@ -22,59 +22,34 @@ struct AccountDetailView: View {
                     }
                 }
                 .cardSurface()
-                if case .apiKey = group.provider.kind.authMethod {
+                if case .apiKey = group.provider.kind.authMethods.first {
                     ReplaceKeyRow(title: "Replace API Key…", field: "API Key") {
                         try await container.replaceKey($0, for: providerID)
                     }
                     .cardSurface()
-                }
-                if group.provider.kind == .copilot {
-                    adminTokenRows
+                } else if isOrganizationAccount {
+                    ReplaceKeyRow(title: "Replace Token…", field: "Token") {
+                        try await container.replaceKey($0, for: providerID)
+                    }
+                    .cardSurface()
                 }
                 removeAccountRow(group.provider)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: providerID) {
+                guard group.provider.kind.authMethods.contains(.organizationToken) else { return }
+                isOrganizationAccount = await container.isOrganizationAccount(providerID)
+            }
         } else {
             EmptyView()
         }
     }
 
-    private var adminTokenRows: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
-            VStack(spacing: 0) {
-                ReplaceKeyRow(title: hasAdminToken ? "Replace Admin Token…" : "Add Admin Token…", field: "Admin Token") {
-                    try await container.saveAdminToken($0, for: providerID)
-                    hasAdminToken = true
-                }
-                if hasAdminToken {
-                    Divider()
-                    destructiveRow("Remove Admin Token") {
-                        Task {
-                            do {
-                                try await container.saveAdminToken(nil, for: providerID)
-                                hasAdminToken = false
-                            } catch {
-                                AppLog.error(LogTag.plugin("copilot"), "\(providerID) could not remove the admin token: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                }
-            }
-            .cardSurface()
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                Text("Optional. Shows your organization’s Copilot credits and spend. Use a personal access token from an organization owner or billing manager: fine-grained, with Organization permissions → Administration → Read-only.")
-                    .foregroundStyle(.secondary)
-                Link("Create a Token", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
-            }
-            .font(.footnote)
-            .padding(.horizontal, 12)
-        }
-        .task(id: providerID) { hasAdminToken = await container.hasAdminToken(for: providerID) }
-    }
-
-    private func destructiveRow(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(role: .destructive, action: action) {
-            Text(title)
+    private func removeAccountRow(_ provider: Provider) -> some View {
+        Button(role: .destructive) {
+            isConfirmingRemoval = true
+        } label: {
+            Text("Remove Account…")
                 .foregroundStyle(Color(nsColor: .systemRed))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -82,10 +57,6 @@ struct AccountDetailView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    private func removeAccountRow(_ provider: Provider) -> some View {
-        destructiveRow("Remove Account…") { isConfirmingRemoval = true }
         .cardSurface()
         .confirmationDialog(
             "Remove \(provider.fullName)?",

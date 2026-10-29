@@ -82,7 +82,12 @@ final class AppContainer {
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
-        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let credential: AccountCredential = if case .organizationToken(_, let organization)? = try? await runtime.loadCredential() {
+            .organizationToken(key, organization: organization)
+        } else {
+            .apiKey(key)
+        }
         if let existing = accounts.account(kind: runtime.account.kind, signedInAs: credential), existing.id != runtime.account.id {
             throw ProviderError.unavailable("This account is already added as \(existing.label).")
         }
@@ -90,23 +95,18 @@ final class AppContainer {
             try await runtime.validate(credential)
         } catch ProviderError.signInExpired(let kind) {
             throw ProviderError.unavailable("\(kind.displayName) rejected the API key.")
+        } catch ProviderError.keyRejected(let message) {
+            throw ProviderError.unavailable(message)
         }
         try accounts.replaceCredential(credential, for: runtime.account.id)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 
-    /// Saves a Copilot account's org billing admin token, or removes it when `token` is nil.
-    func saveAdminToken(_ token: String?, for providerID: String) async throws {
-        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
-        try await runtime.saveCopilotAdminToken(token?.trimmingCharacters(in: .whitespacesAndNewlines))
-        await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
-    }
-
-    func hasAdminToken(for providerID: String) async -> Bool {
+    func isOrganizationAccount(_ providerID: String) async -> Bool {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }),
-              case .oauth(let tokens)? = try? await runtime.loadCredential()
+              case .organizationToken? = try? await runtime.loadCredential()
         else { return false }
-        return tokens.extras[OAuthTokens.adminTokenKey] != nil
+        return true
     }
 
     func startRefreshing() {

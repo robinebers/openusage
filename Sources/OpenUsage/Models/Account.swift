@@ -1,9 +1,10 @@
 import CryptoKit
 import Foundation
 
-enum ProviderAuthMethod: Sendable, Equatable {
+enum ProviderAuthMethod: Sendable, Hashable {
     case oauth
     case apiKey(keyPage: URL)
+    case organizationToken
 }
 
 enum ProviderKind: String, Codable, CaseIterable, Sendable {
@@ -54,13 +55,14 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    var authMethod: ProviderAuthMethod {
+    var authMethods: [ProviderAuthMethod] {
         switch self {
-        case .claude, .codex, .cursor, .antigravity, .copilot, .grok: .oauth
-        case .ollama: .apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)
-        case .opencodeGo: .apiKey(keyPage: URL(string: "https://opencode.ai/console")!)
-        case .openrouter: .apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)
-        case .zai: .apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)
+        case .claude, .codex, .cursor, .antigravity, .grok: [.oauth]
+        case .copilot: [.oauth, .organizationToken]
+        case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
+        case .opencodeGo: [.apiKey(keyPage: URL(string: "https://opencode.ai/console")!)]
+        case .openrouter: [.apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)]
+        case .zai: [.apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)]
         }
     }
 }
@@ -97,7 +99,6 @@ struct OAuthTokens: Codable, Sendable, Equatable {
     }
 
     static let identityKey = "account_identity"
-    static let adminTokenKey = "admin_token"
 
     static let refreshMargin: TimeInterval = 5 * 60
 
@@ -110,6 +111,7 @@ struct OAuthTokens: Codable, Sendable, Equatable {
 enum AccountCredential: Codable, Sendable, Equatable {
     case oauth(OAuthTokens)
     case apiKey(String)
+    case organizationToken(String, organization: String)
 
     var identity: String? {
         switch self {
@@ -117,6 +119,8 @@ enum AccountCredential: Codable, Sendable, Equatable {
             tokens.extras[OAuthTokens.identityKey]
         case .apiKey(let key):
             "key:" + SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        case .organizationToken(_, let organization):
+            "org:" + organization.lowercased()
         }
     }
 }

@@ -38,7 +38,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry and crash reporting through PostHog, with the same opt-out in Settings.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
-- Copilot Org Credits and Org Spend, now behind an optional admin token pasted on the account's page.
+- Copilot Org Credits and Org Spend, now on an organization account added with an owner's or billing
+  manager's token.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 
 ## v0.7.16
