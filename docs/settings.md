@@ -69,7 +69,8 @@ See [Updates](updates.md).
 OpenRouter or Z.ai key you typed into 0.7.x, which it saved in `~/.config/openusage/openrouter.json` or
 `~/.config/openusage/zai.json`. On the first launch after the update, OpenUsage adds each saved key as
 an account when that provider has no account yet and a usage read accepts the key. It does this once,
-so an account you remove later doesn't come back.
+so an account you remove later doesn't come back. If the usage read can't reach the provider, it tries
+again on the next launch.
 
 When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
 
