@@ -305,7 +305,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             "codex": ["session", "weekly", "spark", "sparkWeekly", "credits", "rateLimitResets"],
             "cursor": ["totalUsage", "grokBot", "autoUsage", "apiUsage", "onDemand", "requests", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "argonWeekly", "nonGeminiSession", "nonGeminiWeekly"],
-            "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],
+            "copilot": ["premiumCredits", "extraUsage", "orgCredits", "orgSpend", "chat", "completions"],
             "grok": ["weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],

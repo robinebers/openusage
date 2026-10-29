@@ -10,7 +10,7 @@ report stays hidden.
 | ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Rate Limit Resets |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
-| Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
+| Copilot | Device code (GitHub) | Credits, Extra Usage, Org Credits, Org Spend, Chat, Completions |
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
@@ -30,6 +30,7 @@ here.
 | Cursor | none (Cursor's own sign-in, no scopes) | Cursor's login returns a dashboard session; there is no scope to narrow. |
 | Antigravity | `cloud-platform`, `userinfo.email` | Cloud Code's quota API is a Google Cloud API and takes `cloud-platform`; the email names the account. Every Cloud Code client, Gemini CLI included, asks for `cloud-platform`; none is known to work without it. The Antigravity app also asks for `userinfo.profile`, `cclog`, and `experimentsandconfigs`; the card never uses them. |
 | Copilot | `read:user` | The scope Copilot's own sign-in asks for, and the one known to read `/copilot_internal/user`. It reads your GitHub profile and nothing else; whether the quota read works with no scope at all is unverified. |
+| Copilot admin token (optional) | none requested; you create it | A fine-grained personal access token with Organization permissions → Administration → Read-only, from an organization owner or billing manager. It reads only the organization's AI-credit usage. |
 | Grok | `openid profile email offline_access grok-cli:access api:access` | The set the Grok CLI itself requests. The settings and billing reads go through the Grok CLI proxy, which every known client reaches with this set; xAI publishes no narrower set for this client, so the card asks for the same. |
 
 A narrower grant applies the next time you add an account. An account you added before keeps its
@@ -75,6 +76,11 @@ Google sells it as (Google AI Pro, Google AI Ultra, Google AI Ultra Lite) or the
 
 Sign in with a GitHub device code. The card reads `/copilot_internal/user` for premium credits,
 extra-usage spend, and the chat and completion counts, and the plan.
+
+**Org Credits** (AI credits the whole organization used this month) and **Org Spend** (dollars billed
+beyond the included pool) need an admin token: paste one with **Add Admin Token…** on the account's
+page, and the card reads the first of your organizations whose billing reports Copilot usage once an
+hour. Without a token, or when GitHub refuses the read, the two rows don't show.
 
 ## Grok
 

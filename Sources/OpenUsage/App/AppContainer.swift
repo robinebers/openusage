@@ -88,6 +88,20 @@ final class AppContainer {
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 
+    /// Saves a Copilot account's org billing admin token, or removes it when `token` is nil.
+    func saveAdminToken(_ token: String?, for providerID: String) async throws {
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
+        try await runtime.saveCopilotAdminToken(token?.trimmingCharacters(in: .whitespacesAndNewlines))
+        await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
+    }
+
+    func hasAdminToken(for providerID: String) async -> Bool {
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }),
+              case .oauth(let tokens)? = try? await runtime.loadCredential()
+        else { return false }
+        return tokens.extras[OAuthTokens.adminTokenKey] != nil
+    }
+
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {

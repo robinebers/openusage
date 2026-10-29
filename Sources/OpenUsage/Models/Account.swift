@@ -97,6 +97,7 @@ struct OAuthTokens: Codable, Sendable, Equatable {
     }
 
     static let identityKey = "account_identity"
+    static let adminTokenKey = "admin_token"
 
     static let refreshMargin: TimeInterval = 5 * 60
 

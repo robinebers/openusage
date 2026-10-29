@@ -85,6 +85,10 @@ extension AccountProviderRuntime {
                     .pinnedByDefault(),
                 .values(key: "extra", provider: provider, title: "Extra Usage")
                     .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
+                .values(key: "orgCredits", provider: provider, title: "Org Credits")
+                    .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits")),
+                .values(key: "orgSpend", provider: provider, title: "Org Spend", valueWord: "spent")
+                    .exportingLimit("orgSpend", unit: "usd", source: .value(kind: .dollars)),
                 .boundedCount(key: "chat", provider: provider, title: "Chat", limit: 0)
                     .exportingLimit("chat", unit: "percent"),
                 .boundedCount(key: "completions", provider: provider, title: "Completions", limit: 0)

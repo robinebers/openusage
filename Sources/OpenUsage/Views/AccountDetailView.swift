@@ -11,6 +11,7 @@ struct AccountDetailView: View {
 
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
+    @State private var hasAdminToken = false
 
     var body: some View {
         if let group = layout.customizeDetail(for: providerID) {
@@ -22,7 +23,13 @@ struct AccountDetailView: View {
                 }
                 .cardSurface()
                 if case .apiKey = group.provider.kind.authMethod {
-                    ReplaceKeyRow(providerID: providerID)
+                    ReplaceKeyRow(title: "Replace API Key…", field: "API Key") {
+                        try await container.replaceKey($0, for: providerID)
+                    }
+                    .cardSurface()
+                }
+                if group.provider.kind == .copilot {
+                    adminTokenRows
                 }
                 removeAccountRow(group.provider)
             }
@@ -30,6 +37,43 @@ struct AccountDetailView: View {
         } else {
             EmptyView()
         }
+    }
+
+    private var adminTokenRows: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.s) {
+            VStack(spacing: 0) {
+                ReplaceKeyRow(title: hasAdminToken ? "Replace Admin Token…" : "Add Admin Token…", field: "Admin Token") {
+                    try await container.saveAdminToken($0, for: providerID)
+                    hasAdminToken = true
+                }
+                if hasAdminToken {
+                    Divider()
+                    Button(role: .destructive) {
+                        Task {
+                            guard (try? await container.saveAdminToken(nil, for: providerID)) != nil else { return }
+                            hasAdminToken = false
+                        }
+                    } label: {
+                        Text("Remove Admin Token")
+                            .foregroundStyle(Color(nsColor: .systemRed))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, PanelMetrics.controlRowPadding)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .cardSurface()
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                Text("Optional. Shows your organization’s Copilot credits and spend. Use a personal access token from an organization owner or billing manager: fine-grained, with Organization permissions → Administration → Read-only.")
+                    .foregroundStyle(.secondary)
+                Link("Create a Token", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
+            }
+            .font(.footnote)
+            .padding(.horizontal, 12)
+        }
+        .task(id: providerID) { hasAdminToken = await container.hasAdminToken(for: providerID) }
     }
 
     private func removeAccountRow(_ provider: Provider) -> some View {
@@ -110,8 +154,9 @@ struct AccountDetailView: View {
 }
 
 private struct ReplaceKeyRow: View {
-    let providerID: String
-    @Environment(AppContainer.self) private var container
+    let title: String
+    let field: String
+    let saveKey: @MainActor (String) async throws -> Void
     @State private var isEditing = false
     @State private var key = ""
     @State private var isSaving = false
@@ -122,14 +167,13 @@ private struct ReplaceKeyRow: View {
         Group {
             if isEditing { editor } else { replaceButton }
         }
-        .cardSurface()
     }
 
     private var replaceButton: some View {
         Button {
             isEditing = true
         } label: {
-            Text("Replace API Key…")
+            Text(title)
                 .foregroundStyle(.tint)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
@@ -141,7 +185,7 @@ private struct ReplaceKeyRow: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("API Key", text: $key, prompt: Text("New API Key"))
+            SecureField(field, text: $key, prompt: Text("New \(field)"))
                 .textFieldStyle(.roundedBorder)
                 .focused($isFocused)
                 .onSubmit(save)
@@ -176,7 +220,7 @@ private struct ReplaceKeyRow: View {
         errorMessage = nil
         Task {
             do {
-                try await container.replaceKey(key, for: providerID)
+                try await saveKey(key)
                 close()
             } catch {
                 errorMessage = error.localizedDescription

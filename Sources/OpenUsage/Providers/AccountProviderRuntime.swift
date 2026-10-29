@@ -10,6 +10,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
+    var copilotOrgRead = SecondaryRead<[MetricLine]>()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
 
@@ -37,6 +38,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
+        copilotOrgRead.forget()
         claude.forcedReadsPending = true
     }
 
@@ -159,7 +161,10 @@ final class AccountProviderRuntime: ProviderRuntime {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
         try ProviderError.requireSuccess(response, kind: .copilot)
-        return try CopilotUsageMapper.map(response)
+        let usage = try CopilotUsageMapper.map(response)
+        guard let adminToken = tokens.extras[OAuthTokens.adminTokenKey] else { return usage }
+        let orgLines = await copilotOrgLines(after: response, adminToken: adminToken)
+        return ProviderUsage(plan: usage.plan, lines: usage.lines + orgLines)
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {

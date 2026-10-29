@@ -87,6 +87,20 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.perHour[CursorUsageClient.planURL.path], 1)
     }
 
+    func testCopilotReadsOrgBillingHourlyWithAnAdminToken() async throws {
+        let org = CopilotUsageClient.orgCreditsURL(org: "acme")
+        let counts = try await hourOfRefreshes(.copilot, credential: .oauth(OAuthTokens(
+            accessToken: "token", extras: [OAuthTokens.adminTokenKey: "admin"]
+        ))) { request in
+            request.url == org
+                ? Self.ok(#"{"usageItems":[{"product":"Copilot","grossQuantity":100,"netAmount":1.0}]}"#)
+                : Self.ok(#"{"token_based_billing":true,"organization_login_list":["acme"]}"#)
+        }
+        XCTAssertEqual(counts.perHour[org.path], 1)
+        XCTAssertEqual(counts.total, 13)
+        XCTAssertEqual(counts.nextHour[org.path], 1, "read again once the hour is up")
+    }
+
     func testAntigravityReadsCodeAssistHourly() async throws {
         let counts = try await hourOfRefreshes(.antigravity, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
             request.url.path.hasSuffix(AntigravityUsageClient.loadCodeAssistPath)

@@ -31,4 +31,25 @@ struct CopilotUsageClient: Sendable {
             timeout: 15
         ))
     }
+
+    static func orgCreditsURL(org: String) -> URL {
+        URL(string: "https://api.github.com/organizations")!
+            .appending(components: org, "settings", "billing", "ai_credit", "usage")
+    }
+
+    /// This month's AI-credit usage of one organization, read with the admin token pasted on the
+    /// account's page: the Copilot sign-in cannot read organization billing.
+    func fetchOrgCredits(org: String, adminToken: String) async throws -> HTTPResponse {
+        try await http.send(HTTPRequest(
+            method: "GET",
+            url: Self.orgCreditsURL(org: org),
+            headers: [
+                "Authorization": "Bearer \(adminToken)",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "OpenUsage",
+                "X-GitHub-Api-Version": "2022-11-28"
+            ],
+            timeout: 15
+        ))
+    }
 }
