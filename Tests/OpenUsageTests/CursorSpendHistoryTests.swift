@@ -135,7 +135,7 @@ final class CursorSpendHistoryTests: XCTestCase {
         XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
     }
 
-    func testAFailedReadKeepsTheDaysAlreadyReadAndNeverBreaksTheCard() async throws {
+    func testAFailedRereadHidesTheRowsInsteadOfAnOldValueAndNeverBreaksTheCard() async throws {
         let events = TestSwitch<Int?>(500)
         let (store, runtime, _) = try makeAccount(events: events)
 
@@ -151,7 +151,7 @@ final class CursorSpendHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
+        XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
     }
 }
 

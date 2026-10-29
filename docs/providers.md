@@ -84,7 +84,8 @@ list on Cursor's Usage page. Usage the plan includes, and errored or free reques
 card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
-30 days again. A failed read keeps the days already read and never affects the other rows. A row shows
+30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
+yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
 once every day it covers has been read.
 
 ## Antigravity

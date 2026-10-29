@@ -33,8 +33,8 @@ struct CursorSpendHistoryFetcher: Sendable {
         }
     }
 
-    /// `days` with every day of `window` that was read in time replaced. A day that fails or runs out
-    /// of time keeps what was read before, and a day outside `window` is dropped.
+    /// `days` with every day of `window` that was read in time filled in. Only complete days older than
+    /// yesterday are kept from before; today, yesterday, and a day that fails or runs out of time stay unread.
     func refresh(
         _ days: [Date: CursorSpendDay],
         window: [Day],
@@ -43,10 +43,8 @@ struct CursorSpendHistoryFetcher: Sendable {
         accountID: String
     ) async -> [Date: CursorSpendDay] {
         let starts = Set(window.map(\.start))
-        var days = days.filter { starts.contains($0.key) }
-        var due = window.enumerated()
-            .filter { index, day in index < 2 || days[day.start]?.isComplete != true }
-            .map(\.element)[...]
+        var days = days.filter { starts.contains($0.key) && $0.value.isComplete && $0.key < window[1].start }
+        var due = window.filter { days[$0.start] == nil }[...]
         var failures: [String] = []
         var deadlineHit = false
 
