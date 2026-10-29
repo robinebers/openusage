@@ -17,6 +17,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The Pi provider, which has no account sign-in.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
+- The Density setting and Reset All Customization.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
