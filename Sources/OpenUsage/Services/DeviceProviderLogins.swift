@@ -141,6 +141,7 @@ enum ProviderLoginCatalog {
         case .cursor: CursorLogin()
         case .antigravity: AntigravityLogin()
         case .copilot: CopilotLogin()
+        case .devin: DevinLogin()
         case .grok: GrokLogin()
         case .ollama, .opencodeGo, .openrouter, .zai: APIKeyLogin(kind: kind)
         }

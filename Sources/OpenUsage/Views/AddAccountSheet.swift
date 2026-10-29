@@ -134,8 +134,8 @@ private struct BrowserSignInStep: View {
                 DeviceCodeBox(code: userCode)
                     .padding(.horizontal, 20)
             }
-            if flow.errorMessage == nil, case .browser(_, acceptsPastedCode: true) = flow.prompt {
-                pastedCodeForm
+            if flow.errorMessage == nil, let pasteField {
+                pastedCodeForm(pasteField)
             }
             SheetButtons(secondary: secondaryAction, primary: primaryAction)
             status
@@ -150,7 +150,16 @@ private struct BrowserSignInStep: View {
     private var message: String {
         switch flow.prompt {
         case .deviceCode: "Open the verification page in your browser and enter this code."
+        case .browserToken: "Continue in your browser, then paste the token it shows here."
         case .browser, nil: "Continue in your browser. This sheet closes when you’re signed in."
+        }
+    }
+
+    private var pasteField: (name: String, footer: String?)? {
+        switch flow.prompt {
+        case .browser(_, acceptsPastedCode: true): ("Code", "Paste the code here if your browser shows one.")
+        case .browserToken: ("Token", nil)
+        case .browser, .deviceCode, nil: nil
         }
     }
 
@@ -176,16 +185,18 @@ private struct BrowserSignInStep: View {
         return flow.isCodeSubmitted ? "Signing in…" : "Waiting for your browser…"
     }
 
-    private var pastedCodeForm: some View {
+    private func pastedCodeForm(_ field: (name: String, footer: String?)) -> some View {
         Form {
             Section {
-                TextField("Code", text: $flow.pastedCode, prompt: Text("Paste code"))
+                TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
                     .onSubmit { flow.submitCode() }
                     .disabled(flow.isCodeSubmitted)
             } footer: {
-                Text("Paste the code here if your browser shows one.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                if let footer = field.footer {
+                    Text(footer)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .inlineGroupedForm()
@@ -193,7 +204,7 @@ private struct BrowserSignInStep: View {
 
     private var secondaryAction: SheetAction {
         switch flow.prompt {
-        case .browser(let url, _): SheetAction(title: "Copy Link") { copy(url.absoluteString) }
+        case .browser(let url, _), .browserToken(let url): SheetAction(title: "Copy Link") { copy(url.absoluteString) }
         case .deviceCode(let userCode, _): SheetAction(title: "Copy Code") { copy(userCode) }
         case nil: SheetAction(title: "Copy Link", isDisabled: true) {}
         }

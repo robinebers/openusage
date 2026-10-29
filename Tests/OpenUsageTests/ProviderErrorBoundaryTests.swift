@@ -12,6 +12,7 @@ private func response(_ status: Int, _ body: String = "") -> HTTPResponse {
 final class ProviderErrorBoundaryTests: XCTestCase {
     private static let keyedKinds: [(ProviderKind, AccountCredential)] = [
         (.copilot, .oauth(OAuthTokens(accessToken: "token"))),
+        (.devin, .oauth(OAuthTokens(accessToken: "key"))),
         (.ollama, .apiKey("key")),
         (.opencodeGo, .apiKey("key")),
         (.openrouter, .apiKey("key")),
@@ -31,9 +32,11 @@ final class ProviderErrorBoundaryTests: XCTestCase {
     func testAnUnauthorizedResponseIsARefusedCredentialWhateverTheBodySays() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(401, openCodeUsage) }
-            let expected = kind == .copilot
-                ? "Copilot sign-in expired. Remove the account and add it again."
-                : "\(kind.displayName) rejected the API key. Replace it on the account's page."
+            let expected = if case .oauth = credential {
+                "\(kind.displayName) sign-in expired. Remove the account and add it again."
+            } else {
+                "\(kind.displayName) rejected the API key. Replace it on the account's page."
+            }
             XCTAssertEqual(snapshot.failure?.message, expected, "\(kind)")
         }
     }

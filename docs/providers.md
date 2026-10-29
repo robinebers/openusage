@@ -13,6 +13,7 @@ report stays hidden.
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
 | Copilot organization | Organization and token | Org Credits, Org Spend |
+| Devin | Browser (Windsurf), then a pasted token | Daily, Weekly, Extra Usage |
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
@@ -33,6 +34,7 @@ here.
 | Antigravity | `cloud-platform`, `userinfo.email` | Cloud Code's quota API is a Google Cloud API and takes `cloud-platform`; the email names the account. Every Cloud Code client, Gemini CLI included, asks for `cloud-platform`; none is known to work without it. The Antigravity app also asks for `userinfo.profile`, `cclog`, and `experimentsandconfigs`; the card never uses them. |
 | Copilot | `read:user` | The scope Copilot's own sign-in asks for, and the one known to read `/copilot_internal/user`. It reads your GitHub profile and nothing else; whether the quota read works with no scope at all is unverified. |
 | Copilot organization | none requested; you create the token | A fine-grained personal access token with Organization permissions → Administration → Read-only, from an organization owner or billing manager. OpenUsage uses it only to read the organization's AI-credit usage, once per refresh. |
+| Devin | `openid profile email` | What Windsurf's editor plugins send. OpenUsage trades the pasted token for the account's API key, the same key those plugins use, and Windsurf offers no narrower key. OpenUsage sends the key only to Windsurf's `GetUserStatus`, once per refresh. |
 | Grok | `openid profile email offline_access grok-cli:access api:access` | The set the Grok CLI itself requests. The settings and billing reads go through the Grok CLI proxy, which every known client reaches with this set; xAI publishes no narrower set for this client, so the card asks for the same. |
 
 A narrower grant applies the next time you add an account. An account you added before keeps its
@@ -92,6 +94,15 @@ Billing**, and enter the organization and a token from an owner or billing manag
 the organization's AI-credit usage report on every refresh for **Org Credits** (AI credits the whole
 organization used this month) and **Org Spend** (dollars billed beyond the included pool). This read
 has not yet been tried against a real organization token.
+
+## Devin
+
+Sign in on windsurf.com in your browser, then paste the token the page shows. Its instructions name
+VS Code, but the token works the same here. OpenUsage trades the token for the account's API key with
+Windsurf's `RegisterUser` and reads `GetUserStatus` on every refresh for the daily and weekly quotas,
+the extra-usage balance, and the plan. A plan that hides its daily quota shows it in the Weekly row when
+the plan has no weekly quota. An account with neither quota nor a balance has nothing to show, and the
+card says so.
 
 ## Grok
 

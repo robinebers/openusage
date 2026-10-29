@@ -40,11 +40,13 @@ such as one whose `kind` is a provider it lacks, is logged and kept as its JSON 
 writes it back after the known accounts.
 
 `ProviderLogin` (`Services/ProviderLogin.swift`) is the sign-in contract: `login(prompt:pastedCode:)`
-drives a browser or device-code prompt and returns the account's label and credential.
+drives a browser, token-page, or device-code prompt and returns the account's label and credential.
 `ProviderLoginCatalog` maps a kind to its login. Browser logins live in
 `Services/BrowserProviderLogins.swift` (Claude, Codex, Antigravity) and use `LoopbackCallbackServer`
 and `PKCE`; device-code logins and the Cursor and API-key logins live in
-`Services/DeviceProviderLogins.swift`. `AddAccountFlow` runs a login for the `AddAccountSheet`.
+`Services/DeviceProviderLogins.swift`. Devin's login opens a page that shows a token for the user to
+paste, and lives in `Providers/Devin/DevinLogin.swift`. `AddAccountFlow` runs a login for the
+`AddAccountSheet`.
 
 `CredentialVault` (`Services/AccountCredentialVault.swift`) stores one `AccountCredential` (OAuth
 tokens or an API key) per account id in the app's Keychain service.

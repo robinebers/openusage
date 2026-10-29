@@ -13,8 +13,8 @@ openusage codex@1a2b3c4d   # one account, by its id
 
 The provider argument names accounts by plain string matching. An account id (the `providers` key in
 the output, `codex@1a2b3c4d`) names that account. A provider kind (`claude`, `codex`, `cursor`,
-`antigravity`, `copilot`, `grok`, `ollama`, `opencode`, `openrouter`, `zai`) names every account of
-that kind. Anything else is an error. There is no aliasing or account-picking logic.
+`antigravity`, `copilot`, `devin`, `grok`, `ollama`, `opencode`, `openrouter`, `zai`) names every
+account of that kind. Anything else is an error. There is no aliasing or account-picking logic.
 
 ## Install on `PATH`
 
@@ -101,6 +101,7 @@ the account's right-click menu.
 | Cursor | `totalUsage`, `grokBot`, `autoUsage`, `apiUsage`, `onDemand`, `requests`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions`; an organization account: `orgCredits`, `orgSpend` |
+| Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |

@@ -66,6 +66,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         let steps: [(name: String, provider: ProviderKind, prompt: LoginPrompt)] = [
             ("browser", .claude, .browser(url, acceptsPastedCode: true)),
+            ("token", .devin, .browserToken(url)),
             ("device-code", .grok, .deviceCode(userCode: "ABCD-1234", verificationURL: url)),
         ]
         let renderDirectory = ProcessInfo.processInfo.environment["OPENUSAGE_RENDER_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }

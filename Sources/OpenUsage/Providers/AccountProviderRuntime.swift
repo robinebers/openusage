@@ -71,7 +71,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 refreshAccount: refreshAccount,
                 refreshDelay: .seconds(5)
             )
-        case .cursor, .antigravity, .copilot, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+        case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
             return nil
         }
     }
@@ -109,6 +109,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             case .cursor: try await refreshCursor(credential)
             case .antigravity: try await refreshAntigravity(credential)
             case .copilot: try await refreshCopilot(credential)
+            case .devin: try await refreshDevin(credential)
             case .grok: try await refreshGrok(credential)
             case .ollama: try await refreshOllama(credential)
             case .opencodeGo: try await refreshOpenCode(credential)
@@ -184,6 +185,13 @@ final class AccountProviderRuntime: ProviderRuntime {
         let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
         try ProviderError.requireSuccess(response, kind: .copilot)
         return try CopilotUsageMapper.map(response)
+    }
+
+    private func refreshDevin(_ credential: AccountCredential) async throws -> ProviderUsage {
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
+        let response = try await DevinUsageClient(http: http).fetchUserStatus(tokens)
+        try ProviderError.requireSuccess(response, kind: .devin)
+        return try DevinUsageMapper.map(response.body)
     }
 
     private func refreshGrok(_ credential: AccountCredential) async throws -> ProviderUsage {

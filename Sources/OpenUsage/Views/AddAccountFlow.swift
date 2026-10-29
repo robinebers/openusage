@@ -61,7 +61,7 @@ final class AddAccountFlow {
 
     func openBrowser() {
         switch prompt {
-        case .browser(let url, _): openURL(url)
+        case .browser(let url, _), .browserToken(let url): openURL(url)
         case .deviceCode(_, let url): openURL(url)
         case nil: break
         }
@@ -127,7 +127,10 @@ final class AddAccountFlow {
     private func show(_ prompt: LoginPrompt) {
         guard !Task.isCancelled else { return }
         self.prompt = prompt
-        if case .browser(let url, _) = prompt { openURL(url) }
+        switch prompt {
+        case .browser(let url, _), .browserToken(let url): openURL(url)
+        case .deviceCode: break
+        }
     }
 
     private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) {
