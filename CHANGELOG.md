@@ -49,6 +49,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The `openusage` command, which now prints what the app last fetched and nothing computed.
 - OpenRouter's **Credits** quick link, after Status Page and Usage Dashboard.
 - Z.ai's notice when a key has no GLM Coding Plan.
+- Claude's Extra Usage reads like `$12.34 spent` when the account sets no monthly limit.
+- A Grok team account's plan, shown beside the notice that the account has no personal quota.
 
 ## v0.7.16
 

@@ -77,7 +77,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines))
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
@@ -189,7 +189,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             let settings = try? await client.fetchSettings(accessToken: tokens.accessToken)
             planRead.record(settings.flatMap(GrokUsageMapper.planName(from:)), at: now())
         }
-        return ProviderUsage(plan: planRead.value, lines: mapped.lines)
+        return ProviderUsage(plan: planRead.value, lines: mapped.lines, notice: mapped.notice)
     }
 
     private func refreshCursor(_ credential: AccountCredential) async throws -> ProviderUsage {

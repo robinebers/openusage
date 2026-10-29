@@ -192,6 +192,10 @@ final class WidgetDataStore {
         backoffs[providerID].flatMap { $0.providerAsked ? nil : $0.message }
     }
 
+    func notice(for providerID: String) -> String? {
+        backoffs[providerID] == nil ? snapshots[providerID]?.notice : errorMessage(for: providerID)
+    }
+
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
         var result: WidgetData
         if let snapshot = snapshots[descriptor.providerID],

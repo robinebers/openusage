@@ -5,6 +5,7 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     let displayName: String
     var plan: String?
     var lines: [MetricLine]
+    var notice: String?
     var refreshedAt: Date
 
     init(
@@ -12,12 +13,14 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         displayName: String,
         plan: String? = nil,
         lines: [MetricLine],
+        notice: String? = nil,
         refreshedAt: Date = Date()
     ) {
         self.providerID = providerID
         self.displayName = displayName
         self.plan = plan
         self.lines = lines
+        self.notice = notice
         self.refreshedAt = refreshedAt
     }
 
@@ -25,8 +28,9 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
         lines.first { $0.label == label }
     }
 
-    init(provider: Provider, plan: String?, lines: [MetricLine], refreshedAt: Date = Date()) {
-        self.init(providerID: provider.id, displayName: provider.displayName, plan: plan, lines: lines, refreshedAt: refreshedAt)
+    init(provider: Provider, plan: String?, lines: [MetricLine], notice: String? = nil, refreshedAt: Date = Date()) {
+        self.init(providerID: provider.id, displayName: provider.displayName, plan: plan, lines: lines, notice: notice,
+                  refreshedAt: refreshedAt)
     }
 }
 

@@ -20,6 +20,7 @@ extension ProviderRuntime {
 struct ProviderUsage: Equatable, Sendable {
     var plan: String?
     var lines: [MetricLine]
+    var notice: String?
 }
 
 extension MetricLine {
