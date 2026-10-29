@@ -19,9 +19,7 @@ extension AccountProviderRuntime {
             let orgs = CopilotOrgBillingMapper.orgLogins(usage)
             guard !orgs.isEmpty else { throw ProviderError.unavailable("Copilot lists no organization for this account, so there is no org billing to read.") }
             guard await copilotOrgLines(orgs: orgs, adminToken: adminToken) != nil else {
-                throw ProviderError.unavailable(
-                    "GitHub did not let this token read any of your organizations' billing. Use a token from an organization owner or billing manager with Administration read access."
-                )
+                throw ProviderError.unavailable("GitHub rejected the token.")
             }
         }
         tokens.extras[OAuthTokens.adminTokenKey] = adminToken

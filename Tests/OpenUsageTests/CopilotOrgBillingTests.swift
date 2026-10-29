@@ -73,10 +73,7 @@ final class CopilotOrgBillingTests: XCTestCase {
             try await container.saveAdminToken("refused", for: account.cardID)
             XCTFail("a refused admin token was saved")
         } catch {
-            XCTAssertEqual(
-                error.localizedDescription,
-                "GitHub did not let this token read any of your organizations' billing. Use a token from an organization owner or billing manager with Administration read access."
-            )
+            XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
         }
         XCTAssertEqual(try vault.load(account.id), .oauth(signIn))
         let refusedTokenStored = await container.hasAdminToken(for: account.cardID)
@@ -114,7 +111,7 @@ final class CopilotOrgBillingTests: XCTestCase {
             try await container.saveAdminToken("admin", for: account.cardID)
             XCTFail("a token was saved on an unreadable report")
         } catch {
-            XCTAssertTrue(error.localizedDescription.hasPrefix("GitHub did not let this token read"), error.localizedDescription)
+            XCTAssertEqual(error.localizedDescription, "GitHub rejected the token.")
         }
         XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "gho-access", extras: [OAuthTokens.identityKey: "github:1"])))
     }
