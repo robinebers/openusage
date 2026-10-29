@@ -20,8 +20,14 @@ struct Provider: Identifiable, Hashable {
     }
 
     var fullName: String {
-        guard let accountLabel, !accountLabel.isEmpty else { return displayName }
-        return "\(displayName) · \(accountLabel)"
+        guard let label = labelBesideName else { return displayName }
+        return "\(displayName) · \(label)"
+    }
+
+    var labelBesideName: String? {
+        guard let accountLabel, !accountLabel.isEmpty,
+              accountLabel.caseInsensitiveCompare(displayName) != .orderedSame else { return nil }
+        return accountLabel
     }
 }
 

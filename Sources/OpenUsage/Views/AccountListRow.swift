@@ -14,7 +14,7 @@ struct AccountListRow<Grip: View>: View {
                 Text(provider.displayName)
                     .foregroundStyle(.primary)
                     .layoutPriority(1)
-                if let accountLabel = provider.accountLabel {
+                if let accountLabel = provider.labelBesideName {
                     Text(accountLabel)
                         .foregroundStyle(.secondary)
                 }
