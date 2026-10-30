@@ -34,7 +34,8 @@ hour. Then:
 
 - A login added on the hub appears at the bottom of its provider's accounts.
 - A login removed on the hub disappears, with its stars.
-- A login disabled on the hub stays, and its card's warning says it is disabled.
+- A login disabled on the hub disappears, with its stars, like a removed one. Enabled again, it comes
+  back as a new account at the bottom.
 - A login renamed on the hub keeps its account, name, and stars.
 
 Logins for providers OpenUsage doesn't support yet are not shown.

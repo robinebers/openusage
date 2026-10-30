@@ -63,10 +63,10 @@ final class CLIProxyHubTests: XCTestCase {
         let (store, vault, hub) = try makeHub()
         store.mirror(try HubLogin.listing(from: Data(Self.recordedListing.utf8)), from: hub.id)
 
-        XCTAssertEqual(store.accounts.map(\.kind), [.claude, .claude, .claude, .claude, .codex])
+        XCTAssertEqual(store.accounts.map(\.kind), [.claude, .claude, .claude, .codex])
         XCTAssertEqual(store.accounts.map(\.label).last, "codex-user@example.com")
         XCTAssertTrue(store.accounts.allSatisfy { $0.hub?.hubID == hub.id && $0.hub?.hubURL == hub.url })
-        XCTAssertEqual(store.accounts.first { $0.label == "disabled@example.com" }?.hub?.isDisabled, true, "a disabled login stays")
+        XCTAssertFalse(store.accounts.contains { $0.label == "disabled@example.com" }, "a login disabled on the hub gets no account")
         let codex = try XCTUnwrap(store.accounts.first { $0.kind == .codex })
         XCTAssertEqual(
             try vault.load(codex.id),
@@ -103,11 +103,13 @@ final class CLIProxyHubTests: XCTestCase {
 
         store.mirror([login("b", "codex", index: "moved"), login("c", "claude", disabled: true), login("d", "claude")], from: hub.id)
 
-        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "Renamed Here", "d"], "a gone login disappears and a new one is added last")
+        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "a gone or disabled login disappears and a new one is added last")
         XCTAssertEqual(store.accounts.first { $0.id == b.id }?.hub?.authIndex, "moved", "a renamed hub file is relinked, not re-added")
-        XCTAssertEqual(store.accounts.first { $0.id == c.id }?.hub?.isDisabled, true)
-        XCTAssertEqual(store.accounts.first { $0.id == c.id }?.label, "Renamed Here", "the local name survives a sync")
-        XCTAssertEqual(vault.ids.count, 4 + 1, "the gone login's credential is deleted; the hub key stays")
+        XCTAssertEqual(vault.ids.count, 3 + 1, "the gone and disabled logins' credentials are deleted; the hub key stays")
+
+        store.mirror([login("b", "codex", index: "moved"), login("c", "claude"), login("d", "claude")], from: hub.id)
+        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d", "c"], "a login enabled again comes back as a new account, last")
+        XCTAssertNotEqual(store.accounts.last?.id, c.id)
     }
 
     func testRemovingTheHubRemovesItsAccountsAndKeyOnly() throws {

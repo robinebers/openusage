@@ -85,8 +85,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            let disabled = account.hub.flatMap { $0.isDisabled ? "This login is disabled on the CLIProxyAPI hub at \($0.host)." : nil }
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: disabled ?? usage.notice))
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
