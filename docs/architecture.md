@@ -53,12 +53,13 @@ paste, and lives in `Providers/Devin/DevinLogin.swift`. `AddAccountFlow` runs a 
 `CredentialVault` (`Services/AccountCredentialVault.swift`) stores one `AccountCredential` (OAuth
 tokens or an API key) per account id in the app's Keychain service.
 
-A CLIProxyAPI hub (`Models/CLIProxyHub.swift`) is not a provider. Each Claude or ChatGPT login on it is
-an ordinary `.claude` or `.codex` account whose `hub` link names the hub and the login's `auth_index`;
+A CLIProxyAPI hub (`Models/CLIProxyHub.swift`) is not a provider. Each supported login on it is
+an ordinary account of its provider (`.claude`, `.codex`, `.antigravity`, `.devin`, or `.grok`) whose
+`hub` link names the hub and the login's `auth_index`;
 its stored credential is the literal `$TOKEN$` with no refresh token, and the hub's management key is
 stored under the hub's id. `ProviderCatalog` gives such an account a `HubTunnel`
 (`Services/CLIProxyHubClient.swift`) as its `HTTPClient`, which wraps each request in the hub's
-`POST /v0/management/api-call` and unwraps the upstream answer, so the Claude and ChatGPT clients,
+`POST /v0/management/api-call` and unwraps the upstream answer, so the providers' own clients,
 mappers, and refresh code run unchanged. `CLIProxyHubGate` sends a hub one request at a time and stops
 calling it after a rejected key or an IP ban. `AccountStore.mirror` reconciles the accounts with the
 hub's `auth-files` listing, and applying the same listing twice changes nothing.

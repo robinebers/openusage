@@ -38,7 +38,7 @@ provider to start its sign-in. Browser sign-in opens your browser; **Open Browse
 sign-in links to the page where you create the key. You can add several accounts for the same provider. See
 [Accounts](docs/accounts.md) for renaming and removing accounts.
 
-If your Claude and ChatGPT logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+If your Claude, ChatGPT, Antigravity, Devin, or Grok logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
 server, connect it once with its address and management key, and every login on it shows as an
 account. OpenUsage keeps the list in step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
 

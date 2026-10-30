@@ -11,7 +11,7 @@ struct HubConnectStep: View {
             provider: nil,
             icon: CLIProxyHub.markID,
             title: "Connect CLIProxyAPI",
-            message: "Enter your CLIProxyAPI server’s address and management key. Its Claude and ChatGPT logins appear as accounts. The key is stored in your Keychain."
+            message: "Enter your CLIProxyAPI server’s address and management key. Its Claude, ChatGPT, Antigravity, Devin, and Grok logins appear as accounts. The key is stored in your Keychain."
         )
         Form {
             Section {

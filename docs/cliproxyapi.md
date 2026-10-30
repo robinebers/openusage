@@ -1,8 +1,9 @@
 # CLIProxyAPI hubs
 
-[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is a server that keeps Claude and ChatGPT
-sign-ins for several people or machines. Connect a hub once, and every Claude and ChatGPT login on it
-shows in OpenUsage as an ordinary account. The hub owns the list of logins; OpenUsage mirrors it.
+[CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is a server that keeps sign-ins for
+several people or machines. Connect a hub once, and every Claude, ChatGPT, Antigravity, Devin, and
+Grok login on it shows in OpenUsage as an ordinary account. The hub owns the list of logins; OpenUsage
+mirrors it.
 
 ## Connect a hub
 
@@ -12,8 +13,8 @@ shows in OpenUsage as an ordinary account. The hub owns the list of logins; Open
 3. Click **Connect**. OpenUsage reads the hub's login list once. If the address or the key is wrong,
    the sheet says why and nothing is saved.
 
-There is no list to pick from: every Claude and ChatGPT login on the hub appears at once, each at the
-bottom of its provider's accounts, named after its email.
+There is no list to pick from: every supported login on the hub appears at once, each at the bottom of
+its provider's accounts, named after its email.
 
 The hub must allow management from another machine (`allow-remote` in its config), unless it runs on
 this Mac. Use `https`, an IP address, or a `.local` name: macOS refuses plain `http` to other names.
@@ -38,7 +39,8 @@ hour. Then:
   back as a new account at the bottom.
 - A login renamed on the hub keeps its account, name, and stars.
 
-Logins for providers OpenUsage doesn't support yet are not shown.
+Logins for providers OpenUsage doesn't support yet are not shown. That includes Cursor: the hub's Cursor
+plugin holds a Cursor API key, and Cursor's usage reads need the session OpenUsage signs in with.
 
 ## The hub's row
 
@@ -72,4 +74,4 @@ time.
 The management key is the hub's admin key: it can read and change the hub's logins and settings.
 OpenUsage keeps it in the app's Keychain service and only ever lists the hub's logins and sends usage
 reads (and reset claims you click) through the hub's `api-call`. The hub puts each login's own token
-into those requests, so no Claude or ChatGPT token ever reaches this Mac.
+into those requests, so no provider token ever reaches this Mac.
