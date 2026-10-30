@@ -52,7 +52,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
   them.
 - Accounts: connect a CLIProxyAPI server with its address and management key, and its Claude and
-  ChatGPT logins show as accounts, kept in step with the server.
+  ChatGPT logins show as accounts, kept in step with the server. A login you also signed in directly
+  shows twice; the hub's copy carries the CLIProxyAPI mark.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

@@ -97,24 +97,6 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 1)
     }
 
-    func testSigningInDirectlyToALoginAHubAlreadyProvidesIsRefused() async throws {
-        let store = makeStore()
-        let hub = CLIProxyHub(url: URL(string: "http://mini.local:8317")!)
-        try store.addHub(hub, key: "mgmt-key")
-        store.mirror([HubLogin(
-            id: "codex-rob.json", authIndex: "1", provider: "codex", label: "rob@example.com", isOAuth: true, isDisabled: false,
-            chatGPTAccountID: "acct", identity: "acct/rob@example.com"
-        )], from: hub.id)
-
-        let flow = flow(store) { .oauth(OAuthTokens(accessToken: "real", extras: [OAuthTokens.identityKey: "acct/rob@example.com"])) }
-        flow.choose(.codex)
-        try await waitUntil { flow.errorMessage != nil }
-
-        XCTAssertEqual(flow.errorMessage, "This account is already in OpenUsage through the CLIProxyAPI hub at mini.local:8317.")
-        XCTAssertEqual(store.accounts.count, 1)
-        XCTAssertFalse(flow.isFinished)
-    }
-
     func testASignInWithoutAnIdentityIsAlwaysAdded() async throws {
         let store = makeStore()
         store.add(kind: .claude, label: "Old", credential: .oauth(OAuthTokens(accessToken: "a")))

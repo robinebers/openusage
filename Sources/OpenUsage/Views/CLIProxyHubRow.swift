@@ -41,14 +41,10 @@ struct CLIProxyHubRow: View {
         case .checking:
             Text("Checking…")
                 .foregroundStyle(.secondary)
-        case .synced(let unsupported, let alreadyAdded):
+        case .synced(let unsupported):
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.count(accountCount, "account"))
                     .foregroundStyle(.secondary)
-                if alreadyAdded > 0 {
-                    Text("\(Self.count(alreadyAdded, "login")) already added directly")
-                        .foregroundStyle(.tertiary)
-                }
                 if unsupported > 0 {
                     Text("\(Self.count(unsupported, "login")) OpenUsage doesn’t support yet")
                         .foregroundStyle(.tertiary)

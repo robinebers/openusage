@@ -25,20 +25,7 @@ signed in directly. Its icon carries the CLIProxyAPI mark in the corner, in Acco
 
 The hub manages its logins, so a hub account's page has no **Remove Account…**; it says
 "Managed by CLIProxyAPI at <host>" instead. Renaming it, hiding metrics, and starring them work as for
-any account.
-
-## A login you also signed in directly
-
-The account that was in OpenUsage first wins, so no login shows twice:
-
-- A hub login you already signed in directly gets no hub account. Your direct account keeps its
-  name, stars, and place, and the hub's row counts it as already added directly. For a Claude login,
-  OpenUsage reads its profile once through the hub to tell which login it is; until that read works,
-  the login is not shown.
-- Signing in directly to a login the hub already provides adds nothing; the sheet says "This account
-  is already in OpenUsage through the CLIProxyAPI hub at <host>."
-- Removing the direct account lets the hub's copy appear at the next read, at the bottom of its
-  provider's accounts with the default stars.
+any account. A login that is also signed in directly shows twice, once with the mark.
 
 ## Staying in sync
 
@@ -55,14 +42,12 @@ Logins for providers OpenUsage doesn't support yet are not shown.
 ## The hub's row
 
 Each connected hub has a row under the accounts. It shows the hub's address, how many accounts it
-mirrors, how many of its logins OpenUsage doesn't support yet or you already added directly, and the
-last read's error, if any.
+mirrors, how many of its logins OpenUsage doesn't support yet, and the last read's error, if any.
 
 - **Replace Management Key…** checks the new key with one read of the login list before saving it.
   A refused key leaves the old key in place.
 - **Remove Hub…** asks first and names how many accounts go with the hub. It deletes those accounts
-  with their stars, and the management key from this Mac. Accounts you signed in directly stay. Nothing
-  changes on the hub. Connecting the hub again adds its accounts fresh, with the default stars.
+  and the management key from this Mac. Nothing changes on the hub.
 
 ## When something goes wrong
 

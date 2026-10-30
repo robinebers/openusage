@@ -153,7 +153,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let hub = try XCTUnwrap(store.hubs.first)
         XCTAssertEqual(hub.url, Self.hubURL)
         XCTAssertEqual(store.accounts(onHub: hub.id).count, 5)
-        XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 1, alreadyAdded: 0), "the Kimi login is counted, not shown")
+        XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 1), "the Kimi login is counted, not shown")
         XCTAssertEqual(try store.credential(for: hub.id), .apiKey("right-key"))
 
         let listings = http.requests.count
@@ -161,39 +161,6 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(http.requests.count, listings, "a hub read moments ago isn't read again")
         await sync.syncDue(maxAge: 0)
         XCTAssertEqual(http.requests.count, listings + 1)
-    }
-
-    func testANewClaudeLoginIsMatchedToADirectAccountByOneProfileReadThroughTheHub() async throws {
-        let logins = [Self.login("same", "claude"), Self.login("other", "claude"), Self.login("unread", "claude")]
-        let profiles = ["index-same": "acct-1", "index-other": "acct-2"]
-        let http = RoutingHTTPClient { request in
-            guard request.url.path() == "/v0/management/api-call" else { return Self.json(200, Self.listing(logins)) }
-            let call = try Self.apiCall(request)
-            guard call.url == ClaudeUsageClient.profileURL.absoluteString, let account = profiles[call.authIndex] else {
-                return Self.envelope(500, "{}")
-            }
-            XCTAssertEqual(call.header["Authorization"], "Bearer $TOKEN$")
-            return Self.envelope(200, #"{"account":{"uuid":"\#(account)"},"organization":{"uuid":"org"}}"#)
-        }
-        let store = AccountStore(defaults: isolatedDefaults(), vault: RecordingVault())
-        let direct = store.add(kind: .claude, label: "Work", credential: .oauth(OAuthTokens(
-            accessToken: "real", extras: [OAuthTokens.identityKey: "acct-1/org"]
-        )))
-        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
-
-        try await sync.connect(url: "mini.local:8317", key: "mgmt-key")
-        let hub = try XCTUnwrap(store.hubs.first)
-
-        XCTAssertEqual(store.accounts.map(\.label), ["Work", "other@example.com"], "the direct login stays; an unread one waits")
-        XCTAssertEqual(store.accounts.first?.id, direct.id)
-        XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 0, alreadyAdded: 1))
-        XCTAssertEqual(try store.credential(for: store.accounts[1].id)?.identity, "acct-2/org")
-
-        let profileReads = { http.requests.count { $0.body.map { String(decoding: $0, as: UTF8.self).contains("oauth\\/profile") } ?? false } }
-        let reads = profileReads()
-        await sync.sync(hub.id)
-        let readsAgain = profileReads()
-        XCTAssertEqual(readsAgain - reads, 1, "a known identity isn't read again; only the unread login is retried")
     }
 
     // MARK: - Fake hub

@@ -70,9 +70,7 @@ final class CLIProxyHubTests: XCTestCase {
         let codex = try XCTUnwrap(store.accounts.first { $0.kind == .codex })
         XCTAssertEqual(
             try vault.load(codex.id),
-            .oauth(OAuthTokens(accessToken: "$TOKEN$", extras: [
-                "chatgpt_account_id": "acct-dummy-0001", OAuthTokens.identityKey: "acct-dummy-0001/codex-user@example.com"
-            ])),
+            .oauth(OAuthTokens(accessToken: "$TOKEN$", extras: ["chatgpt_account_id": "acct-dummy-0001"])),
             "the hub's token never reaches the Mac, and nothing is there to refresh"
         )
         XCTAssertEqual(try vault.load(hub.id), .apiKey("mgmt-key"))
@@ -112,24 +110,18 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertEqual(vault.ids.count, 4 + 1, "the gone login's credential is deleted; the hub key stays")
     }
 
-    func testRemovingTheHubRemovesItsAccountsAndKeyOnlyAndReAddingStartsFresh() throws {
+    func testRemovingTheHubRemovesItsAccountsAndKeyOnly() throws {
         let (store, vault, hub) = try makeHub()
         let direct = store.add(kind: .codex, label: "Direct", credential: .oauth(OAuthTokens(accessToken: "direct")))
         store.mirror([login("a", "claude"), login("b", "codex")], from: hub.id)
         XCTAssertEqual(store.accounts(onHub: hub.id).count, 2)
 
-        let mirrored = Set(store.accounts(onHub: hub.id).map(\.id))
         store.removeHub(hub.id)
 
         XCTAssertEqual(store.accounts.map(\.id), [direct.id])
         XCTAssertTrue(store.hubs.isEmpty)
         XCTAssertEqual(vault.ids, [direct.id])
         XCTAssertTrue(AccountStore(defaults: defaults, vault: vault).hubs.isEmpty, "the removal is saved")
-
-        let again = CLIProxyHub(url: hub.url)
-        try store.addHub(again, key: "mgmt-key")
-        store.mirror([login("a", "claude"), login("b", "codex")], from: again.id)
-        XCTAssertTrue(Set(store.accounts(onHub: again.id).map(\.id)).isDisjoint(with: mirrored), "nothing is restored: new accounts, new layout entries")
     }
 
     func testAHubAndItsAccountsSurviveARelaunch() throws {
@@ -142,36 +134,14 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertEqual(relaunched.accounts.map(\.hub), store.accounts.map(\.hub))
     }
 
-    func testALoginAlreadySignedInDirectlyGetsNoHubAccountUntilTheDirectOneIsRemoved() throws {
+    func testALoginOnAHubIsNeverADuplicateOfADirectSignIn() throws {
         let (store, vault, hub) = try makeHub()
-        let directCredential = AccountCredential.oauth(OAuthTokens(
-            accessToken: "real", extras: [OAuthTokens.identityKey: "acct-dummy-0001/codex-user@example.com"]
-        ))
-        let direct = store.add(kind: .codex, label: "Work", credential: directCredential)
-        let listing = try HubLogin.listing(from: Data(Self.recordedListing.utf8))
-        XCTAssertEqual(listing.first { $0.kind == .codex }?.identity, "acct-dummy-0001/codex-user@example.com")
+        store.mirror([login("a", "claude")], from: hub.id)
+        let mirrored = try XCTUnwrap(store.accounts.first)
+        try vault.update(.oauth(OAuthTokens(accessToken: "$TOKEN$", extras: [OAuthTokens.identityKey: "acct/org"])), for: mirrored.id)
 
-        XCTAssertEqual(store.mirror(listing, from: hub.id), 1)
-        XCTAssertEqual(store.mirror(listing, from: hub.id), 1, "the same listing again changes nothing")
-
-        XCTAssertEqual(store.accounts.filter { $0.kind == .codex }.map(\.id), [direct.id], "the account that was there first wins")
-        XCTAssertEqual(store.accounts.first { $0.id == direct.id }?.label, "Work")
-        XCTAssertEqual(try vault.load(direct.id), directCredential)
-
-        store.remove(direct.id)
-        XCTAssertEqual(store.mirror(listing, from: hub.id), 0)
-        XCTAssertEqual(store.accounts.last?.hub?.loginID, "codex-codex-user@example.com-plus.json", "the hub's copy arrives last, as a new account")
-        XCTAssertEqual(try vault.load(try XCTUnwrap(store.accounts.last).id)?.identity, "acct-dummy-0001/codex-user@example.com")
-    }
-
-    func testAHubLoginIsTheDuplicateOfADirectSignInToTheSameLogin() throws {
-        let (store, _, hub) = try makeHub()
-        var codex = login("b", "codex")
-        codex.identity = "acct-b/b@example.com"
-        store.mirror([codex], from: hub.id)
-
-        let direct = AccountCredential.oauth(OAuthTokens(accessToken: "real", extras: [OAuthTokens.identityKey: "acct-b/b@example.com"]))
-        XCTAssertEqual(store.account(kind: .codex, organization: nil, signedInAs: direct)?.hub?.hubID, hub.id)
+        let direct = AccountCredential.oauth(OAuthTokens(accessToken: "real", extras: [OAuthTokens.identityKey: "acct/org"]))
+        XCTAssertNil(store.account(kind: .claude, organization: nil, signedInAs: direct), "the same login signed in directly shows twice")
     }
 
     private var defaults: UserDefaults!
