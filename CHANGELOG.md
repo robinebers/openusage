@@ -40,8 +40,6 @@ shows only what each provider's API reports for the accounts you sign in to.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
-- Menu bar: the strip, or the app icon in its place, dims while an account's values are out of date
-  because refreshes fail or a provider asked OpenUsage to wait.
 - Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
