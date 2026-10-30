@@ -76,7 +76,7 @@ struct CLIProxyHubClient: Sendable {
         let host = CLIProxyHub.host(of: url)
         let response: HTTPResponse
         do {
-            response = try await gate.send(hub: hubID, host: host) { [http] in try await http.send(request) }
+            response = try await gate.send(hub: hubID, host: host, key: key) { [http] in try await http.send(request) }
         } catch let error as ProviderError {
             throw error
         } catch is CancellationError {
@@ -148,23 +148,24 @@ enum HubRefusal: Equatable {
 /// Keeps a wrong management key to one strike per hub. CLIProxyAPI bans an IP for 30 minutes after five
 /// wrong keys, and every mirrored account refreshes at once, so a hub's calls go one at a time: when the
 /// hub rejects the key, or has banned this Mac, the calls waiting behind fail without being sent, and
-/// nothing more goes to that hub until its key is replaced.
+/// nothing more goes to that hub with that key. A refusal holds only the key it was sent with, so a late
+/// answer to the replaced key never stops the new one.
 actor CLIProxyHubGate {
     private var busy: Set<UUID> = []
     private var waiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
-    private var refused: [UUID: ProviderError] = [:]
+    private var refused: [UUID: (key: String, error: ProviderError)] = [:]
 
-    func send(hub: UUID, host: String, _ request: @Sendable () async throws -> HTTPResponse) async throws -> HTTPResponse {
-        if let error = refused[hub] { throw error }
+    func send(hub: UUID, host: String, key: String, _ request: @Sendable () async throws -> HTTPResponse) async throws -> HTTPResponse {
+        if let error = refusal(of: hub, key: key) { throw error }
         if busy.insert(hub).inserted == false {
             await withCheckedContinuation { waiters[hub, default: []].append($0) }
         }
         defer { handOff(hub) }
-        if let error = refused[hub] { throw error }
+        if let error = refusal(of: hub, key: key) { throw error }
         let response = try await request()
         if let refusal = HubRefusal(response), refusal.closesGate {
             let error = refusal.error(host: host, upstream: nil)
-            refused[hub] = error
+            refused[hub] = (key, error)
             AppLog.error(LogTag.auth("cliproxy"), "\(host) \(refusal); not calling it again until its key is replaced")
             throw error
         }
@@ -174,6 +175,11 @@ actor CLIProxyHubGate {
     /// Lets the hub be called again: its key was replaced, or the hub was removed.
     func reopen(_ hub: UUID) {
         refused[hub] = nil
+    }
+
+    private func refusal(of hub: UUID, key: String) -> ProviderError? {
+        guard let refused = refused[hub], refused.key == key else { return nil }
+        return refused.error
     }
 
     private func handOff(_ hub: UUID) {

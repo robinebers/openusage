@@ -99,6 +99,35 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertNil(resumed.failure, "calls resume once the key is replaced")
     }
 
+    func testALateRejectionOfTheReplacedKeyLeavesTheNewKeyWorking() async throws {
+        let (started, didStart) = AsyncStream.makeStream(of: Void.self)
+        let (released, release) = AsyncStream.makeStream(of: Void.self)
+        let logins = [Self.login("a", "claude")]
+        let hub = Self.hub(key: "right-key", listing: Self.listing(logins)) { _, _ in (200, Self.claudeUsage, [:]) }
+        let http = RoutingHTTPClient { request in
+            if request.headers["Authorization"] == "Bearer wrong-key" {
+                didStart.yield()
+                for await _ in released { break }
+            }
+            return try await hub.send(request)
+        }
+        let (runtimes, store, hubAccount) = try makeRuntimes(http: http, logins: logins, key: "wrong-key")
+        let stale = Task { await runtimes[0].refresh() }
+        for await _ in started { break }
+
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
+        try await sync.replaceKey("right-key", for: hubAccount.id)
+        release.yield()
+        let staleResult = await stale.value
+        XCTAssertEqual(staleResult.failure?.message, "The CLIProxyAPI hub at mini.local:8317 rejected the management key. Replace it in Accounts.")
+
+        let sent = http.requests.count
+        let fresh = await runtimes[0].refresh()
+        XCTAssertNil(fresh.failure, "the old key's late 401 doesn't stop the new key")
+        XCTAssertGreaterThan(http.requests.count, sent, "the new key's request reached the hub")
+        XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer right-key")
+    }
+
     func testAnIPBanStopsCallsToo() async throws {
         let http = RoutingHTTPClient { _ in Self.json(403, #"{"error":"IP banned due to too many failed attempts. Try again in 29m12s"}"#) }
         let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude"), Self.login("b", "codex")])
