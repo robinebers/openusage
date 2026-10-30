@@ -230,13 +230,6 @@ final class WidgetDataStore {
         return "Last updated \(duration) ago"
     }
 
-    var hasStaleAccount: Bool {
-        guard let lastRefreshAt else { return false }
-        return snapshots.contains { id, snapshot in
-            backoffs[id] != nil && lastRefreshAt.timeIntervalSince(snapshot.refreshedAt) >= RefreshSetting.interval
-        }
-    }
-
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {
         switch line {
         case .progress(_, let used, let limit, let format, let resetsAt, let periodDurationMs):
