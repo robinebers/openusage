@@ -36,6 +36,8 @@ final class PopoverState {
     private(set) var screenSlideID = 0
     var customizeProviderID: String?
     var isAddingAccount = false
+    private(set) var dashboardFocusProviderID: String?
+    private(set) var dashboardFocusRequestID = 0
     /// Whether the popover is on-screen. `StatusItemController` flips it at its show/hide chokepoints,
     /// synchronously with `makeKeyAndOrderFront`/`orderOut`, and `DashboardView` re-seeds the panel
     /// height on reopen from it. Deliberately not derived from occlusion or window key state: a
@@ -73,5 +75,25 @@ final class PopoverState {
         if screen != .dashboard { screen = .dashboard }
         shareNotice.clear()
         accountsNotice.clear()
+        dashboardFocusProviderID = nil
+    }
+
+    func openWidgetAccount(_ providerID: String?, hasVisibleMetrics: Bool) {
+        dashboardFocusProviderID = nil
+        isAddingAccount = false
+        if let providerID, !hasVisibleMetrics {
+            openAccounts(providerID)
+        } else {
+            screen = .dashboard
+            if let providerID {
+                dashboardFocusProviderID = providerID
+                dashboardFocusRequestID &+= 1
+            }
+        }
+    }
+
+    func acknowledgeDashboardFocus(requestID: Int) {
+        guard requestID == dashboardFocusRequestID else { return }
+        dashboardFocusProviderID = nil
     }
 }

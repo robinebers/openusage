@@ -8,6 +8,7 @@ with the behaviour they describe. If the app and a page here disagree, that is a
 - [Dashboard](dashboard.md): cards, accounts, metrics, right-click menus, reordering, keyboard shortcuts
 - [Accounts](accounts.md): adding, renaming, and removing accounts; how sign-in works
 - [Menu bar](menu-bar.md): starring metrics into the menu bar
+- [macOS widgets](macos-widgets.md): account usage on the desktop and in Notification Center
 - [Settings](settings.md): every option and what it changes, and what carries over from 0.7.x
 - [Command line](cli.md): the `openusage` command, its JSON output, and installing it
 - [Refreshing](refreshing.md): when data updates and what happens when a fetch fails

@@ -243,6 +243,33 @@ final class StatusItemController: NSObject {
         }
     }
 
+    func openProviderDeepLink(_ url: URL) {
+        guard let scheme = Bundle.main.object(forInfoDictionaryKey: "OpenUsageURLScheme") as? String else {
+            AppLog.error(.statusItem, "Cannot open widget link: OpenUsageURLScheme is missing")
+            return
+        }
+        guard let link = ProviderDeepLink.parse(
+            url, expectedScheme: scheme, knownProviderIDs: Set(container.layout.orderedProviderIDs())
+        ) else {
+            AppLog.error(.statusItem, "Ignored invalid widget link")
+            return
+        }
+        switch link {
+        case .provider(let id):
+            container.popover.openWidgetAccount(
+                id, hasVisibleMetrics: !WidgetBridgeExporter.enabledMetricDescriptors(for: id, layout: container.layout).isEmpty
+            )
+        case .recovery:
+            container.popover.openWidgetAccount(nil, hasVisibleMetrics: false)
+        }
+        if panel.isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            statusItem.button?.highlight(true)
+        } else {
+            showPanel()
+        }
+    }
+
     private func showPanel() {
         guard let button = statusItem.button, let buttonWindow = button.window else {
             AppLog.error(.statusItem, "Cannot show panel: status item has no button")

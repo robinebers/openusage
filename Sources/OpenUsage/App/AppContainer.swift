@@ -11,6 +11,7 @@ final class AppContainer {
     let popover = PopoverState()
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
+    private let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
@@ -66,11 +67,20 @@ final class AppContainer {
             telemetry?.record(providerID: kind.rawValue, result: result, manual: manual)
         }
         self.telemetry = telemetry
+        let widgetBridge = WidgetBridgeCoordinator.makeDefault(
+            exporter: WidgetBridgeExporter(layout: layout, dataStore: dataStore)
+        )
+        self.widgetBridgeCoordinator = widgetBridge
+        widgetBridge?.start()
         accounts.didChange = { [weak self] in self?.syncAccounts() }
     }
 
     deinit {
         refreshTask?.cancel()
+    }
+
+    func flushWidgetBridge() {
+        widgetBridgeCoordinator?.exportIfChanged()
     }
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
@@ -135,6 +145,7 @@ final class AppContainer {
             popover.customizeProviderID = nil
         }
         dataStore.apply(providers: providers, registry: registry)
+        widgetBridgeCoordinator?.exportIfChanged()
         for id in providers.map(\.provider.id) where !previousIDs.contains(id) {
             Task { await dataStore.refresh(providerID: id, force: true) }
         }

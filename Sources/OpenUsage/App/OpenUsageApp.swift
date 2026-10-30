@@ -5,6 +5,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let processStartedAt = ProcessInfo.processInfo.systemUptime
     private var container: AppContainer?
     private var statusItemController: StatusItemController?
+    private var pendingOpenURLs: [URL] = []
     private var singleInstanceLock: SingleInstanceLock.Token?
     private let updater = UpdaterController()
 
@@ -36,12 +37,23 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         container.startRefreshing()
         Task { await APIKeyV1Files.importOnce(into: container.accounts) }
         statusItemController = StatusItemController(container: container, updater: updater)
+        for url in pendingOpenURLs { statusItemController?.openProviderDeepLink(url) }
+        pendingOpenURLs.removeAll()
         let launchDurationMS = Int((ProcessInfo.processInfo.systemUptime - processStartedAt) * 1_000)
         AppLog.info(.lifecycle, "launch to status item ready: \(launchDurationMS) ms")
         updater.start()
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        container?.flushWidgetBridge()
         container?.telemetry.flush()
+    }
+
+    public func application(_ application: NSApplication, open urls: [URL]) {
+        guard let statusItemController else {
+            pendingOpenURLs.append(contentsOf: urls)
+            return
+        }
+        for url in urls { statusItemController.openProviderDeepLink(url) }
     }
 }

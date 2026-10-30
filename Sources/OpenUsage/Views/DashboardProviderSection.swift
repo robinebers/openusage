@@ -11,6 +11,7 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
                 ForEach(family.accounts) { account($0) }
             }
+            .scrollTargetLayout()
             .padding(DashboardGrid.cardPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface()

@@ -18,6 +18,19 @@ copy's path.
 
 `./script/build_and_run.sh logs` launches the app and streams its log lines.
 
+Widgets need an Apple Development identity and team id. The script infers the team from the signing
+certificate, or accepts `OPENUSAGE_TEAM_ID`. Without both, it warns and builds the host without widgets;
+set `WIDGETS_REQUIRED=1` to make that a failure. Rebuilding stops the staged widget extension as well
+as the host, so macOS does not keep rendering old code.
+
+`swift build` and the SwiftPM tests do not compile the extension. Check it separately with:
+
+```sh
+xcodebuild -project OpenUsageWidgets.xcodeproj -scheme OpenUsageWidgets \
+  -configuration Release -destination 'generic/platform=macOS' \
+  CODE_SIGNING_ALLOWED=NO ARCHS='arm64 x86_64' ONLY_ACTIVE_ARCH=NO build
+```
+
 ## Read the logs
 
 OpenUsage logs through unified logging only, under the subsystem `OpenUsage`, one category per

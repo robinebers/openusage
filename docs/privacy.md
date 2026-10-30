@@ -15,12 +15,16 @@ cache, on disk or in memory. Nothing is synced to iCloud. The
 network request. A [proxy](proxy.md) user name and password stay in your own
 `~/.openusage/config.json`, which OpenUsage reads but never writes or logs.
 
+The [macOS widgets](macos-widgets.md) read a separate local copy of account names and display-ready
+usage from an App Group shared with the app. That copy contains no credentials or detailed errors.
+Removing an account removes its shared values too. Widget data never goes to the analytics service.
+
 ## Screen sharing
 
 With **Settings → Privacy → Hide From Screen Share** on, the menu bar shows the app icon instead of
-your usage while your screen is shared or recorded. It is off by default and does not hide the
-panel. To tell that a capture is running, OpenUsage asks the macOS window server whether anything is
-watching the screen.
+your usage while your screen is shared or recorded. It is off by default and does not hide the panel
+or macOS widgets. To tell that a capture is running, OpenUsage asks the macOS window server whether
+anything is watching the screen.
 
 ## Anonymous telemetry
 

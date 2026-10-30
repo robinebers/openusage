@@ -80,6 +80,7 @@ struct WidgetGroupedListView: View {
             )
         }
         .opacity(activeAccountID == account.id ? 0 : 1)
+        .id(account.id)
         .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
 

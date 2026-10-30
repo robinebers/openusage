@@ -32,6 +32,13 @@ values before the first fetch finishes. A value counts as fresh for one interval
 was fetched, across a relaunch too: relaunching within 5 minutes of a refresh asks no provider until
 the next pass.
 
+macOS widgets receive a display-only copy of the latest fetched values and time. Changed values,
+names, shown metrics or order request a redraw together. When only the fetch time changes, OpenUsage
+requests a redraw at most once every 15 minutes. Widgets never fetch providers themselves.
+WidgetKit controls when the changed values appear; if the app
+stops running, widgets keep their last values and mark them outdated after 30 minutes. See
+[macOS widgets](macos-widgets.md).
+
 ## When a fetch fails
 
 A failed refresh never wipes your data. The last good values stay on screen and a warning icon appears

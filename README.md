@@ -71,6 +71,9 @@ what Cursor charged for on-demand usage today, yesterday, and in the last 30 day
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
 - **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
   resets. Rest the pointer on the count to see when each expires, and spend one from there.
+- **[macOS widgets](docs/macos-widgets.md).** Put an account's usage on the desktop or in Notification
+  Center. Widgets follow its shown metrics and saved order, with values supplied by the running app.
+  Reset timers stop at zero while waiting for an updated window.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or
   right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with
   every account, to the clipboard; from an account's right-click, that account alone. The picture uses
@@ -88,7 +91,8 @@ what Cursor charged for on-demand usage today, yesterday, and in the last 30 day
 
 Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md),
 [accounts](docs/accounts.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
-the [command line](docs/cli.md), [refreshing](docs/refreshing.md), [providers](docs/providers.md),
+the [macOS widgets](docs/macos-widgets.md), [command line](docs/cli.md), [refreshing](docs/refreshing.md),
+[providers](docs/providers.md),
 [updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
 
 For working on the code, see [architecture](docs/architecture.md),
@@ -117,7 +121,8 @@ The dev app is staged as `dist/OpenUsage.app` with the bundle identifier
 SwiftPM package, SwiftUI content hosted in an AppKit-owned `NSStatusItem` and a key-capable
 `NSPanel`, Swift 6 strict concurrency. `AccountStore` persists accounts, `CredentialVault` stores
 their credentials, `ProviderLogin` signs in, and one `AccountProviderRuntime` per account fetches
-usage and maps it to metric lines. See the [architecture overview](docs/architecture.md) and
+usage and maps it to metric lines. A separate WidgetKit extension reads a display-only App Group
+snapshot without credentials. See the [architecture overview](docs/architecture.md) and
 [AGENTS.md](AGENTS.md) for conventions.
 
 ## Releasing

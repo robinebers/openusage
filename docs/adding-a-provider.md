@@ -11,6 +11,8 @@ In `Sources/OpenUsage/Models/Account.swift`, add a case to `ProviderKind` with i
 the page where the user creates the key.
 
 Add the provider's mark as `Sources/OpenUsage/Resources/ProviderIcons/<kind>.svg`.
+The macOS widget picker uses the accounts exported by the app, so a new provider needs no separate
+widget registration and uses the same mark.
 
 ## 2. Implement the sign-in
 

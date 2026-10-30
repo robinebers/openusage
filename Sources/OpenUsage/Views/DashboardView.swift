@@ -65,6 +65,8 @@ struct DashboardView: View {
                     resetTransientState()
                 }
             }
+            .onChange(of: popover.dashboardFocusRequestID) { _, _ in consumeWidgetFocus() }
+            .onAppear { consumeWidgetFocus() }
             // A screen switch can tear the list down mid-drag, in which case the gesture's
             // `onEnded` never fires — clear the lift here or its overlay survives onto the new
             // screen.
@@ -133,6 +135,15 @@ struct DashboardView: View {
         animatedHeight = 0
         didEstablishHeight = false
         dashboardScrollPosition.scrollTo(edge: .top)
+    }
+
+    private func consumeWidgetFocus() {
+        guard popover.screen == .dashboard,
+              let id = popover.dashboardFocusProviderID,
+              layout.displayGroups.contains(where: { $0.provider.id == id }) else { return }
+        let requestID = popover.dashboardFocusRequestID
+        dashboardScrollPosition.scrollTo(id: id, anchor: .top)
+        popover.acknowledgeDashboardFocus(requestID: requestID)
     }
 
     /// Why an offset and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`
