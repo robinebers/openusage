@@ -53,9 +53,7 @@ log show --last 1h --predicate 'subsystem == "OpenUsage" AND category == "config
 ## What goes through the proxy
 
 Every request OpenUsage sends to a provider goes through the proxy: usage reads, token renewals, and
-the token exchanges and device-code checks during sign-in. Requests to a
-[CLIProxyAPI hub](cliproxyapi.md) go through it too; the hub then calls the provider over its own
-network and its own proxy settings.
+the token exchanges and device-code checks during sign-in.
 
 These do not:
 

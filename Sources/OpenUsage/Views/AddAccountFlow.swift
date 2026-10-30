@@ -7,6 +7,10 @@ import Observation
 enum AddAccountChoice: Hashable {
     case provider(ProviderKind)
     case cliproxyHub
+
+    @MainActor static var all: [AddAccountChoice] {
+        ProviderKind.allCases.map(AddAccountChoice.provider) + (CLIProxyHub.isEnabled ? [.cliproxyHub] : [])
+    }
 }
 
 @MainActor

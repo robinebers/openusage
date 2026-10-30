@@ -5,6 +5,8 @@ import Foundation
 struct CLIProxyHub: Codable, Identifiable, Hashable, Sendable {
     /// The bundled mark (`ProviderIcons/cliproxyapi.svg`) on the hub's row and on its accounts' badge.
     static let markID = "cliproxyapi"
+    /// Off until the feature is finished: Add Account offers no hub, no hub syncs, and no hub row or mark shows.
+    @MainActor static var isEnabled = false
 
     let id: UUID
     let url: URL

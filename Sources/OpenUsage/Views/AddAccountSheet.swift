@@ -49,7 +49,7 @@ private struct ProviderChoiceStep: View {
     var body: some View {
         SheetHeader(provider: nil, title: "Add Account", message: "Choose a provider to sign in to.")
         ChoiceList(
-            items: ProviderKind.allCases.map(AddAccountChoice.provider) + [.cliproxyHub],
+            items: AddAccountChoice.all,
             selection: $flow.selection,
             choose: { choice in
                 switch choice {

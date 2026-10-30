@@ -38,10 +38,6 @@ provider to start its sign-in. Browser sign-in opens your browser; **Open Browse
 sign-in links to the page where you create the key. You can add several accounts for the same provider. See
 [Accounts](docs/accounts.md) for renaming and removing accounts.
 
-If your Claude, ChatGPT, Antigravity, Devin, or Grok logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
-server, connect it once with its address and management key, and every login on it shows as an
-account. OpenUsage keeps the list in step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
-
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
 app's own Keychain service.
 
@@ -91,7 +87,7 @@ what Cursor charged for on-demand usage today, yesterday, and in the last 30 day
 ## Documentation
 
 Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md),
-[accounts](docs/accounts.md), [CLIProxyAPI hubs](docs/cliproxyapi.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
+[accounts](docs/accounts.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
 the [command line](docs/cli.md), [refreshing](docs/refreshing.md), [providers](docs/providers.md),
 [updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
 

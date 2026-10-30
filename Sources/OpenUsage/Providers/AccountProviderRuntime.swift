@@ -50,7 +50,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     static func provider(for account: Account) -> Provider {
         Provider(
             id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization,
-            hubHost: account.hub?.host
+            hubHost: CLIProxyHub.isEnabled ? account.hub?.host : nil
         )
     }
 

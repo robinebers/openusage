@@ -1,5 +1,7 @@
 # CLIProxyAPI hubs
 
+> This feature is disabled in builds for now (`CLIProxyHub.isEnabled`). The code ships, but no one can connect a hub.
+
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is a server that keeps sign-ins for
 several people or machines. Connect a hub once, and every Claude, ChatGPT, Antigravity, Devin, and
 Grok login on it shows in OpenUsage as an ordinary account. The hub owns the list of logins; OpenUsage

@@ -12,6 +12,26 @@ final class CLIProxyHubTunnelTests: XCTestCase {
     nonisolated private static let devinStatus = #"{"userStatus":{"planStatus":{"planInfo":{"planName":"Max"},"weeklyQuotaRemainingPercent":40}}}"#
     nonisolated private static let grokCredits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2099-01-01T00:00:00Z","end":"2099-01-08T00:00:00Z"},"creditUsagePercent":25}}"#
 
+    override func setUp() async throws {
+        CLIProxyHub.isEnabled = true
+    }
+
+    override func tearDown() async throws {
+        CLIProxyHub.isEnabled = false
+    }
+
+    func testWhileTheHubIsOffAddAccountOffersNoHubAndNothingSyncs() async throws {
+        CLIProxyHub.isEnabled = false
+        let http = Self.hub { _, _ in (200, Self.claudeUsage, [:]) }
+        let (_, store, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
+
+        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider))
+        await sync.syncDue(maxAge: 0)
+        XCTAssertTrue(http.requests.isEmpty, "no hub is read")
+        XCTAssertNil(AccountProviderRuntime.provider(for: store.accounts[0]).hubHost, "no hub mark")
+    }
+
     func testClaudeAndChatGPTReadUsageThroughTheHubWithTheirClientsUnchanged() async throws {
         let http = Self.hub { url, _ in
             url == ClaudeUsageClient.usageURL.absoluteString ? (200, Self.claudeUsage, [:]) : (200, #"{"rate_limit":{}}"#, [:])
