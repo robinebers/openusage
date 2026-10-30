@@ -42,6 +42,32 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
         }
     }
 
+    func testAHubCaptionEndsWithTheHubMarkAtCapHeight() async throws {
+        let planEnd = width - DashboardGrid.inset
+        let capHeight = DashboardGrid.planNSFont.capHeight
+        let space = (" " as NSString).size(withAttributes: [.font: DashboardGrid.planNSFont]).width
+        let hub = DashboardAccount(provider: Provider(id: "claude@hub", kind: .claude, accountLabel: "Work", hubHost: "mini.example"), lines: [])
+        let planAlone = try await ink(Text("Team 5x").font(DashboardGrid.planFont).foregroundStyle(.secondary).fixedSize().padding(20))
+        let planWidth = try XCTUnwrap(planAlone.span()).width
+
+        let markOnly = try await ink(DashboardAccountCaption(account: hub), width: width)
+        let lone = try XCTUnwrap(markOnly.span(from: planEnd - 3 * capHeight, to: planEnd + 2), "no hub mark drawn without a plan")
+        XCTAssertEqual(lone.last, planEnd, accuracy: 1.5, "the hub mark doesn't end at the inset before the edge")
+        XCTAssertEqual(lone.width, capHeight, accuracy: 1.5, "the hub mark isn't the plan's cap height wide")
+
+        let caption = try await ink(DashboardAccountCaption(account: hub, plan: "Team 5x"), width: width)
+        let tail = try XCTUnwrap(caption.span(from: planEnd - planWidth - space - capHeight - 6, to: planEnd + 2), "no plan drawn")
+        XCTAssertEqual(tail.last, planEnd, accuracy: 1.5, "the hub mark doesn't end at the inset before the edge")
+        let mark = try XCTUnwrap(caption.span(from: planEnd - capHeight - 1, to: planEnd + 2))
+        let plan = try XCTUnwrap(caption.span(from: tail.first, to: mark.first - 1), "no plan before the hub mark")
+        XCTAssertEqual(plan.width, planWidth, accuracy: 1.5, "the plan is cut")
+        XCTAssertEqual(mark.first - plan.last, space, accuracy: 1.5, "the plan and the hub mark aren't one space apart")
+        let planRows = try XCTUnwrap(caption.rows(from: plan.first, to: plan.last))
+        let markRows = try XCTUnwrap(caption.rows(from: mark.first, to: mark.last))
+        XCTAssertEqual(markRows.width, capHeight, accuracy: 1, "the hub mark isn't the plan's cap height tall")
+        XCTAssertEqual(markRows.last, planRows.last, accuracy: 1, "the hub mark doesn't sit on the plan's baseline")
+    }
+
     private func account(_ kind: ProviderKind, _ name: String) -> DashboardAccount {
         DashboardAccount(provider: Provider(id: "\(kind.rawValue)@1", kind: kind, accountLabel: name), lines: [])
     }
