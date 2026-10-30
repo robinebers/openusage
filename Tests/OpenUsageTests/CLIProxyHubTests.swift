@@ -51,6 +51,10 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertThrowsError(try HubLogin.listing(from: Data("<html>".utf8)))
     }
 
+    func testAddAccountOffersNoHubWhileTheHubIsOff() {
+        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider))
+    }
+
     func testTheHubAddressIsCleanedFromWhatTheUserPastes() {
         let cases: [(String, String?)] = [
             ("127.0.0.1:8317", "http://127.0.0.1:8317"),

@@ -65,7 +65,6 @@ final class CLIProxyHubSync {
 
     /// Re-reads every hub not read within `maxAge`.
     func syncDue(maxAge: TimeInterval = RefreshSetting.secondaryReadInterval) async {
-        guard CLIProxyHub.isEnabled else { return }
         let due = accounts.hubs.filter { hub in syncedAt[hub.id].map { now().timeIntervalSince($0) >= maxAge } ?? true }
         await withTaskGroup(of: Void.self) { group in
             for hub in due { group.addTask { await self.sync(hub.id) } }

@@ -12,7 +12,7 @@ struct AccountListView: View {
 
     var body: some View {
         let providers = layout.orderedProviders()
-        let hubs = CLIProxyHub.isEnabled ? container.accounts.hubs : []
+        let hubs = container.accounts.hubs
         VStack(spacing: PanelMetrics.sectionSpacing) {
             if providers.isEmpty, hubs.isEmpty {
                 ContentUnavailableView { Label("No Accounts", systemImage: "person.crop.circle") }

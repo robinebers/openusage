@@ -1,12 +1,13 @@
 import Foundation
 
 /// A CLIProxyAPI server the user connected with its management key. The hub owns its list of logins;
-/// each supported login is mirrored as an ordinary Claude or ChatGPT account that carries a `HubLink`.
+/// each supported login is mirrored as an ordinary Claude, ChatGPT, Antigravity, Devin, or Grok account
+/// that carries a `HubLink`.
 struct CLIProxyHub: Codable, Identifiable, Hashable, Sendable {
     /// The bundled mark (`ProviderIcons/cliproxyapi.svg`) on the hub's row and on its accounts' badge.
     static let markID = "cliproxyapi"
-    /// Off until the feature is finished: Add Account offers no hub, no hub syncs, and no hub row or mark shows.
-    @MainActor static var isEnabled = false
+    /// Off until the feature is finished: Add Account offers no hub.
+    static let isEnabled = false
 
     let id: UUID
     let url: URL
