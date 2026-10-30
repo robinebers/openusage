@@ -108,6 +108,9 @@ struct HubLogin: Equatable, Sendable {
         return switch provider {
         case "claude": .claude
         case "codex": .codex
+        case "antigravity": .antigravity
+        case "devin": .devin
+        case "xai": .grok
         default: nil
         }
     }

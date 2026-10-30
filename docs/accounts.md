@@ -25,7 +25,7 @@ Open it from the panel's **Options** menu or press Return on the dashboard.
      billing managers, and click **Add Account**. The account is named after the organization, and the
      same organization is not added twice.
 
-To add the Claude and ChatGPT logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom of
+To add the Claude, ChatGPT, Antigravity, Devin, and Grok logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom of
 the list and enter the hub's address and management key. See [CLIProxyAPI hubs](cliproxyapi.md).
 
 If a sign-in fails, **Try Again** starts it over. The close button in a sign-in step's corner (or Esc)

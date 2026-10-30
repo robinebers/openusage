@@ -8,6 +8,9 @@ import XCTest
 final class CLIProxyHubTunnelTests: XCTestCase {
     nonisolated private static let hubURL = URL(string: "http://mini.local:8317")!
     nonisolated private static let claudeUsage = #"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#
+    nonisolated private static let antigravitySummary = #"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-weekly","remainingFraction":0.75,"resetTime":"2099-01-01T00:00:00Z","window":"weekly"}]}]}"#
+    nonisolated private static let devinStatus = #"{"userStatus":{"planStatus":{"planInfo":{"planName":"Max"},"weeklyQuotaRemainingPercent":40}}}"#
+    nonisolated private static let grokCredits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2099-01-01T00:00:00Z","end":"2099-01-08T00:00:00Z"},"creditUsagePercent":25}}"#
 
     func testClaudeAndChatGPTReadUsageThroughTheHubWithTheirClientsUnchanged() async throws {
         let http = Self.hub { url, _ in
@@ -34,6 +37,35 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(codexCall.authIndex, "index-b")
         XCTAssertEqual(codexCall.header["Authorization"], "Bearer $TOKEN$")
         XCTAssertEqual(codexCall.header["ChatGPT-Account-Id"], "acct-b")
+    }
+
+    func testAntigravityDevinAndGrokReadUsageThroughTheHubWithTheirClientsUnchanged() async throws {
+        let http = Self.hub { url, _ in
+            if url.hasSuffix(AntigravityUsageClient.loadCodeAssistPath) { return (200, #"{"cloudaicompanionProject":"p-1","currentTier":{"id":"free-tier","name":"Free"}}"#, [:]) }
+            if url.hasSuffix(AntigravityUsageClient.quotaSummaryPath) { return (200, Self.antigravitySummary, [:]) }
+            if url.hasSuffix("GetUserStatus") { return (200, Self.devinStatus, [:]) }
+            if url == GrokUsageClient.creditsConfigURL.absoluteString { return (200, Self.grokCredits, [:]) }
+            return (200, "{}", [:])
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("g", "antigravity"), Self.login("d", "devin"), Self.login("x", "xai")])
+        XCTAssertEqual(runtimes.map(\.account.kind), [.antigravity, .devin, .grok])
+
+        for runtime in runtimes {
+            let result = await runtime.refresh()
+            let snapshot = try XCTUnwrap(result.success, "\(runtime.account.kind): \(result.failure?.message ?? "")")
+            XCTAssertFalse(snapshot.lines.isEmpty, "\(runtime.account.kind) mapped the tunnelled answer")
+        }
+        let calls = try http.requests.map(Self.apiCall)
+        let quota = try XCTUnwrap(calls.first { $0.url.hasSuffix(AntigravityUsageClient.quotaSummaryPath) })
+        XCTAssertEqual(quota.authIndex, "index-g")
+        XCTAssertEqual(quota.header["Authorization"], "Bearer $TOKEN$", "the hub puts its own, refreshed token in")
+        XCTAssertTrue(quota.data.contains("p-1"), "the quota read names the project from the first call")
+        let devin = try XCTUnwrap(calls.first { $0.url.hasSuffix("GetUserStatus") })
+        XCTAssertEqual(devin.authIndex, "index-d")
+        XCTAssertTrue(devin.data.contains(#""apiKey":"$TOKEN$""#), "Devin's key goes in the body, where the hub substitutes it too")
+        let grok = try XCTUnwrap(calls.first { $0.url == GrokUsageClient.creditsConfigURL.absoluteString })
+        XCTAssertEqual(grok.authIndex, "index-x")
+        XCTAssertEqual(grok.header["Authorization"], "Bearer $TOKEN$")
     }
 
     func testAWrongManagementKeyReachesTheHubOnceUntilTheKeyIsReplaced() async throws {
@@ -223,11 +255,11 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         return String(decoding: try! JSONSerialization.data(withJSONObject: ["files": files]), as: UTF8.self)
     }
 
-    nonisolated private static func apiCall(_ request: HTTPRequest) throws -> (authIndex: String, method: String, url: String, header: [String: String]) {
+    nonisolated private static func apiCall(_ request: HTTPRequest) throws -> (authIndex: String, method: String, url: String, header: [String: String], data: String) {
         let payload = try XCTUnwrap(try JSONSerialization.jsonObject(with: request.body ?? Data()) as? [String: Any])
         return (
             payload["auth_index"] as? String ?? "", payload["method"] as? String ?? "", payload["url"] as? String ?? "",
-            payload["header"] as? [String: String] ?? [:]
+            payload["header"] as? [String: String] ?? [:], payload["data"] as? String ?? ""
         )
     }
 

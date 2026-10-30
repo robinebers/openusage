@@ -35,6 +35,14 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertEqual(logins.first?.authIndex, "b799da203df01af5")
     }
 
+    func testEveryHubProviderWithARuntimeIsMirroredAndCursorIsNot() throws {
+        let providers = ["antigravity", "devin", "xai", "cursor", "gemini"]
+        let body = #"{"files":["# + providers.map { #"{"id":"\#($0)","auth_index":"\#($0)-index","provider":"\#($0)","account_type":"oauth"}"# }
+            .joined(separator: ",") + "]}"
+        let logins = try HubLogin.listing(from: Data(body.utf8))
+        XCTAssertEqual(logins.map(\.kind), [.antigravity, .devin, .grok, nil, nil], "Cursor's hub login holds an API key, not a session")
+    }
+
     func testAnAPIKeyEntryOrAnUncallableEntryIsNotMirrored() throws {
         let body = #"{"files":[{"id":"a","auth_index":"1","provider":"claude","account_type":"api_key"},{"id":"b","provider":"codex"},{"id":"c","auth_index":"3","provider":"codex"}]}"#
         let logins = try HubLogin.listing(from: Data(body.utf8))
