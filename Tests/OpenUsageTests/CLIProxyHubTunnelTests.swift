@@ -114,13 +114,23 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(failure?.kind, .rateLimited(retryAfter: 120))
     }
 
-    func testADisabledLoginStillReadsAndSaysSo() async throws {
-        let http = Self.hub { _, _ in (200, Self.claudeUsage, [:]) }
-        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude", disabled: true)])
-        let result = await runtimes[0].refresh()
-        let snapshot = try XCTUnwrap(result.success)
-        XCTAssertEqual(snapshot.notice, "This login is disabled on the CLIProxyAPI hub at mini.local:8317.")
-        XCTAssertFalse(snapshot.lines.isEmpty)
+    func testAHubClaudeAccountShowsItsPlanOnItsFirstRefresh() async throws {
+        let profile = #"{"account":{"uuid":"acc-1"},"organization":{"uuid":"6a9f1c2e-1b4d-4c3a-9e8f-0123456789ab","organization_type":"claude_max","rate_limit_tier":"default_claude_max_20x"}}"#
+        let http = Self.hub { url, _ in (200, url == ClaudeUsageClient.profileURL.absoluteString ? profile : Self.claudeUsage, [:]) }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+
+        let first = await runtimes[0].refresh()
+        let snapshot = try XCTUnwrap(first.success)
+        XCTAssertEqual(snapshot.plan, "Max 20x")
+        let profileCalls = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
+        XCTAssertEqual(profileCalls.map(\.authIndex), ["index-a"])
+        XCTAssertEqual(profileCalls.first?.header["Authorization"], "Bearer $TOKEN$")
+
+        _ = await runtimes[0].refreshHourlyReads(of: snapshot)
+        let again = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
+        XCTAssertEqual(again.count, 1, "the slot doesn't read the profile again within the hour")
+        let next = await runtimes[0].refresh()
+        XCTAssertEqual(next.success?.plan, "Max 20x")
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
@@ -152,7 +162,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         try await sync.connect(url: "http://mini.local:8317/management.html", key: " right-key ")
         let hub = try XCTUnwrap(store.hubs.first)
         XCTAssertEqual(hub.url, Self.hubURL)
-        XCTAssertEqual(store.accounts(onHub: hub.id).count, 5)
+        XCTAssertEqual(store.accounts(onHub: hub.id).count, 4, "the disabled login gets no account")
         XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 1), "the Kimi login is counted, not shown")
         XCTAssertEqual(try store.credential(for: hub.id), .apiKey("right-key"))
 

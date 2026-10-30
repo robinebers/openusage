@@ -55,7 +55,6 @@ struct HubLink: Codable, Hashable, Sendable {
     let hubURL: URL
     let loginID: String
     var authIndex: String
-    var isDisabled: Bool
 
     var host: String { CLIProxyHub.host(of: hubURL) }
 
@@ -64,11 +63,11 @@ struct HubLink: Codable, Hashable, Sendable {
         hubURL = hub.url
         loginID = login.id
         authIndex = login.authIndex
-        isDisabled = login.isDisabled
     }
 }
 
-/// What it takes to make a hub's mirrored accounts match its login list, in the listing's order.
+/// What it takes to make a hub's mirrored accounts match its login list, in the listing's order. A login
+/// disabled on the hub counts as gone.
 struct HubReconciliation {
     var added: [(kind: ProviderKind, login: HubLogin)] = []
     var removed: [UUID] = []
@@ -77,7 +76,7 @@ struct HubReconciliation {
     var isEmpty: Bool { added.isEmpty && removed.isEmpty && relinked.isEmpty }
 
     init(hub: CLIProxyHub, logins: [HubLogin], accounts: [Account]) {
-        let supported = logins.compactMap { login in login.kind.map { (kind: $0, login: login) } }
+        let supported = logins.filter { !$0.isDisabled }.compactMap { login in login.kind.map { (kind: $0, login: login) } }
         let byID = Dictionary(supported.map { ($0.login.id, $0) }, uniquingKeysWith: { first, _ in first })
         var mirroredIDs = Set<String>()
         for account in accounts {

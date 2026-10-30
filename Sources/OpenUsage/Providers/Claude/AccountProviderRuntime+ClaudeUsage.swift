@@ -11,7 +11,8 @@ struct ClaudeAccountState {
 extension AccountProviderRuntime {
     /// One usage read per pass, shared with any other card on the same login and never sent inside its
     /// 429 window. The profile and the reset grants are read in the secondary-reads slot instead, apart
-    /// from it: Anthropic answers a grants read sent right after a usage read with a 429.
+    /// from it: Anthropic answers a grants read sent right after a usage read with a 429. A hub account
+    /// reads its profile with its first usage read, so it shows its plan as soon as it appears.
     func refreshClaude(_ credential: AccountCredential) async throws -> ProviderUsage {
         let session = claudeSession(for: credential)
         let forced = claude.forcedReadsPending
@@ -26,6 +27,8 @@ extension AccountProviderRuntime {
             if session.resetGrants.isOlder(than: RefreshSetting.forcedResetGrantsMinimumAge, at: now()) {
                 await readClaudeResetGrants(session, accessToken: tokens.accessToken)
             }
+            try? await readClaudeProfile(session, tokens: tokens)
+        } else if account.hub != nil, session.planRead.value == nil, session.planRead.isDue(at: now()) {
             try? await readClaudeProfile(session, tokens: tokens)
         }
         if let resets = claudeResetsLine(session) { lines.append(resets) }

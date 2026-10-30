@@ -151,7 +151,7 @@ final class AccountStore {
     }
 
     /// Makes the hub's mirrored accounts match its login list: a new login is added at the bottom of its
-    /// provider's accounts, a login gone from the hub is removed, and a renamed or disabled one is
+    /// provider's accounts, a login gone from the hub or disabled on it is removed, and a renamed one is
     /// relinked. The same listing applied twice changes nothing the second time.
     func mirror(_ logins: [HubLogin], from hubID: UUID) {
         guard let hub = hubs.first(where: { $0.id == hubID }) else { return }
