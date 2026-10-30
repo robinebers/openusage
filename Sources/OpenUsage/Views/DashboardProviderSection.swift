@@ -61,12 +61,19 @@ struct DashboardAccountCaption: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.s) {
-            AccountName(account: account, font: DashboardGrid.captionFont)
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                AccountName(account: account, font: DashboardGrid.captionFont)
+                if account.provider.hubHost != nil {
+                    Text(" \(Image(nsImage: ProviderMarks.image(for: CLIProxyHub.markID, side: DashboardGrid.planNSFont.capHeight, inset: 0)).renderingMode(.template))")
+                        .font(DashboardGrid.captionFont)
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(.secondary)
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
-            if let planLabel {
-                planLabel
+            if let plan {
+                Text(plan)
                     .font(DashboardGrid.planFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -77,14 +84,6 @@ struct DashboardAccountCaption: View {
         .frame(height: DashboardGrid.captionHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-    }
-
-    private var planLabel: Text? {
-        guard account.provider.hubHost != nil else { return plan.map { Text($0) } }
-        let mark = Image(nsImage: ProviderMarks.image(for: CLIProxyHub.markID, side: DashboardGrid.planNSFont.capHeight, inset: 0))
-            .renderingMode(.template)
-        guard let plan else { return Text(mark) }
-        return Text("\(plan) \(mark)")
     }
 }
 
