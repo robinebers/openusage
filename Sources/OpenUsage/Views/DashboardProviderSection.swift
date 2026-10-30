@@ -65,8 +65,8 @@ struct DashboardAccountCaption: View {
                 .foregroundStyle(.secondary)
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
-            if let plan {
-                Text(plan)
+            if let planLabel {
+                planLabel
                     .font(DashboardGrid.planFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -77,6 +77,14 @@ struct DashboardAccountCaption: View {
         .frame(height: DashboardGrid.captionHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    private var planLabel: Text? {
+        guard account.provider.hubHost != nil else { return plan.map { Text($0) } }
+        let mark = Image(nsImage: ProviderMarks.image(for: CLIProxyHub.markID, side: DashboardGrid.planNSFont.capHeight, inset: 0))
+            .renderingMode(.template)
+        guard let plan else { return Text(mark) }
+        return Text("\(plan) \(mark)")
     }
 }
 
