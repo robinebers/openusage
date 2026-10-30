@@ -36,8 +36,7 @@ provider's accounts and starts refreshing right away. A new account takes the em
 provider reports. An Ollama account takes the email ollama.com reports for its key. Any other API-key
 account reports neither, so it shows the provider's name once.
 Signing in to an account that's already added (the same provider account, or the same API key) adds
-no second copy; the sheet says "This account is already added as <name>." If a CLIProxyAPI hub already
-provides it, the sheet says it is already in OpenUsage through the hub. A Claude account in two organizations counts as two accounts, and so does a
+no second copy; the sheet says "This account is already added as <name>." A Claude account in two organizations counts as two accounts, and so does a
 Devin email in two organizations.
 
 ## Rename an account

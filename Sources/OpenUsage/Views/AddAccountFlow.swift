@@ -175,9 +175,6 @@ final class AddAccountFlow {
 
     private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) {
         if let existing = store.account(kind: kind, organization: organization, signedInAs: result.credential) {
-            if let hub = existing.hub {
-                return fail("This account is already in OpenUsage through the CLIProxyAPI hub at \(hub.host).")
-            }
             return fail("This account is already added as \(existing.label).")
         }
         let name = accountName.trimmed
