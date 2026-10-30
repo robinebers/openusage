@@ -66,7 +66,12 @@ enum ClaudeUsageMapper {
         else {
             return base
         }
-        return "\(base) \(tier[match])"
+        // Anthropic renamed Max 5x to Max and Max 20x to Ultra, so the Max tiers drop their multiplier.
+        switch (base, tier[match]) {
+        case ("Max", "20x"): return "Ultra"
+        case ("Max", _), ("Ultra", _): return base
+        default: return "\(base) \(tier[match])"
+        }
     }
 
     static func formatLivePlan(profile: ClaudeAccountProfile) -> String? {
