@@ -32,6 +32,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
   by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
   `displayName` names the account the way the app does (`ChatGPT · Work`).
+  `schema` is now `openusage.limits.v2`, so a script can tell this shape from 0.7.x's `v1`.
   The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
   `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
   the app shows its clock next to the account.
