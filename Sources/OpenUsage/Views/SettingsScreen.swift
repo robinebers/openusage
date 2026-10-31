@@ -89,6 +89,7 @@ struct SettingsScreen: View {
                     .foregroundStyle(Theme.notice)
             }
         }
+        .task { notificationsDenied = await AppNotifications.shared.isDenied() }
     }
 
     private var privacySection: some View {

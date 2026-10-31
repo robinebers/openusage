@@ -6,7 +6,6 @@ import UserNotifications
 final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AppNotifications()
 
-    private var authorizationTask: Task<Bool, Never>?
     private var onTap: (() -> Void)?
     private let authorizationStatus: () async -> UNAuthorizationStatus
 
@@ -49,10 +48,12 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    @discardableResult
+    func isDenied() async -> Bool {
+        await authorizationStatus() == .denied
+    }
+
     func requestAuthorization() -> Task<Bool, Never> {
-        if let authorizationTask { return authorizationTask }
-        let task = Task<Bool, Never> {
+        Task {
             let granted: Bool
             switch await authorizationStatus() {
             case .authorized, .provisional, .ephemeral:
@@ -71,11 +72,8 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
             @unknown default:
                 granted = false
             }
-            if !granted { authorizationTask = nil }
             return granted
         }
-        authorizationTask = task
-        return task
     }
 
     /// Show the banner (and play sound) even when the app is frontmost — a menu-bar accessory is
