@@ -57,4 +57,22 @@ final class DashboardFamilyTests: XCTestCase {
         XCTAssertEqual(account(resetCount: 2).lines.map(\.descriptor.key), ["resets", "weekly"])
         XCTAssertEqual(account(resetCount: 0).lines.map(\.descriptor.key), ["weekly"])
     }
+
+    @MainActor
+    func testChatGPTExtraUsageRowShowsOnlyWhileCreditsAreLeft() {
+        let account = Account(kind: .codex, label: "Work")
+        let descriptors = AccountProviderRuntime.widgetDescriptors(for: account).filter { ["weekly", "credits"].contains($0.key) }
+        func keys(creditsRemaining: Double) -> [String] {
+            let group = ProviderMetrics(provider: Provider(id: "codex@1", kind: .codex), metrics: descriptors)
+            let families = DashboardFamily.make(groups: [group]) { descriptor in
+                var data = descriptor.sample
+                if descriptor.key == "credits" { data.values = CodexUsageMapper.creditValues(remaining: creditsRemaining) }
+                return DashboardLine(descriptor: descriptor, data: data)
+            }
+            return families[0].accounts[0].lines.map(\.descriptor.key)
+        }
+        XCTAssertEqual(keys(creditsRemaining: 25), ["weekly", "credits"])
+        XCTAssertEqual(keys(creditsRemaining: 1), ["weekly", "credits"])
+        XCTAssertEqual(keys(creditsRemaining: 0), ["weekly"])
+    }
 }
