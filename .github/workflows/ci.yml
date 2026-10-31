@@ -20,6 +20,7 @@ jobs:
     # against the newest SDK, and a stock macos-15 runner ships Swift 6.1 without the macOS 26 SDK, so
     # it cannot build this package. Runtime verification on Sequoia is a manual smoke pass.
     runs-on: macos-26
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
