@@ -51,8 +51,9 @@ popover says this sign-in can't use resets, and you can spend the reset in Claud
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows
 one instead of returning to the app. The card reads `/api/oauth/usage` for the session, weekly,
 Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
-plan, such as Pro or Max. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent`
-when the account sets none.
+plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, so its card has no
+Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
+account sets none.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
 when each expires; choose **Use**, then **Reset** to spend one.

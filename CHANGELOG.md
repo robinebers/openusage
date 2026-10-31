@@ -51,6 +51,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
 - Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
   them.
+- Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
