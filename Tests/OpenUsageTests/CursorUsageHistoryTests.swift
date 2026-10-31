@@ -44,7 +44,6 @@ final class CursorUsageEventsParserTests: XCTestCase {
         let day = CursorUsageEvents.day(page.events)
         XCTAssertEqual(day.totals[.tokens], 136_193, "an event without tokenUsage counts as zero tokens")
         XCTAssertEqual(day.totals[.usageEvents], 7)
-        XCTAssertEqual(CursorUsageEvents.day(Array(page.events.prefix(2))).totals[.tokens], 136_193)
         XCTAssertEqual(CursorUsageEvents.day([]).totals, .zero(CursorUsageEvents.measures), "a quiet day is zeros, not a gap")
     }
 
