@@ -27,6 +27,15 @@ final class ProviderErrorTriageTests: XCTestCase {
         }
     }
 
+    func testAForbiddenThatNamesARateLimitThrowsRateLimited() {
+        for (headers, retryAfter) in [(["x-ratelimit-remaining": "0"], nil), (["retry-after": "60"], 60.0)] as [([String: String], TimeInterval?)] {
+            let response = HTTPResponse(statusCode: 403, headers: headers, body: Data())
+            XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .copilot)) { error in
+                XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: retryAfter), "\(headers)")
+            }
+        }
+    }
+
     func testOtherNon2xxThrowRequestFailedWithStatus() {
         for status in [400, 404, 500, 503] {
             XCTAssertThrowsError(try requireSuccess(status: status)) { error in
