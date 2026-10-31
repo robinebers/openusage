@@ -19,9 +19,19 @@ enum DeviceCodePoller {
     ) async throws -> Value {
         let deadline = now().addingTimeInterval(expiresIn)
         var delay = max(1, interval)
+        var networkError: URLError?
         while now() < deadline {
             try Task.checkCancellation()
-            switch try await request() {
+            let result: DeviceCodePollResult<Value>
+            do {
+                result = try await request()
+                networkError = nil
+            } catch let error as URLError {
+                AppLog.warn(.auth, "device sign-in poll failed; polling again: \(error.localizedDescription)")
+                networkError = error
+                result = .pending
+            }
+            switch result {
             case .pending:
                 break
             case .slowDown:
@@ -33,6 +43,6 @@ enum DeviceCodePoller {
             }
             try await sleep(min(delay, max(0, deadline.timeIntervalSince(now()))))
         }
-        throw LoginError.failed("Device sign-in expired.")
+        throw networkError ?? LoginError.failed("Device sign-in expired.")
     }
 }

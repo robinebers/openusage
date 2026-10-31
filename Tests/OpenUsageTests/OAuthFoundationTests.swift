@@ -26,6 +26,32 @@ final class OAuthFoundationTests: XCTestCase {
         XCTAssertEqual(sleeps.values, [1, 6])
     }
 
+    func testDeviceCodePollerKeepsPollingThroughANetworkError() async throws {
+        let calls = LockedCounter()
+        let token: String = try await DeviceCodePoller.poll(interval: 1, expiresIn: 100, sleep: { _ in }) {
+            if calls.next() == 0 { throw URLError(.timedOut) }
+            return .complete("token")
+        }
+
+        XCTAssertEqual(token, "token", "one timed-out poll must not end the sign-in")
+    }
+
+    func testDeviceCodePollerReportsTheNetworkErrorOnceTheCodeExpires() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 0))
+        do {
+            let _: String = try await DeviceCodePoller.poll(
+                interval: 1,
+                expiresIn: 10,
+                now: { clock.now },
+                sleep: { clock.set(clock.now.addingTimeInterval($0)) },
+                request: { throw URLError(.notConnectedToInternet) }
+            )
+            XCTFail("Expected the poll to fail once the code expired")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .notConnectedToInternet)
+        }
+    }
+
     func testDeviceCodeExpiredTokenFails() async {
         do {
             _ = try await DeviceCodePoller.poll(
