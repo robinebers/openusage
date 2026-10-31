@@ -3,7 +3,9 @@ import Foundation
 /// One quantity a provider reports for a span. Never estimated, never priced.
 enum UsageMeasure: Hashable, Sendable, CaseIterable {
     case spend
+    case usageValue
     case usageEvents
+    case requests
     case tokens
     case inputTokens
     case cacheReadTokens
@@ -13,7 +15,9 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
     var title: String {
         switch self {
         case .spend: "Charged"
+        case .usageValue: "Usage Value"
         case .usageEvents: "Usage Events"
+        case .requests: "Requests"
         case .tokens: "Tokens"
         case .inputTokens: "Input Tokens"
         case .cacheReadTokens: "Cache Read Tokens"
@@ -24,8 +28,9 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
 
     func metricValue(_ number: Double) -> MetricValue {
         switch self {
-        case .spend: MetricValue(number: number, kind: .dollars)
+        case .spend, .usageValue: MetricValue(number: number, kind: .dollars)
         case .usageEvents: MetricValue(number: number, kind: .count, label: "events")
+        case .requests: MetricValue(number: number, kind: .count, label: "requests")
         case .tokens, .inputTokens, .cacheReadTokens, .cacheWriteTokens, .outputTokens:
             MetricValue(number: number, kind: .count, label: "tokens")
         }
@@ -78,10 +83,12 @@ enum UsageWindow: Hashable, Sendable {
         }
     }
 
-    var clockNote: String {
-        switch self {
-        case .today, .yesterday: "your local day"
-        case .lastDays: "your local days"
+    /// Which days the window covers: the user's own, or UTC days for a provider that reports those.
+    func clockNote(in calendar: Calendar) -> String {
+        let clock = calendar.timeZone == TimeZone(identifier: "UTC") ? "UTC" : "your local"
+        return switch self {
+        case .today, .yesterday: "\(clock) day"
+        case .lastDays: "\(clock) days"
         }
     }
 
@@ -143,8 +150,9 @@ struct UsageBreakdown: Hashable, Sendable {
     static let shownModels = 5
 
     let window: UsageWindow
+    let clockNote: String
     let totals: UsageTotals
-    /// Tokens, or usage events when a model's tokens were not reported.
+    /// Tokens, else usage events or requests, whichever every model reported.
     let modelMeasure: UsageMeasure
     /// The top models by `modelMeasure`, the rest as Other; empty unless every day was split by model.
     let models: [Model]
@@ -152,7 +160,9 @@ struct UsageBreakdown: Hashable, Sendable {
     init?(_ window: UsageWindow, in history: UsageHistory) {
         guard let totals = history.totals(over: window) else { return nil }
         let models = history.models(over: window) ?? [:]
-        let measure: UsageMeasure = models.values.allSatisfy { $0[.tokens] != nil } ? .tokens : .usageEvents
+        let measure = [UsageMeasure.tokens, .usageEvents, .requests].first { measure in
+            models.values.allSatisfy { $0[measure] != nil }
+        } ?? .tokens
         let ranked = models.compactMap { name, totals in totals[measure].map { (name: name, number: $0) } }
             .sorted { $0.number != $1.number ? $0.number > $1.number : $0.name < $1.name }
         let whole = ranked.reduce(0) { $0 + $1.number }
@@ -161,6 +171,7 @@ struct UsageBreakdown: Hashable, Sendable {
             shown.append((name: "Other", number: ranked.dropFirst(Self.shownModels).reduce(0) { $0 + $1.number }))
         }
         self.window = window
+        clockNote = window.clockNote(in: history.calendar)
         self.totals = totals
         modelMeasure = measure
         self.models = shown.map { Model(name: $0.name, number: $0.number, share: whole > 0 ? $0.number / whole : 0) }

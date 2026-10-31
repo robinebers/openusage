@@ -13,7 +13,7 @@ struct UsageBreakdownDetail: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 0) {
                 Text(breakdown.window.title).fontWeight(.semibold)
-                Text(" · \(breakdown.window.clockNote)").foregroundStyle(.secondary)
+                Text(" · \(breakdown.clockNote)").foregroundStyle(.secondary)
             }
             .lineLimit(1)
             VStack(spacing: 2) {

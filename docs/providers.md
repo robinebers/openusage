@@ -139,6 +139,17 @@ and the plan. A new account is named after the email ollama.com reports for the 
 it reports none. The card's right-click menu adds an **API Keys** link to
 [ollama.com/settings/keys](https://ollama.com/settings/keys).
 
+Today, Yesterday, and Last 30 Days show what Ollama's `/api/usage` reports for each UTC day: the usage
+value in dollars (`usage_usd`, what the requests are worth, whether the plan or purchased credits paid
+for them) and the tokens, input plus output. Cached input is already part of input. Requests counts the
+last 30 days' requests. A legacy plan reports only requests, so its card shows Requests alone. Rest the
+pointer on a Today, Yesterday, or Last 30 Days figure to see what Ollama reported for that range: the
+usage value, requests, each kind of token, and the top five models, the rest as Other. A range with a
+day whose usage falls beyond the ten models Ollama names shows no models.
+The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
+hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
+read hides the rows it would have filled until the next read an hour later.
+
 ## OpenCode
 
 Paste an API key from the [OpenCode console](https://opencode.ai/console). The card reads

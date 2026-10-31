@@ -131,7 +131,11 @@ extension AccountProviderRuntime {
                     .exportingLimit("monthly", unit: "percent")
                     .pinnedByDefault(),
                 .dollarBalance(key: "purchasedCredits", provider: provider, title: "Extra Usage", metricLabel: "Purchased Credits", valueWord: "left")
-                    .exportingLimit("purchasedCredits", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+                    .exportingLimit("purchasedCredits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
+                .history(key: "today", provider: provider, .window(.today, .usageValue, then: .tokens)),
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .usageValue, then: .tokens)),
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .usageValue, then: .tokens)),
+                .history(key: "requests", provider: provider, .measure("Requests", .requests, over: .lastDays(30)))
             ]
         case .opencodeGo:
             [

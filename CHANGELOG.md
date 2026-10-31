@@ -65,6 +65,9 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
   counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
   it: the charge, usage events, each kind of token, and the top models.
+- Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
+  for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
+  range shows what Ollama reported for it: requests, each kind of token, and the top models.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
