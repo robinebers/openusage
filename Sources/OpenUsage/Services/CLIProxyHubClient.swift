@@ -194,6 +194,13 @@ actor CLIProxyHubGate {
     }
 }
 
+/// The HTTP client of an account mirrored from a hub while hubs are off: it reads no key and sends nothing.
+struct HubOff: HTTPClient {
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        throw ProviderError.unavailable(CLIProxyHub.offMessage)
+    }
+}
+
 /// The HTTP client of an account mirrored from a hub: every request its unchanged provider client
 /// sends goes out through the hub's `api-call`, as the linked login.
 struct HubTunnel: HTTPClient {
