@@ -21,7 +21,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// caller whose tokens another renewal already replaced takes the stored ones.
     private var renewal: Task<OAuthTokens, Error>?
     /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
-    /// the refresh token they replace, so they stand in for the stored credential until a save succeeds.
+    /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
 
     init(
@@ -324,15 +324,15 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
-        unsavedRenewal = nil
+        if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
     }
 
     func saveRenewal(_ tokens: OAuthTokens) async {
+        unsavedRenewal = tokens
         do {
             try await replaceCredential(.oauth(tokens))
         } catch {
             AppLog.error(.auth, "\(account.cardID) couldn't save the renewed sign-in; keeping it and retrying: \(error.localizedDescription)")
-            unsavedRenewal = tokens
         }
     }
 
