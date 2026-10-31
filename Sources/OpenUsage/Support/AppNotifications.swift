@@ -49,7 +49,8 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func isDenied() async -> Bool {
-        await authorizationStatus() == .denied
+        guard !Self.isRunningUnderTests else { return false }
+        return await authorizationStatus() == .denied
     }
 
     func requestAuthorization() -> Task<Bool, Never> {
