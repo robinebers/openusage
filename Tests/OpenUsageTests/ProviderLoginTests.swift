@@ -40,6 +40,23 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertFalse(authorizeURL.absoluteString.contains(verifier), "the authorize URL carries the challenge, never the verifier")
     }
 
+    func testClaudeLoginFailsWhenItCannotReadTheProfile() async throws {
+        let http = RoutingHTTPClient { request in
+            request.url.path == "/v1/oauth/token"
+                ? Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
+                : Self.response(#"{"type":"error","error":{"type":"rate_limit_error"}}"#, status: 429)
+        }
+        do {
+            let result = try await ClaudeLogin(http: http).login(
+                prompt: Self.browserPrompt(PromptCapture(), callback: CallbackStatus()),
+                pastedCode: emptyInput()
+            )
+            XCTFail("signed in as \(result.label) without the profile that identifies the account")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Claude didn’t return your profile. Click Try Again to sign in again.")
+        }
+    }
+
     func testCodexLoginUsesPiOriginatorAndMapsAccountClaims() async throws {
         let accessToken = Self.jwt(#"{"https://api.openai.com/auth":{"chatgpt_account_id":"chatgpt-account"}}"#)
         let idToken = Self.jwt(#"{"email":"codex@example.com"}"#)
