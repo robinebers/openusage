@@ -83,8 +83,9 @@ and their order; `WidgetDataStore` turns snapshots into `WidgetData` for the vie
 `AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `QuotaNotificationEvaluator.evaluate` over the shown metrics, then
 `TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes), with
 `WidgetDataStore.refreshHourlyReads` halfway between passes for the reads a provider must not get in
-the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Every cadence
-and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
+the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Each
+account's hourly reads get the same two-minute deadline as its refresh, so one that hangs never holds up
+the loop. Every cadence and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
 cache and asks each runtime's hourly reads again (`ProviderRuntime.forgetHourlyReads`); whether a
 forced refresh waits out a backoff is `RefreshBackoff.holds`.
 `refresh(providerID:)` skips an account whose snapshot is less than an interval old, honours its `RefreshBackoff`,

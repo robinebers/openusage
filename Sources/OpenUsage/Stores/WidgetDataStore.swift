@@ -167,9 +167,14 @@ final class WidgetDataStore {
             guard let provider = providersByID[id], inFlight[id] == nil, let snapshot = snapshots[id],
                   backoffs[id]?.holds(at: now(), forced: false) != true
             else { continue }
-            guard let updated = await provider.refreshHourlyReads(of: snapshot),
-                  providersByID[id] === provider, snapshots[id] == snapshot
-            else { continue }
+            let read = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) {
+                await provider.refreshHourlyReads(of: snapshot)
+            }
+            guard let read else {
+                AppLog.warn(.refresh, "\(id) hourly reads timed out after \(Int(providerRefreshTimeout))s")
+                continue
+            }
+            guard let updated = read, providersByID[id] === provider, snapshots[id] == snapshot else { continue }
             snapshots[id] = updated
             cache.save(snapshots)
         }
