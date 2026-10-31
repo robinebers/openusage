@@ -119,7 +119,6 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         reply(connection, status: 200, body: "Sign-in complete. You may close this page.", result: .success(code))
     }
 
-    /// Without a `result`, the request was not this sign-in's callback: it gets its answer and the server keeps listening.
     private func reply(_ connection: NWConnection, status: Int, body: String, result: Result<String, Error>? = nil) {
         if let result { finish(result) }
         let bodyData = Data("<!doctype html><title>OpenUsage</title><p>\(body)</p>".utf8)
