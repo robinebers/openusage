@@ -66,9 +66,7 @@ extension LayoutV1Keys {
     /// The layout of the account 0.7.x showed first for `provider`'s kind, mapped onto `metrics` and placed
     /// among `others`, the providers already shown, in order. Nil when 0.7.x had the provider off.
     func carriedOver(to provider: Provider, metrics: [WidgetDescriptor], among others: [Provider]) -> CarriedLayout? {
-        guard enabledProviders?.contains(where: { Self.kind(of: $0) == provider.kind }) == true,
-              let account = firstAccount(of: provider.kind) ?? menuBarPins.map({ _ in provider.kind.rawValue })
-        else { return nil }
+        guard let account = firstAccount(of: provider.kind) else { return nil }
         let shown = placed.map { Set(Self.keys(of: account, in: $0)) }
         let starred: [WidgetDescriptor]? = menuBarPins.flatMap { pins in
             let keys = Self.keys(of: account, in: pins)
@@ -94,13 +92,14 @@ extension LayoutV1Keys {
         )
     }
 
-    /// The account 0.7.x showed first for `kind`: by its saved provider order, then its dashboard order.
+    /// The enabled account 0.7.x showed first for `kind`: by its saved provider order, then its dashboard order.
     private func firstAccount(of kind: ProviderKind) -> String? {
+        let enabled = (enabledProviders ?? []).filter { Self.kind(of: $0) == kind }
         let accounts = (providerOrder ?? [])
             + (placed ?? []).map(Self.account(of:))
             + (metricOrderByProvider?.keys.sorted() ?? [])
             + (menuBarPins ?? []).map(Self.account(of:)).sorted()
-        return accounts.first { Self.kind(of: $0) == kind }
+        return accounts.first(where: enabled.contains) ?? menuBarPins.flatMap { _ in enabled.first }
     }
 
     /// After the last provider 0.7.x ordered before `kind`, or first when none was.

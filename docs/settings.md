@@ -82,7 +82,7 @@ When you add the only account of a provider that was on in 0.7.x, it takes that 
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
 - **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
 
-When 0.7.x showed several accounts of a provider, the one it showed first gives the layout. Any other
+When 0.7.x had several accounts of a provider on, the one it showed first gives the layout. Any other
 account of that provider starts with the default stars, as on a new install.
 
 OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
