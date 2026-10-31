@@ -31,9 +31,7 @@ extension DashboardFamily {
     static func make(groups: [ProviderMetrics], line: (WidgetDescriptor) -> DashboardLine) -> [DashboardFamily] {
         var families: [DashboardFamily] = []
         for group in groups {
-            let lines = group.metrics.map(line).filter {
-                $0.data.hasData && (!$0.data.showsResetExpiries || $0.data.resetCreditCount > 0)
-            }
+            let lines = group.metrics.map(line).filter { $0.data.hasData && !$0.data.isEmptyBalance }
             let account = DashboardAccount(provider: group.provider, lines: lines)
             let familyID = group.provider.kind.rawValue
             if let index = families.firstIndex(where: { $0.id == familyID }) {

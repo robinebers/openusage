@@ -37,7 +37,7 @@ extension AccountProviderRuntime {
                     .exportingLimit("spark", unit: "percent"),
                 .percent(key: "sparkWeekly", provider: provider, title: "Spark Weekly")
                     .exportingLimit("sparkWeekly", unit: "percent"),
-                .values(key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
+                .values(key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits", hidesAtZero: true)
                     .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits")),
                 rateLimitResets(key: "rateLimitResets", provider: provider)
             ]

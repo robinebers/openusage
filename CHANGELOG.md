@@ -52,6 +52,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
   them.
 - Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
+- ChatGPT: the Extra Usage row is hidden while the account has no credits, the way Limit Resets is
+  hidden with no resets.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

@@ -64,8 +64,8 @@ Sign in through OpenAI in your browser. The account shows as ChatGPT; its provid
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
-with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
-Limit Resets row.
+with the credits' dollar value, an estimate at 4¢ a credit, and is hidden while no credits are left.
+Rate-limit reset credits work like Claude's Limit Resets row.
 
 ## Cursor
 

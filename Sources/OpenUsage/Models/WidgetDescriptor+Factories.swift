@@ -45,12 +45,14 @@ extension WidgetDescriptor {
         metricLabel: String? = nil,
         valueWord: String? = nil,
         traySuffix: String? = nil,
-        showsResetExpiries: Bool = false
+        showsResetExpiries: Bool = false,
+        hidesAtZero: Bool = false
     ) -> WidgetDescriptor {
         var sample = WidgetData(title: title, kind: .dollars, used: 0, limit: nil,
                                 unboundedValueWord: valueWord)
         sample.traySuffix = traySuffix
         sample.showsResetExpiries = showsResetExpiries
+        sample.hidesAtZero = hidesAtZero
         return make(key: key, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }
 
