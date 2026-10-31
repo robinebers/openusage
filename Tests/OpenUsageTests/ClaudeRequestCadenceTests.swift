@@ -204,6 +204,37 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertEqual(resetsAvailable(store.snapshots[runtime.provider.id]?.lines ?? []), 0)
     }
 
+    func testSpendingAGrantsLastResetLetsTheNextGrantBeClaimedAfterTheNextGrantsRead() async throws {
+        let clock = TestClock(Self.start)
+        let claimed = TestSwitch(false)
+        let http = Self.anthropic(
+            grants: {
+                let (left, next) = claimed.value ? (0, "b") : (1, "a")
+                return Self.json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"a","resets_left":\#(left)},{"id":"b","resets_left":1}],"next_grant_id":"\#(next)"}}"#)
+            },
+            claim: {
+                claimed.value = true
+                return Self.json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#)
+            }
+        )
+        let runtime = try makeRuntime(http: http, clock: clock)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
+        await store.refreshAll()
+        await store.refreshHourlyReads()
+        let refreshed = expectation(description: "the post-claim refresh")
+        let service = try XCTUnwrap(runtime.resetClaimService {
+            defer { refreshed.fulfill() }
+            return await store.refresh(providerID: runtime.provider.id, force: true)
+        })
+        let outcome = await service.claim(creditExpiringAt: Self.start, redeemRequestID: "redeem-1")
+        await fulfillment(of: [refreshed], timeout: 1)
+        XCTAssertEqual(outcome, .success)
+
+        await store.refreshHourlyReads()
+
+        XCTAssertEqual(runtime.resetClaimService { .refreshed }?.isClaimable, true, "grant b's reset waits for the hourly grants read")
+    }
+
     func testTheHeldResetsRowDropsAGrantOnceItsDeadlinePasses() async throws {
         let clock = TestClock(Self.start)
         let deadline = Self.start.addingTimeInterval(10 * 60)
