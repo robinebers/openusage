@@ -71,7 +71,7 @@ final class LayoutStoreTests: XCTestCase {
         let store = makeStore()
         let orderBefore = store.orderedProviders().map(\.id)
 
-        XCTAssertTrue(store.reorderFamily(dragged: "cursor", target: "claude"))
+        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
         XCTAssertNotEqual(store.orderedProviders().map(\.id), orderBefore)
 
         XCTAssertTrue(store.undo())
@@ -324,7 +324,7 @@ final class LayoutStoreTests: XCTestCase {
 
     func testAccountListFollowsReorder() {
         let store = makeStore()
-        XCTAssertTrue(store.reorderFamily(dragged: "cursor", target: "claude"))
+        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
         XCTAssertEqual(store.orderedProviders().map(\.id), ["cursor", "claude", "codex"])
         XCTAssertEqual(store.displayGroups.map(\.provider.id), ["cursor", "claude", "codex"])
     }
