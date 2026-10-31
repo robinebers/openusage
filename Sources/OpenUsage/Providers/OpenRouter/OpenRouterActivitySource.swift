@@ -22,11 +22,6 @@ struct OpenRouterActivitySource: UsageHistorySource {
             AppLog.warn(tag, "\(accountID) activity request failed: \(error.localizedDescription)")
             return ([:], nil)
         }
-        if response.statusCode == 429 {
-            let wait = response.retryAfter(now: asOf) ?? 3600
-            AppLog.warn(tag, "\(accountID) activity rate limited; next read in \(Int(wait))s")
-            return ([:], wait)
-        }
         guard (200..<300).contains(response.statusCode) else {
             AppLog.warn(tag, "\(accountID) activity returned HTTP \(response.statusCode)")
             return ([:], nil)

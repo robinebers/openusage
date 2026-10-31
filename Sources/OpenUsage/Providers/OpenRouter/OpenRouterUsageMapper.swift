@@ -94,7 +94,7 @@ enum OpenRouterUsageMapper {
         ]
         var totals = UsageTotals()
         for (measure, field) in fields {
-            guard let value = row[field] else { continue }
+            guard let value = row[field], !(value is NSNull) else { continue }
             guard let number = ProviderParse.number(value), number >= 0 else { return nil }
             totals.values[measure] = number
         }
