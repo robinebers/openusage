@@ -23,6 +23,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
     /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
+    /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
+    private var earlyRenewalNotBefore = Date.distantPast
 
     init(
         account: Account,
@@ -153,9 +155,11 @@ final class AccountProviderRuntime: ProviderRuntime {
     ) async throws -> OAuthTokens {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         guard tokens.needsRefresh(at: now()), let expiresAt = tokens.expiresAt else { return tokens }
+        guard !earlyRenewalIsHeld(expiresAt: expiresAt) else { return tokens }
         do {
             return try await renewedTokens(tokens, grant: grant)
         } catch let error where expiresAt > now() {
+            holdEarlyRenewal(after: error)
             AppLog.warn(.auth, "\(account.cardID) early token renewal failed; keeping the current token: \(error.localizedDescription)")
             return tokens
         }
@@ -328,6 +332,15 @@ final class AccountProviderRuntime: ProviderRuntime {
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
         if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
+    }
+
+    func earlyRenewalIsHeld(expiresAt: Date) -> Bool {
+        expiresAt > now() && now() < earlyRenewalNotBefore
+    }
+
+    func holdEarlyRenewal(after error: Error) {
+        guard case ProviderError.rateLimited(let retryAfter?) = error else { return }
+        earlyRenewalNotBefore = now().addingTimeInterval(retryAfter)
     }
 
     func saveRenewal(_ tokens: OAuthTokens) async {

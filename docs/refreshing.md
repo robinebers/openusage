@@ -77,7 +77,8 @@ Cursor asking OpenUsage to sign out. Remove the account and add it again to sign
 
 A renewal that fails for any other reason, such as an outage (HTTP 5xx), a rate limit (HTTP 429), or no
 connection, does not mean the sign-in expired. While the current token still works, the account keeps
-using it and tries the renewal again on the next pass. Once the token has expired, the refresh fails
+using it and tries the renewal again on the next pass, or after the provider's `Retry-After` when a
+rate limit sends one. Once the token has expired, the refresh fails
 with that error and is tried again like any failed fetch (see [When a fetch fails](#when-a-fetch-fails)).
 
 When the Keychain refuses to save a renewed sign-in, the account keeps the new tokens in memory, logs
