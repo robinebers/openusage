@@ -120,8 +120,12 @@ final class WidgetDataStore {
                 AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
                 return .skipped
             }
-            _ = await running.value
-            return await refresh(providerID: providerID, force: force, rereadHourly: rereadHourly)
+            if case .failure(let failure) = await running.value, case .rateLimited = failure.kind {
+                return .backedOff
+            }
+            if let next = inFlight[providerID], next != running {
+                return await refresh(providerID: providerID, force: force, rereadHourly: rereadHourly)
+            }
         }
         guard let provider = providersByID[providerID] else { return .skipped }
         if rereadHourly { provider.forgetHourlyReads() }
