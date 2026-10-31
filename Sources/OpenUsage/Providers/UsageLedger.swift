@@ -8,9 +8,6 @@ protocol UsageHistorySource: Sendable {
 
 /// An account's read days, in memory only. Its source is its only writer.
 struct UsageLedger: Sendable {
-    /// The wait after a rate-limited read that names none.
-    static let rateLimitWait: TimeInterval = 3600
-
     private(set) var days: [Date: UsageDay] = [:]
     /// Nothing is read before this once the provider rate-limited a read.
     private var resumeAt: Date?

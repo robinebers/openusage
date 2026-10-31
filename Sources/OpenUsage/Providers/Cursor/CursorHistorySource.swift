@@ -43,7 +43,7 @@ struct CursorHistorySource: UsageHistorySource {
                 case .failed(let reason):
                     failures.append(reason)
                 case .rateLimited(let retryAfter):
-                    rateLimitedFor = retryAfter ?? UsageLedger.rateLimitWait
+                    rateLimitedFor = retryAfter ?? 3600
                     return
                 case .deadline:
                     deadlineHit = true
@@ -68,7 +68,7 @@ struct CursorHistorySource: UsageHistorySource {
     }
 
     private func readDay(_ start: Date, asOf: Date, calendar: Calendar) async -> DayResult {
-        guard let next = calendar.date(byAdding: .day, value: 1, to: start).map(calendar.startOfDay) else { return .failed("invalid day") }
+        guard let next = calendar.dateInterval(of: .day, for: start)?.end else { return .failed("invalid day") }
         let end = Date(timeIntervalSince1970: Double(Int(min(next, asOf).timeIntervalSince1970 * 1000) - 1) / 1000)
         var events: [CursorUsageEvent] = []
         var expectedTotal: Int?

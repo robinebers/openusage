@@ -92,7 +92,8 @@ refresh. Today and yesterday are read on every refresh; an older day is read unt
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
 yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
-once every day it covers has been read.
+once every day it covers has been read. After Cursor answers a history read with 429, history reads wait
+for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
 
 Total Usage and Today are the default menu-bar stars.
 
