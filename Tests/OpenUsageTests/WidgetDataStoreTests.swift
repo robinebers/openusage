@@ -55,6 +55,31 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(untracked, "a read ran while the account was not marked refreshing")
     }
 
+    func testAForcedRefreshWaitingOnARead429HoldsUntilRetryAfter() async throws {
+        let account = Account(kind: .openrouter, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.apiKey("key"), for: account.id)
+        let firstRead = HeldResponse()
+        let http = RoutingHTTPClient { _ in
+            await firstRead.hold()
+            return HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+        let id = runtime.provider.id
+
+        let first = Task { await store.refresh(providerID: id) }
+        await firstRead.waitUntilHeld()
+        let forced = Task { await store.refresh(providerID: id, force: true) }
+        try await Task.sleep(for: .milliseconds(50))
+        await firstRead.release()
+        _ = await first.value
+
+        let outcome = await forced.value
+        XCTAssertEqual(outcome, .backedOff)
+        XCTAssertEqual(http.requests.count, 1, "the waiting refresh asked again inside the provider's wait")
+    }
+
     func testSingleProviderRefreshPersistsImmediately() async {
         let fixture = makeRuntime("single")
         let defaults = isolatedDefaults()
