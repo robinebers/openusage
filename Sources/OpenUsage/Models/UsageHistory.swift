@@ -6,8 +6,10 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
     /// Spend on the user's own provider keys; never added to `spend`.
     case byokSpend
     case usageValue
+    case credits
     case usageEvents
     case requests
+    case turns
     case tokens
     case inputTokens
     case cacheReadTokens
@@ -20,8 +22,10 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
         case .spend: "Charged"
         case .byokSpend: "BYOK"
         case .usageValue: "Usage Value"
+        case .credits: "Credits"
         case .usageEvents: "Usage Events"
         case .requests: "Requests"
+        case .turns: "Turns"
         case .tokens: "Tokens"
         case .inputTokens: "Input Tokens"
         case .cacheReadTokens: "Cache Read Tokens"
@@ -35,8 +39,10 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
         switch self {
         case .spend, .usageValue: MetricValue(number: number, kind: .dollars)
         case .byokSpend: MetricValue(number: number, kind: .dollars, label: "BYOK")
+        case .credits: MetricValue(number: number, kind: .count, label: "credits")
         case .usageEvents: MetricValue(number: number, kind: .count, label: "events")
         case .requests: MetricValue(number: number, kind: .count, label: "requests")
+        case .turns: MetricValue(number: number, kind: .count, label: "turns")
         case .tokens, .inputTokens, .cacheReadTokens, .cacheWriteTokens, .outputTokens, .reasoningTokens:
             MetricValue(number: number, kind: .count, label: "tokens")
         }
@@ -178,7 +184,7 @@ struct UsageBreakdown: Hashable, Sendable {
     let window: UsageWindow
     let clockNote: String
     let totals: UsageTotals
-    /// Tokens, else usage events or requests, whichever every model reported.
+    /// Credits, else tokens, usage events, or requests, whichever every model reported.
     let modelMeasure: UsageMeasure
     /// The top models by `modelMeasure`, the rest as Other; empty unless every day was split by model.
     let models: [Model]
@@ -186,7 +192,7 @@ struct UsageBreakdown: Hashable, Sendable {
     init?(_ window: UsageWindow, in history: UsageHistory) {
         guard let totals = history.totals(over: window) else { return nil }
         let models = history.models(over: window) ?? [:]
-        let measure = [UsageMeasure.tokens, .usageEvents, .requests].first { measure in
+        let measure = [UsageMeasure.credits, .tokens, .usageEvents, .requests].first { measure in
             models.values.allSatisfy { $0[measure] != nil }
         } ?? .tokens
         let ranked = models.compactMap { name, totals in totals[measure].map { (name: name, number: $0) } }

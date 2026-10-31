@@ -39,7 +39,12 @@ extension AccountProviderRuntime {
                     .exportingLimit("sparkWeekly", unit: "percent"),
                 .values(key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits")
                     .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits")),
-                rateLimitResets(key: "rateLimitResets", provider: provider)
+                .boundedCount(key: "creditLimit", provider: provider, title: "Credit Limit", limit: 0),
+                rateLimitResets(key: "rateLimitResets", provider: provider),
+                .history(key: "today", provider: provider, .window(.today, .credits, then: .tokens)),
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .credits, then: .tokens)),
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .credits, then: .tokens)),
+                .history(key: "turns", provider: provider, .measure("Turns", .turns, over: .lastDays(30)))
             ]
         case .cursor:
             [

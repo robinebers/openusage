@@ -210,7 +210,12 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
         let accountID = tokens.extras["chatgpt_account_id"]
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
-        return try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
+        var usage = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
+        usage.history = await refreshHistory(using: CodexHistorySource(
+            client: CodexUsageClient(http: http), accessToken: tokens.accessToken, chatGPTAccountID: accountID,
+            cardID: account.cardID, plan: .init(planType: ProviderParse.jsonObject(response.body)?["plan_type"] as? String)
+        ))
+        return usage
     }
 
     private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {

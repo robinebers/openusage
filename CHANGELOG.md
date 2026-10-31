@@ -72,6 +72,9 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
   for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
   range shows what Ollama reported for it: requests, each kind of token, and the top models.
+- ChatGPT: Today, Yesterday, and Last 30 Days show the credits charged and the tokens counted on UTC
+  days, a Turns row counts the last 30 days' turns, and Credit Limit shows a workspace's spending limit.
+  Resting the pointer on a range shows what ChatGPT reported for it.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

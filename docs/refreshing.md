@@ -25,8 +25,9 @@ expiry times (the count still updates every refresh), and Claude's reset grants.
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old.
 Cursor's usage history is read a day at a time: today and yesterday on every refresh, and each older
-day until one read of it succeeds (see [Cursor](providers.md#cursor)). Ollama's usage history is read
-once an hour, at the start of a UTC day, and on ⌘R (see [Ollama](providers.md#ollama)).
+day until one read of it succeeds (see [Cursor](providers.md#cursor)). Ollama's and ChatGPT's usage
+history is read once an hour, at the start of a UTC day, and on ⌘R (see [Ollama](providers.md#ollama)
+and [ChatGPT](providers.md#chatgpt)).
 
 The last snapshot of every account is saved on disk and shown at launch, so you see your last-known
 values before the first fetch finishes. A value counts as fresh for one interval (5 minutes) after it

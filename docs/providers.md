@@ -8,7 +8,7 @@ report stays hidden.
 | Provider | Sign-in | Card shows |
 |---|---|---|
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Rate Limit Resets |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days, Turns |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
@@ -65,7 +65,16 @@ takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
 with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
-Limit Resets row.
+Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
+it shows only when the workspace sets one.
+
+Today, Yesterday, and Last 30 Days show the credits ChatGPT charged and the text tokens it counted on
+UTC days, from the reports the Codex app's Analytics view reads, and Turns counts the last 30 days'
+turns. A day with no charge reads 0 credits. The rows never show dollars, and a workspace's relative
+usage units never show as credits. Rest the pointer on a range to see its credits, turns, and tokens,
+and on a workspace plan the top five models by credits. The card reads the reports once an hour, on the
+first refresh of a new UTC day, and on ⌘R. A failed read hides the rows that cover today and yesterday
+until the next read.
 
 ## Cursor
 
