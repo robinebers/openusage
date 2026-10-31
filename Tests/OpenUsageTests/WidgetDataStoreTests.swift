@@ -344,6 +344,25 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.menuBarValue, "$1.2K")
     }
 
+    func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {
+        let account = Account(kind: .claude, label: "Ultra")
+        let descriptors = AccountProviderRuntime.widgetDescriptors(for: account)
+        let session = try XCTUnwrap(descriptors.first { $0.key == "session" })
+        let weekly = try XCTUnwrap(descriptors.first { $0.key == "weekly" })
+        let provider = AccountProviderRuntime.provider(for: account)
+        for body in [#"{"five_hour":null,"seven_day":{"utilization":40,"resets_at":"2099-01-01T00:00:00.000Z"}}"#,
+                     #"{"seven_day":{"utilization":40,"resets_at":"2099-01-01T00:00:00.000Z"}}"#] {
+            let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8)))
+            let runtime = StubRuntime(provider: provider, descriptors: [session, weekly],
+                                      snapshot: ProviderSnapshot(provider: provider, plan: "Ultra", lines: lines))
+            let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+            await store.refreshAll()
+
+            XCTAssertFalse(store.data(for: session).hasData, body)
+            XCTAssertTrue(store.data(for: weekly).hasData, body)
+        }
+    }
+
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 821.6)

@@ -182,7 +182,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
 
         let first = await runtimes[0].refresh()
         let snapshot = try XCTUnwrap(first.success)
-        XCTAssertEqual(snapshot.plan, "Max 20x")
+        XCTAssertEqual(snapshot.plan, "Ultra")
         let profileCalls = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
         XCTAssertEqual(profileCalls.map(\.authIndex), ["index-a"])
         XCTAssertEqual(profileCalls.first?.header["Authorization"], "Bearer $TOKEN$")
@@ -191,7 +191,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let again = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
         XCTAssertEqual(again.count, 1, "the slot doesn't read the profile again within the hour")
         let next = await runtimes[0].refresh()
-        XCTAssertEqual(next.success?.plan, "Max 20x")
+        XCTAssertEqual(next.success?.plan, "Ultra")
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
