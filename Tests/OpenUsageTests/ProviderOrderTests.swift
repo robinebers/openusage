@@ -54,6 +54,32 @@ final class ProviderOrderTests: XCTestCase {
         XCTAssertEqual(app.dashboard, dashboard)
     }
 
+    func testAnAccountKeepsItsPlaceWhenItsProvidersFirstAccountIsRemoved() {
+        let app = makeApp()
+        let firstClaude = app.add(.claude)
+        let codex = app.add(.codex)
+        let secondClaude = app.add(.claude)
+
+        app.remove(firstClaude)
+
+        XCTAssertEqual(app.accountsScreen, [secondClaude.cardID, codex.cardID])
+        XCTAssertEqual(app.dashboard, [["claude": [secondClaude.cardID]], ["codex": [codex.cardID]]])
+    }
+
+    func testAccountsStayGroupedByProviderWhenDragged() {
+        let app = makeApp()
+        let firstClaude = app.add(.claude)
+        let codex = app.add(.codex)
+        let secondClaude = app.add(.claude)
+
+        XCTAssertFalse(app.layout.reorderProvider(dragged: codex.cardID, target: secondClaude.cardID))
+        XCTAssertEqual(app.accountsScreen, [firstClaude.cardID, secondClaude.cardID, codex.cardID])
+
+        XCTAssertTrue(app.layout.reorderProvider(dragged: secondClaude.cardID, target: firstClaude.cardID))
+        XCTAssertEqual(app.accountsScreen, [secondClaude.cardID, firstClaude.cardID, codex.cardID])
+        XCTAssertEqual(app.dashboard, [["claude": [secondClaude.cardID, firstClaude.cardID]], ["codex": [codex.cardID]]])
+    }
+
     func testProviderRemovedAndAddedBackGoesToTheBottom() {
         let app = makeApp()
         let claude = app.add(.claude)

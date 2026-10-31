@@ -33,7 +33,10 @@ final class LayoutStore {
         var saved = persistence.load() ?? LayoutState()
         let unseeded = registry.providers.filter { !saved.seededProviderIDs.contains($0.id) }
         for provider in unseeded { seed(provider, into: &saved) }
-        if !unseeded.isEmpty { persistence.save(saved) }
+        if !unseeded.isEmpty {
+            saved.providerOrder = registry.orderedProviderIDs(savedOrder: saved.providerOrder)
+            persistence.save(saved)
+        }
 
         let hidden = saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil }
         state = LayoutState(
