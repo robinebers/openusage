@@ -47,7 +47,7 @@ being refused drops to one request an hour. A failure that never reached the pro
 is tried again on the next pass without growing the wait. A successful refresh ends the wait, and a
 manual refresh skips it.
 
-When a provider rate-limits OpenUsage (HTTP 429), the account waits as long as the provider's
+When a provider rate-limits OpenUsage (HTTP 429, or GitHub's HTTP 403 rate limit), the account waits as long as the provider's
 `Retry-After` header asks, up to an hour, or on the same doubling schedule when it names no wait. The last good values
 stay on screen with the clock icon, whose tooltip names the time of the next try, for example "Claude
 asked OpenUsage to wait. Retrying at 14:32." A manual refresh does not ask before that time.

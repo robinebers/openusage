@@ -62,6 +62,17 @@ final class CopilotOrgBillingTests: XCTestCase {
         }
     }
 
+    func testGitHubsRateLimitOnAnOrganizationReadIsARateLimit() async {
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 403, headers: ["retry-after": "60"], body: Data("{}".utf8)) }
+
+        do {
+            _ = try await CopilotUsageClient(http: http).organizationUsage("acme", token: "good")
+            XCTFail("a rate-limited read was accepted")
+        } catch {
+            XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: 60))
+        }
+    }
+
     func testAnOrganizationAccountShowsItsCreditsAndSpend() async throws {
         let account = Account(kind: .copilot, label: "acme", organization: "acme")
         let vault = InMemoryCredentialVault()

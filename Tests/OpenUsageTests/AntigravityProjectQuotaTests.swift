@@ -73,6 +73,22 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         XCTAssertEqual(failure?.kind, .unreachable)
     }
 
+    func testBothBasesRateLimitedKeepTheirRetryAfter() async throws {
+        let account = Account(kind: .antigravity, label: "Google Account")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture)), for: account.id)
+        let http = RoutingHTTPClient { request in
+            guard request.url.path == AntigravityUsageClient.quotaSummaryPath else {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.loadCodeAssist.utf8))
+            }
+            return HTTPResponse(statusCode: 429, headers: ["retry-after": "120"], body: Data())
+        }
+
+        let failure = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().failure
+
+        XCTAssertEqual(failure?.kind, .rateLimited(retryAfter: 120))
+    }
+
     func testAnUnauthorizedQuotaReadRenewsTheSignInOnceAndRetries() async throws {
         let account = Account(kind: .antigravity, label: "Google Account")
         let vault = InMemoryCredentialVault()
