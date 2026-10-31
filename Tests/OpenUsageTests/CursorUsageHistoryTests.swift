@@ -214,6 +214,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))
     }
 }
+@MainActor
 final class CursorHistorySourceTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_793_000_000)
     private let calendar: Calendar = {
