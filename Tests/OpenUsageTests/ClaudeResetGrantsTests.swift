@@ -59,6 +59,10 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertNil(try resetsLine(#"{"five_hour":{"utilization":3}}"#))
     }
 
+    func testAGrantCountTooLargeForAnIntDropsTheBlock() {
+        XCTAssertNil(ClaudeResetGrantStatus.parse(["eligible": true, "grants": [["id": "g", "resets_left": 1e300]]]))
+    }
+
     func testRejectedOrUnreadableCheckThrows() {
         XCTAssertThrowsError(try resetsLine("", status: 401)) { error in
             XCTAssertEqual(error as? ProviderError, .signInExpired(.claude))

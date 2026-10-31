@@ -129,6 +129,18 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         XCTAssertNil(resetsValues(mapped.lines))
     }
 
+    func testDropsWindowLengthCountAndCreditsTooLargeForAnInt() throws {
+        let body = Data(#"""
+        {"rate_limit":{"primary_window":{"used_percent":42,"limit_window_seconds":1e300}},
+         "rate_limit_reset_credits":{"available_count":1e300},"credits":{"balance":1e300}}
+        """#.utf8)
+        let mapped = try CodexUsageMapper.mapUsageResponse(HTTPResponse(statusCode: 200, headers: [:], body: body))
+
+        XCTAssertEqual(mapped.lines.map(\.label), ["Session"])
+        guard case .progress(_, _, _, _, _, let periodMs) = mapped.lines.first else { return XCTFail("expected Session meter") }
+        XCTAssertEqual(periodMs, MetricPeriod.sessionMs)
+    }
+
     private func resetsValues(_ lines: [MetricLine]) -> [MetricValue]? {
         guard case .values(_, let values, _) = lines.first(where: { $0.label == "Rate Limit Resets" }) else {
             return nil

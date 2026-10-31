@@ -27,6 +27,11 @@ enum ProviderParse {
         return nil
     }
 
+    /// `Int(_:)` traps on a value outside the Int range; this returns nil instead.
+    static func int(_ value: Double) -> Int? {
+        abs(value) < Double(Int.max) ? Int(value) : nil
+    }
+
     static func bool(_ value: Any?) -> Bool? {
         if let bool = value as? Bool { return bool }
         if let number = value as? NSNumber { return number.boolValue }

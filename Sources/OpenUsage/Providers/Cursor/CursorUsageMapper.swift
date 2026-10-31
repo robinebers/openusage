@@ -225,14 +225,12 @@ enum CursorUsageMapper {
         let cycleEnd = ProviderParse.number(usage["billingCycleEnd"])
         guard let cycleStart,
               let cycleEnd,
-              cycleEnd > cycleStart
+              cycleEnd > cycleStart,
+              let periodMs = ProviderParse.int(cycleEnd - cycleStart)
         else {
             return (cycleEnd.map { Date(timeIntervalSince1970: $0 / 1000) }, billingPeriodMs)
         }
-        return (
-            Date(timeIntervalSince1970: cycleEnd / 1000),
-            Int(cycleEnd - cycleStart)
-        )
+        return (Date(timeIntervalSince1970: cycleEnd / 1000), periodMs)
     }
 
     static let orgMembershipTypes: Set<String> = ["enterprise", "team"]

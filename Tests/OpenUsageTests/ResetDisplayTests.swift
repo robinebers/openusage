@@ -184,4 +184,8 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")
         XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")
     }
+
+    func testCompactDurationOfAResetTooFarOffForAnIntShowsTheLongestCountdown() {
+        XCTAssertEqual(Formatters.compactDuration(1e300), "6405119470038038d 18h")
+    }
 }

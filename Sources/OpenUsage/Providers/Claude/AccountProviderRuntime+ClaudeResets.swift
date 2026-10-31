@@ -108,7 +108,7 @@ extension AccountProviderRuntime {
         }
         switch outcome {
         case .success, .unconfirmed, .noCredit:
-            let resetsLeft = ProviderParse.number(body?["resets_left"]).map { Int($0.rounded(.down)) }
+            let resetsLeft = ProviderParse.number(body?["resets_left"]).flatMap { ProviderParse.int($0.rounded(.down)) }
             session.resetGrants.settleClaim(grantID: grantID, outcome: outcome, resetsLeft: resetsLeft)
         case .nothingToReset, .unavailableNow, .failed:
             break
