@@ -103,44 +103,6 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         )
     }
 
-    func testAHugeRetryAfterWaitsAnHour() async throws {
-        let clock = TestClock(Self.start)
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 429, headers: ["retry-after": "18446744073709551615"], body: Data())
-        }
-        let runtime = try makeRuntime(http: http, clock: clock)
-        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
-
-        await store.refreshAll()
-
-        XCTAssertEqual(
-            store.backoffs[runtime.provider.id]?.retryAt,
-            Self.start.addingTimeInterval(RefreshSetting.failureBackoffCap)
-        )
-    }
-
-    func testASavedWaitPastAnHourHoldsOnlyAnHour() async throws {
-        let clock = TestClock(Date())
-        let defaults = isolatedDefaults()
-        let window = ClaudeRateLimitWindow(until: clock.now.addingTimeInterval(TimeInterval(UInt64.max)), strikes: 1)
-        defaults.set(try JSONEncoder().encode(["acct/org": window]), forKey: ClaudeSessions.storageKey)
-        let http = Self.anthropic()
-        let account = Account(kind: .claude, label: "Work")
-        let vault = InMemoryCredentialVault()
-        try vault.save(.oauth(OAuthTokens(accessToken: "token-a", extras: [OAuthTokens.identityKey: "acct/org"])), for: account.id)
-        let runtime = AccountProviderRuntime(
-            account: account, vault: vault, http: http, now: { clock.now }, claudeSessions: ClaudeSessions(defaults: defaults)
-        )
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults, now: { clock.now })
-
-        await store.refreshAll()
-        XCTAssertEqual(http.requests.count, 0, "the saved wait still holds")
-
-        clock.set(clock.now.addingTimeInterval(RefreshSetting.failureBackoffCap + 1))
-        await store.refreshAll()
-        XCTAssertEqual(kinds(http), ["usage"])
-    }
-
     func testTwoCardsForOneLoginSendOneUsageRequest() async throws {
         let clock = TestClock(Self.start)
         let http = RoutingHTTPClient { request in

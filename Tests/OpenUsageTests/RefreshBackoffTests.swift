@@ -120,6 +120,7 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertNil(response(nil).retryAfter(now: start))
         XCTAssertNil(response("0").retryAfter(now: start), "a zero wait names no wait, so the doubling applies")
         XCTAssertNil(response("soon").retryAfter(now: start))
+        XCTAssertEqual(response("18446744073709551615").retryAfter(now: start), RefreshSetting.failureBackoffCap)
     }
 
     func testA429ReadsAsARateLimitEverywhereRequireSuccessRuns() {

@@ -58,10 +58,8 @@ final class ClaudeSessions {
 
     init(defaults: UserDefaults? = nil) {
         self.defaults = defaults
-        let latest = Date().addingTimeInterval(RefreshSetting.failureBackoffCap)
-        windows = (defaults?.data(forKey: Self.storageKey)
-            .flatMap { try? JSONDecoder().decode([String: ClaudeRateLimitWindow].self, from: $0) } ?? [:])
-            .mapValues { ClaudeRateLimitWindow(until: min($0.until, latest), strikes: $0.strikes) }
+        windows = defaults?.data(forKey: Self.storageKey)
+            .flatMap { try? JSONDecoder().decode([String: ClaudeRateLimitWindow].self, from: $0) } ?? [:]
     }
 
     func session(for key: String) -> ClaudeSession {
