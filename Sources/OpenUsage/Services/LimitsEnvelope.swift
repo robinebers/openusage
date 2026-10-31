@@ -1,7 +1,7 @@
 import Foundation
 
 enum LimitsEnvelope {
-    static let schema = "openusage.limits.v1"
+    static let schema = "openusage.limits.v2"
 
     struct Input: Sendable {
         var registry: WidgetRegistry
@@ -28,7 +28,7 @@ enum LimitsEnvelope {
             providers: providers
         )
         return (try? encoder.encode(envelope))
-            ?? Data(#"{"providers":{},"schema":"openusage.limits.v1"}"#.utf8)
+            ?? Data(#"{"providers":{},"schema":"openusage.limits.v2"}"#.utf8)
     }
 
     private struct WireEnvelope: Encodable {

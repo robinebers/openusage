@@ -98,7 +98,7 @@ fetched snapshot is written to the cache as it lands.
 `ContainingAppBundle`) to open that app's defaults domain, and hands the rest to `UsageReader` in the
 library. `UsageReader` builds a `WidgetRegistry` from the stored accounts (`AccountStore.load`) with
 the same `AccountProviderRuntime.provider(for:)` and `widgetDescriptors(for:)` the app's runtimes use,
-and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v1` JSON that
+and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v2` JSON that
 `exportingLimit` declares resource by resource. Each entry's `displayName` is the account's
 `Provider.fullName`, and its `stale` and `expiresAt` come from `ProviderSnapshot.isStale(at:)` and
 `staleAt`, the rule `WidgetDataStore.stalenessHint` uses for the account's clock. The command never

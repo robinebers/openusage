@@ -113,6 +113,6 @@ final class UsageReaderTests: XCTestCase {
         XCTAssertFalse(unfetched.hasSnapshots)
         XCTAssertTrue(try providers(in: unfetched).isEmpty)
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: unfetched.data) as? [String: Any])
-        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v1")
+        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v2")
     }
 }
