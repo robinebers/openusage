@@ -16,10 +16,14 @@ final class AccountStore {
     @ObservationIgnored private var unreadableEntries: [Any]
     private let defaults: UserDefaults
     let credentialVault: any CredentialVault
+    @ObservationIgnored private let makeID: () -> UUID
 
-    init(defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault()) {
+    init(
+        defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault(), makeID: @escaping () -> UUID = { UUID() }
+    ) {
         self.defaults = defaults
         credentialVault = vault
+        self.makeID = makeID
         let stored = Self.load(from: defaults)
         accounts = stored.accounts
         unreadableEntries = stored.unreadableEntries
@@ -55,7 +59,7 @@ final class AccountStore {
 
     @discardableResult
     func add(kind: ProviderKind, label: String, organization: String? = nil, credential: AccountCredential) -> Account {
-        let account = Account(kind: kind, label: label, organization: organization)
+        let account = Account(id: makeID(), kind: kind, label: label, organization: organization)
         do {
             try credentialVault.save(credential, for: account.id)
             accounts.append(account)
@@ -171,7 +175,7 @@ final class AccountStore {
             if let link = plan.relinked[accounts[index].id] { accounts[index].hub = link }
         }
         for (kind, login) in plan.added {
-            let account = Account(kind: kind, label: login.label, hub: HubLink(hub: hub, login: login))
+            let account = Account(id: makeID(), kind: kind, label: login.label, hub: HubLink(hub: hub, login: login))
             let extras = login.chatGPTAccountID.map { ["chatgpt_account_id": $0] } ?? [:]
             do {
                 try credentialVault.save(.oauth(OAuthTokens(accessToken: CLIProxyHubClient.tokenPlaceholder, extras: extras)), for: account.id)
