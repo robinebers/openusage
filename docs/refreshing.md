@@ -24,7 +24,7 @@ Cursor's membership (Enterprise, Team, or a personal plan), ChatGPT's list of re
 expiry times (the count still updates every refresh), and Claude's reset grants. ⌘R reads them all again at once, so a plan upgrade shows within an hour, or on
 the next ⌘R. Claude's plan and reset grants are read halfway between two passes, never together with
 its usage, and ⌘R reads the reset grants again only once their last check is 15 minutes old. A claim
-that spends a grant's last reset has the grants read again in the next halfway slot.
+has the grants read again in the next halfway slot.
 Cursor's usage history is read a day at a time: today and yesterday on every refresh, and each older
 day until one read of it succeeds (see [Cursor](providers.md#cursor)). Ollama's usage history is read
 once an hour, at the start of a UTC day, and on ⌘R (see [Ollama](providers.md#ollama)).
