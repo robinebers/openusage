@@ -64,7 +64,7 @@ final class RefreshTimeoutTests: XCTestCase {
         let other = StubRuntime(
             provider: provider,
             descriptors: [descriptor],
-            snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [])
+            snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [], refreshedAt: clock.now)
         )
         let store = WidgetDataStore.forTesting([claude, other], defaults: isolatedDefaults(), now: { clock.now }, providerRefreshTimeout: 0.05)
         await store.refreshAll()
