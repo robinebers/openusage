@@ -25,7 +25,13 @@ enum ProviderError: Error, LocalizedError, Equatable {
     }
 
     static func isAuthFailure(_ response: HTTPResponse) -> Bool {
-        response.statusCode == 401 || response.statusCode == 403
+        response.statusCode == 401 || (response.statusCode == 403 && !isRateLimit(response))
+    }
+
+    /// GitHub sends its rate limits as 403 with `x-ratelimit-remaining: 0` or `retry-after`.
+    private static func isRateLimit(_ response: HTTPResponse) -> Bool {
+        response.statusCode == 429
+            || (response.statusCode == 403 && (response.header("x-ratelimit-remaining") == "0" || response.header("retry-after") != nil))
     }
 
     static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {
@@ -34,6 +40,6 @@ enum ProviderError: Error, LocalizedError, Equatable {
     }
 
     static func failed(_ response: HTTPResponse, now: Date = Date()) -> ProviderError {
-        response.statusCode == 429 ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
+        isRateLimit(response) ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
     }
 }

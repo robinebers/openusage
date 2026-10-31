@@ -83,6 +83,7 @@ struct AntigravityUsageClient: Sendable {
         if !bodies.isEmpty { return bodies }
         if responses.contains(where: { $0.statusCode == 401 }) { throw TokenRefused() }
         if responses.contains(where: ProviderError.isAuthFailure) { throw ProviderError.signInExpired(.antigravity) }
+        if let limited = responses.first(where: { $0.statusCode == 429 }) { throw ProviderError.failed(limited) }
         throw ProviderError.unavailable(Self.unavailableMessage)
     }
 
