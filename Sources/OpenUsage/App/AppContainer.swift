@@ -102,6 +102,7 @@ final class AppContainer {
             throw ProviderError.unavailable(message)
         }
         try accounts.replaceCredential(credential, for: runtime.account.id)
+        dataStore.forgetBackoff(for: providerID)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
     }
 

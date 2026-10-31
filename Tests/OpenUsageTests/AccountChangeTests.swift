@@ -107,6 +107,25 @@ final class AccountChangeTests: XCTestCase {
         XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"])
     }
 
+    func testAReplacedKeyIsReadAtOnceWhileTheOldKeyIsRateLimited() async throws {
+        let defaults = isolatedDefaults()
+        let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let http = RoutingHTTPClient { request in
+            guard request.headers["Authorization"] == "Bearer new-key" else {
+                return HTTPResponse(statusCode: 429, headers: ["retry-after": "3600"], body: Data())
+            }
+            return Self.acceptedRead(request)
+        }
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+        let account = accounts.add(kind: .openrouter, label: "Personal", credential: .apiKey("old-key"))
+        let dataStore = container.dataStore
+        try await waitUntil { dataStore.backoffs[account.cardID]?.providerAsked == true }
+
+        try await container.replaceKey("new-key", for: account.cardID)
+
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"], "the old key's 429 held the new key")
+    }
+
     func testAKeyAcceptedAfterTheAccountIsRemovedIsNotSaved() async throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()

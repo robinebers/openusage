@@ -46,7 +46,8 @@ elsewhere saves; Esc cancels.
 
 **Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
 before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
-old key stays and the page shows why. A Copilot organization account has **Replace Token…** instead.
+old key stays and the page shows why. A saved key is read at once, even while the old key was waiting
+out a provider's rate limit. A Copilot organization account has **Replace Token…** instead.
 
 ## Hide and star metrics
 
