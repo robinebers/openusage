@@ -103,7 +103,7 @@ final class CursorMetricsTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault())
         XCTAssertEqual(runtime.widgetDescriptors.map(\.sample.title), [
             "Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Requests", "Credits",
-            "Today", "Yesterday", "Last 30 Days"
+            "Today", "Yesterday", "Last 30 Days", "Usage Events"
         ])
     }
 

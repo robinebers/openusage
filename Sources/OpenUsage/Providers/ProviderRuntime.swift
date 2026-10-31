@@ -21,6 +21,7 @@ struct ProviderUsage: Equatable, Sendable {
     var plan: String?
     var lines: [MetricLine]
     var notice: String?
+    var history: UsageHistory?
 }
 
 extension MetricLine {

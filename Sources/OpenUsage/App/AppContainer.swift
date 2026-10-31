@@ -83,6 +83,10 @@ final class AppContainer {
         }
     }
 
+    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
+        providers.first { $0.provider.id == descriptor.providerID }?.usageBreakdown(for: descriptor)
+    }
+
     /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {

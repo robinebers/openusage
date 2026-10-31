@@ -60,10 +60,11 @@ extension AccountProviderRuntime {
                     .exportingLimit("requests", unit: "requests"),
                 .dollarBalance(key: "credits", provider: provider, title: "Credits", valueWord: "left")
                     .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .values(key: "today", provider: provider, title: "Today")
+                .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens))
                     .pinnedByDefault(),
-                .values(key: "yesterday", provider: provider, title: "Yesterday"),
-                .values(key: "last30", provider: provider, title: "Last 30 Days")
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens)),
+                .history(key: "usageEvents", provider: provider, .measure("Usage Events", .usageEvents, over: .lastDays(30)))
             ]
         case .antigravity:
             [
