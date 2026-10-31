@@ -106,6 +106,29 @@ final class RefreshTimeoutTests: XCTestCase {
         }
     }
 
+    func testAWriteDuringAStuckKeychainReadStillLeavesOneReadInFlight() async throws {
+        let vault = StallingVault()
+        let account = Account(kind: .claude, label: "Work")
+        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+
+        vault.stall()
+        let first = Task { await runtime.refresh() }
+        _ = await waitUntil { vault.loads > 0 }
+        try await runtime.replaceCredential(.oauth(OAuthTokens(accessToken: "renewed", refreshToken: "refresh")))
+        let second = Task { await runtime.refresh() }
+        let third = Task { await runtime.refresh() }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(vault.loads, 1, "a write must not let a second Keychain read start beside a stuck one")
+
+        vault.release()
+        for pass in [first, second, third] { _ = try await pass.value.get() }
+        XCTAssertEqual(vault.loads, 2, "the passes after the write share one read made after it")
+    }
+
     private func makeProvider() -> (Provider, WidgetDescriptor) {
         let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
