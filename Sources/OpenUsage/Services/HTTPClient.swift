@@ -25,7 +25,7 @@ struct HTTPResponse: Sendable {
         guard let value = header("Retry-After")?.trimmingCharacters(in: .whitespaces) else { return nil }
         let seconds = TimeInterval(value) ?? Self.httpDateFormatter.date(from: value).map { $0.timeIntervalSince(now) }
         guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
-        return seconds
+        return min(seconds, RefreshSetting.failureBackoffCap)
     }
 
     private static let httpDateFormatter: DateFormatter = {
