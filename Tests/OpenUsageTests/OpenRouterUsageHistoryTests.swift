@@ -72,6 +72,28 @@ final class OpenRouterUsageHistoryTests: XCTestCase {
         XCTAssertEqual(activityDates(http), ["all"])
     }
 
+    func testEachWindowRowHasABreakdownOfWhatOpenRouterReported() async throws {
+        let (store, runtime, _) = try makeAccount(activity: TestSwitch(nil), clock: TestClock(Self.now))
+        let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
+
+        await refresh(store, runtime)
+
+        let prior = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("prior30")))
+        XCTAssertEqual(prior.clockNote, "UTC days")
+        XCTAssertEqual(prior.totals.values, [
+            .spend: 43.5, .byokSpend: 14.5, .requests: 348, .tokens: 124_700,
+            .inputTokens: 116_000, .cacheReadTokens: 17_400, .outputTokens: 8_700, .reasoningTokens: 1_450
+        ])
+        XCTAssertEqual(prior.models.map(\.name), ["openai/gpt-5", "anthropic/claude-sonnet-4.5"])
+        XCTAssertEqual(prior.models.map(\.number), [89_900, 34_800])
+        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
+        XCTAssertEqual(today.clockNote, "UTC day")
+        XCTAssertEqual(today.totals.values, [.spend: 26.5, .byokSpend: 0])
+        XCTAssertEqual(today.models, [])
+        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("week"))?.clockNote, "UTC week from Monday")
+        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("requests")))
+    }
+
     func testActivityIsReadAgainHourlyAndANewUTCDayAtOnce() async throws {
         let clock = TestClock(Self.now)
         let (store, runtime, http) = try makeAccount(activity: TestSwitch(nil), clock: clock)

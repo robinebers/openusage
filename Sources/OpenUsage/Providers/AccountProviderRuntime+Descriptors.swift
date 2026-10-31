@@ -154,11 +154,17 @@ extension AccountProviderRuntime {
                     .pinnedByDefault(),
                 .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
                     .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .values(key: "today", provider: provider, title: "Today"),
-                .values(key: "week", provider: provider, title: "This Week"),
-                .values(key: "month", provider: provider, title: "This Month"),
+                .history(key: "today", provider: provider, .window(.today, .spend, then: .byokSpend))
+                    .pinnedByDefault(),
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
+                .history(key: "week", provider: provider, .window(.thisWeek, .spend, then: .byokSpend)),
+                .history(key: "month", provider: provider, .window(.thisMonth, .spend, then: .byokSpend)),
+                .history(key: "prior30", provider: provider, .window(.priorDays(30), .spend, then: .tokens)),
+                .history(key: "requests", provider: provider, .measure("Requests", .requests, over: .priorDays(30))),
                 .boundedDollars(key: "keyLimit", provider: provider, title: "Key Limit", limit: 100)
-                    .exportingLimit("keyLimit", unit: "usd")
+                    .exportingLimit("keyLimit", unit: "usd"),
+                .boundedDollars(key: "budget", provider: provider, title: "Budget", limit: 100),
+                .boundedCount(key: "freeRequests", provider: provider, title: "Free Requests", limit: 50)
             ]
         case .zai:
             [

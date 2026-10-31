@@ -47,7 +47,7 @@ enum HistoryRow: Hashable, Sendable {
 
     /// How many days back from today the descriptors' rows reach, so a source reads exactly those.
     static func dayCount(for descriptors: [WidgetDescriptor]) -> Int? {
-        descriptors.compactMap { $0.historyRow?.window.dayOffsets.upperBound }.max().map { $0 + 1 }
+        descriptors.compactMap { $0.historyRow?.window.dayOffsets?.upperBound }.max().map { $0 + 1 }
     }
 }
 

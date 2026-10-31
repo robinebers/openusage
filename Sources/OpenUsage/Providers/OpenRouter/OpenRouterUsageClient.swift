@@ -4,6 +4,7 @@ struct OpenRouterUsageClient: Sendable {
     static let creditsURL = "https://openrouter.ai/api/v1/credits"
     static let keyURL = "https://openrouter.ai/api/v1/key"
     static let keysURL = "https://openrouter.ai/api/v1/keys"
+    static let activityURL = "https://openrouter.ai/api/v1/activity"
     static let keysPageSize = 100
     /// Bounds the page loop should OpenRouter ever ignore `offset`.
     static let maxKeysPages = 50
@@ -28,15 +29,21 @@ struct OpenRouterUsageClient: Sendable {
     }
 
     /// Disabled and expired keys count too: what they spent before they stopped is still this period's spend.
-    func listedKeysSpend(apiKey: String) async throws -> OpenRouterSpend {
-        var total = OpenRouterSpend.zero
+    func listedKeysSpend(apiKey: String) async throws -> [UsageWindow: UsageTotals] {
+        var total = OpenRouterUsageMapper.noSpend
         for page in 0..<Self.maxKeysPages {
             let url = "\(Self.keysURL)?include_disabled=true&include_expired=true&offset=\(page * Self.keysPageSize)"
             let keys = try OpenRouterUsageMapper.keysPage(try await get(url, apiKey: apiKey))
-            total = keys.reduce(total, +)
+            total = keys.reduce(total) { $0.merging($1) { $0.adding($1) } }
             if keys.count < Self.keysPageSize { return total }
         }
         throw ProviderError.invalidResponse
+    }
+
+    /// One UTC day when `date` is set, else the last 30 finished UTC days.
+    func activity(apiKey: String, date: Date?) async throws -> HTTPResponse {
+        let day = date.map { "?date=\($0.formatted(.iso8601.year().month().day()))" } ?? ""
+        return try await send(Self.activityURL + day, apiKey: apiKey)
     }
 
     private func get(_ urlString: String, apiKey: String) async throws -> Data {
