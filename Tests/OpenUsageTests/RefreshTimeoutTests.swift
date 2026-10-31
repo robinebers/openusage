@@ -1,4 +1,5 @@
 import Foundation
+import os
 import XCTest
 @testable import OpenUsage
 
@@ -50,6 +51,39 @@ final class RefreshTimeoutTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).used, 42)
     }
 
+    func testAHungHourlyReadDoesNotHoldUpTheNextPassForAnotherAccount() async throws {
+        let clock = TestClock(Date())
+        let vault = StallingVault()
+        let account = Account(kind: .claude, label: "Work")
+        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
+        }
+        let claude = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        let (provider, descriptor) = makeProvider()
+        let other = StubRuntime(
+            provider: provider,
+            descriptors: [descriptor],
+            snapshot: ProviderSnapshot(providerID: provider.id, displayName: provider.displayName, lines: [], refreshedAt: clock.now)
+        )
+        let store = WidgetDataStore.forTesting([claude, other], defaults: isolatedDefaults(), now: { clock.now }, providerRefreshTimeout: 0.05)
+        await store.refreshAll()
+        XCTAssertNotNil(store.snapshots[claude.provider.id])
+        XCTAssertEqual(other.refreshCount, 1)
+
+        vault.stall()
+        addTeardownBlock { vault.release() }
+        Task {
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+            await store.refreshHourlyReads()
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+            await store.refreshAll()
+        }
+
+        let refreshed = await waitUntil { other.refreshCount == 2 }
+        XCTAssertTrue(refreshed, "a Claude hourly read stuck on its Keychain item must not hold up the next pass")
+    }
+
     private func makeProvider() -> (Provider, WidgetDescriptor) {
         let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
@@ -80,4 +114,30 @@ final class RefreshTimeoutTests: XCTestCase {
         return condition()
     }
 
+}
+
+/// A vault whose reads block once stalled, the way a Keychain read waits on a prompt nobody answers.
+private final class StallingVault: CredentialVault, @unchecked Sendable {
+    private let stored = InMemoryCredentialVault()
+    private let stalled = OSAllocatedUnfairLock(initialState: false)
+    private let gate = DispatchGroup()
+
+    func stall() {
+        gate.enter()
+        stalled.withLock { $0 = true }
+    }
+
+    func release() {
+        stalled.withLock { $0 = false }
+        gate.leave()
+    }
+
+    func load(_ id: UUID) throws -> AccountCredential? {
+        if stalled.withLock({ $0 }) { gate.wait() }
+        return try stored.load(id)
+    }
+
+    func save(_ credential: AccountCredential, for id: UUID) throws { try stored.save(credential, for: id) }
+    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
+    func delete(_ id: UUID) throws { try stored.delete(id) }
 }

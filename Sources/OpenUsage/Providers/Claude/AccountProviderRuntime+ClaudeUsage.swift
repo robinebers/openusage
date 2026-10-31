@@ -74,6 +74,7 @@ extension AccountProviderRuntime {
             if let uuid = profile.organization?.uuid, UUID(uuidString: uuid) != nil { session.organizationUUID = uuid }
             session.planRead.record(ClaudeUsageMapper.formatLivePlan(profile: profile), at: now())
         } catch {
+            guard !Task.isCancelled else { throw error }
             AppLog.warn(LogTag.plugin("claude"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
             session.planRead.record(nil, at: now())
             throw error

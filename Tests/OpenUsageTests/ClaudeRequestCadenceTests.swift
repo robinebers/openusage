@@ -45,6 +45,24 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants", "profile", "grants"])
     }
 
+    func testAProfileReadCutShortByTheDeadlineIsRetriedInTheNextSlot() async throws {
+        let clock = TestClock(Self.start)
+        let anthropic = Self.anthropic()
+        let http = RoutingHTTPClient { request in
+            if Task.isCancelled { throw CancellationError() }
+            return try await anthropic.send(request)
+        }
+        let runtime = try makeRuntime(http: http, clock: clock)
+        let snapshot = try await runtime.refresh().get()
+
+        let cut = Task { await runtime.refreshHourlyReads(of: snapshot) }
+        cut.cancel()
+        _ = await cut.value
+        _ = await runtime.refreshHourlyReads(of: snapshot)
+
+        XCTAssertEqual(kinds(http).filter { $0 == "profile" }.count, 2, "a cancelled read must not hold the plan back for an hour")
+    }
+
     func testARetryAfterOfZeroWaitsFiveMinutesThenTen() async throws {
         let clock = TestClock(Self.start)
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 429, headers: ["retry-after": "0"], body: Data()) }
