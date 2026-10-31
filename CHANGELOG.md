@@ -48,6 +48,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
+- OpenRouter: a Management key scoped to one workspace can be added. It shows that workspace's spend,
+  without Credits or Balance, which OpenRouter keeps from workspace keys.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,

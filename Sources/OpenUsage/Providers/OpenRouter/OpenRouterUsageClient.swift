@@ -18,8 +18,13 @@ struct OpenRouterUsageClient: Sendable {
         try OpenRouterUsageMapper.key(try await get(Self.keyURL, apiKey: apiKey), now: now)
     }
 
+    /// Empty for a Management key scoped to one workspace: OpenRouter bills credits per account and
+    /// refuses such a key the account's credits with a 403.
     func creditsLines(apiKey: String) async throws -> [MetricLine] {
-        try OpenRouterUsageMapper.creditsLines(try await get(Self.creditsURL, apiKey: apiKey))
+        let response = try await send(Self.creditsURL, apiKey: apiKey)
+        if response.statusCode == 403 { return [] }
+        try ProviderError.requireSuccess(response, kind: .openrouter)
+        return try OpenRouterUsageMapper.creditsLines(response.body)
     }
 
     /// Disabled and expired keys count too: what they spent before they stopped is still this period's spend.
@@ -35,11 +40,17 @@ struct OpenRouterUsageClient: Sendable {
     }
 
     private func get(_ urlString: String, apiKey: String) async throws -> Data {
+        let response = try await send(urlString, apiKey: apiKey)
+        try ProviderError.requireSuccess(response, kind: .openrouter)
+        return response.body
+    }
+
+    private func send(_ urlString: String, apiKey: String) async throws -> HTTPResponse {
         guard let url = URL(string: urlString) else {
             throw ProviderError.invalidResponse
         }
 
-        let response = try await http.send(HTTPRequest(
+        return try await http.send(HTTPRequest(
             method: "GET",
             url: url,
             headers: [
@@ -48,7 +59,5 @@ struct OpenRouterUsageClient: Sendable {
             ],
             timeout: 15
         ))
-        try ProviderError.requireSuccess(response, kind: .openrouter)
-        return response.body
     }
 }

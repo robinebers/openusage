@@ -151,7 +151,9 @@ Paste a **Management** key from
 whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
 bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
 your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
-workspaces don't count.
+workspaces don't count. A Management key scoped to one workspace can't read the account's credits, so
+its card has no Credits or Balance, and its Today, This Week, and This Month add up that workspace's
+keys.
 
 A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, and **Key
 Limit** when the key has a credit limit. A daily, weekly, or monthly limit resets at midnight UTC, and
