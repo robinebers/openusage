@@ -55,7 +55,8 @@ Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, Op
 API keys. OpenRouter's balance, account-wide spend, and activity need a Management key. Cursor accounts also show
 what Cursor charged for on-demand usage and the tokens it reported today, yesterday, and in the last
 30 days, with what each range reported on hover. Ollama accounts show the same ranges on UTC days, with
-the usage value, tokens, and requests Ollama reports.
+the usage value, tokens, and requests Ollama reports. ChatGPT accounts show the credits charged, the
+tokens, and the turns by UTC day, and a workspace's credit limit.
 [Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features

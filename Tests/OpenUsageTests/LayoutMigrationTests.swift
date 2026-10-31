@@ -13,8 +13,10 @@ final class LayoutMigrationTests: XCTestCase {
 
         let codex = app.add(.codex)
         XCTAssertEqual(app.stars(codex), ["session", "weekly"])
-        XCTAssertEqual(app.hidden(codex), ["spark", "sparkWeekly"], "a star 0.7.x showed only in the menu bar shows its metric")
-        XCTAssertEqual(app.order(codex), ["weekly", "session", "credits", "rateLimitResets", "spark", "sparkWeekly"])
+        XCTAssertEqual(app.hidden(codex), ["last30", "spark", "sparkWeekly", "today", "yesterday"],
+                       "a star 0.7.x showed only in the menu bar shows its metric, and the restored rows keep 0.7.x's hiding")
+        XCTAssertEqual(app.order(codex), ["weekly", "session", "credits", "rateLimitResets", "spark", "sparkWeekly",
+                                          "creditLimit", "today", "yesterday", "last30", "turns"])
 
         let secondClaude = app.add(.claude)
         XCTAssertEqual(app.stars(secondClaude), ["session", "weekly"], "a provider's later accounts start with the default stars")
