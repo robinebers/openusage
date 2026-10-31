@@ -36,7 +36,7 @@ extension AccountProviderRuntime {
         refreshed.accessToken = token.accessToken
         refreshed.refreshToken = token.refreshToken ?? token.accessToken
         refreshed.expiresAt = ProviderParse.jwtExpiry(token.accessToken)
-        try await replaceCredential(.oauth(refreshed))
+        await saveRenewal(refreshed)
         return refreshed
     }
 }

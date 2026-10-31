@@ -20,6 +20,9 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// the same one, so a caller that needs a renewal while one is in flight waits for its tokens, and a
     /// caller whose tokens another renewal already replaced takes the stored ones.
     private var renewal: Task<OAuthTokens, Error>?
+    /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
+    /// the refresh token they replace, so they stand in for the stored credential until they are saved.
+    private var unsavedRenewal: OAuthTokens?
 
     init(
         account: Account,
@@ -100,6 +103,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     func loadCredential() async throws -> AccountCredential {
+        if let unsavedRenewal {
+            await saveRenewal(unsavedRenewal)
+            return .oauth(unsavedRenewal)
+        }
         guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
             throw refusedCredential
         }
@@ -185,7 +192,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             tokens.accessToken = granted.accessToken
             if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
             tokens.expiresAt = granted.expiresAt
-            try await replaceCredential(.oauth(tokens))
+            await saveRenewal(tokens)
             return tokens
         }
         self.renewal = renewal
@@ -317,6 +324,16 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
+    }
+
+    func saveRenewal(_ tokens: OAuthTokens) async {
+        unsavedRenewal = tokens
+        do {
+            try await replaceCredential(.oauth(tokens))
+        } catch {
+            AppLog.error(.auth, "\(account.cardID) couldn't save the renewed sign-in; keeping it and retrying: \(error.localizedDescription)")
+        }
     }
 
     func validate(_ credential: AccountCredential) async throws {
