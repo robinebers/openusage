@@ -4,6 +4,7 @@ struct ClaudeLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl")!, encoding: .utf8)!
     static let authorizeURL = URL(string: "https://claude.ai/oauth/authorize")!
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
+    static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
     /// `/api/oauth/usage` and `/api/oauth/profile` gate on `user:profile` and nothing else (Anthropic answers
     /// a token without it with "OAuth token does not meet scope requirement user:profile"). The refresh
     /// grant sends the same string, so a refreshed token never carries more than the sign-in granted.
@@ -28,15 +29,18 @@ struct ClaudeLogin: ProviderLogin {
             "code_verifier": pkce.verifier
         ], using: http)
         let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
-        var info: ClaudeProfileResponse?
-        if let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile"),
-           let profile = try? await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http) {
-            info = try? LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
+        let info: ClaudeProfileResponse
+        do {
+            let profile = try await LoginHTTP.get(Self.profileURL, bearerToken: token.accessToken, using: http)
+            info = try LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
+        } catch {
+            AppLog.error(LogTag.auth("claude"), "profile read failed after the token exchange: \(error.localizedDescription)")
+            throw LoginError.failed("Claude didn’t return your profile. Click Try Again to sign in again.")
         }
-        let identity = (info?.account?.uuid).map {
-            ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info?.organization?.uuid)
+        let identity = (info.account?.uuid).map {
+            ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info.organization?.uuid)
         }
-        return (info?.account?.email ?? info?.email ?? "Claude Account", .oauth(OAuthTokens(
+        return (info.account?.email ?? info.email ?? "Claude Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: token.expiry,
