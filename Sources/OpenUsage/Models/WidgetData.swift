@@ -155,12 +155,6 @@ struct WidgetData: Hashable {
         Int((values.first?.number ?? 0).rounded(.down))
     }
 
-    /// A balance with nothing left, which the dashboard leaves out: Limit Resets, and any row built with
-    /// `hidesAtZero`, once every value reads zero.
-    var isEmptyBalance: Bool {
-        (showsResetExpiries || hidesAtZero) && values.allSatisfy { $0.number <= 0 }
-    }
-
     private func format(_ value: Double) -> String {
         MetricFormatter.number(value, kind: kind, style: .row)
     }

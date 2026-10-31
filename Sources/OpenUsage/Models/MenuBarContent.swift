@@ -32,7 +32,7 @@ enum MenuBarContentBuilder {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
             let metrics = group.metrics.compactMap { descriptor -> MenuBarContent.Metric? in
                 let data = data(descriptor)
-                guard data.hasData else { return nil }
+                guard data.hasData, !(data.hidesAtZero && data.values.allSatisfy { $0.number <= 0 }) else { return nil }
                 return MenuBarContent.Metric(id: descriptor.id, label: trayLabel(descriptor.metricLabel), value: data.menuBarValue)
             }
             guard !metrics.isEmpty else { return nil }

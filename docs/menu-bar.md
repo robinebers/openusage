@@ -25,7 +25,8 @@ page in Accounts.
 
 Each starred metric shows its provider's mark and the value. Two starred metrics from the same
 account stack as a labelled pair. The strip only renders real data: a starred metric with nothing
-fetched yet is skipped, and an account whose stars all lack data disappears from the strip. When
+fetched yet is skipped, as is a ChatGPT Extra Usage or a Limit Resets star at zero, and an account
+whose stars all lack data disappears from the strip. When
 nothing has data, the strip shows the app icon. With [Hide From Screen Share](privacy.md#screen-sharing)
 on, it also shows the app icon while your screen is shared or recorded.
 

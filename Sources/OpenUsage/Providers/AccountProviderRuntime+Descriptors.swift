@@ -171,7 +171,7 @@ extension AccountProviderRuntime {
 
     private static func rateLimitResets(key: String, provider: Provider) -> WidgetDescriptor {
         .values(key: key, provider: provider, title: "Limit Resets", metricLabel: "Rate Limit Resets",
-                traySuffix: "resets", showsResetExpiries: true)
+                traySuffix: "resets", showsResetExpiries: true, hidesAtZero: true)
             .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available"))
     }
 }
