@@ -4,10 +4,12 @@ import Foundation
 /// once and never changes, so a downgrade to 0.7.x finds them as it left them.
 enum APIKeyV1Files {
     static let importedKey = "openusage.apiKeyFiles.v1.imported"
+    static let developmentBundleIdentifier = "com.robinebers.openusage.dev"
 
-    /// Adds each saved key as an account of a provider that has none yet, once Add Account's usage read
-    /// accepts it. A provider is done once its outcome is final, so a key the user removes stays removed;
-    /// a check that fails for any reason other than a refused key is tried again on the next launch.
+    /// Adds each saved key as an account of a provider that has none yet, once a usage read accepts it.
+    /// A provider is done once its key is saved or refused, so a key the user removes stays removed; a
+    /// check or Keychain write that fails for any other reason is tried again on the next launch. The
+    /// development build leaves the keys alone, as it does the installed app's settings.
     @MainActor
     static func importOnce(
         into accounts: AccountStore,
@@ -16,21 +18,24 @@ enum APIKeyV1Files {
         http: any HTTPClient = URLSessionHTTPClient(),
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) async {
+        guard bundleIdentifier != developmentBundleIdentifier else { return }
         for (kind, file) in [(ProviderKind.openrouter, "openrouter.json"), (.zai, "zai.json")] {
             let doneKey = "\(importedKey).\(kind.rawValue)"
             guard !defaults.bool(forKey: doneKey) else { continue }
             if !accounts.accounts.contains(where: { $0.kind == kind }),
                let key = key(at: home.appending(path: ".config/openusage/\(file)")) {
-                let (input, continuation) = AsyncStream.makeStream(of: String.self)
-                continuation.yield(key)
-                continuation.finish()
+                let runtime = AccountProviderRuntime(account: Account(kind: kind, label: kind.displayName), vault: accounts.credentialVault, http: http)
                 do {
-                    let result = try await APIKeyLogin(kind: kind, http: http).login(prompt: { _ in }, pastedCode: input)
+                    try await runtime.validate(.apiKey(key))
                     if !accounts.accounts.contains(where: { $0.kind == kind }) {
-                        accounts.add(kind: kind, label: result.label, credential: result.credential)
+                        let account = accounts.add(kind: kind, label: kind.displayName, credential: .apiKey(key))
+                        guard accounts.accounts.contains(where: { $0.id == account.id }) else {
+                            AppLog.warn(.config, "could not save the \(kind.displayName) key 0.7.x saved in \(file), trying again next launch")
+                            continue
+                        }
                         AppLog.notice(.config, "imported the \(kind.displayName) key 0.7.x saved in \(file)")
                     }
-                } catch ProviderError.unavailable(let message) {
+                } catch ProviderError.keyRejected(let message) {
                     AppLog.warn(.config, "skipped the \(kind.displayName) key 0.7.x saved in \(file): \(message)")
                 } catch {
                     AppLog.warn(.config, "could not check the \(kind.displayName) key 0.7.x saved in \(file), trying again next launch: \(error.localizedDescription)")
