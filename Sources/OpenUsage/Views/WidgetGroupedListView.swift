@@ -89,6 +89,7 @@ struct WidgetGroupedListView: View {
                 DashboardLiveRow(
                     line: line,
                     resetClaim: container.resetClaim(for: account.id),
+                    breakdown: container.usageBreakdown(for: line.descriptor),
                     onToggleMeterStyle: { dataStore.meterStyle.toggle() },
                     onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
                 )

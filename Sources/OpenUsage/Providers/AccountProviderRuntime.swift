@@ -11,7 +11,9 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var cursorMembershipRead = SecondaryRead<String>()
-    var cursorSpendDays: [Date: CursorSpendDay] = [:]
+    var usageLedger = UsageLedger()
+    /// The history behind the last snapshot's history rows.
+    private(set) var usageHistory: UsageHistory?
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
@@ -85,10 +87,16 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
+            usageHistory = usage.history
+            let lines = usage.lines + HistoryRow.lines(for: widgetDescriptors, in: usage.history)
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: lines, notice: usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
+    }
+
+    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
+        usageHistory.flatMap { descriptor.historyRow?.breakdown(in: $0) }
     }
 
     func loadCredential() async throws -> AccountCredential {

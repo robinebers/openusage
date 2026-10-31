@@ -25,9 +25,27 @@ final class CursorUsageEventsParserTests: XCTestCase {
         let page = try XCTUnwrap(CursorUsageEvents.parsePage(Data(Self.mixedPage.utf8)))
 
         XCTAssertEqual(page.totalCount, 7)
-        XCTAssertEqual(page.events.map(\.chargedCents), [124.73, 0, 0, 0, 0, 3.5, 0])
+        XCTAssertEqual(page.events.map { $0.totals[.spend] }, [124.73, 0, 0, 0, 0, 3.5, 0].map { $0 / 100 })
         XCTAssertEqual(page.events.first?.date, Date(timeIntervalSince1970: 1_793_000_000))
         XCTAssertEqual(page.events.last?.date, Date(timeIntervalSince1970: 1_793_000_005))
+    }
+
+    func testTokensAreEveryKindCursorReportedOnAnyEventKindAndAbsentWithoutTokenUsage() throws {
+        let page = try XCTUnwrap(CursorUsageEvents.parsePage(Data(Self.mixedPage.utf8)))
+
+        XCTAssertEqual(page.events.map { $0.totals[.tokens] }, [132_679, 3_514, nil, nil, nil, nil, nil])
+        XCTAssertEqual(page.events[0].totals.values, [
+            .spend: 124.73 / 100, .usageEvents: 1, .tokens: 132_679,
+            .inputTokens: 3, .cacheReadTokens: 0, .cacheWriteTokens: 112_151, .outputTokens: 20_525
+        ])
+        XCTAssertEqual(page.events.map(\.model), ["claude-4.6-opus-high-thinking", "composer-2", "gpt-5", "gpt-5",
+                                                   "composer-2", "composer-2", "composer-2"])
+
+        let day = CursorUsageEvents.day(page.events)
+        XCTAssertNil(day.totals[.tokens], "an event without tokenUsage leaves the day's tokens unreported")
+        XCTAssertEqual(day.totals[.usageEvents], 7)
+        XCTAssertEqual(CursorUsageEvents.day(Array(page.events.prefix(2))).totals[.tokens], 136_193)
+        XCTAssertEqual(CursorUsageEvents.day([]).totals, .zero(CursorUsageEvents.measures), "a quiet day is zeros, not a gap")
     }
 
     func testAnEmptyPageLeavesOutItsEventListButNotItsCount() throws {
@@ -37,7 +55,9 @@ final class CursorUsageEventsParserTests: XCTestCase {
             #"{"usageEventsDisplay":[]}"#,
             #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"kind":"USAGE_EVENT_KIND_USAGE_BASED","chargedCents":5}]}"#,
             #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1","kind":"USAGE_EVENT_KIND_USAGE_BASED","chargedCents":-5}]}"#,
-            #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1","kind":"USAGE_EVENT_KIND_USAGE_BASED","chargedCents":"$0.05"}]}"#
+            #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1","kind":"USAGE_EVENT_KIND_USAGE_BASED","chargedCents":"$0.05"}]}"#,
+            #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1","tokenUsage":{"inputTokens":-1}}]}"#,
+            #"{"totalUsageEventsCount":1,"usageEventsDisplay":[{"timestamp":"1","tokenUsage":"lots"}]}"#
         ] {
             XCTAssertNil(CursorUsageEvents.parsePage(Data(body.utf8)), body)
         }
@@ -45,7 +65,7 @@ final class CursorUsageEventsParserTests: XCTestCase {
 }
 
 @MainActor
-final class CursorSpendHistoryTests: XCTestCase {
+final class CursorUsageHistoryTests: XCTestCase {
     nonisolated private static let accessToken = "e30." + Data(#"{"sub":"auth0|user_fake"}"#.utf8).base64EncodedString()
         .replacingOccurrences(of: "=", with: "") + ".sig"
     nonisolated private static let usage = #"""
@@ -75,10 +95,13 @@ final class CursorSpendHistoryTests: XCTestCase {
         return HTTPResponse(statusCode: 200, headers: [:], body: Data(page.utf8))
     }
 
-    private func makeAccount(events: TestSwitch<Int?>) throws -> (WidgetDataStore, AccountProviderRuntime, RoutingHTTPClient) {
+    private func makeAccount(
+        events: TestSwitch<Int?>, retryAfter: String? = nil, clock: TestClock? = nil
+    ) throws -> (WidgetDataStore, AccountProviderRuntime, RoutingHTTPClient) {
         let account = Account(kind: .cursor, label: "Cursor")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: Self.accessToken, refreshToken: "refresh")), for: account.id)
+        let clock = clock ?? TestClock(now)
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case CursorUsageClient.usageURL.path:
@@ -86,15 +109,17 @@ final class CursorSpendHistoryTests: XCTestCase {
             case CursorUsageClient.planURL.path:
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.planInfo.utf8))
             case CursorUsageClient.usageEventsURL.path:
-                if let status = events.value { return HTTPResponse(statusCode: status, headers: [:], body: Data()) }
+                if let status = events.value {
+                    if status == 429 { clock.set(clock.now.addingTimeInterval(15)) }
+                    return HTTPResponse(statusCode: status, headers: retryAfter.map { ["retry-after": $0] } ?? [:], body: Data())
+                }
                 return Self.eventsPage(request)
             default:
                 return HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let now = self.now
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { now })
-        return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { now }), runtime, http)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now }), runtime, http)
     }
 
     private func spend(_ store: WidgetDataStore, _ runtime: AccountProviderRuntime) -> [String: Double] {
@@ -154,9 +179,72 @@ final class CursorSpendHistoryTests: XCTestCase {
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
         XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
     }
-}
 
-final class CursorSpendHistoryFetcherTests: XCTestCase {
+    /// Each rate-limited request takes 15 seconds, so the wait has to start when the 429 arrives.
+    func testARateLimitStopsTheSweepAndWaitsForRetryAfterOrAnHour() async throws {
+        for (retryAfter, wait) in [("120", 120.0), (nil, 3600.0)] {
+            let events = TestSwitch<Int?>(429)
+            let clock = TestClock(now)
+            let (store, runtime, http) = try makeAccount(events: events, retryAfter: retryAfter, clock: clock)
+
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            let firstSweep = eventRequests(http).count
+            XCTAssertLessThanOrEqual(firstSweep, 4, "the sweep stops at the 429 instead of asking for all 30 days")
+            let answered = clock.now
+
+            events.value = nil
+            clock.set(answered.addingTimeInterval(wait - 1))
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            XCTAssertEqual(eventRequests(http).count, firstSweep, "no history read before the wait ends")
+            XCTAssertEqual(spend(store, runtime), [:])
+
+            clock.set(answered.addingTimeInterval(wait + 1))
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            XCTAssertEqual(eventRequests(http).count - firstSweep, 30, "every unread day is still due")
+            XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
+        }
+    }
+
+    func testTheRowsAddTheTokensCursorReportedAndTheUsageEventsRowCountsEveryEvent() async throws {
+        let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
+
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+
+        var rows: [String: String] = [:]
+        for descriptor in runtime.widgetDescriptors where descriptor.historyRow != nil {
+            let data = store.data(for: descriptor)
+            if data.hasData { rows[descriptor.key] = data.unboundedDetail }
+        }
+        XCTAssertEqual(rows, [
+            "today": "$1.25 · 3.3K tokens",
+            "yesterday": "$1.25 · 3.3K tokens",
+            "last30": "$37.50 · 99.1K tokens",
+            "usageEvents": "60 in 30 days"
+        ])
+    }
+
+    func testEachWindowRowHasABreakdownOfWhatCursorReportedAndTheUsageEventsRowHasNone() async throws {
+        let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
+        let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
+        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("today")), "nothing read yet")
+
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+
+        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
+        XCTAssertEqual(today.window, .today)
+        XCTAssertEqual(today.totals.values, [
+            .spend: 1.25, .usageEvents: 2, .tokens: 3_303,
+            .inputTokens: 3_003, .cacheReadTokens: 0, .cacheWriteTokens: 0, .outputTokens: 300
+        ])
+        XCTAssertEqual(today.models.map(\.name), ["composer-2", "claude-4.6-opus"])
+        XCTAssertEqual(today.models.map(\.number), [3_100, 203])
+        XCTAssertEqual(today.modelMeasure, .tokens)
+        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
+        XCTAssertNotNil(runtime.usageBreakdown(for: try descriptor("yesterday")))
+        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))
+    }
+}
+final class CursorHistorySourceTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_793_000_000)
     private let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -165,6 +253,12 @@ final class CursorSpendHistoryFetcherTests: XCTestCase {
     }()
     private let accessToken = "e30." + Data(#"{"sub":"auth0|user_fake"}"#.utf8).base64EncodedString()
         .replacingOccurrences(of: "=", with: "") + ".sig"
+
+    private var span: [Date] { UsageHistory.dayStarts(0..<30, now: now, calendar: calendar) }
+
+    private func source(_ http: RoutingHTTPClient) -> CursorHistorySource {
+        CursorHistorySource(client: CursorUsageClient(http: http), accessToken: accessToken, accountID: "cursor@1")
+    }
 
     private static func page(_ request: HTTPRequest) -> (start: Int, page: Int) {
         let body = request.body.flatMap(ProviderParse.jsonObject) ?? [:]
@@ -177,39 +271,76 @@ final class CursorSpendHistoryFetcherTests: XCTestCase {
         return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
     }
 
+    @MainActor
     func testADayOverSeveralPagesCountsEveryPageAndAShortPageFailsTheDay() async {
-        let window = CursorSpendHistoryFetcher.window(now: now, calendar: calendar)
-        let short = Int(window[2].start.timeIntervalSince1970 * 1000)
+        let span = span
+        let short = Int(span[2].timeIntervalSince1970 * 1000)
         let http = RoutingHTTPClient { request in
             let (start, page) = Self.page(request)
             if start == short { return Self.events(total: 3, at: start + 1, cents: page == 1 ? [100, 100] : []) }
             return Self.events(total: 3, at: start + 1, cents: page == 1 ? [100, 100] : [25.5])
         }
-        let fetcher = CursorSpendHistoryFetcher(client: CursorUsageClient(http: http), pageSize: 2)
+        var source = source(http)
+        source.pageSize = 2
 
-        let days = await fetcher.refresh([:], window: window, accessToken: accessToken, calendar: calendar, accountID: "cursor@1")
+        let days = await source.read(span, asOf: now, calendar: calendar).days
 
         XCTAssertEqual(days.count, 29)
-        XCTAssertNil(days[window[2].start], "a page that ends before the count leaves the day unread")
-        XCTAssertEqual(days[window[0].start], CursorSpendDay(chargedCents: 225.5, isComplete: false))
-        XCTAssertEqual(days[window[1].start], CursorSpendDay(chargedCents: 225.5, isComplete: true))
-        XCTAssertEqual(CursorUsageEvents.spendLines(days, window: window.map(\.start)).map(\.label), ["Today", "Yesterday"])
+        XCTAssertNil(days[span[2]], "a page that ends before the count leaves the day unread")
+        XCTAssertEqual(days[span[0]]?.totals[.spend] ?? 0, 2.255, accuracy: 1e-9)
+        XCTAssertEqual(days[span[1]]?.totals[.spend] ?? 0, 2.255, accuracy: 1e-9)
+        let history = UsageHistory(calendar: calendar, asOf: now, days: days)
+        let cursor = AccountProviderRuntime(account: Account(kind: .cursor, label: "Cursor"), vault: InMemoryCredentialVault())
+        XCTAssertEqual(HistoryRow.lines(for: cursor.widgetDescriptors, in: history).map(\.label), ["Today", "Yesterday"])
     }
 
     func testTheTimeBudgetKeepsTheDaysThatFinished() async {
-        let window = CursorSpendHistoryFetcher.window(now: now, calendar: calendar)
-        let today = Int(window[0].start.timeIntervalSince1970 * 1000)
+        let span = span
+        let today = Int(span[0].timeIntervalSince1970 * 1000)
         let http = RoutingHTTPClient { request in
             let (start, _) = Self.page(request)
             if start != today { try await Task.sleep(for: .seconds(30)) }
             return Self.events(total: 1, at: start + 1, cents: [7])
         }
-        let fetcher = CursorSpendHistoryFetcher(client: CursorUsageClient(http: http), budget: 0.5)
-        let stored = [window[9].start: CursorSpendDay(chargedCents: 3, isComplete: true)]
+        var source = source(http)
+        source.budget = 0.5
+        var ledger = UsageLedger()
+        ledger.record([span[9]: UsageDay(totals: UsageTotals(values: [.spend: 0.03]))], due: [span[9]], span: span)
 
-        let days = await fetcher.refresh(stored, window: window, accessToken: accessToken, calendar: calendar, accountID: "cursor@1")
+        let due = ledger.due(span)
+        ledger.record(await source.read(due, asOf: now, calendar: calendar).days, due: due, span: span)
 
-        XCTAssertEqual(days, [window[0].start: CursorSpendDay(chargedCents: 7, isComplete: false),
-                              window[9].start: CursorSpendDay(chargedCents: 3, isComplete: true)])
+        XCTAssertEqual(due.count, 29, "a day read before is not read again")
+        XCTAssertEqual(ledger.days.mapValues { $0.totals[.spend] }, [span[0]: 0.07, span[9]: 0.03])
+    }
+
+    func testADayThatStartsAtOneOClockIsReadToTheNextMidnight() async throws {
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let september6 = Date(timeIntervalSince1970: 1_788_667_200)
+        let http = RoutingHTTPClient { _ in Self.events(total: 0, at: 0, cents: []) }
+
+        let days = await source(http).read([september6], asOf: Date(timeIntervalSince1970: 1_788_793_200), calendar: santiago).days
+
+        XCTAssertNotNil(days[september6])
+        let body = try XCTUnwrap(http.requests.first?.body.flatMap(ProviderParse.jsonObject))
+        XCTAssertEqual(body["endDate"] as? String, "1788749999999", "a 23-hour day ends at Sep 7 00:00, not 01:00")
+    }
+
+    func testADayLastReadWhileItWasTodayIsReadAgainAfterAGapOfDays() {
+        let friday = span
+        let monday = UsageHistory.dayStarts(0..<30, now: now.addingTimeInterval(3 * 86_400), calendar: calendar)
+        let partial = UsageDay(totals: UsageTotals(values: [.spend: 1]))
+        let full = UsageDay(totals: UsageTotals(values: [.spend: 4]))
+        var ledger = UsageLedger()
+        ledger.record([friday[0]: partial, friday[1]: full], due: ledger.due(friday), span: friday)
+
+        let due = ledger.due(monday)
+
+        XCTAssertTrue(due.contains(friday[0]), "Friday was read before it ended")
+        XCTAssertFalse(due.contains(friday[1]), "Thursday was read after it ended")
+        ledger.record([friday[0]: full], due: [friday[0]], span: monday)
+        XCTAssertEqual(ledger.days[friday[0]], full)
+        XCTAssertFalse(ledger.due(monday).contains(friday[0]))
     }
 }
