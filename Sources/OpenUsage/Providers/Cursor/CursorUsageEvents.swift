@@ -23,7 +23,7 @@ enum CursorUsageEvents {
 
     /// Nil when the page or any event on it is not what Cursor sends, so a day is never summed from part
     /// of its events. Cursor leaves out an empty event list, a zero `chargedCents`, and a zero token kind.
-    /// An event without `tokenUsage` reports no tokens.
+    /// An event without `tokenUsage` counts zero tokens.
     static func parsePage(_ data: Data) -> CursorUsageEventsPage? {
         guard let object = ProviderParse.jsonObject(data),
               let total = ProviderParse.number(object["totalUsageEventsCount"]),
@@ -42,20 +42,18 @@ enum CursorUsageEvents {
                 guard let cents = ProviderParse.number(rawCents), cents >= 0 else { return nil }
                 totals.values[.spend] = cents / 100
             }
-            if let rawUsage = event["tokenUsage"] {
-                guard let usage = rawUsage as? [String: Any] else { return nil }
-                var tokens = 0.0
-                for kind in tokenKinds {
-                    var count = 0.0
-                    if let rawCount = usage[kind.field] {
-                        guard let parsed = ProviderParse.number(rawCount), parsed >= 0 else { return nil }
-                        count = parsed
-                    }
-                    totals.values[kind.measure] = count
-                    tokens += count
+            guard let usage = (event["tokenUsage"] ?? [String: Any]()) as? [String: Any] else { return nil }
+            var tokens = 0.0
+            for kind in tokenKinds {
+                var count = 0.0
+                if let rawCount = usage[kind.field] {
+                    guard let parsed = ProviderParse.number(rawCount), parsed >= 0 else { return nil }
+                    count = parsed
                 }
-                totals.values[.tokens] = tokens
+                totals.values[kind.measure] = count
+                tokens += count
             }
+            totals.values[.tokens] = tokens
             events.append(CursorUsageEvent(
                 date: Date(timeIntervalSince1970: milliseconds / 1000), model: event["model"] as? String, totals: totals
             ))
@@ -63,8 +61,7 @@ enum CursorUsageEvents {
         return CursorUsageEventsPage(totalCount: Int(total), events: events)
     }
 
-    /// One day's events summed: a day with no events reports zeros, and a day where any event has no
-    /// `tokenUsage` reports no tokens.
+    /// One day's events summed: a day with no events reports zeros.
     static func day(_ events: [CursorUsageEvent]) -> UsageDay {
         func sum(_ events: [CursorUsageEvent]) -> UsageTotals {
             events.reduce(.zero(measures)) { $0.adding($1.totals) }

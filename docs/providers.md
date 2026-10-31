@@ -83,8 +83,8 @@ Today, Yesterday, and Last 30 Days show what Cursor charged the account and the 
 The charge is the sum of `chargedCents` on the account's on-demand usage events
 (`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the list on Cursor's Usage page. Usage the
 plan includes, and errored or free requests, count as $0. Tokens are the input, output, cache read, and
-cache write tokens of every event, whatever its kind; a range with an event that reports no token usage
-shows only the charge. Usage Events counts every event of the last 30 days, free and errored ones too.
+cache write tokens of every event, whatever its kind; an event that reports no token usage counts as
+zero tokens. Usage Events counts every event of the last 30 days, free and errored ones too.
 Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
 the charge, the usage events, each kind of token, and the top five models, the rest as Other.
 The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
