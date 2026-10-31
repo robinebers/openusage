@@ -44,6 +44,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
 - A provider's `Retry-After` wait is honored up to an hour; a longer one is cut to an hour.
+- A provider number too large for the app, such as a window length, count, or credit balance, no
+  longer crashes it: the value is treated as malformed. A reset that far off shows the longest countdown.
 - Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default

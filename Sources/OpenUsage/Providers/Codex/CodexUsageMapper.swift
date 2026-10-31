@@ -37,7 +37,7 @@ enum CodexUsageMapper {
             ))
         }
 
-        if let remaining = readCreditsRemaining(response: response, body: body) {
+        if let remaining = readCreditsRemaining(response: response, body: body).flatMap({ ProviderParse.int($0.rounded(.down)) }) {
             lines.append(.values(label: "Credits", values: creditValues(remaining: remaining)))
         }
 
@@ -112,11 +112,11 @@ enum CodexUsageMapper {
     private static func readPeriodMs(_ window: [String: Any]?) -> Int? {
         guard let window else { return nil }
         guard let seconds = ProviderParse.number(window["limit_window_seconds"]) else { return nil }
-        return Int(seconds * 1000)
+        return ProviderParse.int(seconds * 1000)
     }
 
-    static func creditValues(remaining: Double) -> [MetricValue] {
-        let credits = max(0, Int(remaining.rounded(.down)))
+    static func creditValues(remaining: Int) -> [MetricValue] {
+        let credits = max(0, remaining)
         return [
             MetricValue(number: Double(credits) * creditUSDRate, kind: .dollars),
             MetricValue(number: Double(credits), kind: .count, label: "credits")
@@ -148,7 +148,7 @@ enum CodexUsageMapper {
     /// `ProviderParse.number` because a JSON `null` decodes to `NSNull`, which a bare nil-check would accept.
     private static func availableCount(in source: [String: Any]) -> Int? {
         guard let count = ProviderParse.number(source["available_count"]), count >= 0 else { return nil }
-        return Int(count.rounded(.down))
+        return ProviderParse.int(count.rounded(.down))
     }
 
     static func resetCreditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
