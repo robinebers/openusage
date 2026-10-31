@@ -9,8 +9,9 @@ provider API calls those accounts need.
 
 OAuth tokens and API keys live in the app's own Keychain service (`com.robinebers.openusage.accounts`),
 one item per account. Removing an account deletes its item. Account names, the layout, settings, and
-the last fetched usage live in the app's own preferences. Provider responses are never written to a
-cache, on disk or in memory. Nothing is synced to iCloud. The
+the last fetched usage live in the app's own preferences. Provider responses are never written to
+disk. A few that the app reads once an hour, such as plan details, stay in memory until a later read
+replaces them or the app quits. Nothing is synced to iCloud. The
 [`openusage` command](cli.md) reads that last fetched usage and nothing else: no Keychain item, no
 network request. A [proxy](proxy.md) user name and password stay in your own
 `~/.openusage/config.json`, which OpenUsage reads but never writes or logs.

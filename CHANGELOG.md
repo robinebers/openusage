@@ -18,6 +18,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
 - The Density setting and Reset All Customization.
+- The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
+  Animations follow macOS's Reduce Motion setting.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
@@ -58,7 +60,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
-- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
+- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
