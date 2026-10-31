@@ -13,7 +13,8 @@ enum APIKeyV1Files {
         into accounts: AccountStore,
         defaults: UserDefaults = .standard,
         home: URL = .homeDirectory,
-        http: any HTTPClient = URLSessionHTTPClient()
+        http: any HTTPClient = URLSessionHTTPClient(),
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) async {
         for (kind, file) in [(ProviderKind.openrouter, "openrouter.json"), (.zai, "zai.json")] {
             let doneKey = "\(importedKey).\(kind.rawValue)"
