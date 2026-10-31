@@ -17,7 +17,7 @@ report stays hidden.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
-| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, This Week, This Month, Key Limit |
+| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Requests, Key Limit, Budget, Free Requests |
 | Z.ai | API key | Session, Weekly, Web Searches |
 
 ## What you grant
@@ -166,12 +166,27 @@ workspaces don't count. A Management key scoped to one workspace can't read the 
 its card has no Credits or Balance, and its Today, This Week, and This Month add up that workspace's
 keys.
 
-A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, and **Key
-Limit** when the key has a credit limit. A daily, weekly, or monthly limit resets at midnight UTC, and
-weeks start on Monday. OpenRouter lets only a Management key read the credits, so a standard key's card
-has no Credits or Balance.
+Today, This Week, and This Month show the credit spend first, then what the keys spent through your
+own provider keys (BYOK), which is never added to it. A Management key also reads `/api/v1/activity`,
+which covers the 30 UTC days before today: **Yesterday** and **Prior 30 Days** show the spend and the
+tokens (prompt plus completion), and **Requests** counts the requests of those 30 days. The card reads
+all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight. A failed
+read hides those rows and is tried again an hour later; it never affects the other rows.
 
-Credits is the default menu-bar star. The card's right-click menu adds a **Credits** link to
+Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
+OpenRouter reported for that range. For Today, This Week, and This Month that is the spend and BYOK. For
+Yesterday and Prior 30 Days it adds the requests, the prompt, cached, completion, and reasoning tokens,
+and the top five models by tokens, the rest as Other. Prompt tokens include the cached ones, and
+completion tokens include the reasoning ones.
+
+A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, **Key Limit**
+when the key has a credit limit, **Budget** when a guardrail or workspace budget applies to it, and
+**Free Requests**, the account's free-model requests for the UTC day. A daily, weekly, or monthly limit
+resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Management key read the
+credits and the activity, so a standard key's card has no Credits, Balance, Yesterday, Prior 30 Days, or
+Requests.
+
+Credits and Today are the default menu-bar stars. The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai

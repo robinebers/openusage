@@ -47,7 +47,6 @@ final class AccountChangeTests: XCTestCase {
         let work = accounts.add(kind: .openrouter, label: "Work", credential: .apiKey("work-key"))
         let dataStore = container.dataStore
         try await waitUntil { dataStore.errorMessage(for: personal.cardID) != nil && dataStore.errorMessage(for: work.cardID) != nil }
-        container.layout.togglePin("\(personal.cardID).today")
         let stars = container.layout.pinnedMetricIDs
         XCTAssertTrue(stars.contains("\(personal.cardID).today"))
 
@@ -104,7 +103,9 @@ final class AccountChangeTests: XCTestCase {
 
         XCTAssertEqual(try vault.load(account.id), .apiKey("new-key"))
         XCTAssertNil(dataStore.errorMessage(for: account.cardID))
-        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"])
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), [
+            "Key Limit", "Budget", "Free Requests", "Today", "This Week", "This Month"
+        ])
     }
 
     func testAReplacedKeyIsReadAtOnceWhileTheOldKeyIsRateLimited() async throws {
@@ -123,7 +124,9 @@ final class AccountChangeTests: XCTestCase {
 
         try await container.replaceKey("new-key", for: account.cardID)
 
-        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"], "the old key's 429 held the new key")
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), [
+            "Key Limit", "Budget", "Free Requests", "Today", "This Week", "This Month"
+        ], "the old key's 429 held the new key")
     }
 
     func testAKeyAcceptedAfterTheAccountIsRemovedIsNotSaved() async throws {

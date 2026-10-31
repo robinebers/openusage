@@ -3,6 +3,8 @@ import Foundation
 /// One quantity a provider reports for a span. Never estimated, never priced.
 enum UsageMeasure: Hashable, Sendable, CaseIterable {
     case spend
+    /// Spend on the user's own provider keys; never added to `spend`.
+    case byokSpend
     case usageValue
     case usageEvents
     case requests
@@ -11,10 +13,12 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
     case cacheReadTokens
     case cacheWriteTokens
     case outputTokens
+    case reasoningTokens
 
     var title: String {
         switch self {
         case .spend: "Charged"
+        case .byokSpend: "BYOK"
         case .usageValue: "Usage Value"
         case .usageEvents: "Usage Events"
         case .requests: "Requests"
@@ -23,15 +27,17 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
         case .cacheReadTokens: "Cache Read Tokens"
         case .cacheWriteTokens: "Cache Write Tokens"
         case .outputTokens: "Output Tokens"
+        case .reasoningTokens: "Reasoning Tokens"
         }
     }
 
     func metricValue(_ number: Double) -> MetricValue {
         switch self {
         case .spend, .usageValue: MetricValue(number: number, kind: .dollars)
+        case .byokSpend: MetricValue(number: number, kind: .dollars, label: "BYOK")
         case .usageEvents: MetricValue(number: number, kind: .count, label: "events")
         case .requests: MetricValue(number: number, kind: .count, label: "requests")
-        case .tokens, .inputTokens, .cacheReadTokens, .cacheWriteTokens, .outputTokens:
+        case .tokens, .inputTokens, .cacheReadTokens, .cacheWriteTokens, .outputTokens, .reasoningTokens:
             MetricValue(number: number, kind: .count, label: "tokens")
         }
     }
@@ -66,12 +72,20 @@ enum UsageWindow: Hashable, Sendable {
     case yesterday
     /// Today and the days before it.
     case lastDays(Int)
+    /// The days before today.
+    case priorDays(Int)
+    /// Windows only a provider's own totals cover; weeks start on Monday.
+    case thisWeek
+    case thisMonth
 
     var title: String {
         switch self {
         case .today: "Today"
         case .yesterday: "Yesterday"
         case .lastDays(let count): "Last \(count) Days"
+        case .priorDays(let count): "Prior \(count) Days"
+        case .thisWeek: "This Week"
+        case .thisMonth: "This Month"
         }
     }
 
@@ -80,6 +94,9 @@ enum UsageWindow: Hashable, Sendable {
         case .today: "today"
         case .yesterday: "yesterday"
         case .lastDays(let count): "in \(count) days"
+        case .priorDays(let count): "in prior \(count) days"
+        case .thisWeek: "this week"
+        case .thisMonth: "this month"
         }
     }
 
@@ -88,15 +105,20 @@ enum UsageWindow: Hashable, Sendable {
         let clock = calendar.timeZone == TimeZone(identifier: "UTC") ? "UTC" : "your local"
         return switch self {
         case .today, .yesterday: "\(clock) day"
-        case .lastDays: "\(clock) days"
+        case .lastDays, .priorDays: "\(clock) days"
+        case .thisWeek: "\(clock) week from Monday"
+        case .thisMonth: "\(clock) month"
         }
     }
 
-    var dayOffsets: ClosedRange<Int> {
+    /// Nil for a window only the provider's own totals cover.
+    var dayOffsets: ClosedRange<Int>? {
         switch self {
         case .today: 0...0
         case .yesterday: 1...1
         case .lastDays(let count): 0...(count - 1)
+        case .priorDays(let count): 1...count
+        case .thisWeek, .thisMonth: nil
         }
     }
 }
@@ -107,6 +129,8 @@ struct UsageHistory: Hashable, Sendable {
     let asOf: Date
     /// Keyed by day start; a day that is absent was not read.
     var days: [Date: UsageDay] = [:]
+    /// A window's totals as the provider reported them, which win over a sum of days.
+    var reported: [UsageWindow: UsageTotals] = [:]
 
     /// The starts of the days `offsets` back from the day holding `now`.
     static func dayStarts(_ offsets: some Sequence<Int>, now: Date, calendar: Calendar) -> [Date] {
@@ -116,6 +140,7 @@ struct UsageHistory: Hashable, Sendable {
 
     /// Nil when any day of the window is unread.
     func totals(over window: UsageWindow) -> UsageTotals? {
+        if let reported = reported[window] { return reported }
         guard let days = days(in: window), let first = days.first else { return nil }
         return days.dropFirst().reduce(first.totals) { $0.adding($1.totals) }
     }
@@ -134,8 +159,9 @@ struct UsageHistory: Hashable, Sendable {
     }
 
     private func days(in window: UsageWindow) -> [UsageDay]? {
-        let read = Self.dayStarts(window.dayOffsets, now: asOf, calendar: calendar).compactMap { days[$0] }
-        return read.count == window.dayOffsets.count ? read : nil
+        guard let offsets = window.dayOffsets else { return nil }
+        let read = Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
+        return read.count == offsets.count ? read : nil
     }
 }
 

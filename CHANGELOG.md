@@ -54,6 +54,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
 - OpenRouter: a Management key scoped to one workspace can be added. It shows that workspace's spend,
   without Credits or Balance, which OpenRouter keeps from workspace keys.
+- OpenRouter: Today, This Week, and This Month add BYOK spend. A Management key adds Yesterday, Prior
+  30 Days, and Requests from OpenRouter's activity, and resting the pointer on a range shows its
+  requests, tokens, and top models. A standard key adds Budget and Free Requests. Today is a new default
+  menu-bar star.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
