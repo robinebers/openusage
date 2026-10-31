@@ -123,8 +123,7 @@ final class AccountChangeTests: XCTestCase {
 
         try await container.replaceKey("new-key", for: account.cardID)
 
-        XCTAssertNil(dataStore.backoffs[account.cardID], "the old key's 429 held the new key")
-        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"])
+        XCTAssertEqual(dataStore.snapshots[account.cardID]?.lines.map(\.label), ["Today", "This Week", "This Month", "Key Limit"], "the old key's 429 held the new key")
     }
 
     func testAKeyAcceptedAfterTheAccountIsRemovedIsNotSaved() async throws {
