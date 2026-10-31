@@ -37,7 +37,7 @@ enum CodexUsageMapper {
             ))
         }
 
-        if let remaining = readCreditsRemaining(response: response, body: body).flatMap({ ProviderParse.int($0.rounded(.down)) }) {
+        if let remaining = readCreditsRemaining(response: response, body: body), ProviderParse.int(remaining) != nil {
             lines.append(.values(label: "Credits", values: creditValues(remaining: remaining)))
         }
 
@@ -115,8 +115,8 @@ enum CodexUsageMapper {
         return ProviderParse.int(seconds * 1000)
     }
 
-    static func creditValues(remaining: Int) -> [MetricValue] {
-        let credits = max(0, remaining)
+    static func creditValues(remaining: Double) -> [MetricValue] {
+        let credits = max(0, Int(remaining.rounded(.down)))
         return [
             MetricValue(number: Double(credits) * creditUSDRate, kind: .dollars),
             MetricValue(number: Double(credits), kind: .count, label: "credits")
