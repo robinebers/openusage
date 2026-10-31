@@ -250,6 +250,32 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         }
     }
 
+    func testAnEarlyRenewalTheProviderRateLimitsWaitsOutItsRetryAfter() async throws {
+        let renewals: [(ProviderKind, TimeInterval, @MainActor (AccountProviderRuntime, OAuthTokens) async throws -> OAuthTokens)] = [
+            (.claude, 120, { try await $0.freshTokens(.oauth($1), grant: ClaudeLogin.refresh) }),
+            (.cursor, 86_400, { try await $0.cursorTokens(.oauth($1)) })
+        ]
+        for (kind, expiresIn, renew) in renewals {
+            let start = Date()
+            let clock = TestSwitch(start)
+            let account = Account(kind: kind, label: "Personal")
+            let vault = InMemoryCredentialVault()
+            let current = OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: start.addingTimeInterval(expiresIn))
+            try vault.save(.oauth(current), for: account.id)
+            let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 429, headers: ["retry-after": "60"], body: Data()) }
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.value })
+
+            _ = try await renew(runtime, current)
+            _ = try await renew(runtime, current)
+            XCTAssertEqual(http.requests.count, 1, "\(kind): no early renewal inside the Retry-After")
+            clock.value = start.addingTimeInterval(61)
+            let tokens = try await renew(runtime, current)
+
+            XCTAssertEqual(tokens, current, "\(kind)")
+            XCTAssertEqual(http.requests.count, 2, "\(kind): asked again once the Retry-After passed")
+        }
+    }
+
     private static let renewals: [(kind: ProviderKind, tokenURL: URL)] = [
         (.claude, ClaudeLogin.tokenURL),
         (.codex, CodexLogin.tokenURL),
