@@ -48,7 +48,7 @@ final class OllamaUsageHistoryTests: XCTestCase {
             switch request.url.path {
             case OllamaUsageClient.balancePath:
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.balance.utf8))
-            case "/api/usage":
+            case OllamaUsageClient.usagePath:
                 if let status = status.value { return HTTPResponse(statusCode: status, headers: [:], body: Data()) }
                 return Self.usage(request, legacy: legacy)
             default:
@@ -69,7 +69,7 @@ final class OllamaUsageHistoryTests: XCTestCase {
     }
 
     private func usageQueries(_ http: RoutingHTTPClient) -> [String?] {
-        http.requests.filter { $0.url.path == "/api/usage" }.map(\.url.query)
+        http.requests.filter { $0.url.path == OllamaUsageClient.usagePath }.map(\.url.query)
     }
 
     private static let fullRows = [
@@ -87,7 +87,7 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
         XCTAssertEqual(rows(store, runtime), Self.fullRows)
         XCTAssertEqual(usageQueries(http), ["range=30d&group_by=model"], "one call reads all 30 days")
-        let request = try XCTUnwrap(http.requests.first { $0.url.path == "/api/usage" })
+        let request = try XCTUnwrap(http.requests.first { $0.url.path == OllamaUsageClient.usagePath })
         XCTAssertEqual(request.url.host, "ollama.com")
         XCTAssertEqual(request.method, "GET")
         XCTAssertEqual(request.headers["Authorization"], "Bearer ollama-key")
@@ -138,5 +138,63 @@ final class OllamaUsageHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertEqual(usageQueries(http), ["range=30d&group_by=model", "range=30d&group_by=model"], "every day is still unread")
         XCTAssertEqual(rows(store, runtime), Self.fullRows)
+    }
+
+    func testEachWindowRowHasABreakdownOnUTCDaysAndTheRequestsRowHasNone() async throws {
+        let (store, runtime, _, _) = try makeAccount()
+        let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
+
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+
+        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
+        XCTAssertEqual(today.clockNote, "UTC day")
+        XCTAssertEqual(today.totals.values, [
+            .usageValue: 0.5, .requests: 8, .tokens: 6_600, .inputTokens: 6_000, .cacheReadTokens: 2_000, .outputTokens: 600
+        ])
+        XCTAssertEqual(today.modelMeasure, .tokens)
+        XCTAssertEqual(today.models.map(\.name), ["glm-5.3-flash", "gpt-oss:120b"])
+        XCTAssertEqual(today.models.map(\.number), [5_400, 1_200])
+        let last30 = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("last30")))
+        XCTAssertEqual(last30.clockNote, "UTC days")
+        XCTAssertEqual(last30.models.map(\.number), [81_000, 18_000])
+        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("requests")))
+    }
+
+    func testDaysParseOllamasBucketsAndAnyMalformedBucketRejectsTheRead() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = .gmt
+        func days(_ buckets: String, granularity: String = "day") -> [Date: UsageDay]? {
+            OllamaHistorySource.days(Data(#"{"granularity":"\#(granularity)","buckets":[\#(buckets)]}"#.utf8), calendar: utc)
+        }
+        let september30 = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-09-30T00:00:00Z"))
+        let day = #""from":"2026-09-30T00:00:00Z","until":"2026-10-01T00:00:00Z""#
+        let documented = #"{\#(day),"request_count":8,"usage_usd":0.0166,"input_tokens":52000,"cached_input_tokens":30000,"#
+            + #""output_tokens":7000,"groups":[{"model":"glm-5.3-flash","request_count":6,"usage_usd":0.0066,"#
+            + #""input_tokens":48000,"cached_input_tokens":30000,"output_tokens":6000},{"model":"glm-5.3","#
+            + #""request_count":2,"usage_usd":0.01,"input_tokens":4000,"cached_input_tokens":0,"output_tokens":1000}]}"#
+
+        let parsed = try XCTUnwrap(days(documented)?[september30])
+        XCTAssertEqual(parsed.totals.values, [
+            .requests: 8, .usageValue: 0.0166, .tokens: 59_000, .inputTokens: 52_000, .cacheReadTokens: 30_000, .outputTokens: 7_000
+        ])
+        XCTAssertEqual(parsed.byModel?["glm-5.3"]?[.tokens], 5_000)
+        XCTAssertEqual(days(#"{\#(day),"request_count":3}"#)?[september30]?.totals.values, [.requests: 3], "a legacy day has requests only")
+        XCTAssertNil(days(#"{\#(day),"request_count":9,"groups":[{"model":"a","request_count":1}],"remainder":{"request_count":8}}"#)?[september30]?.byModel,
+                     "usage beyond the named models leaves the day unsplit")
+        XCTAssertEqual(days(#"{\#(day),"request_count":0,"groups":[]}"#)?[september30]?.byModel, [:])
+
+        for bucket in [
+            #"{\#(day)}"#,
+            #"{\#(day),"request_count":-1}"#,
+            #"{\#(day),"request_count":1,"usage_usd":"lots"}"#,
+            #"{\#(day),"request_count":1,"groups":[{"request_count":1}]}"#,
+            #"{\#(day),"request_count":2,"groups":[{"model":"a","request_count":1},{"model":"a","request_count":1}]}"#,
+            #"{"from":"2026-09-30T02:00:00Z","until":"2026-09-30T03:00:00Z","request_count":1}"#,
+            #"{"from":"2026-09-30T00:00:00Z","until":"2026-10-02T00:00:00Z","request_count":1}"#,
+            #"{\#(day),"request_count":1},{\#(day),"request_count":1}"#
+        ] {
+            XCTAssertNil(days(bucket), bucket)
+        }
+        XCTAssertNil(days(#"{\#(day),"request_count":1}"#, granularity: "hour"))
     }
 }

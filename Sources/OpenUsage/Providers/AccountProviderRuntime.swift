@@ -49,6 +49,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planBodyRead.forget()
         codexResetCreditsRead.forget()
         cursorMembershipRead.forget()
+        usageLedger.readAt = nil
         claude.forcedReadsPending = true
     }
 
@@ -293,7 +294,9 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchAccount(apiKey: key)), at: now())
         }
-        return try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
+        var usage = try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
+        usage.history = await refreshHistory(using: OllamaHistorySource(client: client, apiKey: key, accountID: account.cardID))
+        return usage
     }
 
     private func refreshOpenCode(_ credential: AccountCredential) async throws -> ProviderUsage {
