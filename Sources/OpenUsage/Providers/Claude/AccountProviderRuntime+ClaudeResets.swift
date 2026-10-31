@@ -24,6 +24,7 @@ struct ClaudeResetGrantsState {
         }
         status.grants[index].resetsLeft = max(0, resetsLeft ?? status.grants[index].resetsLeft - 1)
         check?.status = status
+        if status.grants[index].resetsLeft == 0 { check?.checkedAt = .distantPast }
     }
 }
 
