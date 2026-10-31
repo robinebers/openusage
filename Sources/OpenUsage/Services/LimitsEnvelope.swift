@@ -28,7 +28,7 @@ enum LimitsEnvelope {
             providers: providers
         )
         return (try? encoder.encode(envelope))
-            ?? Data(#"{"providers":{},"schema":"openusage.limits.v2"}"#.utf8)
+            ?? Data(#"{"providers":{},"schema":"\#(schema)"}"#.utf8)
     }
 
     private struct WireEnvelope: Encodable {

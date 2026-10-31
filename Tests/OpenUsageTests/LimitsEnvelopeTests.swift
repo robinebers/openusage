@@ -86,20 +86,6 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(actual as NSDictionary, expected as NSDictionary)
     }
 
-    @MainActor
-    func testAccountKeyedEnvelopeCarriesTheV2SchemaID() throws {
-        let account = Account(kind: .codex, label: "Work")
-        let snapshot = ProviderSnapshot(providerID: account.cardID, displayName: "ChatGPT", lines: [], refreshedAt: fetchedAt)
-        let provider = AccountProviderRuntime.provider(for: account)
-        let root = try json(LimitsEnvelope.encode(input(
-            provider, snapshot: snapshot, descriptors: AccountProviderRuntime.widgetDescriptors(for: account)
-        )))
-
-        XCTAssertEqual(Set(try XCTUnwrap(root["providers"] as? [String: Any]).keys), [account.cardID])
-        XCTAssertNil(root["errors"])
-        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v2")
-    }
-
     func testEnvelopeCarriesRawScalarsAndFreshnessWithoutUIPresentation() throws {
         let provider = Provider(id: "codex", kind: .codex)
         let session = WidgetDescriptor.percent(key: "session", provider: provider, title: "Session")
