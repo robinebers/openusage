@@ -25,6 +25,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     private var unsavedRenewal: OAuthTokens?
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
+    /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
+    /// it returns, so a later caller waits for that read instead of blocking another thread. A caller
+    /// after a write reads again rather than take what a read started before the write found.
+    private var credentialLoad: Task<AccountCredential?, Error>?
 
     init(
         account: Account,
@@ -110,9 +114,12 @@ final class AccountProviderRuntime: ProviderRuntime {
             await saveRenewal(unsavedRenewal)
             return .oauth(unsavedRenewal)
         }
-        guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw refusedCredential
+        let load = credentialLoad ?? Task {
+            defer { self.credentialLoad = nil }
+            return try await loadOffMainActor { [vault, account] in try vault.load(account.id) }
         }
+        credentialLoad = load
+        guard let credential = try await load.value else { throw refusedCredential }
         return credential
     }
 
@@ -331,6 +338,7 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        credentialLoad = nil
         if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
     }
 
