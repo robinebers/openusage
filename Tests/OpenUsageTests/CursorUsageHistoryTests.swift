@@ -30,10 +30,10 @@ final class CursorUsageEventsParserTests: XCTestCase {
         XCTAssertEqual(page.events.last?.date, Date(timeIntervalSince1970: 1_793_000_005))
     }
 
-    func testTokensAreEveryKindCursorReportedOnAnyEventKindAndAbsentWithoutTokenUsage() throws {
+    func testTokensAreEveryKindCursorReportedOnAnyEventKindAndZeroWithoutTokenUsage() throws {
         let page = try XCTUnwrap(CursorUsageEvents.parsePage(Data(Self.mixedPage.utf8)))
 
-        XCTAssertEqual(page.events.map { $0.totals[.tokens] }, [132_679, 3_514, nil, nil, nil, nil, nil])
+        XCTAssertEqual(page.events.map { $0.totals[.tokens] }, [132_679, 3_514, 0, 0, 0, 0, 0])
         XCTAssertEqual(page.events[0].totals.values, [
             .spend: 124.73 / 100, .usageEvents: 1, .tokens: 132_679,
             .inputTokens: 3, .cacheReadTokens: 0, .cacheWriteTokens: 112_151, .outputTokens: 20_525
@@ -42,7 +42,7 @@ final class CursorUsageEventsParserTests: XCTestCase {
                                                    "composer-2", "composer-2", "composer-2"])
 
         let day = CursorUsageEvents.day(page.events)
-        XCTAssertNil(day.totals[.tokens], "an event without tokenUsage leaves the day's tokens unreported")
+        XCTAssertEqual(day.totals[.tokens], 136_193, "an event without tokenUsage counts as zero tokens")
         XCTAssertEqual(day.totals[.usageEvents], 7)
         XCTAssertEqual(CursorUsageEvents.day(Array(page.events.prefix(2))).totals[.tokens], 136_193)
         XCTAssertEqual(CursorUsageEvents.day([]).totals, .zero(CursorUsageEvents.measures), "a quiet day is zeros, not a gap")
