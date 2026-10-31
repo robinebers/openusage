@@ -54,12 +54,7 @@ final class RefreshTimeoutTests: XCTestCase {
     func testAHungHourlyReadDoesNotHoldUpTheNextPassForAnotherAccount() async throws {
         let clock = TestClock(Date())
         let vault = StallingVault()
-        let account = Account(kind: .claude, label: "Work")
-        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
-        }
-        let claude = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        let claude = try makeClaudeRuntime(vault, now: { clock.now })
         let (provider, descriptor) = makeProvider()
         let other = StubRuntime(
             provider: provider,
@@ -86,12 +81,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
     func testAPassJoinsAStuckKeychainReadInsteadOfStartingAnother() async throws {
         let vault = StallingVault()
-        let account = Account(kind: .claude, label: "Work")
-        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
-        }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let runtime = try makeClaudeRuntime(vault)
 
         vault.stall()
         let passes = [Task { await runtime.refresh() }, Task { await runtime.refresh() }]
@@ -108,12 +98,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
     func testAWriteDuringAStuckKeychainReadStillLeavesOneReadInFlight() async throws {
         let vault = StallingVault()
-        let account = Account(kind: .claude, label: "Work")
-        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
-        }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let runtime = try makeClaudeRuntime(vault)
 
         vault.stall()
         let first = Task { await runtime.refresh() }
@@ -127,6 +112,15 @@ final class RefreshTimeoutTests: XCTestCase {
         vault.release()
         for pass in [first, second, third] { _ = try await pass.value.get() }
         XCTAssertEqual(vault.loads, 2, "the passes after the write share one read made after it")
+    }
+
+    private func makeClaudeRuntime(_ vault: StallingVault, now: @escaping () -> Date = Date.init) throws -> AccountProviderRuntime {
+        let account = Account(kind: .claude, label: "Work")
+        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
+        }
+        return AccountProviderRuntime(account: account, vault: vault, http: http, now: now)
     }
 
     private func makeProvider() -> (Provider, WidgetDescriptor) {
