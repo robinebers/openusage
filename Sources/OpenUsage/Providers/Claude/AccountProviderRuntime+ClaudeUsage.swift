@@ -42,7 +42,9 @@ extension AccountProviderRuntime {
     }
 
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? {
-        guard account.kind == .claude, let session = claude.session else { return nil }
+        guard account.kind == .claude else { return nil }
+        let launched = claude.session == nil ? try? await loadCredential() : nil
+        guard let session = claude.session ?? launched.map({ claudeSession(for: $0) }) else { return nil }
         let profileDue = session.planRead.isDue(at: now())
         let grantsDue = session.resetGrants.isOlder(than: RefreshSetting.secondaryReadInterval, at: now())
         guard profileDue || grantsDue, session.wait(at: now()) == nil,
