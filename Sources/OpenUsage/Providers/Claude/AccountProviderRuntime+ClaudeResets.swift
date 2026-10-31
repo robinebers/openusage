@@ -16,12 +16,10 @@ struct ClaudeResetGrantsState {
 
     mutating func settleClaim(grantID: String, outcome: ResetClaimOutcome, resetsLeft: Int?) {
         claimEpoch += 1
+        check?.checkedAt = .distantPast
         guard outcome == .success, var status = check?.status,
               let index = status.grants.firstIndex(where: { $0.id == grantID })
-        else {
-            check?.checkedAt = .distantPast
-            return
-        }
+        else { return }
         status.grants[index].resetsLeft = max(0, resetsLeft ?? status.grants[index].resetsLeft - 1)
         check?.status = status
     }
