@@ -17,15 +17,19 @@ final class CLIProxyHubSync {
     @ObservationIgnored private var inFlight: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private let accounts: AccountStore
     @ObservationIgnored private let client: CLIProxyHubClient
+    @ObservationIgnored private let isEnabled: Bool
     @ObservationIgnored private let now: () -> Date
 
-    init(accounts: AccountStore, client: CLIProxyHubClient, now: @escaping () -> Date = Date.init) {
+    init(
+        accounts: AccountStore, client: CLIProxyHubClient, isEnabled: Bool = CLIProxyHub.isEnabled, now: @escaping () -> Date = Date.init
+    ) {
         self.accounts = accounts
         self.client = client
+        self.isEnabled = isEnabled
         self.now = now
     }
 
-    func status(of hubID: UUID) -> Status { statuses[hubID] ?? .checking }
+    func status(of hubID: UUID) -> Status { isEnabled ? statuses[hubID] ?? .checking : .failed(CLIProxyHub.offMessage) }
 
     /// Connects a hub once its login list answers to the key, so a wrong URL or key saves nothing.
     func connect(url input: String, key: String) async throws {
@@ -47,6 +51,7 @@ final class CLIProxyHubSync {
 
     /// Saves a new management key only once the hub accepts it, then lets the hub be called again.
     func replaceKey(_ key: String, for hubID: UUID) async throws {
+        guard isEnabled else { throw ProviderError.unavailable(CLIProxyHub.offMessage) }
         guard let hub = accounts.hubs.first(where: { $0.id == hubID }) else { return }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         let logins = try await client.logins(hubID: UUID(), url: hub.url, key: key)
@@ -65,13 +70,14 @@ final class CLIProxyHubSync {
 
     /// Re-reads every hub not read within `maxAge`.
     func syncDue(maxAge: TimeInterval = RefreshSetting.secondaryReadInterval) async {
+        guard isEnabled else { return }
         let due = accounts.hubs.filter { hub in syncedAt[hub.id].map { now().timeIntervalSince($0) >= maxAge } ?? true }
         await withTaskGroup(of: Void.self) { group in
             for hub in due { group.addTask { await self.sync(hub.id) } }
         }
     }
 
-    func sync(_ hubID: UUID) async {
+    private func sync(_ hubID: UUID) async {
         if let running = inFlight[hubID] { return await running.value }
         let task = Task { await self.read(hubID) }
         inFlight[hubID] = task
