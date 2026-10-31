@@ -10,7 +10,7 @@ final class ProviderLoginTests: XCTestCase {
             case "/v1/oauth/token":
                 Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
             case "/api/oauth/profile":
-                Self.response(#"{"account":{"email":"claude@example.com"}}"#)
+                Self.response(#"{"account":{"email":"claude@example.com","uuid":"acct"}}"#)
             default:
                 Self.response("{}", status: 404)
             }
@@ -41,19 +41,25 @@ final class ProviderLoginTests: XCTestCase {
     }
 
     func testClaudeLoginFailsWhenItCannotReadTheProfile() async throws {
-        let http = RoutingHTTPClient { request in
-            request.url.path == "/v1/oauth/token"
-                ? Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
-                : Self.response(#"{"type":"error","error":{"type":"rate_limit_error"}}"#, status: 429)
-        }
-        do {
-            let result = try await ClaudeLogin(http: http).login(
-                prompt: Self.browserPrompt(PromptCapture(), callback: CallbackStatus()),
-                pastedCode: emptyInput()
-            )
-            XCTFail("signed in as \(result.label) without the profile that identifies the account")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "Claude didn’t return your profile. Click Try Again to sign in again.")
+        let profiles = [
+            Self.response(#"{"type":"error","error":{"type":"rate_limit_error"}}"#, status: 429),
+            Self.response(#"{"account":{"email":"claude@example.com"}}"#),
+        ]
+        for profile in profiles {
+            let http = RoutingHTTPClient { request in
+                request.url.path == "/v1/oauth/token"
+                    ? Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
+                    : profile
+            }
+            do {
+                let result = try await ClaudeLogin(http: http).login(
+                    prompt: Self.browserPrompt(PromptCapture(), callback: CallbackStatus()),
+                    pastedCode: emptyInput()
+                )
+                XCTFail("signed in as \(result.label) without the profile that identifies the account (HTTP \(profile.statusCode))")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, "Claude didn’t return your profile. Click Try Again to sign in again.")
+            }
         }
     }
 

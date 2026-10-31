@@ -4,7 +4,6 @@ struct ClaudeLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl")!, encoding: .utf8)!
     static let authorizeURL = URL(string: "https://claude.ai/oauth/authorize")!
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
-    static let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile")!
     /// `/api/oauth/usage` and `/api/oauth/profile` gate on `user:profile` and nothing else (Anthropic answers
     /// a token without it with "OAuth token does not meet scope requirement user:profile"). The refresh
     /// grant sends the same string, so a refreshed token never carries more than the sign-in granted.
@@ -31,20 +30,18 @@ struct ClaudeLogin: ProviderLogin {
         let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
         let info: ClaudeProfileResponse
         do {
-            let profile = try await LoginHTTP.get(Self.profileURL, bearerToken: token.accessToken, using: http)
+            let profile = try await LoginHTTP.get(ClaudeUsageClient.profileURL, bearerToken: token.accessToken, using: http)
             info = try LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
         } catch {
             AppLog.error(LogTag.auth("claude"), "profile read failed after the token exchange: \(error.localizedDescription)")
             throw LoginError.failed("Claude didn’t return your profile. Click Try Again to sign in again.")
         }
-        let identity = (info.account?.uuid).map {
-            ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info.organization?.uuid)
-        }
-        return (info.account?.email ?? info.email ?? "Claude Account", .oauth(OAuthTokens(
+        let identity = ClaudeAccountProfile.identity(accountUUID: info.account.uuid, organizationUUID: info.organization?.uuid)
+        return (info.account.email ?? info.email ?? "Claude Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: token.expiry,
-            extras: identity.map { [OAuthTokens.identityKey: $0] } ?? [:]
+            extras: [OAuthTokens.identityKey: identity]
         )))
     }
 }
@@ -172,9 +169,9 @@ struct AntigravityLogin: ProviderLogin {
 }
 
 private struct ClaudeProfileResponse: Decodable {
-    struct Account: Decodable { let email: String?; let uuid: String? }
+    struct Account: Decodable { let email: String?; let uuid: String }
     struct Organization: Decodable { let uuid: String? }
-    let account: Account?
+    let account: Account
     let organization: Organization?
     let email: String?
 }
