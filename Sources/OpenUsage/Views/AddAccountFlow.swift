@@ -2,14 +2,27 @@ import AppKit
 import Foundation
 import Observation
 
+/// A row of the provider list: a provider to sign in to, or a CLIProxyAPI hub whose logins arrive as
+/// accounts of their own providers.
+enum AddAccountChoice: Hashable {
+    case provider(ProviderKind)
+    case cliproxyHub
+
+    static var all: [AddAccountChoice] {
+        ProviderKind.allCases.map(AddAccountChoice.provider) + (CLIProxyHub.isEnabled ? [.cliproxyHub] : [])
+    }
+}
+
 @MainActor
 @Observable
 final class AddAccountFlow {
-    var selection: ProviderKind?
+    var selection: AddAccountChoice?
     var apiKey = ""
     var accountName = ""
     var pastedCode = ""
     var organization = ""
+    var hubURL = ""
+    private(set) var isConnectingHub = false
     private(set) var provider: ProviderKind?
     private(set) var method: ProviderAuthMethod?
     private(set) var prompt: LoginPrompt?
@@ -20,28 +33,32 @@ final class AddAccountFlow {
     private let store: AccountStore
     private let openURL: (URL) -> Void
     private let login: (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin
+    private let connectHub: @MainActor (String, String) async throws -> Void
     private var task: Task<Void, Never>?
     private var codeInput: AsyncStream<String>.Continuation?
 
     init(
         store: AccountStore,
         openURL: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) },
-        login: @escaping (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:)
+        login: @escaping (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:),
+        connectHub: @escaping @MainActor (String, String) async throws -> Void = { _, _ in }
     ) {
         self.store = store
         self.openURL = openURL
         self.login = login
+        self.connectHub = connectHub
     }
 
     var canAddKey: Bool {
         !apiKey.trimmed.isEmpty && !isWorking && (method != .organizationToken || !organization.trimmed.isEmpty)
     }
+    var canConnectHub: Bool { !hubURL.trimmed.isEmpty && !apiKey.trimmed.isEmpty && !isWorking }
     var hasPastedCode: Bool { !pastedCode.trimmed.isEmpty }
     var canSubmitCode: Bool { hasPastedCode && codeInput != nil }
     var isCodeSubmitted: Bool { isWorking && prompt != nil && codeInput == nil }
 
     func choose(_ kind: ProviderKind) {
-        selection = kind
+        selection = .provider(kind)
         provider = kind
         if kind.authMethods.count == 1 { choose(kind.authMethods[0]) }
     }
@@ -49,6 +66,31 @@ final class AddAccountFlow {
     func choose(_ method: ProviderAuthMethod) {
         self.method = method
         if method == .oauth { signIn() }
+    }
+
+    func chooseHub() {
+        selection = .cliproxyHub
+        isConnectingHub = true
+    }
+
+    /// Connects a CLIProxyAPI hub; its logins arrive as accounts, so the sheet closes once it answers.
+    func connect() {
+        guard isConnectingHub, canConnectHub else { return }
+        task?.cancel()
+        errorMessage = nil
+        isWorking = true
+        let (url, key) = (hubURL, apiKey)
+        task = Task {
+            do {
+                try await connectHub(url, key)
+                guard !Task.isCancelled else { return }
+                isWorking = false
+                isFinished = true
+            } catch {
+                guard !Task.isCancelled else { return }
+                fail(error.localizedDescription)
+            }
+        }
     }
 
     func signIn() {
@@ -85,6 +127,8 @@ final class AddAccountFlow {
     func back() {
         cancel()
         provider = nil
+        isConnectingHub = false
+        hubURL = ""
         method = nil
         prompt = nil
         errorMessage = nil

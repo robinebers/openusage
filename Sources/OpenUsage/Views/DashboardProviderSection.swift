@@ -61,8 +61,15 @@ struct DashboardAccountCaption: View {
 
     var body: some View {
         HStack(spacing: Theme.Spacing.s) {
-            AccountName(account: account, font: DashboardGrid.captionFont)
-                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                AccountName(account: account, font: DashboardGrid.captionFont)
+                if account.provider.hubHost != nil {
+                    Text(" \(Image(nsImage: ProviderMarks.image(for: CLIProxyHub.markID, side: DashboardGrid.planNSFont.capHeight, inset: 0)).renderingMode(.template))")
+                        .font(DashboardGrid.captionFont)
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(.secondary)
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
             if let plan {

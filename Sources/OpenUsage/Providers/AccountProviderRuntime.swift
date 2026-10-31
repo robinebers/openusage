@@ -48,7 +48,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization)
+        Provider(
+            id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization,
+            hubHost: account.hub?.host
+        )
     }
 
     func resetClaimService(
@@ -95,9 +98,13 @@ final class AccountProviderRuntime: ProviderRuntime {
         return credential
     }
 
-    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page.
+    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page; a
+    /// hub's login is fixed on the hub.
     private var refusedCredential: ProviderError {
-        switch account.authMethod {
+        if let hub = account.hub {
+            return HubRefusal.noToken.error(host: hub.host, upstream: nil)
+        }
+        return switch account.authMethod {
         case .oauth: .signInExpired(account.kind)
         case .apiKey: .keyRejected("\(account.kind.displayName) rejected the API key.")
         case .organizationToken: .keyRejected("GitHub rejected the token.")

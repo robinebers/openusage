@@ -45,7 +45,7 @@ enum ResetClaimFailure: Equatable, Sendable {
         switch error {
         case ProviderError.signInExpired:
             self = .signInExpired
-        case is URLError, ProviderError.connectionFailed:
+        case is URLError, ProviderError.connectionFailed, ProviderError.unreachable:
             self = .connection
         default:
             self = .refused
