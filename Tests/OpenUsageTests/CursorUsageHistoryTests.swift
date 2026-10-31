@@ -101,6 +101,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         let account = Account(kind: .cursor, label: "Cursor")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: Self.accessToken, refreshToken: "refresh")), for: account.id)
+        let clock = clock ?? TestClock(now)
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case CursorUsageClient.usageURL.path:
@@ -109,6 +110,7 @@ final class CursorUsageHistoryTests: XCTestCase {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.planInfo.utf8))
             case CursorUsageClient.usageEventsURL.path:
                 if let status = events.value {
+                    if status == 429 { clock.set(clock.now.addingTimeInterval(15)) }
                     return HTTPResponse(statusCode: status, headers: retryAfter.map { ["retry-after": $0] } ?? [:], body: Data())
                 }
                 return Self.eventsPage(request)
@@ -116,7 +118,6 @@ final class CursorUsageHistoryTests: XCTestCase {
                 return HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let clock = clock ?? TestClock(now)
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
         return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now }), runtime, http)
     }
@@ -179,6 +180,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
     }
 
+    /// Each rate-limited request takes 15 seconds, so the wait has to start when the 429 arrives.
     func testARateLimitStopsTheSweepAndWaitsForRetryAfterOrAnHour() async throws {
         for (retryAfter, wait) in [("120", 120.0), (nil, 3600.0)] {
             let events = TestSwitch<Int?>(429)
@@ -188,14 +190,15 @@ final class CursorUsageHistoryTests: XCTestCase {
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
             let firstSweep = eventRequests(http).count
             XCTAssertLessThanOrEqual(firstSweep, 4, "the sweep stops at the 429 instead of asking for all 30 days")
+            let answered = clock.now
 
             events.value = nil
-            clock.set(now.addingTimeInterval(wait - 1))
+            clock.set(answered.addingTimeInterval(wait - 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
             XCTAssertEqual(eventRequests(http).count, firstSweep, "no history read before the wait ends")
             XCTAssertEqual(spend(store, runtime), [:])
 
-            clock.set(now.addingTimeInterval(wait + 1))
+            clock.set(answered.addingTimeInterval(wait + 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
             XCTAssertEqual(eventRequests(http).count - firstSweep, 30, "every unread day is still due")
             XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])

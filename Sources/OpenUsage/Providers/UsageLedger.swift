@@ -49,7 +49,7 @@ extension AccountProviderRuntime {
         } else {
             let read = await source.read(due, asOf: asOf, calendar: calendar)
             usageLedger.record(read.days, due: due, span: span)
-            if let wait = read.rateLimitedFor { usageLedger.hold(for: wait, from: asOf) }
+            if let wait = read.rateLimitedFor { usageLedger.hold(for: wait, from: now()) }
         }
         return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
     }
