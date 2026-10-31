@@ -8,6 +8,13 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     private var authorizationTask: Task<Bool, Never>?
     private var onTap: (() -> Void)?
+    private let authorizationStatus: () async -> UNAuthorizationStatus
+
+    init(authorizationStatus: @escaping () async -> UNAuthorizationStatus = {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }) {
+        self.authorizationStatus = authorizationStatus
+    }
 
     static var isRunningUnderTests: Bool {
         NSClassFromString("XCTestCase") != nil
@@ -45,11 +52,9 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     @discardableResult
     func requestAuthorization() -> Task<Bool, Never> {
         if let authorizationTask { return authorizationTask }
-        let center = UNUserNotificationCenter.current()
         let task = Task<Bool, Never> {
             let granted: Bool
-            let settings = await center.notificationSettings()
-            switch settings.authorizationStatus {
+            switch await authorizationStatus() {
             case .authorized, .provisional, .ephemeral:
                 granted = true
             case .denied:
@@ -57,7 +62,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
                 granted = false
             case .notDetermined:
                 do {
-                    granted = try await center.requestAuthorization(options: [.alert, .sound])
+                    granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
                     AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
                 } catch {
                     AppLog.error(.notifications, "authorization request failed: \(error.localizedDescription)")
