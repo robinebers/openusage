@@ -72,10 +72,8 @@ final class ProviderOrderTests: XCTestCase {
         let codex = app.add(.codex)
         let secondClaude = app.add(.claude)
 
-        XCTAssertTrue(app.layout.reorderProvider(dragged: codex.cardID, target: secondClaude.cardID))
-        XCTAssertEqual(app.accountsScreen, [codex.cardID, firstClaude.cardID, secondClaude.cardID])
-        XCTAssertEqual(app.dashboard, [["codex": [codex.cardID]], ["claude": [firstClaude.cardID, secondClaude.cardID]]])
-        XCTAssertTrue(app.layout.undo())
+        XCTAssertFalse(app.layout.reorderProvider(dragged: codex.cardID, target: secondClaude.cardID))
+        XCTAssertEqual(app.accountsScreen, [firstClaude.cardID, secondClaude.cardID, codex.cardID])
 
         XCTAssertTrue(app.layout.reorderProvider(dragged: secondClaude.cardID, target: firstClaude.cardID))
         XCTAssertEqual(app.accountsScreen, [secondClaude.cardID, firstClaude.cardID, codex.cardID])

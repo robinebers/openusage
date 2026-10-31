@@ -41,9 +41,9 @@ extension LayoutStore {
 
     @discardableResult
     func reorderProvider(dragged: String, target: String) -> Bool {
-        if let from = provider(id: dragged)?.kind, let to = provider(id: target)?.kind, from != to {
-            return reorderFamily(dragged: from.rawValue, target: to.rawValue)
-        }
+        guard let from = provider(id: dragged)?.kind, let to = provider(id: target)?.kind,
+              from == to || registry.providers.count(where: { $0.kind == from || $0.kind == to }) == 2
+        else { return false }
         return recordingUndoStep {
             let ordered = orderedProviderIDs()
             guard let next = Self.reordered(ordered, dragged: dragged, target: target) else { return false }

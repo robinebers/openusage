@@ -68,7 +68,8 @@ menu starts with the reason too.
 ## Reordering
 
 Drag a provider by its header, an account by its name inside the card, or a metric by its row. On the Accounts
-screen, dragging an account onto another provider's account moves its whole provider. A new provider goes to the
+screen, an account moves past another provider only when both providers have one account; move a
+provider with several accounts by its header on the dashboard. A new provider goes to the
 bottom of the dashboard and of the Accounts list, and a new account goes to the bottom of its
 provider's accounts. The app never sorts providers or accounts for you. After an update from 0.7.x, a
 provider in the order you saved in 0.7.x goes to that place instead. See
