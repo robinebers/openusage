@@ -194,6 +194,10 @@ final class WidgetDataStore {
         max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
     }
 
+    func forgetBackoff(for providerID: String) {
+        backoffs[providerID] = nil
+    }
+
     func errorMessage(for providerID: String) -> String? {
         backoffs[providerID].flatMap { $0.providerAsked ? nil : $0.message }
     }
