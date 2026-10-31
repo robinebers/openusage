@@ -93,6 +93,22 @@ final class OpenRouterProviderTests: XCTestCase {
         }
     }
 
+    func testAWorkspaceScopedManagementKeyShowsItsWorkspacesSpendWithoutCredits() async throws {
+        let (runtime, http) = try runtime { request in
+            request.url.path() == "/api/v1/credits"
+                ? OpenRouterFixtures.response(403, OpenRouterFixtures.forbidden)
+                : OpenRouterFixtures.managementAccount(request)
+        }
+
+        let snapshot = try await runtime.refresh().get()
+
+        XCTAssertEqual(shownRows(snapshot, runtime), ["today", "week", "month"])
+        XCTAssertEqual(dollars(snapshot, "Today"), 26.5)
+        XCTAssertEqual(dollars(snapshot, "This Week"), 54)
+        XCTAssertEqual(dollars(snapshot, "This Month"), 112)
+        XCTAssertEqual(http.requests.map { $0.url.path() }, ["/api/v1/key", "/api/v1/credits", "/api/v1/keys", "/api/v1/keys"])
+    }
+
     func testAStandardKeyShowsItsOwnSpendAndLimitWithoutAskingForTheAccountsCredits() async throws {
         let (runtime, http) = try runtime { request in
             request.url.path() == "/api/v1/key"
