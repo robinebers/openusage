@@ -8,10 +8,13 @@ protocol UsageHistorySource: Sendable {
 /// An account's read days, in memory only. Its source is its only writer.
 struct UsageLedger: Sendable {
     private(set) var days: [Date: UsageDay] = [:]
+    /// Today at the last record, whose read ended before the day did.
+    private var partialDay: Date?
 
-    /// `span` runs back from today. Today and yesterday are read on every refresh, an older day until one read of it succeeds.
+    /// `span` runs back from today. Today and yesterday are read on every refresh, an older day until one
+    /// read of it after its end succeeds.
     func due(_ span: [Date]) -> [Date] {
-        Array(span.prefix(2)) + span.dropFirst(2).filter { days[$0] == nil }
+        Array(span.prefix(2)) + span.dropFirst(2).filter { days[$0] == nil || $0 == partialDay }
     }
 
     /// Days outside `span` are dropped, and a due day that did not come back is unread, so a failed re-read
@@ -19,6 +22,7 @@ struct UsageLedger: Sendable {
     mutating func record(_ read: [Date: UsageDay], due: [Date], span: [Date]) {
         let kept = Set(span).subtracting(due)
         days = days.filter { kept.contains($0.key) }.merging(read) { _, new in new }
+        partialDay = span.first
     }
 }
 

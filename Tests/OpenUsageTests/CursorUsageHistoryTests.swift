@@ -283,4 +283,21 @@ final class CursorHistorySourceTests: XCTestCase {
         XCTAssertEqual(due.count, 29, "a day read before is not read again")
         XCTAssertEqual(ledger.days.mapValues { $0.totals[.spend] }, [span[0]: 0.07, span[9]: 0.03])
     }
+
+    func testADayLastReadWhileItWasTodayIsReadAgainAfterAGapOfDays() {
+        let friday = span
+        let monday = UsageHistory.dayStarts(0..<30, now: now.addingTimeInterval(3 * 86_400), calendar: calendar)
+        let partial = UsageDay(totals: UsageTotals(values: [.spend: 1]))
+        let full = UsageDay(totals: UsageTotals(values: [.spend: 4]))
+        var ledger = UsageLedger()
+        ledger.record([friday[0]: partial, friday[1]: full], due: ledger.due(friday), span: friday)
+
+        let due = ledger.due(monday)
+
+        XCTAssertTrue(due.contains(friday[0]), "Friday was read before it ended")
+        XCTAssertFalse(due.contains(friday[1]), "Thursday was read after it ended")
+        ledger.record([friday[0]: full], due: [friday[0]], span: monday)
+        XCTAssertEqual(ledger.days[friday[0]], full)
+        XCTAssertFalse(ledger.due(monday).contains(friday[0]))
+    }
 }
