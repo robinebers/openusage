@@ -79,10 +79,15 @@ membership is Enterprise or Team shows that name where the plan endpoint says Pr
 plan name, such as Ultra, stays. When the seat's usage read has no Extra Usage, the card takes Extra
 Usage from `usage-summary` and reads it on every refresh.
 
-Today, Yesterday, and Last 30 Days show what Cursor charged the account: the sum of `chargedCents` on
-the account's on-demand usage events (`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the
-list on Cursor's Usage page. Usage the plan includes, and errored or free requests, count as $0. The
-card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
+Today, Yesterday, and Last 30 Days show what Cursor charged the account and the tokens it reported.
+The charge is the sum of `chargedCents` on the account's on-demand usage events
+(`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the list on Cursor's Usage page. Usage the
+plan includes, and errored or free requests, count as $0. Tokens are the input, output, cache read, and
+cache write tokens of every event, whatever its kind; a range with an event that reports no token usage
+shows only the charge. Usage Events counts every event of the last 30 days, free and errored ones too.
+Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
+the charge, the usage events, each kind of token, and the top five models, the rest as Other.
+The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. A failed read keeps the older days already read and never affects the other rows; when today or

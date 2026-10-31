@@ -52,6 +52,9 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
   them.
 - Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
+- Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
+  counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
+  it: the charge, usage events, each kind of token, and the top models.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
