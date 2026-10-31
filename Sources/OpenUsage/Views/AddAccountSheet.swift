@@ -205,9 +205,15 @@ private struct BrowserSignInStep: View {
     private func pastedCodeForm(_ field: (name: String, footer: String?)) -> some View {
         Form {
             Section {
-                TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
-                    .onSubmit { flow.submitCode() }
-                    .disabled(flow.isCodeSubmitted)
+                Group {
+                    if case .browserToken = flow.prompt {
+                        SecureField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
+                    } else {
+                        TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
+                    }
+                }
+                .onSubmit { flow.submitCode() }
+                .disabled(flow.isCodeSubmitted)
             } footer: {
                 if let footer = field.footer {
                     Text(footer)

@@ -106,6 +106,32 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         }
     }
 
+    func testAPastedTokenIsMaskedAndAPastedCodeIsNot() async throws {
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault())
+        let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
+        let steps: [(provider: ProviderKind, prompt: LoginPrompt, masked: Bool)] = [
+            (.devin, .browserToken(url), true),
+            (.claude, .browser(url, acceptsPastedCode: true), false),
+        ]
+        for (provider, prompt, masked) in steps {
+            let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in SlowLogin(prompt: prompt) }
+            addTeardownBlock { flow.cancel() }
+            flow.choose(provider)
+            try await waitUntil { flow.prompt != nil }
+            flow.pastedCode = "pasted-secret"
+            let host = show(AddAccountSheet(flow: flow), in: .titled).host
+            try await Task.sleep(for: .milliseconds(300))
+            host.layoutSubtreeIfNeeded()
+            let field = try XCTUnwrap(textFields(in: host).first { $0.stringValue == "pasted-secret" }, "\(provider): no field shows the pasted value")
+            XCTAssertEqual(field is NSSecureTextField, masked, "\(provider): the pasted value is \(masked ? "shown in plain text" : "masked")")
+        }
+    }
+
+    private func textFields(in view: NSView) -> [NSTextField] {
+        if let field = view as? NSTextField { return [field] }
+        return view.subviews.flatMap(textFields(in:))
+    }
+
     private func accent(_ rep: NSBitmapImageRep, size: CGSize, x: Range<CGFloat>, y: Range<CGFloat>) -> Int {
         let scale = CGFloat(rep.pixelsWide) / size.width
         var count = 0
