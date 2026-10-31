@@ -21,11 +21,11 @@ final class AppNotificationsTests: XCTestCase {
     func testAPermissionRevokedAfterAGrantReadsAsDenied() async {
         var status = UNAuthorizationStatus.authorized
         let notifications = AppNotifications(authorizationStatus: { status })
-        let granted = await notifications.requestAuthorization().value
+        let granted = await notifications.requestAuthorization()
         XCTAssertTrue(granted)
 
         status = .denied
-        let afterRevoke = await notifications.requestAuthorization().value
+        let afterRevoke = await notifications.requestAuthorization()
         XCTAssertFalse(afterRevoke, "a permission revoked in System Settings still reads as granted")
     }
 }

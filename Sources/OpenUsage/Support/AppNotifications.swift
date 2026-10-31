@@ -26,7 +26,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     func post(idPrefix: String, title: String, subtitle: String, body: String) async -> Bool {
         guard !Self.isRunningUnderTests else { return false }
-        guard await requestAuthorization().value else {
+        guard await requestAuthorization() else {
             AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
             return false
         }
@@ -48,32 +48,24 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    func isDenied() async -> Bool {
-        guard !Self.isRunningUnderTests else { return false }
-        return await authorizationStatus() == .denied
-    }
-
-    func requestAuthorization() -> Task<Bool, Never> {
-        Task {
-            let granted: Bool
-            switch await authorizationStatus() {
-            case .authorized, .provisional, .ephemeral:
-                granted = true
-            case .denied:
-                AppLog.debug(.notifications, "authorization denied")
-                granted = false
-            case .notDetermined:
-                do {
-                    granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-                    AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
-                } catch {
-                    AppLog.error(.notifications, "authorization request failed: \(error.localizedDescription)")
-                    granted = false
-                }
-            @unknown default:
-                granted = false
+    func requestAuthorization() async -> Bool {
+        switch await authorizationStatus() {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied:
+            AppLog.debug(.notifications, "authorization denied")
+            return false
+        case .notDetermined:
+            do {
+                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
+                return granted
+            } catch {
+                AppLog.error(.notifications, "authorization request failed: \(error.localizedDescription)")
+                return false
             }
-            return granted
+        @unknown default:
+            return false
         }
     }
 
