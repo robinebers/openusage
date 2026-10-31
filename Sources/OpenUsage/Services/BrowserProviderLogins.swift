@@ -28,19 +28,20 @@ struct ClaudeLogin: ProviderLogin {
             "code_verifier": pkce.verifier
         ], using: http)
         let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
-        var info: ClaudeProfileResponse?
-        if let profileURL = URL(string: "https://api.anthropic.com/api/oauth/profile"),
-           let profile = try? await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http) {
-            info = try? LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
+        let info: ClaudeProfileResponse
+        do {
+            let profile = try await LoginHTTP.get(ClaudeUsageClient.profileURL, bearerToken: token.accessToken, using: http)
+            info = try LoginHTTP.decode(ClaudeProfileResponse.self, from: profile)
+        } catch {
+            AppLog.error(LogTag.auth("claude"), "profile read failed after the token exchange: \(error.localizedDescription)")
+            throw LoginError.failed("Claude didn’t return your profile. Click Try Again to sign in again.")
         }
-        let identity = (info?.account?.uuid).map {
-            ClaudeAccountProfile.identity(accountUUID: $0, organizationUUID: info?.organization?.uuid)
-        }
-        return (info?.account?.email ?? info?.email ?? "Claude Account", .oauth(OAuthTokens(
+        let identity = ClaudeAccountProfile.identity(accountUUID: info.account.uuid, organizationUUID: info.organization?.uuid)
+        return (info.account.email ?? info.email ?? "Claude Account", .oauth(OAuthTokens(
             accessToken: token.accessToken,
             refreshToken: token.refreshToken,
             expiresAt: token.expiry,
-            extras: identity.map { [OAuthTokens.identityKey: $0] } ?? [:]
+            extras: [OAuthTokens.identityKey: identity]
         )))
     }
 }
@@ -168,9 +169,9 @@ struct AntigravityLogin: ProviderLogin {
 }
 
 private struct ClaudeProfileResponse: Decodable {
-    struct Account: Decodable { let email: String?; let uuid: String? }
+    struct Account: Decodable { let email: String?; let uuid: String }
     struct Organization: Decodable { let uuid: String? }
-    let account: Account?
+    let account: Account
     let organization: Organization?
     let email: String?
 }
