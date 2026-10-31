@@ -8,7 +8,7 @@ struct OllamaHistorySource: UsageHistorySource {
 
     private static let utc: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = .gmt
+        calendar.timeZone = TimeZone(identifier: "UTC")!
         return calendar
     }()
     private static let measures: [(field: String, measure: UsageMeasure)] = [
@@ -18,7 +18,7 @@ struct OllamaHistorySource: UsageHistorySource {
 
     var calendar: Calendar { Self.utc }
     /// Hourly, so history adds one call an hour per account.
-    var rereadInterval: TimeInterval { 3600 }
+    var rereadInterval: TimeInterval? { 3600 }
 
     func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> (days: [Date: UsageDay], rateLimitedFor: TimeInterval?) {
         let tag = LogTag.plugin("ollama")
@@ -29,11 +29,6 @@ struct OllamaHistorySource: UsageHistorySource {
         } catch {
             AppLog.warn(tag, "\(accountID) usage history: request failed")
             return ([:], nil)
-        }
-        if response.statusCode == 429 {
-            let wait = response.retryAfter(now: asOf) ?? 3600
-            AppLog.warn(tag, "\(accountID) usage history: rate limited; next read in \(Int(wait))s")
-            return ([:], wait)
         }
         guard (200..<300).contains(response.statusCode) else {
             AppLog.warn(tag, "\(accountID) usage history: HTTP \(response.statusCode)")

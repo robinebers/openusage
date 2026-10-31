@@ -148,8 +148,7 @@ usage value, requests, each kind of token, and the top five models, the rest as 
 day whose usage falls beyond the ten models Ollama names shows no models.
 The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
 hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
-read hides the rows it would have filled until the next read an hour later, and after a 429 history
-reads also wait for its Retry-After.
+read hides the rows it would have filled until the next read an hour later.
 
 ## OpenCode
 

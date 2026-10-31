@@ -83,11 +83,12 @@ enum UsageWindow: Hashable, Sendable {
         }
     }
 
+    /// Which days the window covers: the user's own, or UTC days for a provider that reports those.
     func clockNote(in calendar: Calendar) -> String {
-        let day = calendar.timeZone == .gmt ? "UTC day" : "your local day"
+        let clock = calendar.timeZone == TimeZone(identifier: "UTC") ? "UTC" : "your local"
         return switch self {
-        case .today, .yesterday: day
-        case .lastDays: day + "s"
+        case .today, .yesterday: "\(clock) day"
+        case .lastDays: "\(clock) days"
         }
     }
 

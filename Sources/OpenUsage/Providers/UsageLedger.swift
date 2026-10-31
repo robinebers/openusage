@@ -3,8 +3,8 @@ import Foundation
 protocol UsageHistorySource: Sendable {
     /// The calendar whose days the provider reports.
     var calendar: Calendar { get }
-    /// How long today and yesterday wait after a read before they are read again.
-    var rereadInterval: TimeInterval { get }
+    /// How long today and yesterday stay read; nil rereads them on every refresh.
+    var rereadInterval: TimeInterval? { get }
     /// The days read in full, keyed by day start. A day that could not be read is left out.
     /// Today's read ends at `asOf`. `rateLimitedFor` is how long to wait when the provider rate-limited the read.
     func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> (days: [Date: UsageDay], rateLimitedFor: TimeInterval?)
@@ -12,7 +12,7 @@ protocol UsageHistorySource: Sendable {
 
 extension UsageHistorySource {
     var calendar: Calendar { .current }
-    var rereadInterval: TimeInterval { 0 }
+    var rereadInterval: TimeInterval? { nil }
 }
 
 /// An account's read days, in memory only. Its source is its only writer.
@@ -22,14 +22,8 @@ struct UsageLedger: Sendable {
     private var resumeAt: Date?
     /// Today at the last record, whose read ended before the day did.
     private var partialDay: Date?
-    /// When the last read was sent; ⌘R clears it.
-    var readAt: Date?
-
-    /// True while today's last read is younger than `interval`; a new day ends the wait at once.
-    func isResting(_ span: [Date], at now: Date, every interval: TimeInterval) -> Bool {
-        guard let readAt, span.first == partialDay else { return false }
-        return now.timeIntervalSince(readAt) < interval
-    }
+    /// When the last read was sent, and the day that was today then.
+    private var lastRead: (at: Date, today: Date)?
 
     /// `span` runs back from today. Today and yesterday are read on every refresh, an older day until one
     /// read of it after its end succeeds.
@@ -48,6 +42,18 @@ struct UsageLedger: Sendable {
     func isHeld(at now: Date) -> Bool { resumeAt.map { now < $0 } ?? false }
 
     mutating func hold(for wait: TimeInterval, from now: Date) { resumeAt = now.addingTimeInterval(wait) }
+
+    /// Whether nothing is due for a source that rereads once per `interval`: the last read was sent on this
+    /// same day, less than `interval` ago. A new day is read at once.
+    func isResting(_ span: [Date], at now: Date, interval: TimeInterval) -> Bool {
+        guard let lastRead, lastRead.today == span.first else { return false }
+        return now < lastRead.at.addingTimeInterval(interval)
+    }
+
+    mutating func noteRead(at now: Date, today: Date) { lastRead = (now, today) }
+
+    /// A forced refresh reads today and yesterday again at once.
+    mutating func forgetLastRead() { lastRead = nil }
 }
 
 extension AccountProviderRuntime {
@@ -57,11 +63,14 @@ extension AccountProviderRuntime {
         let calendar = source.calendar
         let asOf = now()
         let span = UsageHistory.dayStarts(0..<dayCount, now: asOf, calendar: calendar)
-        let due = usageLedger.isResting(span, at: asOf, every: source.rereadInterval) ? [] : usageLedger.due(span)
-        if due.isEmpty || usageLedger.isHeld(at: asOf) {
+        if let interval = source.rereadInterval, usageLedger.isResting(span, at: asOf, interval: interval) {
+            return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
+        }
+        let due = usageLedger.due(span)
+        if usageLedger.isHeld(at: asOf) {
             usageLedger.record([:], due: due, span: span)
         } else {
-            usageLedger.readAt = asOf
+            usageLedger.noteRead(at: asOf, today: span[0])
             let read = await source.read(due, asOf: asOf, calendar: calendar)
             usageLedger.record(read.days, due: due, span: span)
             if let wait = read.rateLimitedFor { usageLedger.hold(for: wait, from: now()) }

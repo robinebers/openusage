@@ -49,7 +49,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planBodyRead.forget()
         codexResetCreditsRead.forget()
         cursorMembershipRead.forget()
-        usageLedger.readAt = nil
+        usageLedger.forgetLastRead()
         claude.forcedReadsPending = true
     }
 
