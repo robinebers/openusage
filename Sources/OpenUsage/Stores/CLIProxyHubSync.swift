@@ -77,7 +77,7 @@ final class CLIProxyHubSync {
         }
     }
 
-    func sync(_ hubID: UUID) async {
+    private func sync(_ hubID: UUID) async {
         if let running = inFlight[hubID] { return await running.value }
         let task = Task { await self.read(hubID) }
         inFlight[hubID] = task

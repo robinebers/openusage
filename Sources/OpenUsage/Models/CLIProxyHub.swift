@@ -9,7 +9,7 @@ struct CLIProxyHub: Codable, Identifiable, Hashable, Sendable {
     /// Off until the feature is finished: Add Account offers no hub, and a stored hub or an account's hub
     /// link reads no key and sends nothing, so a hub written into preferences can't send a credential anywhere.
     static let isEnabled = false
-    static let offMessage = "CLIProxyAPI hubs are turned off in this version of OpenUsage. Remove the hub in Accounts."
+    static let offMessage = "CLIProxyAPI hubs are turned off in this version of OpenUsage."
 
     let id: UUID
     let url: URL
