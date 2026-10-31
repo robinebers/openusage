@@ -129,7 +129,8 @@ final class WidgetDataStore {
         if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout] in
-            await ProviderRefreshDeadline.refresh(provider, timeout: providerRefreshTimeout)
+            await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { await provider.refresh() }
+                ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(providerRefreshTimeout))s", kind: .refused))
         }
         inFlight[providerID] = work
         defer { if inFlight[providerID] == work { inFlight[providerID] = nil } }

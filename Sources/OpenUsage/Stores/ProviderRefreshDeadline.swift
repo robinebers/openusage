@@ -1,8 +1,8 @@
 import Foundation
 import os
 
-/// Runs one provider's `refresh()` or hourly reads under a hard deadline; a refresh it gives up on
-/// answers as a refused failure.
+/// Runs one provider's `refresh()` or hourly reads under a hard deadline, answering nil when the
+/// deadline wins.
 ///
 /// A provider that never returns — a subprocess that doesn't exit, a credential read that blocks — used
 /// to hold the store's in-flight entry forever, so the dashboard spinner turned for the rest of the
@@ -14,12 +14,6 @@ import os
 /// cancellation-aware). What the deadline guarantees is that the *store* stops waiting.
 @MainActor
 enum ProviderRefreshDeadline {
-    static func refresh(_ provider: ProviderRuntime, timeout: TimeInterval) async -> Result<ProviderSnapshot, RefreshFailure> {
-        await run(timeout: timeout) { await provider.refresh() }
-            ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(timeout))s", kind: .refused))
-    }
-
-    /// Answers nil when the deadline wins.
     static func run<T: Sendable>(timeout: TimeInterval, _ operation: @escaping @MainActor @Sendable () async -> T) async -> T? {
         let work = Task { @MainActor in
             await operation()
