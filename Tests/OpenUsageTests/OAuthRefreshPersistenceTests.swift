@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import XCTest
 @testable import OpenUsage
 
@@ -225,6 +226,30 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .oauth(identified))
     }
 
+    func testARenewalTheKeychainRefusesIsUsedAndSavedOnTheNextLoad() async throws {
+        let renewals: [(ProviderKind, @MainActor (AccountProviderRuntime, OAuthTokens) async throws -> OAuthTokens)] = [
+            (.claude, { try await $0.freshTokens(.oauth($1), grant: ClaudeLogin.refresh) }),
+            (.cursor, { try await $0.refreshCursorTokens($1) })
+        ]
+        for (kind, renew) in renewals {
+            let account = Account(kind: kind, label: "Personal")
+            let vault = UpdateRefusingVault()
+            let old = OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)
+            try vault.save(.oauth(old), for: account.id)
+            let http = RoutingHTTPClient { _ in Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+
+            vault.refuses.value = true
+            let renewed = try await renew(runtime, old)
+            vault.refuses.value = false
+            let next = try await runtime.loadCredential()
+
+            XCTAssertEqual(renewed.accessToken, "new-access", "\(kind)")
+            XCTAssertEqual(next, .oauth(renewed), "\(kind): the next pass uses the renewed sign-in, not the spent refresh token")
+            XCTAssertEqual(try vault.load(account.id), .oauth(renewed), "\(kind): and saves it once the Keychain takes it")
+        }
+    }
+
     private static let renewals: [(kind: ProviderKind, tokenURL: URL)] = [
         (.claude, ClaudeLogin.tokenURL),
         (.codex, CodexLogin.tokenURL),
@@ -259,4 +284,17 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
     nonisolated private static func json(_ text: String, status: Int = 200) -> HTTPResponse {
         HTTPResponse(statusCode: status, headers: [:], body: Data(text.utf8))
     }
+}
+
+private final class UpdateRefusingVault: CredentialVault {
+    let refuses = TestSwitch(false)
+    private let stored = InMemoryCredentialVault()
+
+    func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
+    func save(_ credential: AccountCredential, for id: UUID) throws { try stored.save(credential, for: id) }
+    func update(_ credential: AccountCredential, for id: UUID) throws {
+        if refuses.value { throw KeychainVaultError.status(errSecInteractionNotAllowed) }
+        try stored.update(credential, for: id)
+    }
+    func delete(_ id: UUID) throws { try stored.delete(id) }
 }
