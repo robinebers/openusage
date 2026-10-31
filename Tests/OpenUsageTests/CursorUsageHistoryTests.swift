@@ -214,7 +214,6 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))
     }
 }
-@MainActor
 final class CursorHistorySourceTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_793_000_000)
     private let calendar: Calendar = {
@@ -242,6 +241,7 @@ final class CursorHistorySourceTests: XCTestCase {
         return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
     }
 
+    @MainActor
     func testADayOverSeveralPagesCountsEveryPageAndAShortPageFailsTheDay() async {
         let span = span
         let short = Int(span[2].timeIntervalSince1970 * 1000)
