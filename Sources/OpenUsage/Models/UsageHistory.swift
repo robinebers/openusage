@@ -81,7 +81,7 @@ enum UsageWindow: Hashable, Sendable {
     var clockNote: String {
         switch self {
         case .today, .yesterday: "your local day"
-        case .lastDays: "local days through today"
+        case .lastDays: "your local days"
         }
     }
 
@@ -136,7 +136,7 @@ struct UsageHistory: Hashable, Sendable {
 struct UsageBreakdown: Hashable, Sendable {
     struct Model: Hashable, Sendable {
         let name: String
-        let figure: MetricValue
+        let number: Double
         let share: Double
     }
 
@@ -144,27 +144,25 @@ struct UsageBreakdown: Hashable, Sendable {
 
     let window: UsageWindow
     let totals: UsageTotals
+    /// Tokens, or usage events when a model's tokens were not reported.
+    let modelMeasure: UsageMeasure
+    /// The top models by `modelMeasure`, the rest as Other; empty unless every day was split by model.
     let models: [Model]
 
     init?(_ window: UsageWindow, in history: UsageHistory) {
         guard let totals = history.totals(over: window) else { return nil }
+        let models = history.models(over: window) ?? [:]
+        let measure: UsageMeasure = models.values.allSatisfy { $0[.tokens] != nil } ? .tokens : .usageEvents
+        let ranked = models.compactMap { name, totals in totals[measure].map { (name: name, number: $0) } }
+            .sorted { $0.number != $1.number ? $0.number > $1.number : $0.name < $1.name }
+        let whole = ranked.reduce(0) { $0 + $1.number }
+        var shown = Array(ranked.prefix(Self.shownModels))
+        if ranked.count > Self.shownModels {
+            shown.append((name: "Other", number: ranked.dropFirst(Self.shownModels).reduce(0) { $0 + $1.number }))
+        }
         self.window = window
         self.totals = totals
-        models = Self.ranked(history.models(over: window) ?? [:])
-    }
-
-    /// The top models by tokens, or by usage events when a model's tokens were not reported; the rest as Other.
-    private static func ranked(_ models: [String: UsageTotals]) -> [Model] {
-        let measure: UsageMeasure = models.values.allSatisfy { $0[.tokens] != nil } ? .tokens : .usageEvents
-        let figures = models.compactMap { name, totals in totals[measure].map { (name: name, number: $0) } }
-            .sorted { $0.number != $1.number ? $0.number > $1.number : $0.name < $1.name }
-        let whole = figures.reduce(0) { $0 + $1.number }
-        var shown = Array(figures.prefix(shownModels))
-        if figures.count > shownModels {
-            shown.append((name: "Other", number: figures.dropFirst(shownModels).reduce(0) { $0 + $1.number }))
-        }
-        return shown.map {
-            Model(name: $0.name, figure: measure.metricValue($0.number), share: whole > 0 ? $0.number / whole : 0)
-        }
+        modelMeasure = measure
+        self.models = shown.map { Model(name: $0.name, number: $0.number, share: whole > 0 ? $0.number / whole : 0) }
     }
 }

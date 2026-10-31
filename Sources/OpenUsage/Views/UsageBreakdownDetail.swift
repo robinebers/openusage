@@ -30,19 +30,22 @@ struct UsageBreakdownDetail: View {
                 }
             }
             if !breakdown.models.isEmpty {
-                VStack(spacing: 2) {
-                    ForEach(breakdown.models, id: \.name) { model in
-                        HStack(spacing: 6) {
-                            Text(model.name)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .frame(width: Self.modelNameWidth, alignment: .leading)
-                            UsageMeterBar(fill: model.share, severity: .normal)
-                            Text(MetricFormatter.string(for: model.figure, style: .row))
-                                .monospacedDigit()
-                                .fixedSize()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Top Models by \(breakdown.modelMeasure.title)").foregroundStyle(.secondary)
+                    Grid(horizontalSpacing: 6, verticalSpacing: 2) {
+                        ForEach(breakdown.models, id: \.name) { model in
+                            GridRow {
+                                Text(model.name)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .frame(width: Self.modelNameWidth, alignment: .leading)
+                                UsageMeterBar(fill: model.share, severity: .normal)
+                                Text(MetricFormatter.number(model.number, kind: .count, style: .row))
+                                    .monospacedDigit()
+                                    .gridColumnAlignment(.trailing)
+                            }
+                            .accessibilityElement(children: .combine)
                         }
-                        .accessibilityElement(children: .combine)
                     }
                 }
             }

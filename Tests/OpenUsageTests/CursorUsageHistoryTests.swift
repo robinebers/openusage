@@ -207,8 +207,8 @@ final class CursorUsageHistoryTests: XCTestCase {
             .inputTokens: 3_003, .cacheReadTokens: 0, .cacheWriteTokens: 0, .outputTokens: 300
         ])
         XCTAssertEqual(today.models.map(\.name), ["composer-2", "claude-4.6-opus"])
-        XCTAssertEqual(today.models.map(\.figure), [MetricValue(number: 3_100, kind: .count, label: "tokens"),
-                                                    MetricValue(number: 203, kind: .count, label: "tokens")])
+        XCTAssertEqual(today.models.map(\.number), [3_100, 203])
+        XCTAssertEqual(today.modelMeasure, .tokens)
         XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
         XCTAssertNotNil(runtime.usageBreakdown(for: try descriptor("yesterday")))
         XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))

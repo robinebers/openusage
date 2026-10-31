@@ -66,7 +66,8 @@ final class UsageHistoryTests: XCTestCase {
         let breakdown = try XCTUnwrap(UsageBreakdown(.today, in: history))
 
         XCTAssertEqual(breakdown.models.map(\.name), ["model-7", "model-6", "model-5", "model-4", "model-3", "Other"])
-        XCTAssertEqual(breakdown.models.map(\.figure.number), [70, 60, 50, 40, 30, 30])
+        XCTAssertEqual(breakdown.models.map(\.number), [70, 60, 50, 40, 30, 30])
+        XCTAssertEqual(breakdown.modelMeasure, .tokens)
         XCTAssertEqual(breakdown.models.map(\.share).reduce(0, +), 1, accuracy: 1e-9)
     }
 
@@ -74,9 +75,9 @@ final class UsageHistoryTests: XCTestCase {
         let byModel = ["a": UsageTotals(values: [.usageEvents: 1, .tokens: 900]), "b": UsageTotals(values: [.usageEvents: 3])]
         var days = [0: UsageDay(totals: UsageTotals(values: [.usageEvents: 4]), byModel: byModel)]
 
-        XCTAssertEqual(try XCTUnwrap(UsageBreakdown(.today, in: history(days))).models.map(\.figure), [
-            MetricValue(number: 3, kind: .count, label: "events"), MetricValue(number: 1, kind: .count, label: "events")
-        ])
+        let today = try XCTUnwrap(UsageBreakdown(.today, in: history(days)))
+        XCTAssertEqual(today.modelMeasure, .usageEvents)
+        XCTAssertEqual(today.models.map(\.number), [3, 1])
 
         days[1] = UsageDay(totals: UsageTotals(values: [.usageEvents: 4]))
         XCTAssertEqual(UsageBreakdown(.lastDays(2), in: history(days))?.models, [], "a day not split by model hides the models")
