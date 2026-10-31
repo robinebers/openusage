@@ -95,7 +95,9 @@ final class CursorUsageHistoryTests: XCTestCase {
         return HTTPResponse(statusCode: 200, headers: [:], body: Data(page.utf8))
     }
 
-    private func makeAccount(events: TestSwitch<Int?>) throws -> (WidgetDataStore, AccountProviderRuntime, RoutingHTTPClient) {
+    private func makeAccount(
+        events: TestSwitch<Int?>, retryAfter: String? = nil, clock: TestClock? = nil
+    ) throws -> (WidgetDataStore, AccountProviderRuntime, RoutingHTTPClient) {
         let account = Account(kind: .cursor, label: "Cursor")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: Self.accessToken, refreshToken: "refresh")), for: account.id)
@@ -106,15 +108,17 @@ final class CursorUsageHistoryTests: XCTestCase {
             case CursorUsageClient.planURL.path:
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.planInfo.utf8))
             case CursorUsageClient.usageEventsURL.path:
-                if let status = events.value { return HTTPResponse(statusCode: status, headers: [:], body: Data()) }
+                if let status = events.value {
+                    return HTTPResponse(statusCode: status, headers: retryAfter.map { ["retry-after": $0] } ?? [:], body: Data())
+                }
                 return Self.eventsPage(request)
             default:
                 return HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
         }
-        let now = self.now
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { now })
-        return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { now }), runtime, http)
+        let clock = clock ?? TestClock(now)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now }), runtime, http)
     }
 
     private func spend(_ store: WidgetDataStore, _ runtime: AccountProviderRuntime) -> [String: Double] {
@@ -173,6 +177,29 @@ final class CursorUsageHistoryTests: XCTestCase {
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
         XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
+    }
+
+    func testARateLimitStopsTheSweepAndWaitsForRetryAfterOrAnHour() async throws {
+        for (retryAfter, wait) in [("120", 120.0), (nil, 3600.0)] {
+            let events = TestSwitch<Int?>(429)
+            let clock = TestClock(now)
+            let (store, runtime, http) = try makeAccount(events: events, retryAfter: retryAfter, clock: clock)
+
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            let firstSweep = eventRequests(http).count
+            XCTAssertLessThanOrEqual(firstSweep, 4, "the sweep stops at the 429 instead of asking for all 30 days")
+
+            events.value = nil
+            clock.set(now.addingTimeInterval(wait - 1))
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            XCTAssertEqual(eventRequests(http).count, firstSweep, "no history read before the wait ends")
+            XCTAssertEqual(spend(store, runtime), [:])
+
+            clock.set(now.addingTimeInterval(wait + 1))
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            XCTAssertEqual(eventRequests(http).count - firstSweep, 30, "every unread day is still due")
+            XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
+        }
     }
 
     func testTheRowsAddTheTokensCursorReportedAndTheUsageEventsRowCountsEveryEvent() async throws {
@@ -253,7 +280,7 @@ final class CursorHistorySourceTests: XCTestCase {
         var source = source(http)
         source.pageSize = 2
 
-        let days = await source.read(span, asOf: now, calendar: calendar)
+        let days = await source.read(span, asOf: now, calendar: calendar).days
 
         XCTAssertEqual(days.count, 29)
         XCTAssertNil(days[span[2]], "a page that ends before the count leaves the day unread")
@@ -278,7 +305,7 @@ final class CursorHistorySourceTests: XCTestCase {
         ledger.record([span[9]: UsageDay(totals: UsageTotals(values: [.spend: 0.03]))], due: [span[9]], span: span)
 
         let due = ledger.due(span)
-        ledger.record(await source.read(due, asOf: now, calendar: calendar), due: due, span: span)
+        ledger.record(await source.read(due, asOf: now, calendar: calendar).days, due: due, span: span)
 
         XCTAssertEqual(due.count, 29, "a day read before is not read again")
         XCTAssertEqual(ledger.days.mapValues { $0.totals[.spend] }, [span[0]: 0.07, span[9]: 0.03])
@@ -290,7 +317,7 @@ final class CursorHistorySourceTests: XCTestCase {
         let september6 = Date(timeIntervalSince1970: 1_788_667_200)
         let http = RoutingHTTPClient { _ in Self.events(total: 0, at: 0, cents: []) }
 
-        let days = await source(http).read([september6], asOf: Date(timeIntervalSince1970: 1_788_793_200), calendar: santiago)
+        let days = await source(http).read([september6], asOf: Date(timeIntervalSince1970: 1_788_793_200), calendar: santiago).days
 
         XCTAssertNotNil(days[september6])
         let body = try XCTUnwrap(http.requests.first?.body.flatMap(ProviderParse.jsonObject))

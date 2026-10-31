@@ -12,14 +12,16 @@ struct CursorHistorySource: UsageHistorySource {
     private enum DayResult: Sendable {
         case read(Date, UsageDay)
         case failed(String)
+        case rateLimited(TimeInterval?)
         case deadline
     }
 
-    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> [Date: UsageDay] {
+    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> (days: [Date: UsageDay], rateLimitedFor: TimeInterval?) {
         var due = days[...]
         var read: [Date: UsageDay] = [:]
         var failures: [String] = []
         var deadlineHit = false
+        var rateLimitedFor: TimeInterval?
 
         await withTaskGroup(of: DayResult.self) { group in
             defer { group.cancelAll() }
@@ -40,6 +42,9 @@ struct CursorHistorySource: UsageHistorySource {
                     read[start] = day
                 case .failed(let reason):
                     failures.append(reason)
+                case .rateLimited(let retryAfter):
+                    rateLimitedFor = retryAfter ?? UsageLedger.rateLimitWait
+                    return
                 case .deadline:
                     deadlineHit = true
                     return
@@ -49,14 +54,17 @@ struct CursorHistorySource: UsageHistorySource {
             }
         }
 
-        guard !Task.isCancelled else { return read }
+        guard !Task.isCancelled else { return (read, rateLimitedFor) }
         if let first = failures.first {
             AppLog.warn(LogTag.plugin("cursor"), "\(accountID) usage history: \(failures.count) of \(days.count) days failed (\(first))")
         }
         if deadlineHit {
             AppLog.warn(LogTag.plugin("cursor"), "\(accountID) usage history: ran out of time with \(days.count - read.count) of \(days.count) days missing")
         }
-        return read
+        if let rateLimitedFor {
+            AppLog.warn(LogTag.plugin("cursor"), "\(accountID) usage history: rate limited; next read in \(Int(rateLimitedFor))s")
+        }
+        return (read, rateLimitedFor)
     }
 
     private func readDay(_ start: Date, asOf: Date, calendar: Calendar) async -> DayResult {
@@ -74,6 +82,7 @@ struct CursorHistorySource: UsageHistorySource {
             } catch {
                 return .failed("request failed")
             }
+            if response.statusCode == 429 { return .rateLimited(response.retryAfter(now: asOf)) }
             guard (200..<300).contains(response.statusCode) else { return .failed("HTTP \(response.statusCode)") }
             guard let parsed = CursorUsageEvents.parsePage(response.body),
                   parsed.events.allSatisfy({ calendar.startOfDay(for: $0.date) == start })

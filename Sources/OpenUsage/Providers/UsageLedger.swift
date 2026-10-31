@@ -2,13 +2,18 @@ import Foundation
 
 protocol UsageHistorySource: Sendable {
     /// The days read in full, keyed by day start. A day that could not be read is left out.
-    /// Today's read ends at `asOf`.
-    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> [Date: UsageDay]
+    /// Today's read ends at `asOf`. `rateLimitedFor` is how long to wait when the provider rate-limited the read.
+    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> (days: [Date: UsageDay], rateLimitedFor: TimeInterval?)
 }
 
 /// An account's read days, in memory only. Its source is its only writer.
 struct UsageLedger: Sendable {
+    /// The wait after a rate-limited read that names none.
+    static let rateLimitWait: TimeInterval = 3600
+
     private(set) var days: [Date: UsageDay] = [:]
+    /// Nothing is read before this once the provider rate-limited a read.
+    private var resumeAt: Date?
     /// Today at the last record, whose read ended before the day did.
     private var partialDay: Date?
 
@@ -25,6 +30,10 @@ struct UsageLedger: Sendable {
         days = days.filter { kept.contains($0.key) }.merging(read) { _, new in new }
         partialDay = span.first
     }
+
+    func isHeld(at now: Date) -> Bool { resumeAt.map { now < $0 } ?? false }
+
+    mutating func hold(for wait: TimeInterval, from now: Date) { resumeAt = now.addingTimeInterval(wait) }
 }
 
 extension AccountProviderRuntime {
@@ -35,8 +44,13 @@ extension AccountProviderRuntime {
         let asOf = now()
         let span = UsageHistory.dayStarts(0..<dayCount, now: asOf, calendar: calendar)
         let due = usageLedger.due(span)
-        let read = await source.read(due, asOf: asOf, calendar: calendar)
-        usageLedger.record(read, due: due, span: span)
+        if usageLedger.isHeld(at: asOf) {
+            usageLedger.record([:], due: due, span: span)
+        } else {
+            let read = await source.read(due, asOf: asOf, calendar: calendar)
+            usageLedger.record(read.days, due: due, span: span)
+            if let wait = read.rateLimitedFor { usageLedger.hold(for: wait, from: asOf) }
+        }
         return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
     }
 }
