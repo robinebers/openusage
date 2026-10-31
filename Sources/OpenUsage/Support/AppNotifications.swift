@@ -6,8 +6,14 @@ import UserNotifications
 final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AppNotifications()
 
-    private var authorizationTask: Task<Bool, Never>?
     private var onTap: (() -> Void)?
+    private let authorizationStatus: () async -> UNAuthorizationStatus
+
+    init(authorizationStatus: @escaping () async -> UNAuthorizationStatus = {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }) {
+        self.authorizationStatus = authorizationStatus
+    }
 
     static var isRunningUnderTests: Bool {
         NSClassFromString("XCTestCase") != nil
@@ -20,7 +26,7 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     func post(idPrefix: String, title: String, subtitle: String, body: String) async -> Bool {
         guard !Self.isRunningUnderTests else { return false }
-        guard await requestAuthorization().value else {
+        guard await requestAuthorization() else {
             AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
             return false
         }
@@ -42,35 +48,25 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    @discardableResult
-    func requestAuthorization() -> Task<Bool, Never> {
-        if let authorizationTask { return authorizationTask }
-        let center = UNUserNotificationCenter.current()
-        let task = Task<Bool, Never> {
-            let granted: Bool
-            let settings = await center.notificationSettings()
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                granted = true
-            case .denied:
-                AppLog.debug(.notifications, "authorization denied")
-                granted = false
-            case .notDetermined:
-                do {
-                    granted = try await center.requestAuthorization(options: [.alert, .sound])
-                    AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
-                } catch {
-                    AppLog.error(.notifications, "authorization request failed: \(error.localizedDescription)")
-                    granted = false
-                }
-            @unknown default:
-                granted = false
+    func requestAuthorization() async -> Bool {
+        switch await authorizationStatus() {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .denied:
+            AppLog.debug(.notifications, "authorization denied")
+            return false
+        case .notDetermined:
+            do {
+                let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                AppLog.info(.notifications, "authorization \(granted ? "granted" : "refused")")
+                return granted
+            } catch {
+                AppLog.error(.notifications, "authorization request failed: \(error.localizedDescription)")
+                return false
             }
-            if !granted { authorizationTask = nil }
-            return granted
+        @unknown default:
+            return false
         }
-        authorizationTask = task
-        return task
     }
 
     /// Show the banner (and play sound) even when the app is frontmost — a menu-bar accessory is

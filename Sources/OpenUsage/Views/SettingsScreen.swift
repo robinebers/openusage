@@ -53,7 +53,7 @@ struct SettingsScreen: View {
             .inlineGroupedForm()
         }
         .scrollPosition($scrollPosition)
-        .onChange(of: popover.screen) { _, screen in
+        .onChange(of: popover.screen, initial: true) { _, screen in
             if screen == .settings {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
@@ -169,6 +169,6 @@ struct SettingsScreen: View {
     }
 
     private func checkNotificationPermission() {
-        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization().value }
+        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization() }
     }
 }
