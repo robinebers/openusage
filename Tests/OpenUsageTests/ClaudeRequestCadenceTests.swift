@@ -144,6 +144,27 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         }
     }
 
+    func testASuccessThatStartedBeforeA429KeepsThe429sWindow() async throws {
+        let sessions = ClaudeSessions()
+        let session = sessions.session(for: "acct/org")
+        let slowRead = HeldResponse()
+        let slow = Task {
+            try await session.send(at: Self.start) {
+                await slowRead.hold()
+                return Self.usage()
+            }
+        }
+        await slowRead.waitUntilHeld()
+        do {
+            _ = try await session.send(at: Self.start) { HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data()) }
+            XCTFail("a 429 was accepted")
+        } catch {}
+        await slowRead.release()
+        _ = try await slow.value
+
+        XCTAssertEqual(session.wait(at: Self.start), 600, "a success sent before the 429 ended its window")
+    }
+
     func testAForcedRefreshReadsTheGrantsOnlyOnceTheLastCheckIsFifteenMinutesOld() async throws {
         let clock = TestClock(Self.start)
         let http = Self.anthropic()
