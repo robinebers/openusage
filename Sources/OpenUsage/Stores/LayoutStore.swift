@@ -24,7 +24,7 @@ final class LayoutStore {
     }
 
     func apply(registry: WidgetRegistry) {
-        undoSnapshots.removeAll()
+        if Set(registry.providers.map(\.id)) != Set(self.registry.providers.map(\.id)) { undoSnapshots.removeAll() }
         self.registry = registry
         loadLayout()
     }
