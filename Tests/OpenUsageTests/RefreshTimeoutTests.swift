@@ -54,12 +54,7 @@ final class RefreshTimeoutTests: XCTestCase {
     func testAHungHourlyReadDoesNotHoldUpTheNextPassForAnotherAccount() async throws {
         let clock = TestClock(Date())
         let vault = StallingVault()
-        let account = Account(kind: .claude, label: "Work")
-        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
-        }
-        let claude = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+        let claude = try makeClaudeRuntime(vault, now: { clock.now })
         let (provider, descriptor) = makeProvider()
         let other = StubRuntime(
             provider: provider,
@@ -82,6 +77,50 @@ final class RefreshTimeoutTests: XCTestCase {
 
         let refreshed = await waitUntil { other.refreshCount == 2 }
         XCTAssertTrue(refreshed, "a Claude hourly read stuck on its Keychain item must not hold up the next pass")
+    }
+
+    func testAPassJoinsAStuckKeychainReadInsteadOfStartingAnother() async throws {
+        let vault = StallingVault()
+        let runtime = try makeClaudeRuntime(vault)
+
+        vault.stall()
+        let passes = [Task { await runtime.refresh() }, Task { await runtime.refresh() }]
+        _ = await waitUntil { vault.loads > 0 }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(vault.loads, 1, "a stuck Keychain read holds a thread, so a second pass must wait on it, not start another")
+
+        vault.release()
+        for pass in passes {
+            let snapshot = try await pass.value.get()
+            XCTAssertFalse(snapshot.lines.isEmpty)
+        }
+    }
+
+    func testAWriteDuringAStuckKeychainReadStillLeavesOneReadInFlight() async throws {
+        let vault = StallingVault()
+        let runtime = try makeClaudeRuntime(vault)
+
+        vault.stall()
+        let first = Task { await runtime.refresh() }
+        _ = await waitUntil { vault.loads > 0 }
+        try await runtime.replaceCredential(.oauth(OAuthTokens(accessToken: "renewed", refreshToken: "refresh")))
+        let second = Task { await runtime.refresh() }
+        let third = Task { await runtime.refresh() }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(vault.loads, 1, "a write must not let a second Keychain read start beside a stuck one")
+
+        vault.release()
+        for pass in [first, second, third] { _ = try await pass.value.get() }
+        XCTAssertEqual(vault.loads, 2, "the passes after the write share one read made after it")
+    }
+
+    private func makeClaudeRuntime(_ vault: StallingVault, now: @escaping () -> Date = Date.init) throws -> AccountProviderRuntime {
+        let account = Account(kind: .claude, label: "Work")
+        try vault.save(.oauth(OAuthTokens(accessToken: "token", refreshToken: "refresh")), for: account.id)
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#.utf8))
+        }
+        return AccountProviderRuntime(account: account, vault: vault, http: http, now: now)
     }
 
     private func makeProvider() -> (Provider, WidgetDescriptor) {
@@ -117,10 +156,13 @@ final class RefreshTimeoutTests: XCTestCase {
 }
 
 /// A vault whose reads block once stalled, the way a Keychain read waits on a prompt nobody answers.
-private final class StallingVault: CredentialVault, @unchecked Sendable {
+final class StallingVault: CredentialVault, @unchecked Sendable {
     private let stored = InMemoryCredentialVault()
     private let stalled = OSAllocatedUnfairLock(initialState: false)
+    private let loadCount = OSAllocatedUnfairLock(initialState: 0)
     private let gate = DispatchGroup()
+
+    var loads: Int { loadCount.withLock { $0 } }
 
     func stall() {
         gate.enter()
@@ -133,6 +175,7 @@ private final class StallingVault: CredentialVault, @unchecked Sendable {
     }
 
     func load(_ id: UUID) throws -> AccountCredential? {
+        loadCount.withLock { $0 += 1 }
         if stalled.withLock({ $0 }) { gate.wait() }
         return try stored.load(id)
     }

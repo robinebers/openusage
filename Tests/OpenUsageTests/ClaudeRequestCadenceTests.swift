@@ -45,6 +45,33 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants", "profile", "grants"])
     }
 
+    func testTheFirstSlotAfterALaunchFromTheCacheReadsTheProfileAndGrants() async throws {
+        let clock = TestClock(Self.start)
+        let http = Self.anthropic()
+        let runtime = try makeRuntime(http: http, clock: clock)
+        let cached = ProviderSnapshot(providerID: runtime.provider.id, displayName: runtime.provider.displayName, lines: [])
+        runtime.restore(cached)
+
+        _ = await runtime.refreshHourlyReads(of: cached)
+
+        XCTAssertEqual(kinds(http), ["profile", "grants"], "a launch served from the cache still reads the plan and grants in the first slot")
+    }
+
+    func testASlotWithNothingDueLeavesTheKeychainAlone() async throws {
+        let clock = TestClock(Self.start)
+        let vault = StallingVault()
+        let runtime = try makeRuntime(http: Self.anthropic(), clock: clock, vault: vault)
+        let snapshot = try await runtime.refresh().get()
+        clock.set(Self.start.addingTimeInterval(RefreshSetting.interval / 2))
+        _ = await runtime.refreshHourlyReads(of: snapshot)
+        let loads = vault.loads
+
+        clock.set(Self.start.addingTimeInterval(RefreshSetting.interval * 3 / 2))
+        _ = await runtime.refreshHourlyReads(of: snapshot)
+
+        XCTAssertEqual(vault.loads, loads, "a slot with no profile or grants read due must not read the Keychain item")
+    }
+
     func testAProfileReadCutShortByTheDeadlineIsRetriedInTheNextSlot() async throws {
         let clock = TestClock(Self.start)
         let anthropic = Self.anthropic()
@@ -301,9 +328,10 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
     private nonisolated static let farFuture = OpenUsageISO8601.date(from: "2099-01-01T00:00:00.000Z")!
 
-    private func makeRuntime(http: RoutingHTTPClient, clock: TestClock) throws -> AccountProviderRuntime {
+    private func makeRuntime(
+        http: RoutingHTTPClient, clock: TestClock, vault: any CredentialVault = InMemoryCredentialVault()
+    ) throws -> AccountProviderRuntime {
         let account = Account(kind: .claude, label: "Work")
-        let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: "token-a", refreshToken: "refresh-a")), for: account.id)
         return AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
     }

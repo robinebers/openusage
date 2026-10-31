@@ -25,6 +25,11 @@ final class AccountProviderRuntime: ProviderRuntime {
     private var unsavedRenewal: OAuthTokens?
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
+    /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
+    /// it returns, so a later caller waits for that read instead of blocking another thread. A caller
+    /// after a write waits for a read started before it to end, then reads again.
+    private var credentialLoad: (task: Task<AccountCredential?, Error>, writes: Int)?
+    private var credentialWrites = 0
 
     init(
         account: Account,
@@ -110,9 +115,14 @@ final class AccountProviderRuntime: ProviderRuntime {
             await saveRenewal(unsavedRenewal)
             return .oauth(unsavedRenewal)
         }
-        guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw refusedCredential
+        while let stale = credentialLoad?.task, credentialLoad?.writes != credentialWrites {
+            _ = try? await stale.value
+            if credentialLoad?.task == stale { credentialLoad = nil }
         }
+        let load = credentialLoad?.task ?? Task { try await loadOffMainActor { [vault, account] in try vault.load(account.id) } }
+        credentialLoad = (load, credentialWrites)
+        defer { if credentialLoad?.task == load { credentialLoad = nil } }
+        guard let credential = try await load.value else { throw refusedCredential }
         return credential
     }
 
@@ -336,6 +346,7 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        credentialWrites += 1
         if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
     }
 
