@@ -18,6 +18,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
 - The Density setting and Reset All Customization.
+- The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
+  Animations follow macOS's Reduce Motion setting.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
@@ -40,6 +42,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
+- A provider's `Retry-After` wait is honored up to an hour; a longer one is cut to an hour.
 - Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
@@ -61,7 +64,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
-- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
+- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for

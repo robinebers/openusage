@@ -32,6 +32,9 @@ struct AntigravityUsageClient: Sendable {
 
     var http: HTTPClient
 
+    /// The quota read answered 401: the access token was refused, so a renewed sign-in may read it.
+    struct TokenRefused: Error {}
+
     /// `loadCodeAssist` with Antigravity's client metadata. Without it the response carries only
     /// `allowedTiers` — no `currentTier`/`paidTier` — so the plan can't be read. Each base URL is tried in
     /// turn: a 401/403 is an expired sign-in (the same token would fail on the other base); other non-2xx
@@ -78,6 +81,7 @@ struct AntigravityUsageClient: Sendable {
         if responses.isEmpty, let transportError { throw transportError }
         let bodies = responses.filter { (200..<300).contains($0.statusCode) }.map(\.body)
         if !bodies.isEmpty { return bodies }
+        if responses.contains(where: { $0.statusCode == 401 }) { throw TokenRefused() }
         if responses.contains(where: ProviderError.isAuthFailure) { throw ProviderError.signInExpired(.antigravity) }
         throw ProviderError.unavailable(Self.unavailableMessage)
     }

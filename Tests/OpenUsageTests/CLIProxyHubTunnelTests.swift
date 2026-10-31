@@ -85,7 +85,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         _ = await runtimes[0].refresh()
         XCTAssertEqual(http.requests.count, 1, "nothing more goes to the hub")
 
-        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
         do {
             try await sync.replaceKey("still-wrong", for: hub.id)
             XCTFail("a refused key is not saved")
@@ -115,7 +115,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let stale = Task { await runtimes[0].refresh() }
         for await _ in started { break }
 
-        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
         try await sync.replaceKey("right-key", for: hubAccount.id)
         release.yield()
         let staleResult = await stale.value
@@ -200,19 +200,19 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let account = store.accounts[0]
 
         store.rename(account.id, to: "Team")
-        let renamed = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, reusing: runtimes)
+        let renamed = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, hubsEnabled: true, reusing: runtimes)
         XCTAssertTrue(renamed[0] === runtimes[0])
         XCTAssertNotNil(renamed[0].provider.hubHost)
 
         store.mirror([Self.login("a", "claude", index: "moved")], from: hub.id)
-        let relinked = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, reusing: renamed)
+        let relinked = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, hubsEnabled: true, reusing: renamed)
         XCTAssertFalse(relinked[0] === renamed[0], "the tunnel carries the login's auth index")
     }
 
     func testConnectingSavesNothingUntilTheHubAcceptsTheKey() async throws {
         let http = Self.hub(key: "right-key") { _, _ in (200, "{}", [:]) }
         let store = AccountStore(defaults: isolatedDefaults(), vault: RecordingVault())
-        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate))
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
 
         do {
             try await sync.connect(url: "mini.local:8317", key: "wrong-key")
@@ -246,7 +246,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let hub = CLIProxyHub(url: Self.hubURL)
         try store.addHub(hub, key: key)
         store.mirror(logins, from: hub.id)
-        let runtimes = ProviderCatalog.make(accounts: store.accounts, vault: vault, http: http, hubGate: gate)
+        let runtimes = ProviderCatalog.make(accounts: store.accounts, vault: vault, http: http, hubGate: gate, hubsEnabled: true)
         return (runtimes, store, hub)
     }
 

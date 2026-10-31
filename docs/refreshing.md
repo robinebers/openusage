@@ -45,7 +45,7 @@ is tried again on the next pass without growing the wait. A successful refresh e
 manual refresh skips it.
 
 When a provider rate-limits OpenUsage (HTTP 429), the account waits as long as the provider's
-`Retry-After` header asks, or on the same doubling schedule when it names no wait. The last good values
+`Retry-After` header asks, up to an hour, or on the same doubling schedule when it names no wait. The last good values
 stay on screen with the clock icon, whose tooltip names the time of the next try, for example "Claude
 asked OpenUsage to wait. Retrying at 14:32." A manual refresh does not ask before that time.
 
@@ -66,9 +66,9 @@ the account's right-click menu starts with their age. A successful refresh clear
 
 OAuth accounts renew their own sign-in with the provider's refresh token, 5 minutes before the
 provider's expiry (the margin Claude Code uses), so a refresh never sends a token that is about to
-expire. Cursor renews its sign-in in the last 7 days of its 60-day token. When Claude, ChatGPT or Grok
-refuses the access token anyway (a 401 on the usage read, for an expiry the sign-in never reported or
-one the provider cut short), the sign-in is renewed once and the read retried.
+expire. Cursor renews its sign-in in the last 7 days of its 60-day token. When Claude, ChatGPT, Grok or
+Antigravity refuses the access token anyway (a 401 on the usage read, for an expiry the sign-in never
+reported or one the provider cut short), the sign-in is renewed once and the read retried.
 
 The warning says the sign-in expired when the usage read still refuses the token, or when the provider
 refuses the renewal itself: an `invalid_grant` answer, one of ChatGPT's own refresh-token errors, or

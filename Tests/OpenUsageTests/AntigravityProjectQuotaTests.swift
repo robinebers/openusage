@@ -1,3 +1,4 @@
+import os
 import XCTest
 @testable import OpenUsage
 
@@ -70,6 +71,62 @@ final class AntigravityProjectQuotaTests: XCTestCase {
 
         XCTAssertEqual(http.requests.filter { $0.url.path == AntigravityUsageClient.quotaSummaryPath }.count, 2)
         XCTAssertEqual(failure?.kind, .unreachable)
+    }
+
+    func testAnUnauthorizedQuotaReadRenewsTheSignInOnceAndRetries() async throws {
+        let account = Account(kind: .antigravity, label: "Google Account")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantFuture)), for: account.id)
+        let http = RoutingHTTPClient { request in
+            if request.url == AntigravityLogin.tokenURL {
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new-access","expires_in":3600}"#.utf8))
+            }
+            switch request.url.path {
+            case AntigravityUsageClient.loadCodeAssistPath:
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.loadCodeAssist.utf8))
+            case AntigravityUsageClient.quotaSummaryPath where request.headers["Authorization"] == "Bearer new-access":
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.quotaSummary.utf8))
+            default:
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+        }
+
+        let snapshot = try await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().get()
+
+        XCTAssertEqual(snapshot.lines.map(\.label), [AntigravityMetric.weeklyLabel, AntigravityMetric.claudeWeeklyLabel])
+        XCTAssertEqual(http.requests.filter { $0.url == AntigravityLogin.tokenURL }.count, 1)
+        guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("Expected saved tokens") }
+        XCTAssertEqual(saved.accessToken, "new-access")
+    }
+
+    func testAFailedProjectLookupIsReadAgainOnTheNextRefresh() async throws {
+        let account = Account(kind: .antigravity, label: "Google Account")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture)), for: account.id)
+        let lookupWorks = OSAllocatedUnfairLock(initialState: false)
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case AntigravityUsageClient.loadCodeAssistPath:
+                guard lookupWorks.withLock({ $0 }) else { return HTTPResponse(statusCode: 503, headers: [:], body: Data()) }
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.loadCodeAssist.utf8))
+            case AntigravityUsageClient.quotaSummaryPath:
+                guard request.body.flatMap(ProviderParse.jsonObject)?["project"] as? String == "fake-project-123" else {
+                    return HTTPResponse(statusCode: 403, headers: [:], body: Data(Self.subscriptionRequired.utf8))
+                }
+                return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.quotaSummary.utf8))
+            default:
+                return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let first = await runtime.refresh()
+        XCTAssertNotNil(first.failure)
+
+        lookupWorks.withLock { $0 = true }
+        let snapshot = try await runtime.refresh().get()
+
+        XCTAssertEqual(snapshot.lines.map(\.label), [AntigravityMetric.weeklyLabel, AntigravityMetric.claudeWeeklyLabel])
+        XCTAssertEqual(snapshot.plan, "Antigravity Starter Quota")
     }
 
     func testPaidTiersReadAsGoogleSellsThem() {

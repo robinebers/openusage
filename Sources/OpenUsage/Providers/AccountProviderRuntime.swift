@@ -247,15 +247,31 @@ final class AccountProviderRuntime: ProviderRuntime {
         return try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
     }
 
+    /// Antigravity's usage read with the sign-in renewed once on a 401, the way `authorizedRead` does it
+    /// for one response: a second 401 is the expired sign-in.
     private func refreshAntigravity(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: AntigravityLogin.refresh)
+        do {
+            return try await antigravityUsage(token: tokens.accessToken)
+        } catch is AntigravityUsageClient.TokenRefused {
+            AppLog.debug(.auth, "\(account.cardID) usage read unauthorized; renewing the sign-in once")
+            let renewed = try await renewedTokens(tokens, grant: AntigravityLogin.refresh)
+            do {
+                return try await antigravityUsage(token: renewed.accessToken)
+            } catch is AntigravityUsageClient.TokenRefused {
+                throw ProviderError.signInExpired(.antigravity)
+            }
+        }
+    }
+
+    private func antigravityUsage(token: String) async throws -> ProviderUsage {
         let client = AntigravityUsageClient(http: http)
-        if planBodyRead.isDue(at: now()) {
-            planBodyRead.record(try? await client.loadCodeAssist(token: tokens.accessToken), at: now())
+        if planBodyRead.isDue(at: now()), let codeAssist = try? await client.loadCodeAssist(token: token) {
+            planBodyRead.record(codeAssist, at: now())
         }
         let codeAssist = planBodyRead.value
         let bodies = try await client.quotaSummary(
-            token: tokens.accessToken,
+            token: token,
             project: codeAssist.flatMap(AntigravityUsageMapper.parseProject)
         )
         guard let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) else { throw ProviderError.invalidResponse }

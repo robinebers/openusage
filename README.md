@@ -111,7 +111,8 @@ script/test_quiet.sh        # run the test suite without it taking the keyboard 
 `script/test_quiet.sh` takes `swift test` arguments such as `--filter`.
 
 The dev app is staged as `dist/OpenUsage.app` with the bundle identifier
-`com.robinebers.openusage.dev`, so it runs beside an installed OpenUsage and never checks for updates.
+`com.robinebers.openusage.dev`, so it runs beside an installed OpenUsage, never checks for updates, and
+never imports the OpenRouter and Z.ai keys 0.7.x saved.
 
 ## Architecture
 
