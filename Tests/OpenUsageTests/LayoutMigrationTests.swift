@@ -78,6 +78,17 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.stars(app.add(.cursor)), ["today", "usage"], "an upgrader who never saved stars takes the new defaults")
     }
 
+    func testADisabledZeroSevenAccountGivesNoLayout() throws {
+        let defaults = isolatedDefaults()
+        try Self.savePlaced(["claude.session", "claude@aaaa1111.session", "claude@aaaa1111.weekly", "claude@aaaa1111.sonnet"],
+                            to: defaults)
+        defaults.set(try JSONEncoder().encode(["claude", "claude@aaaa1111"]), forKey: "openusage.layout.v1.providerOrder")
+        defaults.set(["claude@aaaa1111"], forKey: "openusage.enabledProviders.v1")
+        let app = MigrationApp(defaults: defaults)
+        XCTAssertEqual(app.hidden(app.add(.claude)), ["extra", "fable", "rateLimitResets"],
+                       "the layout comes from the account 0.7.x had on, not the one it listed first")
+    }
+
     func testAnEmptyStarListStaysEmpty() {
         let defaults = isolatedDefaults()
         defaults.set(["claude"], forKey: "openusage.enabledProviders.v1")
