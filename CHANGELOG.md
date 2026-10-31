@@ -65,6 +65,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
 - Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
+- The Almost Out, Cutting It Close, and Will Run Out switches in Settings, named after the alerts they
+  send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
