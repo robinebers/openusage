@@ -43,6 +43,7 @@ final class DashboardFamilyTests: XCTestCase {
             var data = WidgetData(title: "Rate Limit Resets", kind: .count, used: count, limit: nil)
             data.values = [MetricValue(number: count, kind: .count, label: "available")]
             data.showsResetExpiries = true
+            data.hidesAtZero = true
             return data
         }
         let weekly = WidgetData(title: "Weekly", kind: .percent, used: 10, limit: 100)
@@ -59,20 +60,24 @@ final class DashboardFamilyTests: XCTestCase {
     }
 
     @MainActor
-    func testChatGPTExtraUsageRowShowsOnlyWhileCreditsAreLeft() {
+    func testChatGPTExtraUsageRowShowsOnTheCardAndInTheMenuBarOnlyWhileCreditsAreLeft() {
         let account = Account(kind: .codex, label: "Work")
         let descriptors = AccountProviderRuntime.widgetDescriptors(for: account).filter { ["weekly", "credits"].contains($0.key) }
-        func keys(creditsRemaining: Double) -> [String] {
-            let group = ProviderMetrics(provider: Provider(id: "codex@1", kind: .codex), metrics: descriptors)
-            let families = DashboardFamily.make(groups: [group]) { descriptor in
+        let group = ProviderMetrics(provider: Provider(id: "codex@1", kind: .codex), metrics: descriptors)
+        func shown(creditsRemaining: Double) -> (card: [String], menuBar: [String]) {
+            func data(_ descriptor: WidgetDescriptor) -> WidgetData {
                 var data = descriptor.sample
                 if descriptor.key == "credits" { data.values = CodexUsageMapper.creditValues(remaining: creditsRemaining) }
-                return DashboardLine(descriptor: descriptor, data: data)
+                return data
             }
-            return families[0].accounts[0].lines.map(\.descriptor.key)
+            let card = DashboardFamily.make(groups: [group]) { DashboardLine(descriptor: $0, data: data($0)) }
+            let menuBar = MenuBarContentBuilder.build(groups: [group], data: data)
+            return (card[0].accounts[0].lines.map(\.descriptor.key), menuBar.groups.flatMap(\.metrics).map(\.label))
         }
-        XCTAssertEqual(keys(creditsRemaining: 25), ["weekly", "credits"])
-        XCTAssertEqual(keys(creditsRemaining: 1), ["weekly", "credits"])
-        XCTAssertEqual(keys(creditsRemaining: 0), ["weekly"])
+        XCTAssertEqual(shown(creditsRemaining: 25).card, ["weekly", "credits"])
+        XCTAssertEqual(shown(creditsRemaining: 1).card, ["weekly", "credits"])
+        XCTAssertEqual(shown(creditsRemaining: 1).menuBar, ["Weekly", "Credits"])
+        XCTAssertEqual(shown(creditsRemaining: 0).card, ["weekly"])
+        XCTAssertEqual(shown(creditsRemaining: 0).menuBar, ["Weekly"])
     }
 }
