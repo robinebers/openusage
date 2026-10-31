@@ -11,7 +11,8 @@ with several accounts puts its own name on the header and each account's name an
 above its rows. Nothing on the line is ever cut short. The card holds every metric that has data, in
 the order you set, one row each.
 
-When you have no accounts, the dashboard shows **Add Account**, which opens the provider chooser.
+When you have no accounts, the dashboard shows **Add Account**, which opens the provider chooser. When
+you have hidden every metric, it says so and points you to Accounts to turn them back on.
 
 ## Rows
 
