@@ -32,6 +32,26 @@ final class UsageHistoryTests: XCTestCase {
         )
     }
 
+    func testDaysAcrossSantiagosClockChangesAreItsDayStarts() throws {
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let september6Noon = Date(timeIntervalSince1970: 1_788_706_800)
+        let september7Noon = Date(timeIntervalSince1970: 1_788_793_200)
+        let april5Noon = Date(timeIntervalSince1970: 1_775_404_800)
+
+        XCTAssertEqual(UsageHistory.dayStarts(0...2, now: september6Noon, calendar: santiago).map(\.timeIntervalSince1970),
+                       [1_788_667_200, 1_788_580_800, 1_788_494_400], "Sep 6 starts at 01:00 and the days before at midnight")
+        let september = UsageHistory.dayStarts(0...2, now: september7Noon, calendar: santiago)
+        XCTAssertEqual(september[0].timeIntervalSince(september[1]), 23 * 3600, "Sep 6 is 23 hours")
+        XCTAssertEqual(september[1].timeIntervalSince(september[2]), 24 * 3600)
+        let april = UsageHistory.dayStarts(0...1, now: april5Noon, calendar: santiago)
+        XCTAssertEqual(april.map(\.timeIntervalSince1970), [1_775_361_600, 1_775_271_600])
+        XCTAssertEqual(april[0].timeIntervalSince(april[1]), 25 * 3600, "Apr 4 is 25 hours")
+        for start in UsageHistory.dayStarts(0..<30, now: september6Noon, calendar: santiago) + september + april {
+            XCTAssertEqual(santiago.startOfDay(for: start), start)
+        }
+    }
+
     func testAReportedZeroShowsAndAWindowWithAnUnreadDayHides() {
         let row = HistoryRow.window(.lastDays(30), .spend, then: .tokens)
         var days = everyDay(.zero(CursorUsageEvents.measures))

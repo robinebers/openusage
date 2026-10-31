@@ -2,7 +2,8 @@ import Foundation
 
 protocol UsageHistorySource: Sendable {
     /// The days read in full, keyed by day start. A day that could not be read is left out.
-    func read(_ days: [Date], calendar: Calendar) async -> [Date: UsageDay]
+    /// Today's read ends at `asOf`.
+    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> [Date: UsageDay]
 }
 
 /// An account's read days, in memory only. Its source is its only writer.
@@ -34,7 +35,7 @@ extension AccountProviderRuntime {
         let asOf = now()
         let span = UsageHistory.dayStarts(0..<dayCount, now: asOf, calendar: calendar)
         let due = usageLedger.due(span)
-        let read = await source.read(due, calendar: calendar)
+        let read = await source.read(due, asOf: asOf, calendar: calendar)
         usageLedger.record(read, due: due, span: span)
         return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
     }

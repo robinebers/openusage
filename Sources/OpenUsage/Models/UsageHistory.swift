@@ -104,7 +104,7 @@ struct UsageHistory: Hashable, Sendable {
     /// The starts of the days `offsets` back from the day holding `now`.
     static func dayStarts(_ offsets: some Sequence<Int>, now: Date, calendar: Calendar) -> [Date] {
         let today = calendar.startOfDay(for: now)
-        return offsets.compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+        return offsets.compactMap { calendar.date(byAdding: .day, value: -$0, to: today).map(calendar.startOfDay) }
     }
 
     /// Nil when any day of the window is unread.

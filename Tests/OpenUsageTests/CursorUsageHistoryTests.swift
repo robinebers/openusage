@@ -227,7 +227,7 @@ final class CursorHistorySourceTests: XCTestCase {
     private var span: [Date] { UsageHistory.dayStarts(0..<30, now: now, calendar: calendar) }
 
     private func source(_ http: RoutingHTTPClient) -> CursorHistorySource {
-        CursorHistorySource(client: CursorUsageClient(http: http), accessToken: accessToken, accountID: "cursor@1", now: now)
+        CursorHistorySource(client: CursorUsageClient(http: http), accessToken: accessToken, accountID: "cursor@1")
     }
 
     private static func page(_ request: HTTPRequest) -> (start: Int, page: Int) {
@@ -253,7 +253,7 @@ final class CursorHistorySourceTests: XCTestCase {
         var source = source(http)
         source.pageSize = 2
 
-        let days = await source.read(span, calendar: calendar)
+        let days = await source.read(span, asOf: now, calendar: calendar)
 
         XCTAssertEqual(days.count, 29)
         XCTAssertNil(days[span[2]], "a page that ends before the count leaves the day unread")
@@ -278,10 +278,23 @@ final class CursorHistorySourceTests: XCTestCase {
         ledger.record([span[9]: UsageDay(totals: UsageTotals(values: [.spend: 0.03]))], due: [span[9]], span: span)
 
         let due = ledger.due(span)
-        ledger.record(await source.read(due, calendar: calendar), due: due, span: span)
+        ledger.record(await source.read(due, asOf: now, calendar: calendar), due: due, span: span)
 
         XCTAssertEqual(due.count, 29, "a day read before is not read again")
         XCTAssertEqual(ledger.days.mapValues { $0.totals[.spend] }, [span[0]: 0.07, span[9]: 0.03])
+    }
+
+    func testADayThatStartsAtOneOClockIsReadToTheNextMidnight() async throws {
+        var santiago = Calendar(identifier: .gregorian)
+        santiago.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
+        let september6 = Date(timeIntervalSince1970: 1_788_667_200)
+        let http = RoutingHTTPClient { _ in Self.events(total: 0, at: 0, cents: []) }
+
+        let days = await source(http).read([september6], asOf: Date(timeIntervalSince1970: 1_788_793_200), calendar: santiago)
+
+        XCTAssertNotNil(days[september6])
+        let body = try XCTUnwrap(http.requests.first?.body.flatMap(ProviderParse.jsonObject))
+        XCTAssertEqual(body["endDate"] as? String, "1788749999999", "a 23-hour day ends at Sep 7 00:00, not 01:00")
     }
 
     func testADayLastReadWhileItWasTodayIsReadAgainAfterAGapOfDays() {

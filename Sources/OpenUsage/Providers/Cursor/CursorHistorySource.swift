@@ -5,7 +5,6 @@ struct CursorHistorySource: UsageHistorySource {
     var client: CursorUsageClient
     var accessToken: String
     var accountID: String
-    var now: Date
     var budget: TimeInterval = 20
     var maxConcurrentDays = 4
     var pageSize = 1000
@@ -16,7 +15,7 @@ struct CursorHistorySource: UsageHistorySource {
         case deadline
     }
 
-    func read(_ days: [Date], calendar: Calendar) async -> [Date: UsageDay] {
+    func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> [Date: UsageDay] {
         var due = days[...]
         var read: [Date: UsageDay] = [:]
         var failures: [String] = []
@@ -28,7 +27,7 @@ struct CursorHistorySource: UsageHistorySource {
             func readNext() {
                 guard let start = due.popFirst() else { return }
                 reading += 1
-                group.addTask { await readDay(start, calendar: calendar) }
+                group.addTask { await readDay(start, asOf: asOf, calendar: calendar) }
             }
             for _ in 0..<maxConcurrentDays { readNext() }
             group.addTask { [budget] in
@@ -60,9 +59,9 @@ struct CursorHistorySource: UsageHistorySource {
         return read
     }
 
-    private func readDay(_ start: Date, calendar: Calendar) async -> DayResult {
-        guard let next = calendar.date(byAdding: .day, value: 1, to: start) else { return .failed("invalid day") }
-        let end = Date(timeIntervalSince1970: Double(Int(min(next, now).timeIntervalSince1970 * 1000) - 1) / 1000)
+    private func readDay(_ start: Date, asOf: Date, calendar: Calendar) async -> DayResult {
+        guard let next = calendar.date(byAdding: .day, value: 1, to: start).map(calendar.startOfDay) else { return .failed("invalid day") }
+        let end = Date(timeIntervalSince1970: Double(Int(min(next, asOf).timeIntervalSince1970 * 1000) - 1) / 1000)
         var events: [CursorUsageEvent] = []
         var expectedTotal: Int?
         for page in 1... {
