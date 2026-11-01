@@ -38,41 +38,56 @@ final class PriorityBoardTests: XCTestCase {
 
     private func ids(_ items: [PriorityItem]) -> [String] { items.map(\.id) }
 
-    func testAProjectionOverTheLimitOutranksAMoreUsedLimitThatStaysUnderIt() {
+    func testALimitIsListedAtHalfLeftHoweverSlowOrFastItIsBurning() {
         let result = board(
             account(personal,
-                    paced("Fable", used: 47, left: 3 * day + 8 * hour),
-                    paced("Weekly", used: 51, left: 3 * day + 8 * hour)),
-            account(chatGPT, paced("Weekly", used: 31, left: 5 * day))
+                    paced("Half Left, Nearly Reset", used: 50, left: hour),
+                    paced("Half Left, Fresh", used: 50, left: 6.9 * day),
+                    paced("More Than Half, Burning Fast", used: 49, left: 6.9 * day))
         )
 
-        XCTAssertEqual(ids(result.attention), ["codex@1.Weekly", "claude@1.Weekly"],
-                       "108% projected beats 97% projected, and 89% projected isn't listed")
-        guard case .runningOut = result.attention[0].reason else { return XCTFail("\(result.attention[0].reason)") }
-        guard case .closeToLimit = result.attention[1].reason else { return XCTFail("\(result.attention[1].reason)") }
+        XCTAssertEqual(Set(ids(result.attention)), ["claude@1.Half Left, Nearly Reset", "claude@1.Half Left, Fresh"])
     }
 
-    func testRunningOutOutranksCloseToLimitWhateverTheRunway() {
-        let result = board(
-            account(personal, paced("Session", used: 48, left: 2.5 * hour, period: 5 * hour)),
-            account(work, paced("Weekly", used: 60, left: 3.5 * day))
-        )
+    func testARingFillsLikeItsBarUnderUsedAndLeft() {
+        var limit = unpaced("Weekly", used: 61)
+        limit.displayMode = .used
+        XCTAssertEqual(limit.fraction, 0.61, accuracy: 1e-9)
+        guard case .bar(let usedFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
+        XCTAssertEqual(limit.fraction, usedFill)
 
-        let session = result.attention.last
-        XCTAssertLessThan(try XCTUnwrap(session?.data.runway(now: now)), try XCTUnwrap(result.attention.first?.data.runway(now: now)))
-        XCTAssertEqual(ids(result.attention), ["claude@2.Weekly", "claude@1.Session"])
+        limit.displayMode = .remaining
+        XCTAssertEqual(limit.fraction, 0.39, accuracy: 1e-9)
+        guard case .bar(let leftFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
+        XCTAssertEqual(limit.fraction, leftFill)
     }
 
-    func testTheSoonestToHitTheLimitLeadsItsTier() {
-        let runningOut = board(account(personal,
-                                       paced("Weekly", used: 55, left: 3.5 * day),
-                                       paced("Session", used: 55, left: 2.5 * hour, period: 5 * hour)))
-        XCTAssertEqual(ids(runningOut.attention), ["claude@1.Session", "claude@1.Weekly"])
+    func testTheClockNeverChangesWhatIsListed() {
+        let accounts = [account(personal, paced("Weekly", used: 61, left: 4 * day), paced("Fable", used: 40, left: 4 * day))]
+        for later in [0, hour, day, 3 * day] {
+            let result = PriorityBoard.make(accounts: accounts, now: now.addingTimeInterval(later))
+            XCTAssertEqual(ids(result.attention), ["claude@1.Weekly"], "\(later) seconds later")
+        }
+    }
 
-        let close = board(account(personal,
-                                  paced("Weekly", used: 47, left: 3.5 * day),
-                                  paced("Session", used: 47, left: 2.5 * hour, period: 5 * hour)))
-        XCTAssertEqual(ids(close.attention), ["claude@1.Session", "claude@1.Weekly"])
+    func testOrangeAtHalfLeftAndRedAtATenthLeft() {
+        func severity(_ used: Double) -> WidgetData.MeterSeverity? {
+            board(account(personal, unpaced("Credits", used: used))).attention.first?.reason.severity
+        }
+        XCTAssertNil(severity(49))
+        XCTAssertEqual(severity(50), .warning)
+        XCTAssertEqual(severity(89), .warning)
+        XCTAssertEqual(severity(90), .critical)
+    }
+
+    func testTheSoonestToRunOutComesFirstWhateverIsLeft() {
+        let result = board(account(personal,
+                                   paced("Weekly", used: 55, left: 3.5 * day),
+                                   paced("Session", used: 55, left: 2.5 * hour, period: 5 * hour),
+                                   unpaced("Extra Usage", used: 95)))
+
+        XCTAssertEqual(ids(result.attention), ["claude@1.Session", "claude@1.Weekly", "claude@1.Extra Usage"],
+                       "a limit with no pace to tell by follows the ones that have one")
     }
 
     func testTheRunwayIsTheTimeLeftUntilTheLimitAtTheCurrentPace() throws {
@@ -90,10 +105,10 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(ids(board(account(work, level), account(personal, level)).attention), ["claude@2.Credits", "claude@1.Credits"])
     }
 
-    func testLevelsFollowThePacedLimitsMostUsedFirst() {
+    func testLimitsWithNoPaceFollowThePacedOnesLeastLeftFirst() {
         let result = board(
-            account(personal, unpaced("Warning", used: 80), unpaced("Critical", used: 95), unpaced("Fine", used: 70)),
-            account(work, unpaced("Warned More", used: 170, limit: 200), paced("Paced", used: 47, left: 3.5 * day))
+            account(personal, unpaced("Warning", used: 80), unpaced("Critical", used: 95), unpaced("Fine", used: 40)),
+            account(work, unpaced("Warned More", used: 170, limit: 200), paced("Paced", used: 60, left: 3.5 * day))
         )
 
         XCTAssertEqual(ids(result.attention), ["claude@2.Paced", "claude@1.Critical", "claude@2.Warned More", "claude@1.Warning"])
@@ -202,7 +217,7 @@ final class PriorityBoardTests: XCTestCase {
         low.values = [zero(.dollars)]
         let result = PriorityBoard.make(accounts: [DashboardAccount(provider: personal, lines: [DashboardLine(descriptor: descriptor, data: low)])], now: now)
 
-        XCTAssertEqual(result.attention.map(\.reason), [.level(.critical, usedShare: 0.9)])
+        XCTAssertEqual(result.attention.map(\.reason), [.low(.critical, remaining: 0.1, runway: nil)])
         XCTAssertTrue(result.usedUp.isEmpty)
     }
 
@@ -263,9 +278,53 @@ final class PriorityBoardTests: XCTestCase {
 
         XCTAssertEqual(board().summary, .waitingForUsage)
         XCTAssertEqual(board(account(personal)).summary, .waitingForUsage)
-        XCTAssertEqual(board(account(personal, unreported, balance)).summary, .waitingForUsage, "a balance alone isn't a limit with data")
+        XCTAssertEqual(board(account(personal, unreported, balance)).summary, .noReportedLimits)
         XCTAssertEqual(board(account(personal, unpaced("Quiet", used: 10))).summary, .allClear)
         XCTAssertEqual(board(account(personal, unpaced("Spent", used: 100))).summary, .listed)
         XCTAssertEqual(board(account(personal, unpaced("Warning", used: 80))).summary, .listed)
+    }
+
+    func testAReportedAccountDoesNotWaitForALimitItWillNeverHave() throws {
+        let org = Account(kind: .copilot, label: "Acme", organization: "acme")
+        let provider = AccountProviderRuntime.provider(for: org)
+        let group = ProviderMetrics(provider: provider, metrics: AccountProviderRuntime.widgetDescriptors(for: org))
+        let clock = TestClock(now)
+        let store = WidgetDataStore.forTesting([], defaults: isolatedDefaults(), now: { clock.now })
+        func summary() -> PriorityBoard.Summary { store.priorityBoard(in: [group], now: clock.now).summary }
+
+        XCTAssertEqual(summary(), .waitingForUsage)
+        store.snapshots[provider.id] = ProviderSnapshot(provider: provider, plan: nil, lines: [], refreshedAt: now)
+        XCTAssertEqual(summary(), .noReportedLimits)
+        store.snapshots[provider.id]?.lines = [.values(label: "Org Spend", values: [MetricValue(number: 25, kind: .dollars)])]
+        XCTAssertEqual(summary(), .noReportedLimits)
+        clock.set(now.addingTimeInterval(RefreshSetting.stalenessThreshold + 1))
+        let stale = store.priorityBoard(in: [group], now: clock.now)
+        XCTAssertEqual(stale.summary, .unavailable)
+        XCTAssertTrue(try XCTUnwrap(stale.notices.first).message.contains("Last updated"))
+    }
+
+    func testFailedRefreshIsVisibleBesideOtherAlertsAndSharesWithoutAccountDetails() async throws {
+        let email = "private@example.com"
+        let provider = Provider(id: "claude@1", kind: .claude, accountLabel: email)
+        let weekly = WidgetDescriptor.percent(key: "weekly", provider: provider, title: "Weekly")
+        let other = WidgetDescriptor.percent(key: "weekly", provider: work, title: "Weekly")
+        let failure = RefreshFailure(message: "Replace the token for \(email).", kind: .refused)
+        let runtime = StubRuntime(provider: provider, descriptors: [weekly], failure: failure)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { self.now })
+        let groups = [ProviderMetrics(provider: provider, metrics: [weekly]), ProviderMetrics(provider: work, metrics: [other])]
+        _ = await store.refresh(providerID: provider.id, force: true)
+        XCTAssertEqual(store.priorityBoard(in: [groups[0]], now: now).summary, .unavailable)
+
+        store.snapshots[provider.id] = ProviderSnapshot(provider: provider, plan: nil, lines: [.percent("Weekly", 15)], refreshedAt: now)
+        store.snapshots[work.id] = ProviderSnapshot(provider: work, plan: nil, lines: [.percent("Weekly", 75)], refreshedAt: now)
+        let live = store.priorityBoard(in: groups, now: now)
+        XCTAssertEqual(live.summary, .listed)
+        XCTAssertEqual(live.attention.map(\.id), [other.id])
+        XCTAssertEqual(live.notices.map(\.message), [failure.message])
+        XCTAssertFalse(live.hasCompleteUsage)
+        let shared = store.priorityBoard(in: groups, now: now, hidingEmails: true)
+        let notice = try XCTUnwrap(shared.notices.first)
+        XCTAssertFalse(notice.provider.fullName.contains(email))
+        XCTAssertFalse(notice.message.contains(email))
     }
 }

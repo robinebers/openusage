@@ -37,6 +37,19 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.order(ollama).prefix(3), ["session", "weekly", "monthly"])
     }
 
+    func testDisabledAccountDoesNotMoveItsProviderAheadOfAnEnabledAccountOnUpgrade() throws {
+        let savedOrder = try JSONEncoder().encode(["claude", "codex", "claude@aaaa1111"])
+        let signInOrders: [[ProviderKind]] = [[.claude, .codex], [.codex, .claude]]
+        for signInOrder in signInOrders {
+            let defaults = isolatedDefaults()
+            defaults.set(savedOrder, forKey: "openusage.layout.v1.providerOrder")
+            defaults.set(["codex", "claude@aaaa1111"], forKey: "openusage.enabledProviders.v1")
+            let app = MigrationApp(defaults: defaults)
+            for kind in signInOrder { app.add(kind) }
+            XCTAssertEqual(app.families, ["codex", "claude"])
+        }
+    }
+
     func testProvidersTakeZeroSevensOrderAndTheUsersLaterOrderWins() throws {
         let app = try MigrationApp(defaults: zeroSevenDefaults())
 

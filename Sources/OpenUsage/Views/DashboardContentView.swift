@@ -9,8 +9,6 @@ struct DashboardContentView: View {
     @Binding var scrollPosition: ScrollPosition
 
     @Environment(UpdaterController.self) private var updater
-    @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
-    @State private var accountToOpen: String?
 
     /// Half the space on each side of the content: it and the bar beside it each hold this much.
     static let barGap: CGFloat = 7
@@ -33,15 +31,7 @@ struct DashboardContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)
-        .onChange(of: tab) { _, _ in
-            guard let accountToOpen else {
-                scrollPosition.scrollTo(edge: .top)
-                return
-            }
-            self.accountToOpen = nil
-            // All Metrics mounts with this change, so its accounts only exist to scroll to on the next turn.
-            Task { @MainActor in scrollPosition.scrollTo(id: accountToOpen, anchor: .top) }
-        }
+        .onChange(of: popover.dashboardTab) { scrollPosition.scrollTo(edge: .top) }
     }
 
     @ViewBuilder
@@ -49,13 +39,10 @@ struct DashboardContentView: View {
         if layout.registry.providers.isEmpty {
             EmptyDashboardView { popover.isAddingAccount = true }
         } else {
-            switch tab {
+            switch popover.dashboardTab {
             case .priority:
-                PriorityDashboardView { accountID in
-                    accountToOpen = accountID
-                    tab = .allMetrics
-                }
-            case .allMetrics:
+                PriorityDashboardView()
+            case .allUsage:
                 WidgetGroupedListView(
                     reorderSpaceName: reorderSpaceName,
                     reorderLift: $reorderLift

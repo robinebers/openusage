@@ -5,7 +5,6 @@ import XCTest
 final class MenuBarContentTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let personal = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
-    private let work = Provider(id: "claude@2", kind: .claude, accountLabel: "Attention Machine 1")
     private let chatGPT = Provider(id: "codex@1", kind: .codex, accountLabel: "ChatGPT")
 
     private func limit(_ title: String, used: Double, kind: MetricKind = .percent) -> WidgetData {
@@ -35,6 +34,7 @@ final class MenuBarContentTests: XCTestCase {
             (.upToOne, ["A"], 6),
             (.upToTwo, ["A", "B"], 5),
             (.upToThree, ["A", "B", "C"], 4),
+            (.upToFour, ["A", "B", "C", "D"], 3),
             (.upToFive, ["A", "B", "C", "D", "E"], 2),
         ]
         for (setting, labels, overflow) in cases {
@@ -44,10 +44,20 @@ final class MenuBarContentTests: XCTestCase {
         }
     }
 
-    func testFewerLimitsThanTheSettingLeaveNoOverflow() {
-        let strip = content(.upToFive, account(personal, limit("A", used: 99), limit("B", used: 98)))
-        XCTAssertEqual(strip.items.count, 2)
-        XCTAssertEqual(strip.overflow, 0)
+    func testTheStripReranksAtResetEvenWithoutANewReading() {
+        var session = limit("Session", used: 60)
+        session.resetsAt = now.addingTimeInterval(20)
+        session.periodDurationMs = 5 * 60 * 60 * 1_000
+        let accounts = [account(personal, session, limit("Budget", used: 95))]
+        let before = PriorityBoard.make(accounts: accounts, now: now)
+        let after = PriorityBoard.make(accounts: accounts, now: now.addingTimeInterval(30))
+
+        XCTAssertTrue(before.requiresRankingClock(at: now))
+        XCTAssertEqual(MenuBarContentBuilder.build(board: before, limit: .upToOne).items.first?.label, "Session")
+        XCTAssertFalse(after.requiresRankingClock(at: now.addingTimeInterval(30)))
+        XCTAssertEqual(MenuBarContentBuilder.build(board: after, limit: .upToOne).items.first?.label, "Budget")
+        let single = PriorityBoard.make(accounts: [account(personal, session)], now: now)
+        XCTAssertFalse(single.requiresRankingClock(at: now))
     }
 
     func testIconOnlyShowsNoLimitsAndNoOverflow() {
@@ -60,7 +70,6 @@ final class MenuBarContentTests: XCTestCase {
     func testNothingNeedingAttentionShowsTheAppIcon() {
         let strip = content(.upToThree, account(personal, limit("Quiet", used: 10)))
         XCTAssertEqual(strip, MenuBarContent(items: []))
-        XCTAssertNil(MenuBarStripRenderer.image(for: strip))
     }
 
     func testUsedUpLimitsNeverShowAndNeverCountTowardTheOverflow() {
@@ -68,8 +77,6 @@ final class MenuBarContentTests: XCTestCase {
                                               limit("Low", used: 95), limit("Lower", used: 90)))
         XCTAssertEqual(strip.items.map(\.shortLabel), ["Low"])
         XCTAssertEqual(strip.overflow, 1, "only Lower waits; Spent and Spent Too aren't running out")
-
-        XCTAssertTrue(content(.upToThree, account(personal, limit("Spent", used: 100))).isEmpty)
     }
 
     func testEveryItemNamesItsLimitAndCarriesItsValue() {
@@ -81,14 +88,7 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(strip.items.map(\.shortLabel), ["Session", "Extra"])
         XCTAssertEqual(strip.items.map(\.label), ["Session", "Extra Usage"])
         XCTAssertEqual(strip.items.map(\.value), ["96%", "$5"])
-    }
-
-    func testAnAccountsLimitsAreSeparateItemsPastAnyPerAccountCap() {
-        let strip = content(.upToThree, account(personal, limit("A", used: 99), limit("B", used: 98), limit("C", used: 97), limit("D", used: 96)))
-
-        XCTAssertEqual(strip.items.map(\.id), ["claude@1.A", "claude@1.B", "claude@1.C"])
-        XCTAssertEqual(Set(strip.items.map(\.id)).count, 3, "items of one account must not collide")
-        XCTAssertEqual(strip.overflow, 1)
+        XCTAssertEqual(strip.overflow, 0)
     }
 
     func testAnAccountsLimitsKeepTheirRankRatherThanGathering() {
@@ -98,26 +98,25 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(strip.items.map(\.shortLabel), ["A", "B", "C"])
     }
 
-    func testOnlySeveralAccountsOfAProviderAmongTheShownItemsAreBadged() {
-        XCTAssertEqual(content(.upToThree, account(personal, limit("A", used: 99), limit("B", used: 98))).items.map(\.badge), [nil, nil],
-                       "two limits of one account are not two accounts")
+    func testThePreviewShowsExactlyTheNumberPicked() {
+        for limit in MenuBarLimit.allCases where limit != .iconOnly {
+            let sample = PriorityIconsPreview.sample(limit: limit)
+            XCTAssertEqual(sample.items.count, limit.count)
+            XCTAssertGreaterThan(sample.overflow, 0, "\(limit) doesn't show the count of what's left out")
+        }
+        XCTAssertTrue(PriorityIconsPreview.sample(limit: .iconOnly).isEmpty)
+    }
 
-        let strip = content(.upToFive,
-                            account(personal, limit("A", used: 99), limit("B", used: 96)),
-                            account(work, limit("C", used: 98)),
-                            account(chatGPT, limit("D", used: 97)))
-        XCTAssertEqual(strip.items.map(\.shortLabel), ["A", "C", "D", "B"])
-        XCTAssertEqual(strip.items.map(\.badge), ["P", "A1", nil, "P"])
-
-        let hidden = content(.upToOne, account(personal, limit("A", used: 99)), account(work, limit("B", used: 98)))
-        XCTAssertEqual(hidden.items.map(\.badge), [nil], "an account in the overflow doesn't count")
+    func testThePreviewShrinksAWideStripToFitAndKeepsItsProportions() {
+        let wide = PriorityIconsPreview.fittedSize(of: NSSize(width: 400, height: 24), in: 268)
+        XCTAssertEqual(wide.width, 268)
+        XCTAssertEqual(wide.height, 16.08, accuracy: 0.01)
     }
 
     func testTheShortLabelDropsATrailingGenericWordWhenAWordRemains() {
         let cases = [
-            "Cursor Models": "Cursor", "Other Models": "Other", "Grok Bot": "Grok", "Total usage": "Total",
-            "Extra USAGE": "Extra", "Session": "Session", "Weekly": "Weekly", "Fable": "Fable", "Usage": "Usage",
-            "Models": "Models", "Usage Limit": "Usage Limit", "Spark Weekly": "Spark Weekly",
+            "Cursor Models": "Cursor", "Grok Bot": "Grok", "Extra USAGE": "Extra",
+            "Usage": "Usage", "Usage Limit": "Usage Limit",
         ]
         for (label, short) in cases {
             XCTAssertEqual(MenuBarContentBuilder.shortLabel(label), short, label)
@@ -136,15 +135,20 @@ final class MenuBarContentTests: XCTestCase {
 
     func testThePersistedSettingDefaultsToUpToThreeAndSurvivesARelaunch() {
         let defaults = isolatedDefaults()
-        let registry = WidgetRegistry(providers: [], descriptors: [])
-        let store = WidgetDataStore.forTesting([], registry: registry, defaults: defaults)
+        let store = WidgetDataStore.forTesting([], defaults: defaults)
         XCTAssertEqual(store.menuBarLimit, .upToThree)
 
         store.menuBarLimit = .iconOnly
-        XCTAssertEqual(WidgetDataStore.forTesting([], registry: registry, defaults: defaults).menuBarLimit, .iconOnly)
+        XCTAssertEqual(WidgetDataStore.forTesting([], defaults: defaults).menuBarLimit, .iconOnly)
     }
 
-    func testTheSettingOffersItsChoicesInOrder() {
-        XCTAssertEqual(MenuBarLimit.allCases.map(\.label), ["Icon Only", "Up to 1", "Up to 2", "Up to 3", "Up to 5"])
+    func testALimitIsNamedAsThePanelNamesIt() {
+        let provider = Provider(id: "cursor", kind: .cursor)
+        let data = WidgetData(title: "Extra Usage", kind: .dollars, used: 300, limit: 500)
+        let descriptor = WidgetDescriptor(provider: provider, key: "onDemand", metricLabel: "On-demand", sample: data)
+        let account = DashboardAccount(provider: provider, lines: [DashboardLine(descriptor: descriptor, data: data)])
+        let board = PriorityBoard.make(accounts: [account], now: Date())
+
+        XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToFive).items.map(\.shortLabel), ["Extra"])
     }
 }

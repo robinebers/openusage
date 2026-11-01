@@ -126,7 +126,7 @@ struct APIKeyLogin: ProviderLogin {
         let account = Account(kind: kind, label: kind.displayName)
         let runtime = await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http)
         do {
-            try await runtime.validate(.apiKey(key))
+            try await runtime.readSnapshot(using: .apiKey(key))
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
         }

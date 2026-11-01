@@ -5,7 +5,7 @@ with the behaviour they describe. If the app and a page here disagree, that is a
 
 ## The app
 
-- [Dashboard](dashboard.md): the Priority and All Metrics tabs, right-click menus, reordering, keyboard shortcuts
+- [Dashboard](dashboard.md): the Priority and All Usage tabs, right-click menus, reordering, keyboard shortcuts
 - [Accounts](accounts.md): adding, renaming, and removing accounts; how sign-in works
 - [Menu bar](menu-bar.md): what the strip shows and how it picks limits
 - [Settings](settings.md): every option and what it changes, and what carries over from 0.7.x

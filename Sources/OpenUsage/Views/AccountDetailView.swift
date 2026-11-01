@@ -4,6 +4,7 @@ struct AccountDetailView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
+    @Environment(WidgetDataStore.self) private var dataStore
     let providerID: String
 
     @State private var isConfirmingRemoval = false
@@ -15,6 +16,22 @@ struct AccountDetailView: View {
                 if let host = provider.hubHost {
                     managedRow(host)
                 } else {
+                    if let problem = dataStore.notice(for: providerID) ?? dataStore.stalenessHint(for: providerID) {
+                        Label {
+                            Text(problem)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Theme.notice)
+                        }
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .cardSurface()
+                    }
+                    if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
+                        signInAgainRow
+                    }
                     if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
                         ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
                     }
@@ -50,6 +67,22 @@ struct AccountDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, PanelMetrics.controlRowPadding)
+        .cardSurface()
+    }
+
+    private var signInAgainRow: some View {
+        Button {
+            popover.signingInAgainProviderID = providerID
+            popover.isAddingAccount = true
+        } label: {
+            Text("Sign In Again…")
+                .foregroundStyle(.tint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, PanelMetrics.controlRowPadding)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .cardSurface()
     }
 

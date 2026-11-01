@@ -82,6 +82,7 @@ extension OAuthTokenResponse {
     init(renewal response: HTTPResponse, kind: ProviderKind) throws {
         if [400, 401, 403].contains(response.statusCode), let code = Self.errorCode(response.body),
            ["invalid_grant", "refresh_token_expired", "refresh_token_reused", "refresh_token_invalidated"].contains(code) {
+            AppLog.warn(.auth, "\(kind.rawValue) sign-in renewal refused: \(code)")
             throw ProviderError.signInExpired(kind)
         }
         guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }

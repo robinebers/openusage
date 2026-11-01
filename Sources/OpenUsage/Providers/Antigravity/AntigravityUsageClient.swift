@@ -82,9 +82,22 @@ struct AntigravityUsageClient: Sendable {
         let bodies = responses.filter { (200..<300).contains($0.statusCode) }.map(\.body)
         if !bodies.isEmpty { return bodies }
         if responses.contains(where: { $0.statusCode == 401 }) { throw TokenRefused() }
+        if responses.contains(where: Self.requiresSubscription) {
+            let message = project == nil
+                ? "Antigravity couldn't find a project with quota access for this account. Try again shortly."
+                : "Google reports no Antigravity quota subscription for this project."
+            throw ProviderError.unavailable(message)
+        }
         if responses.contains(where: ProviderError.isAuthFailure) { throw ProviderError.signInExpired(.antigravity) }
         if let limited = responses.first(where: { $0.statusCode == 429 }) { throw ProviderError.failed(limited) }
         throw ProviderError.unavailable(Self.unavailableMessage)
+    }
+
+    private static func requiresSubscription(_ response: HTTPResponse) -> Bool {
+        guard response.statusCode == 403,
+              let error = ProviderParse.jsonObject(response.body)?["error"] as? [String: Any],
+              let details = error["details"] as? [[String: Any]] else { return false }
+        return details.contains { $0["reason"] as? String == "SUBSCRIPTION_REQUIRED" }
     }
 
     private static func cloudCodeRequest(url: URL, token: String, payload: Data) -> HTTPRequest {

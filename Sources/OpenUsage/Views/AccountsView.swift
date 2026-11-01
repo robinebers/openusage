@@ -10,7 +10,9 @@ struct AccountsView: View {
     var body: some View {
         PopoverScrollView {
             content
-                .padding(PanelMetrics.margin)
+                .padding(.horizontal, PanelMetrics.margin)
+                .padding(.top, DashboardContentView.barGap)
+                .padding(.bottom, popover.customizeProviderID == nil ? 0 : PanelMetrics.margin)
                 .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }

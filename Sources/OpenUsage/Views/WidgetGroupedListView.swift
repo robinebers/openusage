@@ -60,14 +60,16 @@ struct WidgetGroupedListView: View {
     }
 
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
+        let accountStatus = status(for: account.id)
+        return VStack(alignment: .leading, spacing: 0) {
+            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id),
+                                    status: accountStatus, hasSiblingAccounts: family.accounts.count > 1)
                 .highPriorityGesture(accountDragGesture(for: account, in: family))
-            rows(of: account)
+            rows(of: account, status: accountStatus)
         }
         .contextMenu {
             DashboardMenu(
-                sections: DashboardMenus.account(account, status: statusReason(for: account.id)),
+                sections: DashboardMenus.account(account, status: accountStatus.notice ?? accountStatus.staleness),
                 perform: perform
             )
         }
@@ -76,12 +78,14 @@ struct WidgetGroupedListView: View {
         .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
 
-    private func rows(of account: DashboardAccount) -> some View {
+    private func rows(of account: DashboardAccount, status: AccountStatus) -> some View {
         DashboardLineStack(lines: account.lines) { line in
             DashboardLiveRow(
                 line: line,
                 resetClaim: container.resetClaim(for: account.id),
-                breakdown: container.usageBreakdown(for: line.descriptor),
+                breakdown: dataStore.usageBreakdown(for: line.descriptor),
+                accountStatus: status,
+                snapshotDate: dataStore.snapshots[account.id]?.refreshedAt,
                 onToggleMeterStyle: { dataStore.meterStyle.toggle() },
                 onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
             )
@@ -89,10 +93,6 @@ struct WidgetGroupedListView: View {
             .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
             .reorderFrame(id: line.id, in: .named(reorderSpaceName))
         }
-    }
-
-    private func statusReason(for accountID: String) -> String? {
-        dataStore.notice(for: accountID) ?? dataStore.stalenessHint(for: accountID)
     }
 
     private func perform(_ command: DashboardCommand) {
@@ -154,7 +154,8 @@ struct WidgetGroupedListView: View {
             active: $activeAccountID,
             lift: $reorderLift,
             makeLift: { value in
-                let preview = DashboardAccountRows(account: account, plan: dataStore.plan(for: account.id))
+                let preview = DashboardAccountRows(account: account, plan: dataStore.plan(for: account.id),
+                                                   hasSiblingAccounts: family.accounts.count > 1)
                     .padding(DashboardGrid.cardPadding)
                     .liftedRowSurface()
                 return ReorderLift.make(id: account.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
@@ -175,7 +176,7 @@ struct WidgetGroupedListView: View {
             makeLift: { value in
                 let plans = plans(for: family)
                 let preview = DashboardProviderSection(family: family) { account in
-                    DashboardAccountRows(account: account, plan: plans[account.id])
+                    DashboardAccountRows(account: account, plan: plans[account.id], hasSiblingAccounts: family.accounts.count > 1)
                 }
                 return ReorderLift.make(id: frameID, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },

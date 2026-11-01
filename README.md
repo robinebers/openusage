@@ -32,10 +32,11 @@ Either way, the app updates itself in place through signed, notarized
 
 ## Accounts
 
-Open **Accounts** from the panel's **⋯** menu (or press Return), click **+**, and click a
+Open **Accounts** from the panel's **⋯** menu (or press Return), click **Add New Account**, and click a
 provider to start its sign-in. Browser sign-in opens your browser; **Open Browser** opens it again and
 **Copy Link** lets you pick another browser. Device-code sign-in shows the code to enter. API-key
-sign-in links to the page where you create the key. You can add several accounts for the same provider. See
+sign-in links to the page where you create the key. You can add several accounts for the same provider.
+OpenUsage checks for duplicate sign-ins before saving an account or a replacement key. See
 [Accounts](docs/accounts.md) for renaming and removing accounts.
 
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
@@ -54,34 +55,33 @@ Claude, ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Devi
 Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, OpenRouter, and Z.ai use
 API keys. OpenRouter's balance, account-wide spend, and activity need a Management key. Cursor accounts also show
 what Cursor charged for on-demand usage and the tokens it reported today, yesterday, and in the last
-30 days, with what each range reported on hover. Ollama accounts show the same ranges on UTC days, with
-the usage value, tokens, and requests Ollama reports. ChatGPT accounts show what was charged and the
-tokens by UTC day, and a workspace's credit limit.
+30 days, with a breakdown for each range. Ollama accounts show the same ranges on UTC days, with
+the usage value, tokens, and requests Ollama reports. ChatGPT accounts show the tokens by UTC day,
+and a workspace's credit limit.
 [Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features
 
 - **Menu bar.** The limits closest to running out show on their own, each named, up to the number you
-  set, with any others as a count like `+7`. When more than one account of a provider shows, each mark
+  set, with any others as a count like `+7`. When a provider has more than one account, its mark
   carries the account name's initials.
-- **Priority.** What's running out, most urgent first, and what's used up. Click a row to jump to its
-  account.
-- **All Metrics.** A header and a card per provider. One account shares the header with the provider
-  and its plan; several get a caption with their name and plan inside the card. A limit is its label,
-  amount, and reset over a bar. With a reset window the bar's colour is where your pace lands at the
-  reset: blue on course, orange inside the last 10%, red when you would run out first; without one,
-  blue, orange once 75% is used, red once 90% is. Click a value to flip
+- **Priority.** See which limits are running low or used up and which accounts need a refresh or a new
+  sign-in. Click an amount or a reset time to switch how it reads.
+- **All Usage.** A header per provider above a card, with each account's name and plan inside the
+  card. A limit is one line: its label, a level bar, its amount, and its reset. The bar is blue, orange
+  at 50% left, and red at 10% left. Click a value to flip
   every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.
+  Hover over a usage range's total to see its breakdown, including after reopening the app.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
 - **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
-  resets. Rest the pointer on the count to see when each expires, and spend one from there.
+  resets. Click the count or focus it and press Space to see when each expires and spend one.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or
   right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with
   every account, to the clipboard; from an account's right-click, that account alone. The picture uses
   the account's name when you have set one and leaves an email out.
-- **Notifications.** Optional alerts when a limit falls under 10% or your pace changes.
+- **Notifications.** Optional alerts when a limit falls under 50% or 10%, or may run out before its reset.
 - **Global shortcut.** Toggle the panel from anywhere.
 - **[Command line](docs/cli.md).** Install the `openusage` command from Settings; it prints the usage
   the app last fetched as JSON, for scripts and agents.

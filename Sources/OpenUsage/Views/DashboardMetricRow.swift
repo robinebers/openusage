@@ -9,23 +9,25 @@ struct DashboardMetricRow: View {
     var resetTooltip: String?
     var figure: (AnyView) -> AnyView = { $0 }
 
-    static let font: Font = .system(size: 13)
-    static let resetFont: Font = .system(size: 12)
+    static let font: Font = .system(size: 12)
+    static let resetFont: Font = .system(size: 11)
 
     var body: some View {
         Group {
             switch model.mark {
             case .bar(let fill, let severity, let value, let reset, let isUsedUp):
-                VStack(alignment: .leading, spacing: DashboardGrid.barGap) {
-                    HStack(alignment: .firstTextBaseline, spacing: DashboardGrid.amountGap) {
-                        label
-                        valueText(value, severity: severity)
-                        Spacer(minLength: DashboardGrid.columnGap)
-                        resetText(reset, isUsedUp: isUsedUp)
-                    }
-                    UsageMeterBar(fill: fill, severity: severity, tintsTrack: isUsedUp)
+                HStack(spacing: DashboardGrid.columnGap) {
+                    label
+                        .frame(width: DashboardGrid.labelWidth, alignment: .leading)
+                    LevelIndicator(fill: fill, severity: severity)
+                        .frame(height: DashboardGrid.levelHeight)
                         .hoverTooltip(paceTooltip)
+                    valueText(value, severity: severity)
+                        .frame(width: DashboardGrid.valueWidth, alignment: .trailing)
+                    resetText(reset, isUsedUp: isUsedUp)
+                        .frame(width: model.showsClockTimes ? DashboardGrid.clockResetWidth : DashboardGrid.resetWidth, alignment: .trailing)
                 }
+                .opacity(model.isFaded ? 0.5 : 1)
             case .value(let text, let detail, let severity):
                 HStack(alignment: .firstTextBaseline, spacing: DashboardGrid.columnGap) {
                     label
@@ -49,7 +51,7 @@ struct DashboardMetricRow: View {
             }
         }
         .font(Self.font)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: DashboardGrid.rowHeight, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
@@ -92,22 +94,21 @@ struct DashboardMetricRow: View {
         }
     }
 
+    /// Blank when there's no reset, so the row's bar keeps the same length as its neighbours.
     @ViewBuilder
     private func resetText(_ reset: String?, isUsedUp: Bool) -> some View {
-        if let reset {
-            let text = Text(reset)
-                .font(Self.resetFont)
-                .foregroundStyle(Self.amountStyle(isUsedUp ? .critical : .normal))
-                .monospacedDigit()
-                .lineLimit(1)
-                .fixedSize()
-            if let onToggleResetDisplay {
-                Button(action: onToggleResetDisplay) { text }
-                    .buttonStyle(.plain)
-                    .hoverTooltip(resetTooltip)
-            } else {
-                text
-            }
+        let text = Text(reset ?? "")
+            .font(Self.resetFont)
+            .foregroundStyle(Self.amountStyle(isUsedUp ? .critical : .normal))
+            .monospacedDigit()
+            .lineLimit(1)
+            .fixedSize()
+        if reset != nil, let onToggleResetDisplay {
+            Button(action: onToggleResetDisplay) { text }
+                .buttonStyle(.plain)
+                .hoverTooltip(resetTooltip)
+        } else {
+            text
         }
     }
 }

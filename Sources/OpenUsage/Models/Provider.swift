@@ -7,6 +7,8 @@ struct Provider: Identifiable, Hashable {
     var organization: String? = nil
     /// The host of the CLIProxyAPI hub an account is mirrored from.
     var hubHost: String? = nil
+    /// The account's initials on its menu bar mark. `WidgetRegistry` sets it for every account of a kind with several.
+    var badge: String? = nil
 
     var displayName: String { kind.displayName }
     var icon: String { kind.rawValue }

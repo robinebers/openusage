@@ -219,10 +219,9 @@ struct HostedPopover {
     let defaults: UserDefaults
 
     @MainActor
-    func open() async throws {
-        popover.popoverShown = true
+    func open() {
+        popover.show(dashboardTab: .preferred(in: defaults))
         host.layoutSubtreeIfNeeded()
-        try await Task.sleep(for: .seconds(1))
     }
 }
 
@@ -246,7 +245,7 @@ extension QuietWindowTestCase {
                 }
             )
         }
-        defaults.set(DashboardTab.allMetrics.rawValue, forKey: DashboardTab.key)
+        defaults.set(DashboardTab.allUsage.rawValue, forKey: DashboardTab.defaultKey)
         let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
                 .defaultAppStorage(defaults)

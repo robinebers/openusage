@@ -33,7 +33,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in response(401, openCodeUsage) }
             let expected = if case .oauth = credential {
-                "\(kind.displayName) sign-in expired. Remove the account and add it again."
+                "\(kind.displayName) sign-in expired. Sign in again to keep reading usage."
             } else {
                 "\(kind.displayName) rejected the API key. Replace it on the account's page."
             }
@@ -43,7 +43,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
 
     func testAMissingKeychainItemSaysHowToFixThatAccount() async {
         let accounts = [
-            (Account(kind: .claude, label: "Work"), "Claude sign-in expired. Remove the account and add it again."),
+            (Account(kind: .claude, label: "Work"), "Claude sign-in expired. Sign in again to keep reading usage."),
             (Account(kind: .openrouter, label: "Work"), "OpenRouter rejected the API key. Replace it on the account's page."),
             (Account(kind: .copilot, label: "acme", organization: "acme"), "GitHub rejected the token. Replace it on the account's page.")
         ]

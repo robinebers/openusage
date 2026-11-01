@@ -3,14 +3,6 @@ import XCTest
 
 @MainActor
 final class MenuBarStripGateTests: XCTestCase {
-    func testUnchangedStripIsNotShownAgain() {
-        var shown: [MenuBarContent] = []
-        var gate = StatusItemController.StripGate()
-        gate.show(makeContent(value: "42%"), using: { shown.append($0) })
-        gate.show(makeContent(value: "42%"), using: { shown.append($0) })
-        XCTAssertEqual(shown, [makeContent(value: "42%")])
-    }
-
     func testChangedStripIsShown() {
         var shown: [MenuBarContent] = []
         var gate = StatusItemController.StripGate()

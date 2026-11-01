@@ -163,9 +163,7 @@ final class WidgetDataStore {
         case .failure(let failure): return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
         case .success(let refreshed): snapshot = refreshed
         }
-        if backoffs[providerID] != nil { backoffs[providerID] = nil }
-        snapshots[providerID] = snapshot
-        cache.save(snapshots)
+        store(snapshot, for: providerID)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
         onRefreshOutcome?(provider.provider.kind, .refreshed, force)
         return .refreshed
@@ -202,8 +200,20 @@ final class WidgetDataStore {
         max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
     }
 
-    func forgetBackoff(for providerID: String) {
+    /// Installs a validated key's runtime and snapshot together. Reads started by the previous
+    /// runtime can finish later, but the runtime identity check discards their results.
+    func replaceProvider(_ provider: ProviderRuntime, snapshot: ProviderSnapshot) {
+        let id = provider.provider.id
+        inFlight.removeValue(forKey: id)?.cancel()
+        providersByID[id] = provider
+        store(snapshot, for: id)
+        onRefreshOutcome?(provider.provider.kind, .refreshed, true)
+    }
+
+    private func store(_ snapshot: ProviderSnapshot, for providerID: String) {
         backoffs[providerID] = nil
+        snapshots[providerID] = snapshot
+        cache.save(snapshots)
     }
 
     func errorMessage(for providerID: String) -> String? {
@@ -212,6 +222,10 @@ final class WidgetDataStore {
 
     func notice(for providerID: String) -> String? {
         backoffs[providerID] == nil ? snapshots[providerID]?.notice : errorMessage(for: providerID)
+    }
+
+    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
+        snapshots[descriptor.providerID]?.usageBreakdowns?[descriptor.key]
     }
 
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
@@ -244,17 +258,17 @@ final class WidgetDataStore {
     }
 
     func stalenessHint(for providerID: String) -> String? {
-        if let backoff = backoffs[providerID], backoff.providerAsked, now() < backoff.retryAt {
-            let name = providersByID[providerID]?.provider.displayName ?? "The provider"
-            return "\(name) asked OpenUsage to wait. Retrying at \(Formatters.compactClock(backoff.retryAt, now: now()))."
-        }
-        guard let snapshot = snapshots[providerID] else { return nil }
         let date = now()
-        guard snapshot.isStale(at: date),
-              let duration = Formatters.compactDuration(date.timeIntervalSince(snapshot.refreshedAt)) else {
-            return nil
+        let backoff = backoffs[providerID]
+        if let backoff, backoff.providerAsked, date < backoff.retryAt {
+            let name = providersByID[providerID]?.provider.displayName ?? "The provider"
+            return "\(name) asked OpenUsage to wait. Retrying at \(Formatters.compactClock(backoff.retryAt, now: date))."
         }
-        return "Last updated \(duration) ago"
+        if let snapshot = snapshots[providerID], snapshot.isStale(at: date),
+           let duration = Formatters.compactDuration(date.timeIntervalSince(snapshot.refreshedAt)) {
+            return "Last updated \(duration) ago"
+        }
+        return backoff?.providerAsked == true ? "Waiting to retry after a rate limit." : nil
     }
 
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {

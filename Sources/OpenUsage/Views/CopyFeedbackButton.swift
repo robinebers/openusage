@@ -23,7 +23,7 @@ struct CopyFeedbackButton: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copied ? Color.green : Color.secondary)
+                .foregroundStyle(copied ? Theme.positive : AnyShapeStyle(.secondary))
                 .symbolEffect(.bounce, value: reduceAnimations ? false : copied)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())

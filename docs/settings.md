@@ -1,13 +1,15 @@
 # Settings
 
-Open Settings from the panel's **⋯** menu or press **⌘,**. Every setting applies at once and
-survives relaunch.
+Open Settings from the panel's **⋯** menu or press **⌘,**. General, Display, Alerts, and Advanced sit
+under the title, and the chevron at the top left goes back. Every setting applies at once and survives
+relaunch.
 
 ## General
 
 | Setting | Control | What it changes |
 |---|---|---|
 | Launch at Login | switch | Registers OpenUsage as a login item, so it starts when you sign in to your Mac. |
+| Default Tab | Priority, All Usage | The tab the panel opens to, whichever one it was closed on. |
 | Global Shortcut | recorder | A keyboard shortcut that opens and closes the panel from any app. Click the field and press the keys. |
 
 ## Appearance
@@ -24,11 +26,12 @@ survives relaunch.
 | Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
 | Reset Times | Countdown, Exact time | Whether resets read `Resets 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
 
-## Menu Bar
+## Priority Icons
 
 | Setting | Control | What it changes |
 |---|---|---|
-| Show in Menu Bar | Icon Only, Up to 1, Up to 2, Up to 3, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
+| Preview | | Shows sample icons at the number you pick, smaller so any number fits. |
+| Show In Menu Bar | App Icon Only, Up to 1, Up to 2, Up to 3, Up to 4, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
 
 ## Notifications
 
@@ -38,11 +41,12 @@ links to System Settings.
 
 | Setting | What it sends |
 |---|---|
-| Almost Out | The first time a metric with a limit drops under 10% left in its period. |
-| Cutting It Close | When a metric's pace worsens from on course to close to the limit. |
-| Will Run Out | When a metric's pace worsens from close to the limit to running out. |
+| A limit drops under 10% | When a limit turns red, at 10% left or less. |
+| A limit drops under 50% | When a limit turns orange, at 50% left or less. |
+| A limit may run out before its reset | When a limit's pace says it will run out before it resets. |
 
-Each notification names the trigger, the provider, and the metric, and fires once per metric per reset window.
+Each notification names the trigger, the provider, and the metric, and fires once per metric per reset
+window. Click it to open All Usage. The next time you open the panel yourself it uses your Default Tab.
 
 ## Privacy
 
@@ -82,7 +86,7 @@ doesn't save the key, it tries again on the next launch.
 When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x order:
 
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
-- **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
+- **Provider order.** Each provider takes the place of its first enabled account in the saved 0.7.x order.
 
 When 0.7.x had several accounts of a provider on, the one it showed first gives the order. Stars and
 hidden metrics don't carry over: the menu bar picks its own limits and every metric with data shows.

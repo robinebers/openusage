@@ -25,6 +25,20 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         XCTAssertEqual(reloaded["alpha"]?.refreshedAt, now)
     }
 
+    func testAnOlderLineOnlyHistorySnapshotStillLoads() throws {
+        let defaults = isolatedDefaults()
+        // Wire format before history details were saved alongside their displayed lines.
+        let saved = #"""
+        {"snapshots":{"codex@abc":{"providerID":"codex@abc","displayName":"ChatGPT","refreshedAt":"2026-10-31T08:00:00Z",
+        "lines":[{"values":{"label":"Yesterday","values":[{"number":4200,"kind":"count","label":"tokens"}],"expiriesAt":[]}}]}}}
+        """#
+        defaults.set(Data(saved.utf8), forKey: "k")
+
+        let snapshot = try XCTUnwrap(ProviderSnapshotCache(userDefaults: defaults, storageKey: "k").load()["codex@abc"])
+        XCTAssertEqual(snapshot.line(label: "Yesterday"), .values(label: "Yesterday", values: [MetricValue(number: 4200, kind: .count, label: "tokens")]))
+        XCTAssertNil(snapshot.usageBreakdowns)
+    }
+
     func testBlobSavedWithAnAppVersionStillLoads() throws {
         struct VersionedPayload: Encodable {
             var snapshots: [String: ProviderSnapshot]

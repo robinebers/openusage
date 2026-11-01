@@ -11,7 +11,8 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
                 ForEach(family.accounts) { account($0) }
             }
-            .padding([.horizontal, .top], DashboardGrid.cardPadding)
+            .padding(.horizontal, DashboardGrid.cardPadding)
+            .padding(.top, DashboardGrid.cardTopPadding)
             .padding(.bottom, DashboardGrid.cardBottomPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface()
@@ -46,7 +47,6 @@ struct DashboardProviderHeader: View {
         .frame(height: DashboardGrid.headerHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
     }
 
     private var logoOrCopy: some View {
@@ -63,6 +63,8 @@ struct DashboardProviderHeader: View {
                 )
             }
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
         .animation(.easeOut(duration: 0.12), value: isHovered || copied)
     }
 }
@@ -71,12 +73,13 @@ struct DashboardAccountCaption: View {
     let account: DashboardAccount
     var plan: String?
     var status = AccountStatus()
+    var hasSiblingAccounts = false
 
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
 
-    /// An account with no name of its own would only repeat the provider's name right above it.
+    /// A sole default-named account sits under its provider's name. Siblings need separate drag handles.
     private var showsName: Bool {
-        account.provider.labelBesideName != nil || renaming?.edit?.providerID == account.id
+        hasSiblingAccounts || account.provider.labelBesideName != nil || renaming?.edit?.providerID == account.id
     }
 
     @ViewBuilder
@@ -95,16 +98,27 @@ struct DashboardAccountCaption: View {
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
             if let plan {
-                Text(plan)
-                    .font(DashboardGrid.planFont)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
+                PlanBadge(plan: plan)
             }
         }
         .frame(height: DashboardGrid.captionHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+    }
+}
+
+private struct PlanBadge: View {
+    let plan: String
+
+    var body: some View {
+        Text(plan)
+            .font(DashboardGrid.planFont)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, DashboardGrid.planPadding)
+            .frame(height: DashboardGrid.captionHeight)
+            .background(Theme.controlFill, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
 
@@ -177,10 +191,11 @@ struct AccountStatus {
 struct DashboardAccountRows: View {
     let account: DashboardAccount
     var plan: String?
+    var hasSiblingAccounts = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DashboardAccountCaption(account: account, plan: plan)
+            DashboardAccountCaption(account: account, plan: plan, hasSiblingAccounts: hasSiblingAccounts)
             DashboardLineStack(lines: account.lines) { line in
                 DashboardMetricRow(model: line.data.dashboardRow())
             }

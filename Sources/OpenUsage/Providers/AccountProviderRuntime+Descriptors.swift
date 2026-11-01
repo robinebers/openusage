@@ -37,9 +37,9 @@ extension AccountProviderRuntime {
                     .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits")),
                 .boundedCount(key: "creditLimit", provider: provider, title: "Credit Limit", limit: 0),
                 rateLimitResets(key: "rateLimitResets", provider: provider),
-                .history(key: "today", provider: provider, .window(.today, .credits, then: .tokens)),
-                .history(key: "yesterday", provider: provider, .window(.yesterday, .credits, then: .tokens)),
-                .history(key: "last30", provider: provider, .window(.lastDays(30), .credits, then: .tokens))
+                .history(key: "today", provider: provider, .window(.today, .tokens)),
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .tokens)),
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .tokens))
             ]
         case .cursor:
             [
@@ -166,7 +166,7 @@ extension AccountProviderRuntime {
 
     private static func rateLimitResets(key: String, provider: Provider) -> WidgetDescriptor {
         .values(key: key, provider: provider, title: "Limit Resets", metricLabel: "Rate Limit Resets",
-                traySuffix: "resets", showsResetExpiries: true)
+                showsResetExpiries: true)
             .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available"))
     }
 }

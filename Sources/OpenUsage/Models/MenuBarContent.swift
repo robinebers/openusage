@@ -7,7 +7,6 @@ struct MenuBarContent: Equatable {
         let label: String
         let shortLabel: String
         let value: String
-        var badge: String? = nil
     }
 
     let items: [Item]
@@ -29,7 +28,7 @@ enum MenuBarContentBuilder {
     static func build(board: PriorityBoard, limit: MenuBarLimit) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
         let shown = board.attention.prefix(limit.count).map { item in
-            let label = item.line.descriptor.metricLabel
+            let label = item.data.title
             return MenuBarContent.Item(
                 id: item.id,
                 provider: item.provider,
@@ -38,7 +37,7 @@ enum MenuBarContentBuilder {
                 value: item.data.menuBarValue
             )
         }
-        return MenuBarContent(items: badged(shown), overflow: board.attention.count - shown.count)
+        return MenuBarContent(items: shown, overflow: board.attention.count - shown.count)
     }
 
     static func shortLabel(_ label: String) -> String {
@@ -46,16 +45,5 @@ enum MenuBarContentBuilder {
         guard words.count > 1, let last = words.last, genericWords.contains(last.lowercased()) else { return label }
         words.removeLast()
         return words.joined(separator: " ")
-    }
-
-    private static func badged(_ items: [MenuBarContent.Item]) -> [MenuBarContent.Item] {
-        let accounts = Dictionary(grouping: items, by: \.provider.kind).mapValues { Set($0.map(\.provider.id)).count }
-        return items.map { item in
-            var item = item
-            if accounts[item.provider.kind, default: 0] > 1 {
-                item.badge = AccountInitials.tag(for: item.provider.accountName)
-            }
-            return item
-        }
     }
 }

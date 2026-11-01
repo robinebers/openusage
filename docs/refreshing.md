@@ -30,16 +30,16 @@ day until one read of it succeeds (see [Cursor](providers.md#cursor)). Ollama's 
 history is read once an hour, at the start of a UTC day, and on ⌘R (see [Ollama](providers.md#ollama)
 and [ChatGPT](providers.md#chatgpt)).
 
-The last snapshot of every account is saved on disk and shown at launch, so you see your last-known
-values before the first fetch finishes. A value counts as fresh for one interval (5 minutes) after it
+The last snapshot of every account is saved on disk and shown at launch, including the totals and
+model breakdowns shown for each usage range. A value counts as fresh for one interval (5 minutes) after it
 was fetched, across a relaunch too: relaunching within 5 minutes of a refresh asks no provider until
 the next pass.
 
 ## When a fetch fails
 
-A failed refresh never wipes your data. The last good values stay on screen and a warning icon appears
-next to the account's name; the account's right-click menu starts with the reason. The
-error clears on the next successful refresh.
+A failed refresh keeps the last good values. Priority shows the affected account in a **Needs Attention**
+row, and its **Fix** button opens the account's page with the reason. In All Usage, the warning next to the account's name and its right-click menu give
+the same reason. The error clears on the next successful refresh.
 
 An account that failed waits before it is tried again: 5 minutes after the first failure, then twice
 as long after each further failure in a row, up to an hour. An account whose key or sign-in keeps
@@ -75,7 +75,7 @@ reported or one the provider cut short), the sign-in is renewed once and the rea
 
 The warning says the sign-in expired when the usage read still refuses the token, or when the provider
 refuses the renewal itself: an `invalid_grant` answer, one of ChatGPT's own refresh-token errors, or
-Cursor asking OpenUsage to sign out. Remove the account and add it again to sign in afresh.
+Cursor asking OpenUsage to sign out. Use **Sign In Again** on the account's page to sign in afresh.
 
 A renewal that fails for any other reason, such as an outage (HTTP 5xx), a rate limit (HTTP 429), or no
 connection, does not mean the sign-in expired. While the current token still works, the account keeps

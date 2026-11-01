@@ -62,10 +62,8 @@ extension LayoutV1Keys {
 
     /// After the last provider 0.7.x ordered before `kind`, or first when none was.
     private func providerIndex(of kind: ProviderKind, among kinds: [ProviderKind]) -> Int? {
-        var order: [ProviderKind] = []
-        for kind in (providerOrder ?? []).compactMap(Self.kind(of:)) where !order.contains(kind) {
-            order.append(kind)
-        }
+        let enabled = Set(enabledProviders ?? [])
+        let order = (providerOrder ?? []).filter(enabled.contains).compactMap(Self.kind(of:))
         guard let rank = order.firstIndex(of: kind) else { return nil }
         let before = kinds.lastIndex { other in order.firstIndex(of: other).map { $0 < rank } ?? false }
         return before.map { $0 + 1 } ?? 0

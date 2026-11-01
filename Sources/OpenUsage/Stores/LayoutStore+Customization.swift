@@ -31,7 +31,6 @@ extension LayoutStore {
             let ordered = orderedProviderIDs()
             guard let next = Self.reordered(ordered, dragged: dragged, target: target) else { return false }
             state.providerOrder = next
-            persist()
             return true
         }
     }
@@ -48,7 +47,6 @@ extension LayoutStore {
             }
             guard let next = Self.reordered(families, dragged: dragged, target: target) else { return false }
             state.providerOrder = next.flatMap { members[$0] ?? [] }
-            persist()
             return true
         }
     }
@@ -60,7 +58,6 @@ extension LayoutStore {
                 return false
             }
             state.metricOrderByProvider[providerID] = next
-            persist()
             return true
         }
     }

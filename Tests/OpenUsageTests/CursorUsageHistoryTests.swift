@@ -224,21 +224,22 @@ final class CursorUsageHistoryTests: XCTestCase {
     func testEachWindowRowHasABreakdownOfWhatCursorReported() async throws {
         let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
         let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("today")), "nothing read yet")
+        XCTAssertNil(store.usageBreakdown(for: try descriptor("today")), "nothing read yet")
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
+        let today = try XCTUnwrap(store.usageBreakdown(for: try descriptor("today")))
         XCTAssertEqual(today.window, .today)
         XCTAssertEqual(today.totals.values, [
             .spend: 1.25, .usageEvents: 2, .tokens: 3_303,
             .inputTokens: 3_003, .cacheReadTokens: 0, .cacheWriteTokens: 0, .outputTokens: 300
         ])
-        XCTAssertEqual(today.models.map(\.name), ["composer-2", "claude-4.6-opus"])
-        XCTAssertEqual(today.models.map(\.number), [3_100, 203])
-        XCTAssertEqual(today.modelMeasure, .tokens)
-        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
-        XCTAssertNotNil(runtime.usageBreakdown(for: try descriptor("yesterday")))
+        XCTAssertEqual(today.models.map(\.name), ["claude-4.6-opus", "composer-2"])
+        XCTAssertEqual(today.models.map(\.dollars), [1.25, 0])
+        XCTAssertEqual(today.models.map(\.tokens), [203, 3_100])
+        XCTAssertEqual(today.modelFigures, [.cost, .tokens])
+        XCTAssertEqual(store.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
+        XCTAssertNotNil(store.usageBreakdown(for: try descriptor("yesterday")))
     }
 }
 final class CursorHistorySourceTests: XCTestCase {
@@ -288,9 +289,12 @@ final class CursorHistorySourceTests: XCTestCase {
         XCTAssertEqual(days[span[1]]?.totals[.spend] ?? 0, 2.255, accuracy: 1e-9)
         let history = UsageHistory(calendar: calendar, asOf: now, days: days)
         let cursor = AccountProviderRuntime(account: Account(kind: .cursor, label: "Cursor"), vault: InMemoryCredentialVault())
-        XCTAssertEqual(HistoryRow.lines(for: cursor.widgetDescriptors, in: history).map(\.label), ["Today", "Yesterday"])
+        var snapshot = ProviderSnapshot(provider: cursor.provider, plan: nil, lines: [])
+        HistoryRow.append(to: &snapshot, for: cursor.widgetDescriptors, in: history)
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Today", "Yesterday"])
     }
 
+    @MainActor
     func testTheTimeBudgetKeepsTheDaysThatFinished() async {
         let span = span
         let today = Int(span[0].timeIntervalSince1970 * 1000)
@@ -301,7 +305,7 @@ final class CursorHistorySourceTests: XCTestCase {
         }
         var source = source(http)
         source.budget = 0.5
-        var ledger = UsageLedger()
+        let ledger = UsageLedger()
         ledger.record([span[9]: UsageDay(totals: UsageTotals(values: [.spend: 0.03]))], due: [span[9]], span: span)
 
         let due = ledger.due(span)
@@ -324,12 +328,13 @@ final class CursorHistorySourceTests: XCTestCase {
         XCTAssertEqual(body["endDate"] as? String, "1788749999999", "a 23-hour day ends at Sep 7 00:00, not 01:00")
     }
 
+    @MainActor
     func testADayLastReadWhileItWasTodayIsReadAgainAfterAGapOfDays() {
         let friday = span
         let monday = UsageHistory.dayStarts(0..<30, now: now.addingTimeInterval(3 * 86_400), calendar: calendar)
         let partial = UsageDay(totals: UsageTotals(values: [.spend: 1]))
         let full = UsageDay(totals: UsageTotals(values: [.spend: 4]))
-        var ledger = UsageLedger()
+        let ledger = UsageLedger()
         ledger.record([friday[0]: partial, friday[1]: full], due: ledger.due(friday), span: friday)
 
         let due = ledger.due(monday)

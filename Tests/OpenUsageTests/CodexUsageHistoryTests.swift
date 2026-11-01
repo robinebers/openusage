@@ -38,15 +38,6 @@ enum CodexUsageFixtures {
       "text_total_tokens":8139475,"threads":0,"turns":0,"uncached_text_input_tokens":929079,"users":0}}]}
     """#
 
-    /// One event falls before the 30 days.
-    static let creditEvents = #"""
-    {"data":[
-     {"credit_amount":486.03315,"date":"2026-10-29","product_surface":"desktop_app","usage_id":"usage-1"},
-     {"credit_amount":2005.8942,"date":"2026-10-17","product_surface":"desktop_app","usage_id":"usage-2"},
-     {"credit_amount":307.5,"date":"2026-10-17","product_surface":"exec","usage_id":"usage-3"},
-     {"credit_amount":11769.2571,"date":"2026-09-28","product_surface":"desktop_app","usage_id":"usage-4"}]}
-    """#
-
     /// Shaped like the Codex client's team fixture: plan usage in `credits`, charged credits in
     /// `credit_usage_credits` and `on_demand_credits`, and no `units`.
     static let workspaceBreakdown = #"""
@@ -79,7 +70,8 @@ final class CodexUsageHistoryTests: XCTestCase {
 
     private func makeAccount(
         planType: String = "pro", individualLimit: String = "null", workspaceBreakdown: String = CodexUsageFixtures.workspaceBreakdown,
-        reports: TestSwitch<Int?> = TestSwitch(nil), reportsToday: TestSwitch<Bool> = TestSwitch(true), clock: TestClock? = nil
+        reports: TestSwitch<Int?> = TestSwitch(nil), creditStatus: TestSwitch<Int?> = TestSwitch(nil),
+        reportsToday: TestSwitch<Bool> = TestSwitch(true), clock: TestClock? = nil, defaults: UserDefaults? = nil
     ) throws -> (WidgetDataStore, AccountProviderRuntime, RoutingHTTPClient, TestClock) {
         let account = Account(kind: .codex, label: "ChatGPT")
         let vault = InMemoryCredentialVault()
@@ -92,10 +84,12 @@ final class CodexUsageHistoryTests: XCTestCase {
             switch request.url.path {
             case CodexUsageClient.usageURL.path: body = usage
             case "/backend-api/wham/analytics/daily-workspace-usage-counts": body = CodexUsageFixtures.counts(reportsToday: reportsToday.value)
-            case "/backend-api/wham/usage/credit-usage-events": body = CodexUsageFixtures.creditEvents
             case "/backend-api/wham/usage/daily-workspace-user-token-usage-breakdown": body = workspaceBreakdown
             case "/backend-api/wham/usage/daily-workspace-user-credit-usage": body = CodexUsageFixtures.enterpriseCredits
             default: return HTTPResponse(statusCode: 404, headers: [:], body: Data())
+            }
+            if request.url.path.hasPrefix("/backend-api/wham/usage/"), let status = creditStatus.value {
+                return HTTPResponse(statusCode: status, headers: ["retry-after": "3600"], body: Data())
             }
             if request.url.path != CodexUsageClient.usageURL.path, let status = reports.value {
                 return HTTPResponse(statusCode: status, headers: [:], body: Data())
@@ -103,7 +97,7 @@ final class CodexUsageHistoryTests: XCTestCase {
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
-        return (WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now }), runtime, http, clock)
+        return (WidgetDataStore.forTesting([runtime], defaults: defaults ?? isolatedDefaults(), now: { clock.now }), runtime, http, clock)
     }
 
     private func rows(_ store: WidgetDataStore, _ runtime: AccountProviderRuntime) -> [String: String] {
@@ -127,38 +121,63 @@ final class CodexUsageHistoryTests: XCTestCase {
         try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key })
     }
 
-    func testAPersonalPlanShowsTheDollarsChargedAndTheTokensOfEachUTCRange() async throws {
+    func testAPersonalPlanShowsTheTokensOfEachUTCRangeAndNoDollars() async throws {
         let (store, runtime, http, _) = try makeAccount()
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
         XCTAssertEqual(rows(store, runtime), [
-            "today": "$0 · 0 tokens",
-            "yesterday": "$0 · 8.1M tokens",
-            "last30": "$111.98 · 2B tokens"
+            "today": "0 tokens",
+            "yesterday": "8.1M tokens",
+            "last30": "2B tokens"
         ])
         let requests = reportRequests(http)
-        XCTAssertEqual(requests.map(\.url.path).sorted(), [
-            "/backend-api/wham/analytics/daily-workspace-usage-counts", "/backend-api/wham/usage/credit-usage-events"
-        ], "a personal plan reads the credit events, never the relative-unit token report")
+        XCTAssertEqual(requests.map(\.url.path), ["/backend-api/wham/analytics/daily-workspace-usage-counts"],
+                       "personal plans only need counts for token totals and model turns")
         let counts = try XCTUnwrap(requests.first { $0.url.path.hasSuffix("daily-workspace-usage-counts") })
         XCTAssertEqual(query(counts), ["start_date=2026-10-02", "end_date=2026-10-31", "group_by=day", "workspace_user=true"])
         XCTAssertEqual(counts.headers["ChatGPT-Account-Id"], "acct-fake")
         XCTAssertEqual(counts.headers["Authorization"], "Bearer access")
     }
 
-    func testAPersonalPlansBreakdownShowsEveryMeasureOnAUTCDayAndNoModels() async throws {
+    func testAPersonalPlansBreakdownShowsTurnSharesOnlyWhenModelsCoverTheRange() async throws {
         let (store, runtime, _, _) = try makeAccount()
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        let last30 = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor(runtime, "last30")))
-        XCTAssertEqual(last30.clockNote, "UTC days")
-        XCTAssertEqual(last30.totals[.credits] ?? 0, 2_799.42735, accuracy: 1e-6)
+        let last30 = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "last30")))
+        XCTAssertNil(last30.totals[.credits])
         XCTAssertEqual(last30.totals[.turns], 478)
         XCTAssertEqual(last30.totals[.tokens], 2_014_940_056)
-        XCTAssertEqual(last30.models, [], "a personal plan reports no credits per model")
+        XCTAssertEqual(last30.tokenParts.map(\.title), ["Cache Read", "Input", "Output"])
+        XCTAssertTrue(last30.models.isEmpty, "only 86 of the 478 turns are attributed to models")
+        let oct29 = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-29T00:00:00Z"))
+        let (dayStore, dayRuntime, _, _) = try makeAccount(clock: TestClock(oct29))
+        _ = await dayStore.refresh(providerID: dayRuntime.provider.id, force: true)
+        let full = try XCTUnwrap(dayStore.usageBreakdown(for: try descriptor(dayRuntime, "today")))
+        XCTAssertEqual(full.models.compactMap(\.share).map(ModelFigure.share.text), ["64%", "36%"])
+    }
+
+    func testRelaunchImmediatelyShowsTheCachedHistoryDetailsWithoutARequest() async throws {
+        let defaults = isolatedDefaults()
+        let (store, runtime, http, _) = try makeAccount(planType: "team", defaults: defaults)
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        let snapshot = try XCTUnwrap(store.snapshots[runtime.provider.id])
+        let fresh = snapshot.refreshedAt.addingTimeInterval(1)
+        let newRuntime = AccountProviderRuntime(account: runtime.account, vault: runtime.vault, http: http, now: { fresh })
+        let reopened = WidgetDataStore.forTesting([newRuntime], defaults: defaults, now: { fresh })
+        let requestCount = http.requests.count
+
+        let outcome = await reopened.refresh(providerID: newRuntime.provider.id)
+        XCTAssertEqual(outcome, .cacheHit)
+        XCTAssertEqual(http.requests.count, requestCount)
+        for key in ["today", "yesterday", "last30"] {
+            let row = try descriptor(newRuntime, key)
+            let detail = try XCTUnwrap(store.usageBreakdown(for: row))
+            XCTAssertTrue(reopened.data(for: row).hasData)
+            XCTAssertEqual(reopened.usageBreakdown(for: row), detail)
+        }
     }
 
     func testATeamPlanShowsTheChargedCreditsOfTheWorkspaceReportAndRanksModelsByThem() async throws {
@@ -166,16 +185,15 @@ final class CodexUsageHistoryTests: XCTestCase {
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        XCTAssertEqual(rows(store, runtime)["yesterday"], "$0.50 · 8.1M tokens", "charged credits, not the plan usage")
-        XCTAssertEqual(rows(store, runtime)["today"], "$0 · 0 tokens")
+        XCTAssertEqual(rows(store, runtime)["yesterday"], "8.1M tokens")
+        XCTAssertEqual(rows(store, runtime)["today"], "0 tokens")
         let breakdown = try XCTUnwrap(requestsFor(http, "daily-workspace-user-token-usage-breakdown"))
         XCTAssertEqual(query(breakdown), ["start_date=2026-10-02", "end_date=2026-10-31", "group_by=day"])
         XCTAssertNil(requestsFor(http, "credit-usage-events"))
-        let yesterday = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor(runtime, "yesterday")))
-        XCTAssertEqual(yesterday.clockNote, "UTC day")
-        XCTAssertEqual(yesterday.modelMeasure, .credits)
+        let yesterday = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "yesterday")))
+        XCTAssertEqual(yesterday.modelFigures, [.share], "a workspace reports only credits per model")
         XCTAssertEqual(yesterday.models.map(\.name), ["gpt-6-astra", "gpt-6.1-sol"])
-        XCTAssertEqual(yesterday.models.map(\.number), [10, 2.5])
+        XCTAssertEqual(yesterday.models.compactMap(\.share).map(ModelFigure.share.text), ["80%", "20%"])
     }
 
     func testAWorkspaceReportWithoutChargedCreditsShowsNoCredits() async throws {
@@ -186,7 +204,7 @@ final class CodexUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime), [
             "today": "0 tokens", "yesterday": "8.1M tokens", "last30": "2B tokens"
         ], "relative units never show as dollars")
-        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.models, [])
+        XCTAssertEqual(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.models, [])
     }
 
     func testBusinessEducationAndEnterprisePlansReadTheirChargedCreditsByModel() async throws {
@@ -197,8 +215,8 @@ final class CodexUsageHistoryTests: XCTestCase {
 
             let credits = try XCTUnwrap(requestsFor(http, "daily-workspace-user-credit-usage"), planType)
             XCTAssertEqual(query(credits), ["start_date=2026-10-02", "end_date=2026-10-31", "breakdown=model"], planType)
-            XCTAssertEqual(rows(store, runtime)["yesterday"], "$0.50 · 8.1M tokens", planType)
-            let yesterday = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor(runtime, "yesterday")))
+            XCTAssertEqual(rows(store, runtime)["yesterday"], "8.1M tokens", planType)
+            let yesterday = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "yesterday")))
             XCTAssertEqual(yesterday.models.map(\.name), ["gpt-6-astra", "gpt-6.1-sol"], planType)
         }
     }
@@ -209,36 +227,36 @@ final class CodexUsageHistoryTests: XCTestCase {
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertEqual(rows(store, runtime), [
-            "today": "$0", "yesterday": "$0 · 8.1M tokens", "last30": "$111.98"
-        ], "an unreported day is not a day of zero tokens")
+            "yesterday": "8.1M tokens", "last30": "2B tokens"
+        ], "an unreported day is not a day of zero tokens, and the range sums the days that report")
 
         reportsToday.value = true
         clock.set(now.addingTimeInterval(61 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(rows(store, runtime)["today"], "$0 · 0 tokens")
+        XCTAssertEqual(rows(store, runtime)["today"], "0 tokens")
     }
 
     func testHistoryIsReadOnceAnHourAtOnceOnANewUTCDayAndOnAForcedReread() async throws {
         let (store, runtime, http, clock) = try makeAccount()
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(reportRequests(http).count, 2)
+        XCTAssertEqual(reportRequests(http).count, 1)
 
         clock.set(now.addingTimeInterval(30 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(reportRequests(http).count, 2, "an hour has not passed")
-        XCTAssertEqual(rows(store, runtime)["yesterday"], "$0 · 8.1M tokens", "the rows keep the last read")
+        XCTAssertEqual(reportRequests(http).count, 1, "an hour has not passed")
+        XCTAssertEqual(rows(store, runtime)["yesterday"], "8.1M tokens", "the rows keep the last read")
 
         clock.set(now.addingTimeInterval(61 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(reportRequests(http).count, 4)
+        XCTAssertEqual(reportRequests(http).count, 2)
 
         clock.set(now.addingTimeInterval(62 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true, rereadHourly: true)
-        XCTAssertEqual(reportRequests(http).count, 6, "a forced reread reads at once")
+        XCTAssertEqual(reportRequests(http).count, 3, "a forced reread reads at once")
 
         clock.set(Date(timeIntervalSince1970: 1_793_491_500))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(reportRequests(http).count, 8, "a new UTC day is read on the first refresh after midnight")
+        XCTAssertEqual(reportRequests(http).count, 4, "a new UTC day is read on the first refresh after midnight")
         let counts = try XCTUnwrap(reportRequests(http).last { $0.url.path.hasSuffix("daily-workspace-usage-counts") })
         XCTAssertEqual(Array(query(counts).prefix(2)), ["start_date=2026-10-31", "end_date=2026-11-01"],
                        "today, and yesterday, which was read before it ended")
@@ -256,10 +274,36 @@ final class CodexUsageHistoryTests: XCTestCase {
         reports.value = nil
         clock.set(now.addingTimeInterval(10 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(reportRequests(http).count, 2, "a failed read waits an hour")
+        XCTAssertEqual(reportRequests(http).count, 1, "a failed read waits an hour")
 
         clock.set(now.addingTimeInterval(61 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
+    }
+
+    func testMissingWorkspaceCreditsDoNotHideOrBlockTokenCounts() async throws {
+        let status = TestSwitch<Int?>(429)
+        let (store, runtime, http, clock) = try makeAccount(planType: "team", creditStatus: status)
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(rows(store, runtime)["yesterday"], "8.1M tokens")
+        XCTAssertNil(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits])
+
+        status.value = nil
+        clock.set(now.addingTimeInterval(30 * 60))
+        _ = await store.refresh(providerID: runtime.provider.id, force: true, rereadHourly: true)
+        XCTAssertEqual(reportRequests(http).filter { $0.url.path.hasSuffix("usage-counts") }.count, 2)
+        XCTAssertEqual(reportRequests(http).filter { $0.url.path.hasSuffix("token-usage-breakdown") }.count, 1)
+        XCTAssertEqual(rows(store, runtime)["last30"], "2B tokens")
+
+        clock.set(now.addingTimeInterval(61 * 60))
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits], 12.5)
+    }
+
+    func testInvalidWorkspaceCreditsStillShowTokenCounts() async throws {
+        let (store, runtime, _, _) = try makeAccount(planType: "team", workspaceBreakdown: "{}")
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(rows(store, runtime)["last30"], "2B tokens")
+        XCTAssertNil(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits])
     }
 
     func testTheCreditLimitShowsWhatTheWorkspaceLetsTheMemberSpend() async throws {
@@ -294,7 +338,6 @@ final class CodexUsageReportsTests: XCTestCase {
         ] {
             XCTAssertNil(CodexUsageReports.counts(Data(body.utf8)), body)
         }
-        XCTAssertNil(CodexUsageReports.creditEvents(Data(#"{"data":[{"date":"2026-10-30","credit_amount":"$5"}]}"#.utf8)))
         XCTAssertNil(CodexUsageReports.workspaceCredits(Data(
             #"{"data":[{"date":"2026-10-30","premium_usage_values":{"credit_usage_credits":{"cli":"lots"}}}]}"#.utf8
         )))
@@ -307,12 +350,9 @@ final class CodexUsageReportsTests: XCTestCase {
                  {"date":"2026-10-30","totals":{"turns":10,"text_total_tokens":100}},
                  {"date":"2026-10-29","totals":{"turns":3,"text_total_tokens":null}}]}
         """#.utf8)))
-        let credits = try XCTUnwrap(CodexUsageReports.creditEvents(Data(#"{"data":[{"date":"2026-10-30","credit_amount":-1.5}]}"#.utf8)))
-
-        XCTAssertEqual(CodexUsageReports.day("2026-10-30", counts: counts, credits: credits).totals.values,
-                       [.turns: 20, .tokens: 200, .credits: -1.5], "a refund is a reported negative")
-        XCTAssertEqual(CodexUsageReports.day("2026-10-29", counts: counts, credits: credits).totals.values, [.turns: 3, .credits: 0])
-        XCTAssertEqual(CodexUsageReports.day("2026-10-31", counts: counts, credits: credits).totals.values, [.credits: 0])
+        XCTAssertEqual(counts.days["2026-10-30"]?.totals.values, [.turns: 20, .tokens: 200])
+        XCTAssertEqual(counts.days["2026-10-29"]?.totals.values, [.turns: 3])
+        XCTAssertEqual(counts.quietDay.totals.values, [:])
     }
 
     func testAModelWithoutChargedCreditsLeavesOutTheModelList() throws {

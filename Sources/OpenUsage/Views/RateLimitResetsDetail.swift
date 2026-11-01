@@ -9,6 +9,7 @@ import SwiftUI
 struct RateLimitResetsDetail: View {
     let count: Int
     let expiries: [Date]
+    var showsActions = false
     var onHoverChange: (Bool) -> Void
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
@@ -195,7 +196,7 @@ struct RateLimitResetsDetail: View {
     @ViewBuilder
     private func trailing(_ entry: Entry) -> some View {
         Group {
-            if claim != nil, hovered == entry.key, !claimInProgress {
+            if claim != nil, showsActions || hovered == entry.key, !claimInProgress {
                 Button("Use") { beginConfirm(entry) }
                     .controlSize(.small)
                     .disabled(nothingToReset)

@@ -3,32 +3,56 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// The panel is exactly as tall as the screen it shows, capped at 85% of the display. The popover
-/// follows the real `PanelHeightController`, anchored above every screen so the panel never shows on one.
 @MainActor
 final class PanelContentHeightTests: QuietWindowTestCase {
-    func testAccountsRestsAtItsContentHeight() async throws {
-        let hosted = try await openWithController(accounts: ["Personal", "Work", "Side"])
+    func testThePanelFitsAccountsAndGrowsWithTheSlideBackToTheDashboard() async throws {
+        let hosted = try await openWithController(accounts: ["Personal"])
+        try await waitUntil { self.fitsContent(hosted) }
+        let dashboard = try XCTUnwrap(scrollViews(in: hosted.host).first)
+        let top = hosted.panel.frame.maxY
+
         withAnimation(Motion.modeSwitch) { hosted.popover.screen = .accounts }
-        try await Task.sleep(for: .seconds(1.5))
-        XCTAssertEqual(hosted.panel.frame.height, try contentHeight(in: hosted.host), accuracy: 1, "Accounts doesn't rest at its list's height")
+        try await waitUntil {
+            self.fitsContent(hosted) && scrollViews(in: hosted.host).first !== dashboard
+        }
+        let accounts = try XCTUnwrap(scrollViews(in: hosted.host).first)
+        let resting = hosted.panel.frame.height
+        let barHeight = accounts.contentInsets.top
+        XCTAssertGreaterThan(barHeight, 0)
+
+        // The old pager dropped Accounts on the first frame. On macOS 15 it could also leave
+        // the panel at the shorter Accounts height until the slide was over.
+        withAnimation(Motion.modeSwitch) { hosted.popover.screen = .dashboard }
+        try await waitUntil {
+            guard accounts.isDescendant(of: hosted.host) else { return false }
+            let frame = hosted.host.convert(accounts.bounds, from: accounts)
+            return frame.minX > 0 && frame.minX < hosted.host.bounds.width
+                && accounts.contentInsets.top == barHeight
+                && hosted.panel.frame.height > resting + 1
+        }
+        try await waitUntil { !accounts.isDescendant(of: hosted.host) && self.fitsContent(hosted) }
+        XCTAssertEqual(hosted.panel.frame.maxY, top)
     }
 
     func testAnOverTallDashboardRestsAtTheCap() async throws {
         let visible = try XCTUnwrap(NSScreen.main).visibleFrame
         let hosted = try await openWithController(accounts: (0...Int(visible.height / 80)).map { "Account \($0)" })
         let cap = floor(visible.height * 0.85)
-        XCTAssertGreaterThan(try contentHeight(in: hosted.host), cap, "the dashboard isn't taller than the cap")
-        XCTAssertEqual(hosted.panel.frame.height, cap, accuracy: 1, "an over-tall dashboard doesn't rest at the cap")
+        try await waitUntil {
+            guard let height = self.contentHeight(hosted.host) else { return false }
+            return height > cap && abs(hosted.panel.frame.height - cap) <= 1
+        }
     }
 
-    private func contentHeight(in host: NSView) throws -> CGFloat {
-        host.layoutSubtreeIfNeeded()
+    private func fitsContent(_ hosted: HostedPopover) -> Bool {
+        guard let height = contentHeight(hosted.host) else { return false }
+        return abs(hosted.panel.frame.height - height) <= 1
+    }
+
+    private func contentHeight(_ host: NSView) -> CGFloat? {
         let pages = scrollViews(in: host)
-        XCTAssertEqual(pages.count, 1, "the pager hasn't settled on one screen")
-        let page = try XCTUnwrap(pages.first)
-        let document = try XCTUnwrap(page.documentView).frame.height
-        return (document + page.contentInsets.top + page.contentInsets.bottom).rounded()
+        guard pages.count == 1, let page = pages.first, let document = page.documentView else { return nil }
+        return (document.frame.height + page.contentInsets.top + page.contentInsets.bottom).rounded()
     }
 
     private func openWithController(accounts: [String]) async throws -> HostedPopover {
@@ -40,9 +64,9 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         let visible = try XCTUnwrap(NSScreen.main).visibleFrame
         let button = NSRect(x: visible.minX + 100, y: (NSScreen.screens.map(\.frame.maxY).max() ?? 0) + 3_000, width: 20, height: 20)
         controller.prepareForOpening(below: button)
-        try await hosted.open()
-        XCTAssertEqual(hosted.panel.frame.maxY, (button.minY - PanelGeometry.topGap).rounded(.down), "the panel isn't hanging from its anchor")
-        XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(hosted.panel.frame) }, "the panel sits on a screen at \(hosted.panel.frame)")
+        hosted.open()
+        XCTAssertEqual(hosted.panel.frame.maxY, (button.minY - PanelGeometry.topGap).rounded(.down))
+        XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(hosted.panel.frame) })
         return hosted
     }
 }

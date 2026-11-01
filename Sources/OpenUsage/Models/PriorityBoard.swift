@@ -3,9 +3,8 @@ import Foundation
 /// A limit on the board and why it is there.
 struct PriorityItem: Identifiable {
     enum Reason: Equatable {
-        case runningOut(runway: TimeInterval)
-        case closeToLimit(runway: TimeInterval)
-        case level(WidgetData.MeterSeverity, usedShare: Double)
+        /// Listed for what's left, the same rule that colors its bar. Time only orders the list.
+        case low(WidgetData.MeterSeverity, remaining: Double, runway: TimeInterval?)
         case usedUp(resetsAt: Date?)
         case emptyBalance
 
@@ -15,43 +14,36 @@ struct PriorityItem: Identifiable {
                 self = .emptyBalance
                 return
             }
-            switch data.meterState(now: now) {
-            case .runningOut:
-                self = .runningOut(runway: data.runway(now: now) ?? .infinity)
-            case .closeToLimit:
-                self = .closeToLimit(runway: data.runway(now: now) ?? .infinity)
-            case .level(.normal), .healthy, .noData:
-                return nil
-            case .level(let severity):
-                self = .level(severity, usedShare: 1 - data.remainingFraction)
-            case .spent:
+            guard data.hasData, data.isBounded else { return nil }
+            if data.meterState(now: now) == .spent {
                 self = .usedUp(resetsAt: data.resetsAt)
+                return
             }
+            guard data.severity != .normal else { return nil }
+            self = .low(data.severity, remaining: data.remainingFraction, runway: data.runway(now: now))
         }
 
         var severity: WidgetData.MeterSeverity {
             switch self {
-            case .runningOut, .usedUp, .emptyBalance: .critical
-            case .closeToLimit: .warning
-            case .level(let severity, _): severity
+            case .low(let severity, _, _): severity
+            case .usedUp, .emptyBalance: .critical
             }
         }
 
         fileprivate var isUsedUp: Bool {
             switch self {
             case .usedUp, .emptyBalance: true
-            case .runningOut, .closeToLimit, .level: false
+            case .low: false
             }
         }
 
-        /// Sorts ascending: first by tier, then by how close the limit is within it.
+        /// Sorts ascending: what runs out soonest first, then what has no pace to tell by, by what's left.
         fileprivate var rank: (tier: Int, closeness: Double) {
             switch self {
-            case .runningOut(let runway): (0, runway)
-            case .closeToLimit(let runway): (1, runway)
-            case .level(_, let usedShare): (2, -usedShare)
-            case .usedUp(let resetsAt): (3, resetsAt?.timeIntervalSinceReferenceDate ?? .infinity)
-            case .emptyBalance: (3, .infinity)
+            case .low(_, _, let runway?): (0, runway)
+            case .low(_, let remaining, nil): (1, remaining)
+            case .usedUp(let resetsAt): (2, resetsAt?.timeIntervalSinceReferenceDate ?? .infinity)
+            case .emptyBalance: (2, .infinity)
             }
         }
     }
@@ -74,16 +66,41 @@ struct PriorityItem: Identifiable {
 struct PriorityBoard {
     enum Summary: Equatable {
         case waitingForUsage
+        case noReportedLimits
+        case unavailable
         case allClear
         case listed
     }
 
+    enum ReadStatus {
+        case waiting, current, unavailable(String)
+    }
+
+    struct AccountNotice: Identifiable {
+        let provider: Provider
+        let message: String
+        var id: String { provider.id }
+    }
+
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
+    let notices: [AccountNotice]
     let summary: Summary
+    let hasCompleteUsage: Bool
+
+    /// Multiple running-low limits can change places as their windows age, even without a new reading.
+    func requiresRankingClock(at now: Date) -> Bool {
+        attention.count > 1 && attention.contains { item in
+            guard let reset = item.data.resetsAt, let period = item.data.periodDurationMs else { return false }
+            return reset > now && period > 0
+        }
+    }
 
     /// `accounts` is in the user's saved order, which breaks every tie.
-    static func make(accounts: [DashboardAccount], now: Date) -> PriorityBoard {
+    static func make(
+        accounts: [DashboardAccount], now: Date,
+        status: (DashboardAccount) -> ReadStatus = { $0.lines.contains(where: \.data.hasData) ? .current : .waiting }
+    ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
             PriorityItem.Reason(line, now: now).map { PriorityItem(provider: provider, line: line, reason: $0) }
@@ -93,17 +110,43 @@ struct PriorityBoard {
             return (left.tier, left.closeness, lhs.offset) < (right.tier, right.closeness, rhs.offset)
         }.map(\.element)
 
+        var awaitingUsage = accounts.isEmpty
+        var notices: [AccountNotice] = []
+        for account in accounts {
+            switch status(account) {
+            case .waiting: awaitingUsage = true
+            case .unavailable(let message): notices.append(AccountNotice(provider: account.provider, message: message))
+            case .current: break
+            }
+        }
         let summary: Summary = if !ranked.isEmpty {
             .listed
+        } else if !notices.isEmpty {
+            .unavailable
+        } else if awaitingUsage {
+            .waitingForUsage
         } else if lines.contains(where: { $0.1.data.hasData && $0.1.data.isBounded }) {
             .allClear
         } else {
-            .waitingForUsage
+            .noReportedLimits
         }
         return PriorityBoard(
             attention: ranked.filter { !$0.reason.isUsedUp },
             usedUp: ranked.filter(\.reason.isUsedUp),
-            summary: summary
+            notices: notices, summary: summary, hasCompleteUsage: !awaitingUsage && notices.isEmpty
         )
+    }
+}
+
+extension WidgetDataStore {
+    func priorityBoard(in groups: [ProviderMetrics], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
+        let accounts = accounts(in: groups)
+        return PriorityBoard.make(accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, now: now) { account in
+            if let message = self.notice(for: account.id) ?? self.stalenessHint(for: account.id) {
+                // A provider's notice can itself contain account details. Share only the status.
+                return .unavailable(hidingEmails ? "Current usage unavailable." : message)
+            }
+            return self.snapshots[account.id] == nil ? .waiting : .current
+        }
     }
 }

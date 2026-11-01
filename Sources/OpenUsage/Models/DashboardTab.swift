@@ -1,15 +1,21 @@
 import Foundation
 
 enum DashboardTab: String, Hashable, Sendable, CaseIterable {
-    static let key = "dashboardTab"
+    /// The tab the panel opens to, whichever one it was closed on.
+    static let defaultKey = "defaultDashboardTab"
 
     case priority
-    case allMetrics
+    /// Keeps its old raw value, so a saved tab survives the rename.
+    case allUsage = "allMetrics"
+
+    static func preferred(in defaults: UserDefaults = .standard) -> Self {
+        defaults.enumValue(forKey: defaultKey, default: .priority)
+    }
 
     var label: String {
         switch self {
         case .priority: "Priority"
-        case .allMetrics: "All Metrics"
+        case .allUsage: "All Usage"
         }
     }
 }

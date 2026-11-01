@@ -55,8 +55,8 @@ plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, 
 Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
 account sets none.
 
-The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
-when each expires; choose **Use**, then **Reset** to spend one.
+The **Limit Resets** row counts the account's available rate-limit resets. Click the count to see
+when each expires. Choose **Use**, then **Reset** to spend one.
 
 ## ChatGPT
 
@@ -64,22 +64,25 @@ Sign in through OpenAI in your browser. The account shows as ChatGPT; its provid
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row shows
-the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
+the dollar value of the credits you have, an estimate at 4¢ a credit, and hides when you have none. Rate-limit reset credits work like Claude's
 Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
 it shows only when the workspace sets one.
 
-Today, Yesterday, and Last 30 Days show what ChatGPT charged, in dollars at 4¢ a credit, and the text
-tokens it counted on UTC days, from the reports the Codex app's Analytics view reads. A day with no
-charge reads $0, and a workspace's relative usage units never show as dollars. Rest the pointer on a
-range to see what it reported, and on a workspace plan the top five models. The card reads the reports once an hour, on the
-first refresh of a new UTC day, and on ⌘R. A failed read hides the rows that cover today and yesterday
-until the next read.
+Today, Yesterday, and Last 30 Days show the text tokens ChatGPT counted on UTC days, from the reports the
+Codex app's Analytics view reads. A range adds up the days that report tokens. ChatGPT reports credits,
+not dollars, and what a credit cost depends on how it was bought, so the card shows no dollar figure for
+usage. Open a range to see its token breakdown and each model's percentage. A range adds up the days
+that have been read.
+
+The card reads the reports once an hour, on the first refresh of a new UTC day, and on ⌘R. Each
+report has its own cache and retry schedule. If the credit report is unavailable, the token counts
+still show. When the counts report fails, ranges that need its days are hidden until the next read.
 
 ## Cursor
 
 Sign in through cursor.com in your browser. The card reads Cursor's dashboard API for Total Usage,
 Cursor Models (auto), Other Models (API), on-demand Extra Usage, Grok Bot, Requests, and Credits, and
-the plan. Cursor stores the sign-in's expiry and renews it before then.
+the plan. Extra Usage resets with the billing cycle, like Total Usage. Cursor stores the sign-in's expiry and renews it before then.
 
 Cursor's plan endpoint says Pro for some Enterprise and Team seats. Once an hour, together with the
 plan, the card reads Cursor's `usage-summary`, which names the seat's membership. A seat whose
@@ -94,13 +97,13 @@ plan includes, and errored or free requests, count as $0. Tokens are the input, 
 cache write tokens of every event, whatever its kind; an event that reports no token usage counts as
 zero tokens.
 Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
-the charge, the usage events, each kind of token, and the top five models, the rest as Other.
+the charge, each kind of token, and the top five models, the rest as Other.
 The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
 yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
-once every day it covers has been read. After Cursor answers a history read with 429, history reads wait
+from the days read so far. After Cursor answers a history read with 429, history reads wait
 for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
 
 
@@ -109,6 +112,8 @@ for its Retry-After, or an hour without one, and the rows that cover today or ye
 Sign in with Google in your browser. The card reads the Cloud Code quota API for the Gemini and Claude
 pools (5-hour and weekly windows) and the Argon weekly window, and shows the plan under the name
 Google sells it as (Google AI Pro, Google AI Ultra, Google AI Ultra Lite) or the tier's own name.
+If Google reports that the project has no quota subscription, the card explains the access issue.
+If the project lookup failed, try refreshing again.
 
 ## Copilot
 
@@ -150,7 +155,7 @@ value in dollars (`usage_usd`, what the requests are worth, whether the plan or 
 for them) and the tokens, input plus output. Cached input is already part of input. Requests counts the
 last 30 days' requests. A legacy plan reports only requests, so its card shows Requests alone. Rest the
 pointer on a Today, Yesterday, or Last 30 Days figure to see what Ollama reported for that range: the
-usage value, requests, each kind of token, and the top five models, the rest as Other. A range with a
+usage value, each kind of token, and the top five models, the rest as Other. A range with a
 day whose usage falls beyond the ten models Ollama names shows no models.
 The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
 hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
@@ -181,8 +186,8 @@ read hides those rows and is tried again an hour later; it never affects the oth
 
 Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
 OpenRouter reported for that range. For Today, This Week, and This Month that is the spend and BYOK. For
-Yesterday and Prior 30 Days it adds the requests, the prompt, cached, completion, and reasoning tokens,
-and the top five models by tokens, the rest as Other. Prompt tokens include the cached ones, and
+Yesterday and Prior 30 Days it adds the prompt, cached, completion, and reasoning tokens, and the top
+five models, the rest as Other. Prompt tokens include the cached ones, and
 completion tokens include the reasoning ones.
 
 A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, **Key Limit**

@@ -11,47 +11,26 @@ final class WidgetMeterStyleTests: XCTestCase {
         ]
 
         for item in cases {
-            let (store, descriptor) = await makeRefreshedStore(
+            let (store, descriptor) = makeStore(
                 format: item.format, used: item.used, limit: item.limit
             )
+            await store.refreshAll()
 
             let remaining = store.data(for: descriptor)
             XCTAssertEqual(remaining.valueText, item.remaining, item.name)
-            XCTAssertEqual(barValue(remaining.dashboardRow()), "\(item.remaining) left", item.name)
+            XCTAssertEqual(barValue(remaining.dashboardRow()), item.remaining, item.name)
             XCTAssertEqual(remaining.fraction, 1 - item.used / item.limit, accuracy: 0.0001, item.name)
 
             store.meterStyle = .used
             let used = store.data(for: descriptor)
             XCTAssertEqual(used.valueText, item.consumed, item.name)
-            XCTAssertEqual(barValue(used.dashboardRow()), "\(item.consumed) used", item.name)
+            XCTAssertEqual(barValue(used.dashboardRow()), item.consumed, item.name)
             XCTAssertEqual(used.fraction, item.used / item.limit, accuracy: 0.0001, item.name)
         }
     }
 
-    func testGlobalModeOverridesDescriptorSampleDisplayMode() async {
-        let (store, descriptor) = await makeRefreshedStore(
-            format: .percent,
-            used: 80,
-            limit: 100,
-            sampleDisplayMode: .used
-        )
-
-        XCTAssertEqual(store.meterStyle, .remaining)
-        XCTAssertEqual(store.data(for: descriptor).displayMode, .remaining)
-        XCTAssertEqual(store.data(for: descriptor).valueText, "20%")
-
-        store.meterStyle = .used
-        XCTAssertEqual(store.data(for: descriptor).displayMode, .used)
-        XCTAssertEqual(store.data(for: descriptor).valueText, "80%")
-    }
-
     func testFallbackSampleShowsNoDataRegardlessOfMode() {
-        let (store, descriptor) = makeStore(
-            format: .percent,
-            used: 80,
-            limit: 100,
-            sampleDisplayMode: .used
-        )
+        let (store, descriptor) = makeStore(format: .percent, used: 80, limit: 100)
 
         XCTAssertFalse(store.data(for: descriptor).hasData)
         XCTAssertEqual(store.data(for: descriptor).valueText, WidgetData.noDataValue)
@@ -60,59 +39,15 @@ final class WidgetMeterStyleTests: XCTestCase {
         XCTAssertEqual(store.data(for: descriptor).valueText, WidgetData.noDataValue)
     }
 
-    func testUnboundedTileIdenticalUnderBothModes() async {
-        let provider = Provider(id: "test", kind: .codex)
-        let descriptor = WidgetDescriptor(
-            provider: provider,
-            key: "today",
-            metricLabel: "Today",
-            sample: WidgetData(
-                title: "Today",
-                kind: .dollars,
-                used: 0,
-                limit: nil
-            )
-        )
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.values(label: "Today", values: [
-                    MetricValue(number: 42.50, kind: .dollars)
-                ])]
-            )
-        )
-        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
-        await store.refreshAll()
-
-        store.meterStyle = .remaining
-        let remaining = store.data(for: descriptor)
-        store.meterStyle = .used
-        let used = store.data(for: descriptor)
-
-        XCTAssertEqual(remaining.valueText, "$42.50")
-        XCTAssertEqual(remaining.dashboardRow().mark, .value("$42.50"))
-        XCTAssertEqual(used.valueText, remaining.valueText)
-        XCTAssertEqual(used.dashboardRow(), remaining.dashboardRow())
-        XCTAssertEqual(used.displayedValue, remaining.displayedValue)
-    }
-
-    func testMeterStyleDefaultsToRemainingWithEmptySuite() {
-        let store = makeEmptyStore(isolatedDefaults())
-        XCTAssertEqual(store.meterStyle, .remaining)
-    }
-
     func testMeterStylePersistsAcrossStoreInstances() {
         let defaults = isolatedDefaults()
 
-        let store = makeEmptyStore(defaults)
+        let store = WidgetDataStore.forTesting([], defaults: defaults)
         XCTAssertEqual(store.meterStyle, .remaining)
 
         store.meterStyle = .used
 
-        let reloaded = makeEmptyStore(defaults)
+        let reloaded = WidgetDataStore.forTesting([], defaults: defaults)
         XCTAssertEqual(reloaded.meterStyle, .used)
     }
 
@@ -121,27 +56,10 @@ final class WidgetMeterStyleTests: XCTestCase {
         return value
     }
 
-    private func makeRefreshedStore(
-        format: ProgressFormat,
-        used: Double,
-        limit: Double,
-        sampleDisplayMode: WidgetDisplayMode = .used
-    ) async -> (WidgetDataStore, WidgetDescriptor) {
-        let (store, descriptor) = makeStore(
-            format: format,
-            used: used,
-            limit: limit,
-            sampleDisplayMode: sampleDisplayMode
-        )
-        await store.refreshAll()
-        return (store, descriptor)
-    }
-
     private func makeStore(
         format: ProgressFormat,
         used: Double,
-        limit: Double,
-        sampleDisplayMode: WidgetDisplayMode = .used
+        limit: Double
     ) -> (WidgetDataStore, WidgetDescriptor) {
         let provider = Provider(id: "test", kind: .codex)
         let descriptor = WidgetDescriptor(
@@ -152,8 +70,7 @@ final class WidgetMeterStyleTests: XCTestCase {
                 title: "Metric",
                 kind: format.metricKind,
                 used: used,
-                limit: limit,
-                displayMode: sampleDisplayMode
+                limit: limit
             )
         )
         let runtime = StubRuntime(
@@ -168,13 +85,4 @@ final class WidgetMeterStyleTests: XCTestCase {
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
         return (store, descriptor)
     }
-
-    private func makeEmptyStore(_ defaults: UserDefaults) -> WidgetDataStore {
-        WidgetDataStore.forTesting(
-            [],
-            defaults: defaults
-        )
-    }
-
-
 }

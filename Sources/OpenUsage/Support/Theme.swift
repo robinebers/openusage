@@ -23,7 +23,7 @@ enum Theme {
 
     static let notice = AnyShapeStyle(severityColor(.warning))
 
-    static let positive = AnyShapeStyle(Color(nsColor: .systemGreen))
+    static let positive = AnyShapeStyle(severityColor(.normal))
 
     enum Spacing {
         static let xxs: CGFloat = 2
@@ -41,9 +41,10 @@ enum Theme {
 
     static let shareCanvas = adaptive(light: NSColor(white: 0.95, alpha: 1), dark: NSColor(white: 0.17, alpha: 1))
     static let panelTint = adaptive(light: NSColor(white: 0.97, alpha: 0.5), dark: NSColor(white: 0.17, alpha: 0.35))
-    static let cardFill = adaptive(light: NSColor(white: 1, alpha: 0.58), dark: NSColor(white: 1, alpha: 0.06))
+    static let cardFill = adaptive(light: .white, dark: NSColor(white: 0.2, alpha: 1))
     static let hairline = adaptive(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.06))
     static let meterTrack = adaptive(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.12))
+
     static let controlFill = adaptive(light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.1))
     static let segmentThumb = adaptive(light: .white, dark: NSColor(white: 1, alpha: 0.18))
 

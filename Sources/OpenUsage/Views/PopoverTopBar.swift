@@ -23,17 +23,25 @@ struct PopoverTopBar: View {
                 navigationBar(back: { popover.back() }) {
                     Text("Accounts")
                 } trailing: {
-                    addAccountButton
+                    EmptyView()
                 }
             }
         case .settings:
-            navigationBar {
-                popover.back()
-            } title: {
-                Text("Settings")
-            } trailing: {
-                EmptyView()
+            VStack(spacing: 10) {
+                ZStack {
+                    Text("Settings")
+                        .font(.headline)
+                    HStack(spacing: 0) {
+                        backButton { popover.back() }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(height: 28)
+                SettingsTabBar()
             }
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, PanelMetrics.margin)
+            .padding(.bottom, DashboardContentView.barGap)
         }
     }
 
@@ -56,7 +64,7 @@ struct PopoverTopBar: View {
             }
         }
         .padding(.horizontal, horizontalPadding)
-        .frame(height: height)
+        .frame(height: height, alignment: .bottom)
         .frame(maxWidth: .infinity)
     }
 
@@ -64,8 +72,8 @@ struct PopoverTopBar: View {
         Button(action: action) {
             Label("Back", systemImage: "chevron.backward")
                 .labelStyle(.iconOnly)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Theme.severityColor(.normal))
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
@@ -79,64 +87,59 @@ struct PopoverTopBar: View {
             .frame(width: 28, height: 28)
             .accessibilityHidden(true)
     }
+}
 
-    private var addAccountButton: some View {
-        Button {
-            popover.isAddingAccount = true
+private struct SettingsTabBar: View {
+    @Environment(PopoverState.self) private var popover
+    @Environment(\.reduceAnimations) private var reduceAnimations
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(SettingsTab.allCases, id: \.self) { tab(for: $0) }
+        }
+    }
+
+    private func tab(for tab: SettingsTab) -> some View {
+        let isSelected = popover.settingsTab == tab
+        return Button {
+            popover.settingsTab = tab
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 26, height: 26)
-                .background(Theme.controlFill, in: Circle())
-                .contentShape(Circle())
+            VStack(spacing: 2) {
+                Image(systemName: tab.symbol)
+                    .font(.system(size: 16))
+                    .frame(height: 20)
+                Text(tab.title)
+                    .font(.system(size: 11))
+            }
+            .foregroundStyle(isSelected ? AnyShapeStyle(Theme.severityColor(.normal)) : AnyShapeStyle(.secondary))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 5)
+            .padding(.bottom, 4)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Theme.controlFill)
+                }
+            }
+            .animation(reduceAnimations ? nil : .easeInOut(duration: 0.18), value: isSelected)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .hoverTooltip("Add Account")
-        .accessibilityLabel("Add Account")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 private struct DashboardTabBar: View {
     let horizontalPadding: CGFloat
 
-    @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
-    @Environment(\.reduceAnimations) private var reduceAnimations
-    @Namespace private var thumb
+    @Environment(PopoverState.self) private var popover
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(DashboardTab.allCases, id: \.self) { segment($0) }
-        }
-        .padding(2)
-        .frame(height: 28)
-        .background(Theme.controlFill, in: Capsule())
-        .padding(.horizontal, horizontalPadding)
-        .padding(.top, PanelMetrics.margin)
-        .padding(.bottom, DashboardContentView.barGap)
-    }
-
-    private func segment(_ candidate: DashboardTab) -> some View {
-        let isSelected = tab == candidate
-        return Button {
-            withAnimation(reduceAnimations ? nil : Motion.spring) { tab = candidate }
-        } label: {
-            Text(candidate.label)
-                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
-                .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background {
-                    if isSelected {
-                        Capsule()
-                            .fill(Theme.segmentThumb)
-                            .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
-                            .overlay { Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5) }
-                            .matchedGeometryEffect(id: "thumb", in: thumb)
-                    }
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        @Bindable var popover = popover
+        CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: $popover.dashboardTab)
+            .padding(.horizontal, horizontalPadding)
+            .padding(.top, PanelMetrics.margin)
+            .padding(.bottom, DashboardContentView.barGap)
     }
 }
 

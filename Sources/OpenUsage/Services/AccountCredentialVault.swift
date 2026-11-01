@@ -12,7 +12,7 @@ enum CredentialVaultError: LocalizedError {
     case missingCredential
 
     var errorDescription: String? {
-        "This account's sign-in is missing from the Keychain. Remove the account and add it again."
+        "This account's sign-in is missing from the Keychain. Sign in again from the account's page."
     }
 }
 

@@ -8,6 +8,14 @@ struct DashboardRowModel: Equatable {
 
     let label: String
     let mark: Mark
+    /// Clock times run wider than countdowns, so they get the wider reset lane.
+    var showsClockTimes = false
+
+    /// A limit that's used up with nothing left to draw. Under Used its bar is full and stays at full strength.
+    var isFaded: Bool {
+        guard case .bar(let fill, _, _, _, let isUsedUp) = mark else { return false }
+        return isUsedUp && fill == 0
+    }
 }
 
 extension WidgetData {
@@ -17,16 +25,16 @@ extension WidgetData {
             let detail = figures.count > 1 ? figures.dropFirst().joined(separator: " · ") : nil
             return DashboardRowModel(label: title, mark: .value(figures[0], detail: detail, severity: expirySeverity(now: now)))
         }
-        let state = meterState(now: now)
         return DashboardRowModel(
             label: title,
             mark: .bar(
                 fill: fraction,
-                severity: state.severity ?? .normal,
-                value: amountText,
-                reset: resetLabel(now: now),
-                isUsedUp: state == .spent
-            )
+                severity: severity,
+                value: valueText,
+                reset: compactResetText(now: now),
+                isUsedUp: meterState(now: now) == .spent
+            ),
+            showsClockTimes: resetDisplayMode == .absolute
         )
     }
 
@@ -39,11 +47,6 @@ extension WidgetData {
         guard hasData, let resetsAt, !isFreshSessionWindow(now: now) else { return nil }
         guard resetsAt.timeIntervalSince(now) > 0 else { return Formatters.imminent }
         return Self.resetReading(resetsAt, as: resetDisplayMode, now: now)
-    }
-
-    /// The reset with its word: `Resets 22h 10m`, or `Resets Wed 4 PM` under the exact-time setting.
-    func resetLabel(now: Date = Date()) -> String? {
-        compactResetText(now: now).map { "Resets \($0)" }
     }
 
     func resetTooltip(now: Date = Date()) -> String? {

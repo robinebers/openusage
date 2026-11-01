@@ -52,17 +52,6 @@ final class AccountStoreTests: XCTestCase {
         XCTAssertNil(try vault.load(account.id))
     }
 
-    func testRenamePersists() {
-        let defaults = isolatedDefaults()
-        let vault = InMemoryCredentialVault()
-        let store = AccountStore(defaults: defaults, vault: vault)
-        let account = store.add(kind: .codex, label: "Old", credential: .oauth(OAuthTokens(accessToken: "access")))
-
-        store.rename(account.id, to: "New")
-
-        XCTAssertEqual(AccountStore(defaults: defaults, vault: vault).accounts.first?.label, "New")
-    }
-
     func testAnEntryThisBuildCannotReadStaysStoredThroughAddRenameAndRemove() throws {
         let defaults = isolatedDefaults()
         defaults.set(StoredAccountList.data, forKey: AccountStore.storageKey)

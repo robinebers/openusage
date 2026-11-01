@@ -27,6 +27,18 @@ final class DuplicateLoginTests: XCTestCase {
         XCTAssertEqual(store.accounts.count, 2)
     }
 
+    func testAnUnreadableStoredSignInDoesNotAllowADuplicateAccount() async throws {
+        let store = AccountStore(defaults: isolatedDefaults(), vault: UnreadableCredentialVault())
+        store.add(kind: .claude, label: "Work", credential: Self.claude(identity: "acct/org"))
+
+        let flow = flow(store) { Self.claude(identity: "acct/org") }
+        flow.choose(.claude)
+        try await waitUntil { flow.isFinished || flow.errorMessage != nil }
+
+        XCTAssertEqual(flow.errorMessage, "OpenUsage couldn't check the saved sign-in for Work. Check Keychain access and try again.")
+        XCTAssertEqual(store.accounts.map(\.label), ["Work"])
+    }
+
     func testTheSameOrganizationIsNotAddedTwice() async throws {
         let store = makeStore()
         store.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("first"))
@@ -168,4 +180,12 @@ private struct IdentityLogin: ProviderLogin {
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
         ("new@example.com", credential())
     }
+}
+
+private struct UnreadableCredentialVault: CredentialVault {
+    let stored = InMemoryCredentialVault()
+    func load(_ id: UUID) throws -> AccountCredential? { throw CocoaError(.fileReadNoPermission) }
+    func save(_ credential: AccountCredential, for id: UUID) throws { try stored.save(credential, for: id) }
+    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
+    func delete(_ id: UUID) throws { try stored.delete(id) }
 }

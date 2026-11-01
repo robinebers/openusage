@@ -3,38 +3,15 @@ import XCTest
 
 @MainActor
 final class LayoutStoreTests: XCTestCase {
-    func testUndoReversesMetricReorder() {
-        let store = makeStore()
-        let orderBefore = store.orderedSupportedMetrics(for: "claude").map(\.id)
-
-        XCTAssertTrue(store.reorderMetric(dragged: "claude.today", target: "claude.session", in: "claude"))
-        XCTAssertNotEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), orderBefore)
-
-        XCTAssertTrue(store.undo())
-        XCTAssertEqual(store.orderedSupportedMetrics(for: "claude").map(\.id), orderBefore,
-                       "undo restores the exact prior metric order")
-        XCTAssertFalse(store.canUndo, "undo must not record itself")
-    }
-
-    func testUndoReversesProviderReorder() {
-        let store = makeStore()
-        let orderBefore = store.orderedProviders().map(\.id)
-
-        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
-        XCTAssertNotEqual(store.orderedProviders().map(\.id), orderBefore)
-
-        XCTAssertTrue(store.undo())
-        XCTAssertEqual(store.orderedProviders().map(\.id), orderBefore,
-                       "undo restores the exact prior provider order")
-    }
-
     func testUndoWalksBackMultipleSteps() {
         let store = makeStore()
         let metricsBefore = store.orderedSupportedMetrics(for: "claude").map(\.id)
         let providersBefore = store.orderedProviders().map(\.id)
         XCTAssertTrue(store.reorderMetric(dragged: "claude.today", target: "claude.session", in: "claude"))
         let metricsAfter = store.orderedSupportedMetrics(for: "claude").map(\.id)
+        XCTAssertNotEqual(metricsAfter, metricsBefore)
         XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
+        XCTAssertNotEqual(store.orderedProviders().map(\.id), providersBefore)
 
         XCTAssertTrue(store.undo())
         XCTAssertEqual(store.orderedProviders().map(\.id), providersBefore)

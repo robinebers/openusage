@@ -5,6 +5,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     let displayName: String
     var plan: String?
     var lines: [MetricLine]
+    /// Range details read with these lines, keyed by descriptor key. Older snapshots carry only lines.
+    var usageBreakdowns: [String: UsageBreakdown]?
     var notice: String?
     var refreshedAt: Date
 

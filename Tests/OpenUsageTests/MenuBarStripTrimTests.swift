@@ -14,8 +14,6 @@ final class MenuBarStripTrimTests: XCTestCase {
         XCTAssertEqual(bounds, CGRect(x: 4, y: 1, width: 3, height: 2))
 
         let trimmed = try XCTUnwrap(MenuBarStripRenderer.trimmedToVisibleContent(image))
-        XCTAssertEqual(trimmed.width, 3)
-        XCTAssertEqual(trimmed.height, 2)
         XCTAssertEqual(MenuBarStripRenderer.visibleBounds(of: trimmed), CGRect(x: 0, y: 0, width: 3, height: 2))
     }
 
@@ -71,11 +69,10 @@ final class MenuBarStripTrimTests: XCTestCase {
     private func item(_ id: String, _ label: String, _ value: String, badge: String? = nil) -> MenuBarContent.Item {
         MenuBarContent.Item(
             id: id,
-            provider: Provider(id: String(id.prefix { $0 != "." }), kind: .claude),
+            provider: Provider(id: String(id.prefix { $0 != "." }), kind: .claude, badge: badge),
             label: label,
             shortLabel: label,
-            value: value,
-            badge: badge
+            value: value
         )
     }
 

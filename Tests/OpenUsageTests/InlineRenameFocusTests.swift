@@ -20,7 +20,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
     func testDoubleClickingAnAccountNameTakesTheKeyboard() async throws {
         let hosted = try await host()
         try await resignKey(hosted)
-        let personal = try XCTUnwrap(hosted.frames.byID[try XCTUnwrap(hosted.accounts["Personal"])], "All Metrics isn't showing")
+        let personal = try XCTUnwrap(hosted.frames.byID[try XCTUnwrap(hosted.accounts["Personal"])], "All Usage isn't showing")
         try await doubleClick(CGPoint(x: personal.minX + 10, y: personal.minY + DashboardGrid.captionHeight / 2), hosted)
         try await assertRenameTakesTyping("Personal", hosted)
     }
@@ -72,7 +72,6 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
             try await Task.sleep(for: .milliseconds(5))
         }
 
-        defaults.set(DashboardTab.allMetrics.rawValue, forKey: DashboardTab.key)
         let frames = Frames()
         let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
@@ -95,7 +94,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         panel.appearance = NSAppearance(named: .aqua)
         panel.host(hosting)
         panel.setFrame(frame, display: false)
-        container.popover.popoverShown = true
+        container.popover.show(dashboardTab: .allUsage)
         panel.makeKeyAndOrderFront(nil)
         addTeardownBlock { panel.close() }
         try await Task.sleep(for: .milliseconds(800))

@@ -8,7 +8,6 @@ final class LayoutStore {
 
     static let maxUndoDepth = 40
     private var undoSnapshots: [LayoutState] = []
-    private var isApplyingUndo = false
 
     private(set) var registry: WidgetRegistry
     private let defaults: UserDefaults
@@ -64,29 +63,21 @@ final class LayoutStore {
 
     var canUndo: Bool { !undoSnapshots.isEmpty }
 
-    func recordingUndoStep<T>(_ body: () -> T) -> T {
-        guard !isApplyingUndo else { return body() }
+    func recordingUndoStep(_ reorder: () -> Bool) -> Bool {
         let before = state
-        isApplyingUndo = true
-        defer { isApplyingUndo = false }
-        let result = body()
-        if state != before {
-            undoSnapshots.append(before)
-            if undoSnapshots.count > Self.maxUndoDepth { undoSnapshots.removeFirst() }
-        }
-        return result
+        guard reorder() else { return false }
+        undoSnapshots.append(before)
+        if undoSnapshots.count > Self.maxUndoDepth { undoSnapshots.removeFirst() }
+        persistence.save(state)
+        return true
     }
 
     @discardableResult
     func undo() -> Bool {
         guard let snapshot = undoSnapshots.popLast() else { return false }
         state = snapshot
-        persist()
-        return true
-    }
-
-    func persist() {
         persistence.save(state)
+        return true
     }
 
     func metricOrder(for providerID: String) -> [String] {

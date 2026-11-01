@@ -2,7 +2,7 @@ import Foundation
 
 enum CodexUsageMapper {
     /// OpenAI sells ChatGPT credits at 4¢ each; the usage API reports only the count.
-    static let creditUSDRate = 0.04
+    private static let creditUSDRate = 0.04
 
     static func mapUsageResponse(
         _ response: HTTPResponse,

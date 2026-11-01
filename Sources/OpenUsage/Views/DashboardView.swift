@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct DashboardView: View {
+    @State private var hasVisitedSettings = false
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
@@ -19,9 +20,8 @@ struct DashboardView: View {
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
     /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
     /// view tree alive after the first visit so later screen switches don't rebuild those controls.
-    @State private var hasVisitedSettings = false
     private static let reorderSpace = "popoverReorderSpace"
-    private static let topBarHeight: CGFloat = 44
+    private static let topBarHeight: CGFloat = 36
 
     var body: some View {
         @Bindable var popover = popover
@@ -36,10 +36,13 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
-            .sheet(isPresented: $popover.isAddingAccount) {
-                AddAccountSheet(flow: AddAccountFlow(store: container.accounts, connectHub: { url, key in
-                    try await container.hubs.connect(url: url, key: key)
-                }))
+            .sheet(isPresented: $popover.isAddingAccount, onDismiss: { popover.signingInAgainProviderID = nil }) {
+                AddAccountSheet(flow: AddAccountFlow(
+                    store: container.accounts,
+                    connectHub: { url, key in try await container.hubs.connect(url: url, key: key) },
+                    replaceCredential: { credential, id in try await container.replaceCredential(credential, for: id) },
+                    signingInAgainTo: popover.signingInAgainProviderID.flatMap(container.accounts.account(cardID:))
+                ))
             }
             .background(
                 PopoverKeyReader { key in
@@ -120,6 +123,9 @@ struct DashboardView: View {
                 guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
                     didEstablishHeight = true
+                    animatedHeight = target
+                } else if popover.screen == .settings, !isSliding {
+                    // A spring here resizes the panel's glass on every frame of a Settings tab switch, which flickers.
                     animatedHeight = target
                 } else if abs(target - animatedHeight) > 1 {
                     withAnimation(Motion.spring) { animatedHeight = target }
@@ -251,7 +257,7 @@ struct DashboardView: View {
             } action: { _, height in
                 if includeChrome, height > 0 { measuredIdeal[screen] = height }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .panelBar(edge: .top) {
                 if includeChrome {
                     PopoverTopBar(
                         screen: screen,
@@ -260,7 +266,7 @@ struct DashboardView: View {
                     )
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .panelBar(edge: .bottom) {
                 if includeChrome {
                     PopoverFooter(screen: screen, horizontalPadding: PanelMetrics.margin)
                 }

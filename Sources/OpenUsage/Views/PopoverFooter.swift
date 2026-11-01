@@ -4,26 +4,30 @@ import SwiftUI
 struct PopoverFooter: View {
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(LayoutStore.self) private var layout
+    @Environment(\.colorScheme) private var colorScheme
     let screen: PopoverScreen
     let horizontalPadding: CGFloat
 
     @ViewBuilder
     var body: some View {
         Group {
-            if screen == .accounts {
-                EmptyView()
-            } else {
+            if screen == .dashboard {
                 HStack(alignment: .center, spacing: 8) {
-                    nextUpdateButton
+                    if !layout.displayGroups.isEmpty { nextUpdateButton }
                     Spacer(minLength: 8)
-                    if screen == .dashboard {
-                        optionsMenu
-                    }
+                    if popover.dashboardTab == .priority, liveBoard.summary == .listed { copyPriorityButton }
+                    optionsMenu
                 }
+                .padding(.horizontal, 4)
+            } else if screen == .accounts, popover.customizeProviderID == nil {
+                addAccountButton
+            } else {
+                EmptyView()
             }
         }
         .frame(minHeight: 26)
-        .padding(.horizontal, horizontalPadding + 4)
+        .padding(.horizontal, horizontalPadding)
         .padding(.top, DashboardContentView.barGap)
         .padding(.bottom, PanelMetrics.margin)
         .frame(maxWidth: .infinity)
@@ -35,6 +39,35 @@ struct PopoverFooter: View {
         }
         .animation(Motion.spring, value: popover.shareNotice.value)
         .animation(Motion.spring, value: popover.shareNotice.trigger)
+    }
+
+    private var addAccountButton: some View {
+        Button { popover.isAddingAccount = true } label: {
+            Text("Add New Account")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+    }
+
+    private var liveBoard: PriorityBoard {
+        dataStore.priorityBoard(in: layout.displayGroups, now: Date(), hidingEmails: true)
+    }
+
+    /// Copies the Priority tab as a picture. It reads the live board when clicked.
+    private var copyPriorityButton: some View {
+        Button {
+            guard ShareCardRenderer.copy(PriorityShareCard(board: liveBoard, now: Date(), appearance: colorScheme), named: "priority") else { return }
+            popover.shareNotice.present(true)
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Theme.controlFill, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy Priority Screenshot")
     }
 
     /// The Options pull-down behind a round button. Accounts and Settings carry their key equivalents

@@ -11,9 +11,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var cursorMembershipRead = SecondaryRead<String>()
-    var usageLedger = UsageLedger()
-    /// The history behind the last snapshot's history rows.
-    private(set) var usageHistory: UsageHistory?
+    let usageLedger = UsageLedger()
+    let codexCreditsLedger = UsageLedger()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
@@ -57,6 +56,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         codexResetCreditsRead.forget()
         cursorMembershipRead.forget()
         usageLedger.forgetLastRead()
+        codexCreditsLedger.forgetLastRead()
         claude.forcedReadsPending = true
     }
 
@@ -97,17 +97,10 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
-            let usage = try await refresh(try await loadCredential())
-            usageHistory = usage.history
-            let lines = usage.lines + HistoryRow.lines(for: widgetDescriptors, in: usage.history)
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: lines, notice: usage.notice))
+            return .success(try await readSnapshot(using: loadCredential()))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
-    }
-
-    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
-        usageHistory.flatMap { descriptor.historyRow?.breakdown(in: $0) }
     }
 
     func loadCredential() async throws -> AccountCredential {
@@ -221,10 +214,20 @@ final class AccountProviderRuntime: ProviderRuntime {
         let accountID = tokens.extras["chatgpt_account_id"]
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
         var usage = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
-        usage.history = await refreshHistory(using: CodexHistorySource(
+        let countsSource = CodexHistorySource(
             client: CodexUsageClient(http: http), accessToken: tokens.accessToken, chatGPTAccountID: accountID,
-            cardID: account.cardID, plan: .init(planType: ProviderParse.jsonObject(response.body)?["plan_type"] as? String)
-        ))
+            cardID: account.cardID, report: .counts
+        )
+        let planType = ProviderParse.jsonObject(response.body)?["plan_type"] as? String
+        if let report = CodexHistorySource.Report.workspaceCredits(for: planType) {
+            var creditsSource = countsSource
+            creditsSource.report = report
+            async let counted = refreshHistory(using: countsSource)
+            let credits = await refreshHistory(using: creditsSource, ledger: codexCreditsLedger)
+            usage.history = await counted.map { CodexUsageReports.combining($0, with: credits) }
+        } else {
+            usage.history = await refreshHistory(using: countsSource)
+        }
         return usage
     }
 
@@ -368,7 +371,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    func validate(_ credential: AccountCredential) async throws {
-        _ = try await refresh(credential)
+    @discardableResult
+    func readSnapshot(using credential: AccountCredential) async throws -> ProviderSnapshot {
+        let usage = try await refresh(credential)
+        var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
+        HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
+        return snapshot
     }
 }

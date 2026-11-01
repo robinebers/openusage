@@ -13,7 +13,7 @@ final class WidgetNoDataTests: XCTestCase {
 
         let real = store.data(for: present)
         XCTAssertTrue(real.hasData)
-        XCTAssertEqual(real.dashboardRow().mark, .bar(fill: 0.6, severity: .normal, value: "60% left", reset: nil))
+        XCTAssertEqual(real.dashboardRow().mark, .bar(fill: 0.6, severity: .normal, value: "60%", reset: nil))
         XCTAssertNotEqual(real.valueText, WidgetData.noDataValue)
     }
 
