@@ -5,8 +5,8 @@ import XCTest
 final class TransientNoticeTests: XCTestCase {
     func testPresentBumpsTriggerAndAutoClears() async throws {
         let notice = TransientNotice<String?>(clearedValue: nil, timeout: .milliseconds(100))
-        notice.present("Starred for menu bar")
-        XCTAssertEqual(notice.value, "Starred for menu bar")
+        notice.present("Copied")
+        XCTAssertEqual(notice.value, "Copied")
         XCTAssertEqual(notice.trigger, 1)
         try await Task.sleep(for: .milliseconds(500))
         XCTAssertNil(notice.value)

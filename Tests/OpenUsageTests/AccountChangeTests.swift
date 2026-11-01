@@ -47,8 +47,6 @@ final class AccountChangeTests: XCTestCase {
         let work = accounts.add(kind: .openrouter, label: "Work", credential: .apiKey("work-key"))
         let dataStore = container.dataStore
         try await waitUntil { dataStore.errorMessage(for: personal.cardID) != nil && dataStore.errorMessage(for: work.cardID) != nil }
-        let stars = container.layout.pinnedMetricIDs
-        XCTAssertTrue(stars.contains("\(personal.cardID).today"))
 
         do {
             try await container.replaceKey("refused-key", for: personal.cardID)
@@ -72,7 +70,6 @@ final class AccountChangeTests: XCTestCase {
         XCTAssertEqual(try vault.load(personal.id), .apiKey("new-key"))
         XCTAssertEqual(accounts.accounts.map(\.id), [personal.id, work.id])
         XCTAssertEqual(accounts.accounts.map(\.label), ["Personal", "Work"])
-        XCTAssertEqual(container.layout.pinnedMetricIDs, stars)
         XCTAssertNil(dataStore.errorMessage(for: personal.cardID))
         XCTAssertNotNil(dataStore.snapshots[personal.cardID])
     }

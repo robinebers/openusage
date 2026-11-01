@@ -43,9 +43,7 @@ final class PopoverState {
     /// user on-screen. Never persisted.
     var popoverShown = false
 
-    let pinNotice = TransientNotice<String?>(clearedValue: nil, timeout: .seconds(3))
     let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
-    let accountsNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
 
     @discardableResult
     func back() -> Bool {
@@ -72,6 +70,5 @@ final class PopoverState {
     func reset() {
         if screen != .dashboard { screen = .dashboard }
         shareNotice.clear()
-        accountsNotice.clear()
     }
 }

@@ -8,7 +8,6 @@ final class TelemetryRecorderTests: XCTestCase {
     private let snapshot = TelemetryConfigSnapshot(
         enabledProviders: ["claude", "codex"],
         enabledMetricIDs: ["claude.session", "codex.weekly"],
-        pinnedMetricIDs: ["claude.session"]
     )
 
     func testRollOverEmitsCompleteDailyCounts() {
@@ -57,7 +56,7 @@ final class TelemetryRecorderTests: XCTestCase {
             XCTAssertEqual(active.count, 1)
             XCTAssertEqual(active[0]["install_id"] as? String, recorder.installID)
             XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
-            XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
+            XCTAssertNil(active[0]["pinned_metric_ids"])
             XCTAssertNil(active[0]["expanded_metric_ids"])
             XCTAssertNil(active[0]["menu_bar_style"])
 

@@ -71,10 +71,10 @@ final class DashboardMenusTests: XCTestCase {
             DashboardAccount(provider: organization, lines: []), DashboardAccount(provider: seat, lines: []),
         ])
 
-        XCTAssertEqual(DashboardMenus.account(family.accounts[0], status: nil, hasHiddenMetrics: false).last, [
+        XCTAssertEqual(DashboardMenus.account(family.accounts[0], status: nil).last, [
             DashboardMenuItem(title: "Organization Billing", command: .open(URL(string: "https://github.com/organizations/acme/settings/billing")!)),
         ])
-        XCTAssertEqual(DashboardMenus.account(family.accounts[1], status: nil, hasHiddenMetrics: false).last?.map(\.title), ["Share Screenshot"])
+        XCTAssertEqual(DashboardMenus.account(family.accounts[1], status: nil).last?.map(\.title), ["Share Screenshot"])
         XCTAssertEqual(DashboardMenus.provider(family).last, [
             DashboardMenuItem(title: "Status Page", command: .open(URL(string: "https://www.githubstatus.com/")!)),
             DashboardMenuItem(title: "Usage Dashboard", command: .open(URL(string: "https://github.com/settings/billing")!)),
@@ -82,18 +82,17 @@ final class DashboardMenusTests: XCTestCase {
     }
 
     func testThePlainAccountMenu() {
-        let menu = DashboardMenus.account(account(), status: nil, hasHiddenMetrics: false)
+        let menu = DashboardMenus.account(account(), status: nil)
         XCTAssertEqual(commands(menu), [
             [.refresh(["claude@1"]), .rename("claude@1"), .editAccount("claude@1")],
             [.shareScreenshot(["claude@1"])],
         ])
     }
 
-    func testTheAccountMenuExplainsItsStatusAndShowsHiddenMetrics() {
+    func testTheAccountMenuExplainsItsStatus() {
         let menu = DashboardMenus.account(
             account(resetExpiries: [now.addingTimeInterval(6 * 86_400)]),
-            status: "Couldn't refresh. Check your connection.",
-            hasHiddenMetrics: true
+            status: "Couldn't refresh. Check your connection."
         )
 
         XCTAssertEqual(menu[0], [DashboardMenuItem(title: "Couldn't refresh. Check your connection.")], "the status is a disabled line")
@@ -101,18 +100,6 @@ final class DashboardMenusTests: XCTestCase {
             [nil],
             [.refresh(["claude@1"]), .rename("claude@1"), .editAccount("claude@1")],
             [.shareScreenshot(["claude@1"])],
-            [.showHiddenMetrics("claude@1")],
         ])
-    }
-
-    func testTheMetricMenuStarsAndHides() {
-        let data = WidgetData(title: "Weekly", kind: .percent, used: 10, limit: 100)
-        let descriptor = WidgetDescriptor(provider: claude, key: "weekly", metricLabel: "Weekly", sample: data)
-
-        XCTAssertEqual(DashboardMenus.metric(descriptor, isStarred: false), [[
-            DashboardMenuItem(title: "Star for Menu Bar", command: .toggleStar("claude@1.weekly")),
-            DashboardMenuItem(title: "Hide", command: .hide("claude@1.weekly")),
-        ]])
-        XCTAssertEqual(DashboardMenus.metric(descriptor, isStarred: true)[0][0].title, "Unstar")
     }
 }

@@ -8,7 +8,6 @@ struct WidgetDescriptor: Identifiable, Hashable {
     let metricLabel: String
     let sample: WidgetData
     var limitResources: [LimitResourceDescriptor] = []
-    var isPinnedByDefault = false
     var historyRow: HistoryRow?
 
     init(provider: Provider, key: String, metricLabel: String, sample: WidgetData) {
@@ -21,12 +20,6 @@ struct WidgetDescriptor: Identifiable, Hashable {
     }
 
     var kindScopedKey: String { "\(providerKind.rawValue).\(key)" }
-
-    func pinnedByDefault() -> WidgetDescriptor {
-        var copy = self
-        copy.isPinnedByDefault = true
-        return copy
-    }
 
     var title: String { sample.title }
 

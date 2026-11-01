@@ -7,9 +7,6 @@ enum DashboardCommand: Equatable {
     case rename(String)
     case editAccount(String)
     case shareScreenshot([String])
-    case showHiddenMetrics(String)
-    case toggleStar(String)
-    case hide(String)
 }
 
 struct DashboardMenuItem: Equatable {
@@ -33,11 +30,7 @@ enum DashboardMenus {
         provider.links.map { DashboardMenuItem(title: $0.label, command: .open($0.url)) }
     }
 
-    static func account(
-        _ account: DashboardAccount,
-        status: String?,
-        hasHiddenMetrics: Bool
-    ) -> Sections {
+    static func account(_ account: DashboardAccount, status: String?) -> Sections {
         [
             status.map { [DashboardMenuItem(title: $0)] } ?? [],
             [
@@ -47,15 +40,7 @@ enum DashboardMenus {
             ],
             [DashboardMenuItem(title: "Share Screenshot", command: .shareScreenshot([account.id]))],
             account.provider.organizationBillingPage.map { [DashboardMenuItem(title: "Organization Billing", command: .open($0))] } ?? [],
-            hasHiddenMetrics ? [DashboardMenuItem(title: "Show Hidden Metrics", command: .showHiddenMetrics(account.id))] : [],
         ].filter { !$0.isEmpty }
-    }
-
-    static func metric(_ descriptor: WidgetDescriptor, isStarred: Bool) -> Sections {
-        [[
-            DashboardMenuItem(title: isStarred ? "Unstar" : "Star for Menu Bar", command: .toggleStar(descriptor.id)),
-            DashboardMenuItem(title: "Hide", command: .hide(descriptor.id)),
-        ]]
     }
 }
 

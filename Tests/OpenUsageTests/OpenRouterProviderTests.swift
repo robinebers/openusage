@@ -143,16 +143,12 @@ final class OpenRouterProviderTests: XCTestCase {
         XCTAssertEqual(http.requests.map { $0.url.path() }, ["/api/v1/key"])
     }
 
-    func testRestoredRowsKeepTheirOrderAndCreditsAndTodayAreStarredOnAFreshInstall() {
+    func testRestoredRowsKeepTheirOrder() {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
-        let registry = WidgetRegistry(providers: [runtime.provider], descriptors: runtime.widgetDescriptors)
-
-        let layout = LayoutStore(registry: registry, defaults: isolatedDefaults())
 
         XCTAssertEqual(runtime.widgetDescriptors.map(\.title), [
             "Credits", "Balance", "Today", "Yesterday", "This Week", "This Month", "Prior 30 Days", "Requests",
             "Key Limit", "Budget", "Free Requests"
         ])
-        XCTAssertEqual(layout.pinnedMetricIDs, ["\(runtime.provider.id).credits", "\(runtime.provider.id).today"])
     }
 }

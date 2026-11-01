@@ -97,17 +97,10 @@ struct PopoverFooter: View {
     private var footerIdentity: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("OpenUsage \(AppInfo.version)")
-            if let notice = popover.pinNotice.value {
-                Text(notice)
-                    .foregroundStyle(Theme.notice)
-                    .denyShake(trigger: popover.pinNotice.trigger, shakeOnAppear: true)
-            } else {
-                nextUpdateButton
-            }
+            nextUpdateButton
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
-        .animation(Motion.spring, value: popover.pinNotice.value)
     }
 
     private var nextUpdateButton: some View {

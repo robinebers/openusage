@@ -60,8 +60,7 @@ final class AppContainer {
                 }
                 return TelemetryConfigSnapshot(
                     enabledProviders: kinds,
-                    enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey),
-                    pinnedMetricIDs: layout.pinnedMetricIDs.compactMap { layout.registry.descriptor(id: $0)?.kindScopedKey }.sorted()
+                    enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey)
                 )
             }
         )

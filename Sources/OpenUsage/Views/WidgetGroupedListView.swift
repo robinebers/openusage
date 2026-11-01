@@ -67,11 +67,7 @@ struct WidgetGroupedListView: View {
         }
         .contextMenu {
             DashboardMenu(
-                sections: DashboardMenus.account(
-                    account,
-                    status: statusReason(for: account.id),
-                    hasHiddenMetrics: !hiddenMetricIDs(for: account.id).isEmpty
-                ),
+                sections: DashboardMenus.account(account, status: statusReason(for: account.id)),
                 perform: perform
             )
         }
@@ -91,12 +87,6 @@ struct WidgetGroupedListView: View {
                 )
                     .opacity(activeMetricID == line.id ? 0 : 1)
                     .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
-                    .contextMenu {
-                        DashboardMenu(
-                            sections: DashboardMenus.metric(line.descriptor, isStarred: layout.isPinned(line.descriptor.id)),
-                            perform: perform
-                        )
-                    }
                     .reorderFrame(id: line.id, in: .named(reorderSpaceName))
             }
         }
@@ -104,12 +94,6 @@ struct WidgetGroupedListView: View {
 
     private func statusReason(for accountID: String) -> String? {
         dataStore.notice(for: accountID) ?? dataStore.stalenessHint(for: accountID)
-    }
-
-    private func hiddenMetricIDs(for accountID: String) -> [String] {
-        layout.orderedSupportedMetrics(for: accountID)
-            .filter { !layout.isMetricEnabled($0.id) && dataStore.data(for: $0).hasData }
-            .map(\.id)
     }
 
     private func perform(_ command: DashboardCommand) {
@@ -126,16 +110,6 @@ struct WidgetGroupedListView: View {
             popover.openAccounts(accountID)
         case .shareScreenshot(let accountIDs):
             shareScreenshot(accountIDs)
-        case .showHiddenMetrics(let accountID):
-            layout.showMetrics(hiddenMetricIDs(for: accountID))
-        case .toggleStar(let descriptorID):
-            if layout.isPinned(descriptorID) || layout.canPin(descriptorID) {
-                layout.togglePin(descriptorID)
-            } else if let reason = layout.pinDenialReason(descriptorID) {
-                popover.pinNotice.present(reason)
-            }
-        case .hide(let descriptorID):
-            layout.setMetricEnabled(descriptorID, false)
         }
     }
 

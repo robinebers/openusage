@@ -1,10 +1,6 @@
 extension LayoutStore {
     func provider(id: String) -> Provider? { registry.provider(id: id) }
 
-    func isMetricEnabled(_ descriptorID: String) -> Bool {
-        !state.hiddenMetricIDs.contains(descriptorID)
-    }
-
     var visibleDescriptors: [WidgetDescriptor] { displayGroups.flatMap(\.metrics) }
 
     func orderedProviderIDs() -> [String] {
@@ -17,26 +13,13 @@ extension LayoutStore {
 
     var displayGroups: [ProviderMetrics] {
         orderedProviders().compactMap { provider in
-            let metrics = orderedSupportedMetrics(for: provider.id).filter { !state.hiddenMetricIDs.contains($0.id) }
+            let metrics = orderedSupportedMetrics(for: provider.id)
             return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
         }
-    }
-
-    func customizeDetail(for providerID: String) -> ProviderMetrics? {
-        guard let provider = registry.provider(id: providerID) else { return nil }
-        let metrics = orderedSupportedMetrics(for: providerID)
-        return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
     }
 
     func orderedSupportedMetrics(for providerID: String) -> [WidgetDescriptor] {
         metricOrder(for: providerID).compactMap { registry.descriptor(id: $0) }
-    }
-
-    var pinnedGroups: [ProviderMetrics] {
-        orderedProviders().compactMap { provider in
-            let metrics = orderedSupportedMetrics(for: provider.id).filter { state.pinnedMetricIDs.contains($0.id) }
-            return metrics.isEmpty ? nil : ProviderMetrics(provider: provider, metrics: metrics)
-        }
     }
 
     @discardableResult
