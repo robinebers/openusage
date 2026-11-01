@@ -75,6 +75,53 @@ final class PR1535ClaudeTests: XCTestCase {
         HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42}}"#.utf8))
     }
 
+    /// Holds the saved token's usage read, and refuses any other token.
+    private final class HeldUsageClient: HTTPClient, @unchecked Sendable {
+        private let state = NSLock()
+        private var held: CheckedContinuation<Void, Never>?
+        private var refused = 0
+
+        var isHolding: Bool { state.withLock { held != nil } }
+        var refusedCount: Int { state.withLock { refused } }
+
+        func release() {
+            state.withLock { held?.resume(); held = nil }
+        }
+
+        func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+            guard request.headers["Authorization"] == "Bearer saved" else {
+                state.withLock { refused += 1 }
+                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
+            }
+            await withCheckedContinuation { continuation in state.withLock { held = continuation } }
+            return PR1535ClaudeTests.successfulUsage()
+        }
+    }
+
+    func testARejectedSignInCantPassOnTheSavedTokensRequest() async throws {
+        let defaults = isolatedDefaults()
+        let vault = InMemoryCredentialVault()
+        let accounts = AccountStore(defaults: defaults, vault: vault)
+        let saved = login(token: "saved", identity: "same-login/same-org")
+        let account = accounts.add(kind: .claude, label: "Work", credential: saved)
+        let http = HeldUsageClient()
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+
+        let refresh = Task { await container.dataStore.refresh(providerID: account.cardID, force: true) }
+        for _ in 0..<400 where !http.isHolding { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(http.isHolding, "the saved token's read never started")
+
+        let replacing = Task { try await container.replaceCredential(self.login(token: "rejected", identity: "same-login/same-org"), for: account.cardID) }
+        for _ in 0..<200 where http.refusedCount == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        http.release()
+        _ = await refresh.value
+
+        let result = await replacing.result
+        XCTAssertGreaterThan(http.refusedCount, 0, "the new sign-in never asked for itself")
+        if case .success = result { XCTFail("a rejected sign-in was accepted on the saved token's answer") }
+        XCTAssertEqual(try vault.load(account.id), saved)
+    }
+
     func testSignInAgainHonorsPersisted429ForTheSameClaudeIdentity() async throws {
         let defaults = isolatedDefaults()
         let identity = "a4ae1535-bfe9-4489-a97a-c94672cc313a/1e89475b-246e-4833-86e0-af0c11874681"
