@@ -4,7 +4,7 @@ import Foundation
 final class AccountProviderRuntime: ProviderRuntime {
     private(set) var account: Account
     private(set) var provider: Provider
-    let vault: any CredentialVault
+    private(set) var vault: any CredentialVault
     let http: any HTTPClient
     let now: () -> Date
     var planRead = SecondaryRead<String>()
@@ -23,6 +23,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
     private var renewalsStopped = false
+    private var credentialWrite: Task<Void, Error>?
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
     /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
@@ -348,8 +349,16 @@ final class AccountProviderRuntime: ProviderRuntime {
         return response.body
     }
 
+    /// Writes run one at a time, so `stopRenewals` can wait out whichever is underway.
     func replaceCredential(_ credential: AccountCredential) async throws {
-        try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        guard !renewalsStopped else { return }
+        let previous = credentialWrite
+        let write = Task { [vault, account] in
+            _ = await previous?.result
+            try await loadOffMainActor { try vault.update(credential, for: account.id) }
+        }
+        credentialWrite = write
+        try await write.value
         credentialWrites += 1
         if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
     }
@@ -363,12 +372,18 @@ final class AccountProviderRuntime: ProviderRuntime {
         earlyRenewalNotBefore = now().addingTimeInterval(retryAfter)
     }
 
-    /// Lets a renewal that's underway finish without saving, so it can't overwrite the sign-in replacing
-    /// this runtime. `resumeRenewals` undoes it if the replacement doesn't go through.
+    /// Lets a renewal or write that's underway finish, and saves nothing after it, so neither can overwrite
+    /// the sign-in replacing this runtime. `resumeRenewals` undoes it if the replacement doesn't go through.
     func stopRenewals() async {
         renewalsStopped = true
         renewal?.cancel()
         _ = try? await renewal?.value
+        _ = await credentialWrite?.result
+    }
+
+    /// Moves a runtime that proved a new sign-in onto the store that now holds it.
+    func adopt(_ vault: any CredentialVault) {
+        self.vault = vault
     }
 
     func resumeRenewals() {
@@ -377,7 +392,6 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func saveRenewal(_ tokens: OAuthTokens) async {
         unsavedRenewal = tokens
-        guard !renewalsStopped else { return }
         do {
             try await replaceCredential(.oauth(tokens))
         } catch {

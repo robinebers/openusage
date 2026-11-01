@@ -5,8 +5,7 @@ enum DashboardTab: String, Hashable, Sendable, CaseIterable {
     static let defaultKey = "defaultDashboardTab"
 
     case priority
-    /// Keeps its old raw value, so a saved tab survives the rename.
-    case allUsage = "allMetrics"
+    case allUsage
 
     static func preferred(in defaults: UserDefaults = .standard) -> Self {
         defaults.enumValue(forKey: defaultKey, default: .priority)

@@ -36,6 +36,11 @@ final class QuotaNotificationEvaluator {
             var paceDelivered = false
             var levelDelivered = false
             for milestone in result.fire {
+                // A drop past both levels sends the lowest one that's switched on, not both.
+                if levelDelivered, !milestone.isPace {
+                    next.firedMilestones.insert(milestone)
+                    continue
+                }
                 let delivered = isOn(milestone)
                     ? await deliver(milestone, data: data, providerID: descriptor.providerID, providerName: providerName)
                     : false

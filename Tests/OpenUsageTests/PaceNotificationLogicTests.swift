@@ -37,9 +37,9 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(step(healthy, fraction: 0.10, from: orange).fire, [.underTenPercent])
     }
 
-    func testDroppingStraightUnderTenFiresOnlyTheLowerLevel() {
+    func testDroppingStraightUnderTenOffersBothLevelsLowestFirst() {
         let primed = step(healthy).newState
-        XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.underTenPercent])
+        XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.underTenPercent, .underHalf])
     }
 
     func testCloseToRunningOutFires() {

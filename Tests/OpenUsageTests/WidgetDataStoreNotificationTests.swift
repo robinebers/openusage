@@ -144,7 +144,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
         await evaluate(store, runtime: runtime, used: 55)
         XCTAssertEqual(recorder.posts.count, 1)
-        XCTAssertEqual(recorder.posts.first?.0, "test.healthyToClose")
+        XCTAssertEqual(recorder.posts.first?.0, "test.underHalf")
         XCTAssertEqual(recorder.posts.first?.1, "Running Low")
 
         await notify(base)
@@ -203,7 +203,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
         settings.set(true, forKey: PaceMilestone.underHalf.settingKey)
         await notify(base)
-        XCTAssertEqual(recorder.posts.map(\.0), ["test.healthyToClose"])
+        XCTAssertEqual(recorder.posts.map(\.0), ["test.underHalf"])
     }
 
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
@@ -214,7 +214,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
         await evaluate(store, runtime: runtime, used: 55)
-        XCTAssertFalse(recorder.posts.contains { $0.0 == "test.healthyToClose" })
+        XCTAssertFalse(recorder.posts.contains { $0.0 == "test.underHalf" })
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
     }

@@ -5,7 +5,6 @@ import XCTest
 final class DefaultTabTests: XCTestCase {
     func testColdLaunchAndReopenUseTheDefaultEvenAfterAnotherTabWasSelected() {
         let defaults = isolatedDefaults()
-        defaults.set(DashboardTab.allUsage.rawValue, forKey: "dashboardTab") // Prior builds saved the open tab here.
         let popover = PopoverState()
 
         popover.show(dashboardTab: .preferred(in: defaults))

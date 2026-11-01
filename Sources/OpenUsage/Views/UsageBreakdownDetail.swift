@@ -151,19 +151,10 @@ struct UsageBreakdownContent: View {
         }
     }
 
-    private var modelHeading: String {
-        guard shownFigure == .share else { return "Top Models" }
-        switch breakdown.shareMeasure {
-        case .credits: return "Top Models by Credits"
-        case .turns: return "Top Models by Turns"
-        default: return "Share Among Named Models"
-        }
-    }
-
     private var topModels: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(modelHeading)
+                Text("Top Models")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)

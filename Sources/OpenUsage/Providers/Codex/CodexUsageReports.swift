@@ -45,9 +45,10 @@ enum CodexUsageReports {
         guard let models = record["models"] as? [[String: Any]], !models.isEmpty else { return nil }
         var totals: [String: UsageTotals] = [:]
         for model in models {
-            guard let turns = count(model["turns"]) else { continue }
             let name = model["model"] as? String ?? "Unknown"
-            totals[name, default: UsageTotals()].values[.turns, default: 0] += turns
+            for (key, measure) in [("turns", UsageMeasure.turns), ("text_total_tokens", .tokens)] {
+                if let number = count(model[key]) { totals[name, default: UsageTotals()].values[measure, default: 0] += number }
+            }
         }
         return totals
     }
@@ -118,8 +119,8 @@ enum CodexUsageReports {
     /// Several records for one date add up, as the Codex client sums them.
     private static func add(_ day: UsageDay, on date: String, to days: inout [String: UsageDay]) {
         guard let earlier = days[date] else { return days[date] = day }
-        let byModel = earlier.byModel.flatMap { earlier in day.byModel.map { earlier.merging($0) { $0.adding($1) } } }
-        days[date] = UsageDay(totals: earlier.totals.adding(day.totals), byModel: byModel)
+        let byModel = (earlier.byModel ?? [:]).merging(day.byModel ?? [:]) { $0.adding($1) }
+        days[date] = UsageDay(totals: earlier.totals.adding(day.totals), byModel: byModel.isEmpty && earlier.byModel == nil && day.byModel == nil ? nil : byModel)
     }
 
     /// Credit amounts, which can be negative adjustments; nil when any is not a number.

@@ -1,3 +1,4 @@
+import os
 import Foundation
 import Security
 
@@ -6,6 +7,20 @@ protocol CredentialVault: Sendable {
     func save(_ credential: AccountCredential, for id: UUID) throws
     func update(_ credential: AccountCredential, for id: UUID) throws
     func delete(_ id: UUID) throws
+}
+
+/// Holds one sign-in in memory, so a new one proves itself without seeing the sign-in it would replace.
+struct ProvisionalCredentialVault: CredentialVault {
+    private let stored: OSAllocatedUnfairLock<AccountCredential?>
+
+    init(_ credential: AccountCredential) {
+        stored = OSAllocatedUnfairLock(initialState: credential)
+    }
+
+    func load(_ id: UUID) throws -> AccountCredential? { stored.withLock { $0 } }
+    func save(_ credential: AccountCredential, for id: UUID) throws { stored.withLock { $0 = credential } }
+    func update(_ credential: AccountCredential, for id: UUID) throws { stored.withLock { $0 = credential } }
+    func delete(_ id: UUID) throws { stored.withLock { $0 = nil } }
 }
 
 enum CredentialVaultError: LocalizedError {

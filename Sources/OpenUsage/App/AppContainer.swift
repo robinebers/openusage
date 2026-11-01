@@ -92,10 +92,15 @@ final class AppContainer {
     func replaceCredential(_ credential: AccountCredential, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
         let account = runtime.account
+        if case .oauth = credential, let signedIn = credential.identity,
+           let saved = (try? accounts.credential(for: account.id))?.identity, saved != signedIn {
+            throw ProviderError.unavailable("That's a different account. Sign in to this one, or use Add New Account.")
+        }
         try accounts.checkForDuplicate(credential, kind: account.kind, organization: account.organization, excluding: account.id)
-        // A new key can belong to a different workspace. Read it into its own runtime so the
-        // previous key's history and plan cannot be reused, even if the Keychain write fails.
-        let replacement = AccountProviderRuntime(account: runtime.account, vault: accounts.credentialVault, http: runtime.http)
+        // The new sign-in reads into its own runtime and vault: the previous sign-in's history and plan
+        // can't be reused, and a refused token can't fall back on the stored one.
+        let provisional = ProvisionalCredentialVault(credential)
+        let replacement = AccountProviderRuntime(account: account, vault: provisional, http: runtime.http, claudeSessions: claudeSessions)
         let snapshot: ProviderSnapshot
         do {
             snapshot = try await replacement.readSnapshot(using: credential)
@@ -104,19 +109,22 @@ final class AppContainer {
         }
         try Task.checkCancellation()
         await runtime.stopRenewals()
-        guard let index = providers.firstIndex(where: { $0.account.id == account.id }) else { return }
-        guard providers[index] === runtime else {
-            throw ProviderError.unavailable("This account’s key changed while OpenUsage was checking it. Try again.")
-        }
         do {
-            try accounts.replaceCredential(credential, for: account.id)
+            try Task.checkCancellation()
+            guard let index = providers.firstIndex(where: { $0.account.id == account.id }) else { return }
+            guard providers[index] === runtime else {
+                throw ProviderError.unavailable("This account’s sign-in changed while OpenUsage was checking it. Try again.")
+            }
+            // A read can renew the sign-in, so what's saved is what the read ended on.
+            try accounts.replaceCredential(provisional.load(account.id) ?? credential, for: account.id)
+            replacement.adopt(accounts.credentialVault)
+            replacement.update(runtime.account) // The account may have been renamed during the read.
+            providers[index] = replacement
+            dataStore.replaceProvider(replacement, snapshot: snapshot)
         } catch {
             runtime.resumeRenewals()
             throw error
         }
-        replacement.update(runtime.account) // The account may have been renamed during the read.
-        providers[index] = replacement
-        dataStore.replaceProvider(replacement, snapshot: snapshot)
     }
 
     /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.

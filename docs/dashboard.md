@@ -121,8 +121,7 @@ under **Other**. A bar shows the token split when the parts add up to the total.
 the costs or tokens the provider attributed to each model, even when some usage has no model name.
 
 For ChatGPT, each percentage is the model's share of the credits or turns reported for the range.
-Named models can add up to less than 100% when attribution is partial. An older saved breakdown
-without the original total labels its percentages as shares among named models until it refreshes.
+Named models can add up to less than 100% when attribution is partial.
 
 Click the copy button in the corner to copy a PNG of the details, with the provider's name and
 whichever of Cost or Tokens is showing, without the switch.

@@ -2,8 +2,7 @@ import Foundation
 
 enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
     case underTenPercent
-    /// Keeps its old raw value, so a saved switch survives the rename.
-    case underHalf = "healthyToClose"
+    case underHalf
     case closeToRunningOut
 }
 
@@ -105,11 +104,8 @@ enum PaceNotificationLogic {
             next.previousBucket = currentBucket
         }
 
-        if severity == .critical, next.previousSeverity != .critical {
-            candidate(.underTenPercent)
-        } else if severity == .warning, next.previousSeverity == .normal {
-            candidate(.underHalf)
-        }
+        if severity == .critical, next.previousSeverity != .critical { candidate(.underTenPercent) }
+        if severity != .normal, next.previousSeverity == .normal { candidate(.underHalf) }
         if severity != .critical { next.firedMilestones.remove(.underTenPercent) }
         if severity == .normal { next.firedMilestones.remove(.underHalf) }
         next.previousSeverity = severity

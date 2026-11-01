@@ -229,7 +229,7 @@ final class AccountChangeTests: XCTestCase {
             try await earlier.value
             XCTFail("The superseded edit appeared to succeed")
         } catch {
-            XCTAssertEqual(error.localizedDescription, "This account’s key changed while OpenUsage was checking it. Try again.")
+            XCTAssertEqual(error.localizedDescription, "This account’s sign-in changed while OpenUsage was checking it. Try again.")
         }
         XCTAssertEqual(try vault.load(account.id), .apiKey("later"))
     }

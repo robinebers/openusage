@@ -219,10 +219,8 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
     private let reportingDay: Date
     private let reportingTimeZone: TimeZone
     let totals: UsageTotals
-    /// Older cached breakdowns didn't record read status or the unit behind model percentages.
-    private let unreadDays: Int?
-    let shareMeasure: UsageMeasure?
-    var hasUnreadDays: Bool { (unreadDays ?? 0) > 0 }
+    private let unreadDays: Int
+    var hasUnreadDays: Bool { unreadDays > 0 }
     /// Only the names and figures shown in the popover are kept with the snapshot.
     private let rankings: [ModelFigure: [Model]]
     /// What the models report, in order of preference. Credits or turns supply a share when neither
@@ -243,7 +241,6 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         reportingDay = history.calendar.startOfDay(for: history.asOf)
         reportingTimeZone = history.calendar.timeZone
         self.totals = totals
-        shareMeasure = share
         let everyModel = models.map { name, model in
             let fraction = share.flatMap { measure -> Double? in
                 guard let amount = model[measure], let total = totals[measure] else { return nil }
