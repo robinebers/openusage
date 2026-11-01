@@ -7,19 +7,22 @@ enum DashboardGrid {
     static let inset = Theme.Spacing.xs
     static let headerGap = Theme.Spacing.xs
     static let sectionSpacing = Theme.Spacing.xxxl
-    static let accountSpacing = Theme.Spacing.xxxl
-    static let rowHeight: CGFloat = 20
+    static let accountSpacing: CGFloat = 20
+    static let captionGap = Theme.Spacing.s
     static let columnGap = Theme.Spacing.m
-    static let labelWidth: CGFloat = 86
-    static let valueWidth: CGFloat = 52
-    static let resetWidth: CGFloat = 56
-    static let barHeight: CGFloat = 5
+    static let amountGap = Theme.Spacing.s
+    static let barGap = Theme.Spacing.xs
+    static let barHeight: CGFloat = 4
+    static let limitGap: CGFloat = 9
+    static let valueGap = Theme.Spacing.s
+    /// The extra space that sets the value rows apart from the bars.
+    static let groupGap = Theme.Spacing.m
 
-    static let headerFont: Font = .headline
-    static var headerNSFont: NSFont { .preferredFont(forTextStyle: .headline) }
-    static let planFont: Font = .subheadline
-    static var planNSFont: NSFont { .preferredFont(forTextStyle: .subheadline) }
-    static let captionFont: Font = .subheadline.weight(.semibold)
+    static let headerFont: Font = .system(size: 15, weight: .semibold)
+    static var headerNSFont: NSFont { .systemFont(ofSize: 15, weight: .semibold) }
+    static let planFont: Font = .system(size: 11)
+    static var planNSFont: NSFont { .systemFont(ofSize: 11) }
+    static let captionFont: Font = .system(size: 11, weight: .semibold)
 
     static let headerHeight = lineHeight(headerNSFont)
     static let captionHeight = lineHeight(planNSFont)
@@ -27,5 +30,29 @@ enum DashboardGrid {
 
     static func lineHeight(_ font: NSFont) -> CGFloat {
         NSLayoutManager().defaultLineHeight(for: font).rounded(.up)
+    }
+
+    static func gap(above line: DashboardLine, after previous: DashboardLine?) -> CGFloat {
+        guard let previous else { return 0 }
+        switch (previous.hasBar, line.hasBar) {
+        case (true, true): return limitGap
+        case (false, false): return valueGap
+        default: return valueGap + groupGap
+        }
+    }
+}
+
+/// An account's rows, spaced by what they are: there are no separators in a card.
+struct DashboardLineStack<Row: View>: View {
+    let lines: [DashboardLine]
+    @ViewBuilder let row: (DashboardLine) -> Row
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
+                row(line)
+                    .padding(.top, DashboardGrid.gap(above: line, after: index > 0 ? lines[index - 1] : nil))
+            }
+        }
     }
 }

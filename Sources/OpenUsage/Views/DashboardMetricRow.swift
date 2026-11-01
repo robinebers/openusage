@@ -9,53 +9,63 @@ struct DashboardMetricRow: View {
     var resetTooltip: String?
     var figure: (AnyView) -> AnyView = { $0 }
 
-    static let font: Font = .callout
+    static let font: Font = .system(size: 13)
+    static let resetFont: Font = .system(size: 12)
 
     var body: some View {
-        HStack(spacing: DashboardGrid.columnGap) {
-            Text(model.label)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(width: DashboardGrid.labelWidth, alignment: .leading)
+        Group {
             switch model.mark {
-            case .bar(let fill, let severity, let value, let reset, let flame):
-                UsageMeterBar(fill: fill, severity: severity)
-                    .hoverTooltip(paceTooltip)
-                HStack(spacing: Theme.Spacing.xxs) {
-                    if flame {
-                        Image(systemName: "flame.fill")
-                            .imageScale(.small)
-                            .foregroundStyle(Theme.severityColor(.critical))
-                            .accessibilityLabel("Running out")
+            case .bar(let fill, let severity, let value, let reset, let isUsedUp):
+                VStack(alignment: .leading, spacing: DashboardGrid.barGap) {
+                    HStack(alignment: .firstTextBaseline, spacing: DashboardGrid.amountGap) {
+                        label
+                        valueText(value, severity: severity)
+                        Spacer(minLength: DashboardGrid.columnGap)
+                        resetText(reset)
                     }
-                    valueText(value, severity: severity)
+                    UsageMeterBar(fill: fill, severity: severity, tintsTrack: isUsedUp)
+                        .hoverTooltip(paceTooltip)
                 }
-                .frame(width: DashboardGrid.valueWidth, alignment: .trailing)
-                resetColumn(reset)
-                    .frame(width: DashboardGrid.resetWidth, alignment: .trailing)
-            case .value(let text, let severity):
-                figure(AnyView(
-                    Text(text)
-                        .foregroundStyle(Self.figureStyle(severity))
+            case .value(let text, let detail, let severity):
+                HStack(alignment: .firstTextBaseline, spacing: DashboardGrid.columnGap) {
+                    label
+                    Spacer(minLength: 0)
+                    figure(AnyView(
+                        HStack(alignment: .firstTextBaseline, spacing: 0) {
+                            Text(text)
+                                .foregroundStyle(Self.figureStyle(severity))
+                            if let detail {
+                                Text(" · \(detail)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         .monospacedDigit()
                         .lineLimit(1)
                         .contentTransition(.numericText())
                         .fixedSize()
                         .accessibilityValue(Self.expiryAccessibilityValue(severity) ?? "")
-                ))
-                Spacer(minLength: 0)
+                    ))
+                }
             }
         }
         .font(Self.font)
         .padding(.horizontal, DashboardGrid.inset)
-        .frame(height: DashboardGrid.rowHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    private var label: some View {
+        Text(model.label)
+            .lineLimit(1)
     }
 
     /// A figure keeps the row's colour until it warns.
     private static func figureStyle(_ severity: WidgetData.MeterSeverity) -> AnyShapeStyle {
         severity == .normal ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.severityColor(severity))
+    }
+
+    private static func amountStyle(_ severity: WidgetData.MeterSeverity) -> AnyShapeStyle {
+        severity == .normal ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.severityColor(severity))
     }
 
     static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String? {
@@ -69,11 +79,11 @@ struct DashboardMetricRow: View {
     @ViewBuilder
     private func valueText(_ value: String, severity: WidgetData.MeterSeverity) -> some View {
         let text = Text(value)
-            .fontWeight(.medium)
-            .foregroundStyle(Self.figureStyle(severity))
+            .foregroundStyle(Self.amountStyle(severity))
             .monospacedDigit()
             .lineLimit(1)
             .contentTransition(.numericText())
+            .fixedSize()
         if let onToggleMeterStyle {
             Button(action: onToggleMeterStyle) { text }
                 .buttonStyle(.plain)
@@ -84,18 +94,21 @@ struct DashboardMetricRow: View {
     }
 
     @ViewBuilder
-    private func resetColumn(_ reset: String?) -> some View {
-        let text = Text(reset ?? "")
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-        if reset != nil, let onToggleResetDisplay {
-            Button(action: onToggleResetDisplay) { text }
-                .buttonStyle(.plain)
-                .hoverTooltip(resetTooltip)
-        } else {
-            text
+    private func resetText(_ reset: String?) -> some View {
+        if let reset {
+            let text = Text(reset)
+                .font(Self.resetFont)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+            if let onToggleResetDisplay {
+                Button(action: onToggleResetDisplay) { text }
+                    .buttonStyle(.plain)
+                    .hoverTooltip(resetTooltip)
+            } else {
+                text
+            }
         }
     }
 }

@@ -23,6 +23,27 @@ final class SeverityPaletteTests: XCTestCase {
         }
     }
 
+    func testOnlyAUsedUpLimitsTrackIsTintedRed() throws {
+        func middle(_ bar: UsageMeterBar) throws -> (red: Int, green: Int) {
+            let renderer = ImageRenderer(content: bar.frame(width: 60).environment(\.colorScheme, .light))
+            let image = try XCTUnwrap(renderer.cgImage)
+            var pixel = [UInt8](repeating: 255, count: 4)
+            let context = try XCTUnwrap(CGContext(
+                data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.setFillColor(.white)
+            context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+            context.draw(image, in: CGRect(x: -30, y: -2, width: image.width, height: image.height))
+            return (Int(pixel[0]), Int(pixel[1]))
+        }
+
+        let tinted = try middle(UsageMeterBar(fill: 0, severity: .critical, tintsTrack: true))
+        XCTAssertGreaterThan(tinted.red - tinted.green, 25, "the track isn't tinted red")
+        let plain = try middle(UsageMeterBar(fill: 0, severity: .critical))
+        XCTAssertLessThan(abs(plain.red - plain.green), 10, "an ordinary track is tinted")
+    }
+
     func testMeterValueTimelineDotAndBannerAgree() throws {
         for (severity, name) in Self.palette {
             let meter = UsageMeterBar(fill: 1, severity: severity).frame(width: 60)
@@ -35,11 +56,6 @@ final class SeverityPaletteTests: XCTestCase {
                 let count = DashboardMetricRow(model: DashboardRowModel(label: "Limit Resets", mark: .value("2 available", severity: severity)))
                     .frame(width: 292)
                 XCTAssertEqual(try dominant(count), name, "count \(severity)")
-            }
-            if severity == .critical {
-                let flame = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: .normal, value: "60%", reset: "1d 8h", flame: true)))
-                    .frame(width: 292)
-                XCTAssertEqual(try dominant(flame), name, "flame")
             }
 
             let expiry = Date().addingTimeInterval(expiryOffset(severity))

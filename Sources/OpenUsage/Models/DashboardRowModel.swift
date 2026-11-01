@@ -2,8 +2,8 @@ import Foundation
 
 struct DashboardRowModel: Equatable {
     enum Mark: Equatable {
-        case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, flame: Bool = false)
-        case value(String, severity: WidgetData.MeterSeverity = .normal)
+        case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, isUsedUp: Bool = false)
+        case value(String, detail: String? = nil, severity: WidgetData.MeterSeverity = .normal)
     }
 
     let label: String
@@ -13,7 +13,9 @@ struct DashboardRowModel: Equatable {
 extension WidgetData {
     func dashboardRow(now: Date = Date()) -> DashboardRowModel {
         guard hasData, isBounded else {
-            return DashboardRowModel(label: title, mark: .value(unboundedDetail, severity: expirySeverity(now: now)))
+            let figures = unboundedFigures
+            let detail = figures.count > 1 ? figures.dropFirst().joined(separator: " · ") : nil
+            return DashboardRowModel(label: title, mark: .value(figures[0], detail: detail, severity: expirySeverity(now: now)))
         }
         let state = meterState(now: now)
         return DashboardRowModel(
@@ -21,9 +23,9 @@ extension WidgetData {
             mark: .bar(
                 fill: fraction,
                 severity: state.severity ?? .normal,
-                value: valueText,
-                reset: compactResetText(now: now),
-                flame: state == .runningOut
+                value: amountText,
+                reset: resetLabel(now: now),
+                isUsedUp: state == .spent
             )
         )
     }

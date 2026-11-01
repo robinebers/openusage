@@ -18,7 +18,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     }
 
     private let headerMid = DashboardGrid.headerHeight / 2
-    private let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
+    private let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + 10
     private let slot = (DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset - 16)..<(DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset)
 
     private func family() -> DashboardFamily {
@@ -29,23 +29,25 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         InkMap(of: host).count(x: slot, y: 0..<DashboardGrid.headerHeight)
     }
 
-    func testTheHeaderRevealsTheButtonOnHoverAndAClickOnItCopiesOnce() throws {
+    func testTheLogoTurnsIntoTheButtonOnHoverAndAClickOnItCopiesOnce() throws {
         let log = Log()
         let section = DashboardProviderSection(family: family()) {
-            DashboardProviderHeader(provider: provider, onCopyScreenshot: { log.copies += 1; return true })
+            DashboardProviderHeader(family: family(), plan: "Max 5x", onCopyScreenshot: { log.copies += 1; return true })
                 .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })
         } account: { account in
-            DashboardAccountRows(account: account, plan: "Max 5x")
+            DashboardAccountRows(account: account, plan: "Max 5x", isCaptioned: false)
         }
         let (window, host) = hostView(section)
         let button = CGPoint(x: slot.lowerBound + 8, y: headerMid)
 
-        XCTAssertEqual(inkInSlot(host), 0, "the button shows at rest")
+        let logo = inkInSlot(host)
+        XCTAssertGreaterThan(logo, 0, "no logo at rest")
         try hover(CGPoint(x: nameX, y: headerMid), window, host)
-        XCTAssertGreaterThan(inkInSlot(host), 0, "resting the pointer on the header reveals no button")
+        XCTAssertNotEqual(inkInSlot(host), logo, "resting the pointer on the header doesn't swap the logo for the button")
+        XCTAssertGreaterThan(inkInSlot(host), 0, "the button isn't drawn")
         XCTAssertEqual(log.copies, 0, "revealing the button copied")
         try leave(window, host)
-        XCTAssertEqual(inkInSlot(host), 0, "the button stays after the pointer leaves")
+        XCTAssertEqual(inkInSlot(host), logo, "the logo doesn't come back after the pointer leaves")
 
         try hover(button, window, host)
         click(button, window, host)
@@ -58,15 +60,16 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
         XCTAssertEqual(log.copies, 1, "the drag copied")
     }
 
-    func testAHeaderWithoutACopyActionHasNoButton() throws {
+    func testAHeaderWithoutACopyActionKeepsItsLogo() throws {
         let section = DashboardProviderSection(family: family()) { account in
-            DashboardAccountRows(account: account, plan: "Max 5x")
+            DashboardAccountRows(account: account, plan: "Max 5x", isCaptioned: false)
         }
         let (window, host) = hostView(section)
 
-        XCTAssertEqual(inkInSlot(host), 0)
+        let logo = inkInSlot(host)
+        XCTAssertGreaterThan(logo, 0)
         try hover(CGPoint(x: nameX, y: headerMid), window, host)
-        XCTAssertEqual(inkInSlot(host), 0, "a header without a copy action revealed a button")
+        XCTAssertEqual(inkInSlot(host), logo, "a header without a copy action swapped its logo")
     }
 
     func testTheDashboardsButtonCopiesTheShareCard() async throws {

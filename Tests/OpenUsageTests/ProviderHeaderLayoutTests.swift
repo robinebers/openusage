@@ -15,9 +15,9 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         DashboardFamily(id: "claude", provider: accounts[0], accounts: accounts.map { DashboardAccount(provider: $0, lines: lines) })
     }
 
-    private func section(_ family: DashboardFamily, plans: [String: String] = [:]) -> DashboardProviderSection<DashboardProviderHeader, DashboardAccountRows> {
-        DashboardProviderSection(family: family) { account in
-            DashboardAccountRows(account: account, plan: plans[account.id])
+    private func section(_ family: DashboardFamily, plans: [String: String] = [:], isCaptioned: Bool = true) -> DashboardProviderSection<DashboardProviderHeader, DashboardAccountRows> {
+        DashboardProviderSection(family: family, plans: plans) { account in
+            DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: isCaptioned)
         }
     }
 
@@ -32,142 +32,112 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         return data
     }
 
-    func testTheHeaderIsTheLogoAndTheProvidersNameAlone() throws {
-        let sole = section(family([claude("Sunstory")]), plans: ["claude@1": "Pro 200"])
-        let bitmap = try InkMap(rendering: sole.header, width: boxWidth, scale: 2)
+    private var logoStart: CGFloat { boxWidth - inset - DashboardGrid.iconSize }
+
+    private func text(_ string: String, _ font: Font) throws -> CGFloat {
+        try XCTUnwrap(InkMap(rendering: Text(string).font(font).fixedSize().padding(20), width: 400, scale: 2).span()).width
+    }
+
+    func testASoleAccountsHeaderNamesTheProviderAccountAndPlanWithTheLogoTrailing() throws {
+        let bitmap = try InkMap(rendering: section(family([claude("Sunstory")]), plans: ["claude@1": "Max 20x"]).header, width: boxWidth, scale: 2)
         XCTAssertEqual(CGFloat(bitmap.height) / bitmap.scale, DashboardGrid.headerHeight)
-        let logoStart = inset
-        let logoEnd = logoStart + DashboardGrid.iconSize
-        let nameStart = logoEnd + DashboardGrid.columnGap
-        let nameAlone = try XCTUnwrap(InkMap(rendering: Text("Claude").font(DashboardGrid.headerFont).fixedSize().padding(20), width: 120, scale: 2).span())
 
-        let logo = try XCTUnwrap(bitmap.span(from: 0, to: logoEnd + 2), "no logo drawn")
-        XCTAssertEqual(logo.first, logoStart, accuracy: 1.5, "the logo doesn't start 12 pt in")
-        XCTAssertEqual(logo.last, logoEnd, accuracy: 1.5, "the logo isn't as wide as the line is tall")
-        XCTAssertNil(bitmap.span(from: logoEnd + 1, to: nameStart - 1), "something sits between the logo and the name")
+        let logo = try XCTUnwrap(bitmap.span(from: logoStart - 1, to: boxWidth), "no logo at the trailing end")
+        XCTAssertEqual(logo.last, boxWidth - inset, accuracy: 1.5, "the logo doesn't end at the card's inset")
 
-        let title = try XCTUnwrap(bitmap.span(from: nameStart - 1, to: boxWidth), "no name drawn")
-        XCTAssertEqual(title.first, nameStart, accuracy: 1.5, "the name doesn't start 8 pt after the logo")
-        XCTAssertEqual(title.last - title.first, nameAlone.last - nameAlone.first, accuracy: 1.5, "the header draws more than the provider's name")
-
-        let nameRows = try XCTUnwrap(bitmap.rows(from: nameStart, to: title.last))
-        let logoRows = try XCTUnwrap(bitmap.rows(from: logoStart, to: logoEnd))
-        XCTAssertEqual((nameRows.first + nameRows.last) / 2, (logoRows.first + logoRows.last) / 2, accuracy: 2, "the name isn't centred on the logo")
+        let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2), "no title")
+        XCTAssertEqual(title.first, inset, accuracy: 1.5, "the title doesn't start at the card's inset")
+        let name = try text("Claude — Sunstory", DashboardGrid.headerFont)
+        let plan = try text("Max 20x", DashboardGrid.planFont)
+        XCTAssertEqual(title.width, name + DashboardGrid.amountGap + plan, accuracy: 3, "the title isn't the provider, the account and the plan")
     }
 
-    func testEveryHeaderReadsTheProviderWhateverItsAccounts() throws {
-        func titleEnd(_ accounts: [Provider]) throws -> CGFloat {
-            let bitmap = try InkMap(rendering: section(family(accounts)).header, width: boxWidth, scale: 2)
-            return try XCTUnwrap(bitmap.span(from: 0, to: boxWidth)).last
-        }
-        let providerAlone = try titleEnd([claude("Attention Machine"), claude("Home", "claude@2")])
-        for name in ["Attention Machine", "Claude", nil, "sam@hey.com"] {
-            XCTAssertEqual(try titleEnd([claude(name)]), providerAlone, accuracy: 0.5, name ?? "unnamed")
+    func testAHeaderOverSeveralAccountsNamesOnlyTheProvider() throws {
+        let several = section(family([claude("Personal"), claude("Work", "claude@2")]), plans: ["claude@1": "Max 20x", "claude@2": "Max 5x"])
+        let bitmap = try InkMap(rendering: several.header, width: boxWidth, scale: 2)
+        let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2))
+        XCTAssertEqual(title.width, try text("Claude", DashboardGrid.headerFont), accuracy: 1.5, "the header draws more than the provider's name")
+    }
+
+    func testAnAccountNamedLikeItsProviderReadsOnce() throws {
+        for name in ["Claude", nil] {
+            let bitmap = try InkMap(rendering: section(family([claude(name)])).header, width: boxWidth, scale: 2)
+            let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2))
+            XCTAssertEqual(title.width, try text("Claude", DashboardGrid.headerFont), accuracy: 1.5, name ?? "unnamed")
         }
     }
 
-    func testEveryAccountIsCaptionedWithItsPlanWhateverTheirNumber() throws {
+    func testALongAccountNameTruncatesBeforeThePlanDoes() throws {
+        let long = family([claude("An Account Name Far Too Long For This Header To Hold")])
+        let bitmap = try InkMap(rendering: section(long, plans: ["claude@1": "Max 20x"]).header, width: boxWidth, scale: 2)
+        let plan = try text("Max 20x", DashboardGrid.planFont)
+        let planEnd = logoStart - DashboardGrid.columnGap
+        let drawn = try XCTUnwrap(bitmap.span(from: planEnd - plan - 2, to: logoStart - 2), "no plan")
+        XCTAssertGreaterThan(drawn.last, planEnd - 8, "the plan doesn't sit by the logo")
+        XCTAssertLessThanOrEqual(drawn.last, planEnd + 1, "the plan runs into the logo")
+        XCTAssertEqual(drawn.width, plan, accuracy: 3, "the plan was cut")
+    }
+
+    func testOnlySeveralAccountsAreCaptioned() throws {
         let rows = [line(percent("Session", used: 8)), line(percent("Weekly", used: 81))]
-        let planArea = (boxWidth / 2, boxWidth)
-        for name in ["Claude", "rob@sunstory.com"] {
-            let sole = section(family([claude(name)], lines: rows), plans: ["claude@1": "Max 20x"])
-            let bands = try InkMap(rendering: sole, width: boxWidth, scale: 2).bands()
-            XCTAssertEqual(bands.count, 4, "\(name): a header, a caption and two rows")
-            XCTAssertEqual(bands[1].last, boxWidth - inset, accuracy: 1.5, "\(name): the caption's plan doesn't end where the reset column does")
-            XCTAssertEqual(try InkMap(rendering: sole, width: boxWidth).height, 90, "\(name): a header and a card of a caption and two rows")
-            XCTAssertNil(try InkMap(rendering: sole.header, width: boxWidth, scale: 2).span(from: planArea.0, to: planArea.1), "\(name): the plan is on the header")
-        }
+        let sole = section(family([claude("Personal")], lines: rows), plans: ["claude@1": "Max 20x"], isCaptioned: false)
+        XCTAssertEqual(try InkMap(rendering: sole, width: boxWidth).bands().count, 5, "a header, then two limits of text over a bar")
 
         let several = section(family([claude("Personal"), claude("Work", "claude@2")], lines: rows), plans: ["claude@1": "Max 20x", "claude@2": "Max 5x"])
-        XCTAssertEqual(try InkMap(rendering: several, width: boxWidth).bands().count, 7, "a header, then a caption and two rows per account")
-        XCTAssertNil(try InkMap(rendering: several.header, width: boxWidth, scale: 2).span(from: planArea.0, to: planArea.1), "the plan is on the header over several accounts")
+        XCTAssertEqual(try InkMap(rendering: several, width: boxWidth).bands().count, 11, "a header, then a caption and two limits per account")
     }
 
-    func testTheLogoSharesTheLabelsLeadingEdgeAndThePlansEndWithTheResets() throws {
-        let session = line(percent("Session", used: 0, resetsIn: 3 * 3600))
-        let two = family([claude("Personal"), claude("Work", "claude@2")], lines: [session, line(percent("Weekly", used: 24, resetsIn: 86_400))])
+    func testCaptionsHeadersAndRowsShareTheirEdges() throws {
+        let rows = [line(percent("Session", used: 0, resetsIn: 3 * 3600)), line(percent("Weekly", used: 24, resetsIn: 86_400))]
+        let two = family([claude("Personal"), claude("Work", "claude@2")], lines: rows)
         let bands = try InkMap(rendering: section(two, plans: ["claude@1": "Max 5x", "claude@2": "Max 5x"]), width: boxWidth, scale: 2).bands()
-        XCTAssertEqual(bands.count, 7, "the header, then a caption and two rows per account")
+        XCTAssertEqual(bands.count, 11)
         let edges = bands.map(\.first)
         XCTAssertLessThanOrEqual((edges.max() ?? 0) - (edges.min() ?? 0), 1.5, "leading edges \(edges)")
         XCTAssertEqual(edges.min() ?? 0, inset, accuracy: 1.5)
-        XCTAssertEqual(bands[2].last, boxWidth - inset, accuracy: 1.5, "the reset ends 12 pt before the edge")
-        XCTAssertEqual(bands[1].last, bands[2].last, accuracy: 1.5, "the caption's plan ends where the reset does")
-        let name = try XCTUnwrap(InkMap(rendering: section(two).header, width: boxWidth, scale: 2).span(from: inset + DashboardGrid.iconSize + 1, to: boxWidth))
-        XCTAssertEqual(name.first, inset + DashboardGrid.iconSize + DashboardGrid.columnGap, accuracy: 1.5, "the name doesn't start 8 pt after the logo")
-        let sole = family([claude("Personal")], lines: [session])
-        let soleBands = try InkMap(rendering: section(sole, plans: ["claude@1": "Max 20x"]), width: boxWidth, scale: 2).bands()
-        XCTAssertEqual(soleBands.count, 3, "the header, the caption, then one row")
-        XCTAssertLessThanOrEqual(soleBands.map(\.first).max()! - soleBands.map(\.first).min()!, 1.5, "a sole account's edges \(soleBands.map(\.first))")
-        XCTAssertEqual(soleBands[1].last, soleBands[2].last, accuracy: 1.5, "a sole account's plan doesn't end where the reset does")
+        for band in bands[1...] {
+            XCTAssertEqual(band.last, boxWidth - inset, accuracy: 1.5, "every caption, reset and bar ends at the card's inset")
+        }
     }
 
-    func testSectionsKeepTheirHeights() throws {
-        let rows = ["Session", "Weekly", "Fable"].map { line(percent($0, used: 30)) }
-        let one = family([claude("Work")], lines: rows)
-        XCTAssertEqual(try InkMap(rendering: section(one), width: boxWidth).height, 110, "a header and a card of a caption and three rows")
-        let two = family([claude("Personal"), claude("Work", "claude@2")], lines: Array(rows.prefix(2)))
-        XCTAssertEqual(try InkMap(rendering: section(two), width: boxWidth).height, 160, "two accounts, each a caption and two rows")
-        XCTAssertEqual(DashboardGrid.sectionSpacing, 16)
-        XCTAssertEqual(DashboardGrid.headerHeight, DashboardGrid.lineHeight(.preferredFont(forTextStyle: .headline)))
-        XCTAssertEqual(DashboardGrid.captionHeight, DashboardGrid.lineHeight(.preferredFont(forTextStyle: .subheadline)))
+    func testALimitIsItsLabelAmountAndResetOverAFullWidthBar() throws {
+        let row = DashboardMetricRow(model: percent("Weekly", used: 0, resetsIn: 5 * 3600).dashboardRow())
+            .padding(.horizontal, DashboardGrid.cardPadding)
+        let bands = try InkMap(rendering: row, width: boxWidth, scale: 2).bands()
+        XCTAssertEqual(bands.count, 2, "a limit is two lines")
+        XCTAssertEqual(bands[0].first, inset, accuracy: 1.5)
+        XCTAssertEqual(bands[0].last, boxWidth - inset, accuracy: 1.5, "the reset isn't right-aligned")
+        XCTAssertEqual(bands[1].first, inset, accuracy: 1.5, "the bar doesn't start at the label")
+        XCTAssertEqual(bands[1].last, boxWidth - inset, accuracy: 1.5, "the bar doesn't fill the row")
+    }
+
+    func testAValueRowPutsItsLabelLeftAndItsValueRightWithNoBar() throws {
+        var today = WidgetData(title: "Today", kind: .dollars, used: 0, limit: nil)
+        today.values = [MetricValue(number: 12.5, kind: .dollars), MetricValue(number: 3_000, kind: .count, label: "tokens")]
+        let row = DashboardMetricRow(model: today.dashboardRow()).padding(.horizontal, DashboardGrid.cardPadding)
+        let bands = try InkMap(rendering: row, width: boxWidth, scale: 2).bands()
+
+        XCTAssertEqual(bands.count, 1, "a value row has no bar")
+        XCTAssertEqual(bands[0].first, inset, accuracy: 1.5)
+        XCTAssertEqual(bands[0].last, boxWidth - inset, accuracy: 1.5, "the value isn't right-aligned")
+    }
+
+    func testTheGapsBetweenRowsSayWhatTheyAre() {
+        func dashboardLine(bounded: Bool) -> DashboardLine {
+            line(WidgetData(title: "Row", kind: .dollars, used: 1, limit: bounded ? 100 : nil))
+        }
+        let bar = dashboardLine(bounded: true), value = dashboardLine(bounded: false)
+        XCTAssertEqual(DashboardGrid.gap(above: bar, after: nil), 0)
+        XCTAssertEqual(DashboardGrid.gap(above: bar, after: bar), 9)
+        XCTAssertEqual(DashboardGrid.gap(above: value, after: value), 6)
+        XCTAssertEqual(DashboardGrid.gap(above: value, after: bar), 14, "6 pt plus 8 extra after the bars")
+        XCTAssertEqual(DashboardGrid.gap(above: bar, after: value), 14)
+    }
+
+    func testTheHeaderAndCaptionUseTheirFonts() {
+        XCTAssertEqual(DashboardGrid.headerHeight, DashboardGrid.lineHeight(.systemFont(ofSize: 15, weight: .semibold)))
+        XCTAssertEqual(DashboardGrid.captionHeight, DashboardGrid.lineHeight(.systemFont(ofSize: 11)))
         XCTAssertEqual(DashboardGrid.iconSize, DashboardGrid.headerHeight, "the logo isn't as tall as the header's line")
-    }
-
-    func testARowShowsItsBarValueAndResetInTheirColumns() throws {
-        let end = boxWidth - inset
-        let barStart = inset + DashboardGrid.labelWidth + DashboardGrid.columnGap
-        let resetStart = end - DashboardGrid.resetWidth
-        let valueStart = resetStart - DashboardGrid.columnGap - DashboardGrid.valueWidth
-        let barEnd = valueStart - DashboardGrid.columnGap
-        let full = percent("Weekly", used: 0, resetsIn: 5 * 3600)
-        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
-        credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
-        func row(_ data: WidgetData) -> some View {
-            DashboardMetricRow(model: data.dashboardRow()).padding(.horizontal, DashboardGrid.cardPadding)
-        }
-
-        let bitmap = try InkMap(rendering: row(full), width: boxWidth, scale: 2)
-        XCTAssertEqual(CGFloat(bitmap.height) / 2, DashboardGrid.rowHeight)
-        let label = try XCTUnwrap(bitmap.span(from: 0, to: barStart - 2), "no label")
-        XCTAssertEqual(label.first, inset, accuracy: 1.5)
-        let bar = try XCTUnwrap(bitmap.span(from: barStart - 2, to: barEnd + 2), "no bar")
-        XCTAssertEqual(bar.first, barStart, accuracy: 1.5, "the bar doesn't start after the label column")
-        XCTAssertEqual(bar.last, barEnd, accuracy: 1.5, "the bar doesn't fill its slot")
-        let value = try XCTUnwrap(bitmap.span(from: valueStart - 2, to: resetStart - 4), "no value at rest")
-        XCTAssertEqual(value.last, valueStart + DashboardGrid.valueWidth, accuracy: 1.5, "the value isn't right-aligned in its column")
-        let reset = try XCTUnwrap(bitmap.span(from: resetStart - 2, to: boxWidth), "no reset at rest")
-        XCTAssertEqual(reset.last, end, accuracy: 1.5, "the reset isn't right-aligned at the card's inset")
-        XCTAssertGreaterThan(reset.last - reset.first, 8, "the reset is empty")
-
-        let plain = try InkMap(rendering: row(credits), width: boxWidth, scale: 2)
-        let drawn = try XCTUnwrap(plain.span(from: barStart - 2, to: boxWidth))
-        let alone = try XCTUnwrap(InkMap(rendering: Text("452 credits").font(DashboardMetricRow.font).monospacedDigit().fixedSize().padding(20), width: 200, scale: 2).span())
-        XCTAssertEqual(drawn.first, barStart, accuracy: 1.5, "the value doesn't start where the bar would")
-        XCTAssertEqual(drawn.last - drawn.first, alone.last - alone.first, accuracy: 1, "the value shrank")
-    }
-
-    func testTheFlameSitsInTheValueColumnAndMovesNothing() throws {
-        let end = boxWidth - inset
-        let resetStart = end - DashboardGrid.resetWidth
-        let valueStart = resetStart - DashboardGrid.columnGap - DashboardGrid.valueWidth
-        let barEnd = valueStart - DashboardGrid.columnGap
-        func row(flame: Bool, value: String = "100%") -> some View {
-            DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0.6, severity: flame ? .critical : .normal, value: value, reset: "3d 12h", flame: flame)))
-                .padding(.horizontal, DashboardGrid.cardPadding)
-        }
-        let rest = try InkMap(rendering: row(flame: false), width: boxWidth, scale: 2)
-        let hot = try InkMap(rendering: row(flame: true), width: boxWidth, scale: 2)
-        for (name, from, to) in [("label", 0, valueStart - DashboardGrid.columnGap - 60), ("bar", valueStart - DashboardGrid.columnGap - 60, barEnd + 2), ("reset", resetStart - 2, boxWidth)] {
-            let atRest = try XCTUnwrap(rest.span(from: from, to: to), "no \(name) at rest")
-            let withFlame = try XCTUnwrap(hot.span(from: from, to: to), "no \(name) with the flame")
-            XCTAssertEqual(withFlame.first, atRest.first, accuracy: 0.5, "the flame moved the \(name)")
-            XCTAssertEqual(withFlame.last, atRest.last, accuracy: 0.5, "the flame moved the \(name)")
-        }
-        let restValue = try XCTUnwrap(rest.span(from: barEnd + 2, to: resetStart - 4))
-        let hotValue = try XCTUnwrap(hot.span(from: barEnd + 2, to: resetStart - 4))
-        XCTAssertEqual(hotValue.last, restValue.last, accuracy: 0.5, "the flame moved the value")
-        XCTAssertLessThan(hotValue.first, restValue.first - 6, "no flame before the value")
-        XCTAssertGreaterThanOrEqual(hotValue.first, valueStart - 0.5, "the flame runs out of the value column")
+        XCTAssertEqual(DashboardGrid.sectionSpacing, 16)
     }
 }

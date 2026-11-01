@@ -21,10 +21,19 @@ final class DashboardSectionTests: QuietWindowTestCase {
     }
 
     private static let captionY = DashboardGrid.headerHeight + DashboardGrid.headerGap + DashboardGrid.cardPadding + DashboardGrid.captionHeight / 2
-    private static let firstRowY = DashboardGrid.headerHeight + DashboardGrid.headerGap + DashboardGrid.cardPadding
-        + DashboardGrid.captionHeight + DashboardGrid.rowHeight / 2
-    private static let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + 10
-    private static let headerNameX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize + DashboardGrid.columnGap + 10
+    private static let rowFont = NSFont.systemFont(ofSize: 13)
+    private static let rowTextHeight = DashboardGrid.lineHeight(rowFont)
+    private static let rowHeight = rowTextHeight + DashboardGrid.barGap + DashboardGrid.barHeight
+    private static let rowPitch = rowHeight + DashboardGrid.limitGap
+    private static let firstRowTop = DashboardGrid.headerHeight + DashboardGrid.headerGap + DashboardGrid.cardPadding
+        + DashboardGrid.captionHeight + DashboardGrid.captionGap
+    private static let firstRowY = firstRowTop + rowTextHeight / 2
+    private static let firstBarY = firstRowTop + rowTextHeight + DashboardGrid.barGap + DashboardGrid.barHeight / 2
+    private static let resetsRowY = firstRowTop + 3 * rowPitch - DashboardGrid.limitGap + DashboardGrid.valueGap + DashboardGrid.groupGap + rowTextHeight / 2
+    private static let leading = DashboardGrid.cardPadding + DashboardGrid.inset
+    private static let nameX = leading + 10
+    /// Just inside the amount that follows the first row's "Session".
+    private static let valueX = leading + ("Session" as NSString).size(withAttributes: [.font: rowFont]).width + DashboardGrid.amountGap + 10
 
     private let lines: [DashboardLine] = ["Session", "Weekly", "Fable"].map { title in
         var data = WidgetData(title: title, kind: .percent, used: 30, limit: 100)
@@ -54,13 +63,11 @@ final class DashboardSectionTests: QuietWindowTestCase {
         func opened() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
         let height = hosted.host.fittingSize.height
         let atRest = try pixels(of: hosted.host)
-        let resetsRowY = Self.firstRowY + 3 * DashboardGrid.rowHeight
-        let figureX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.labelWidth + DashboardGrid.columnGap + 12
         let trailing = hosted.host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset
 
         for (name, point) in [("the name", CGPoint(x: Self.nameX, y: Self.captionY)),
                               ("a row's label", CGPoint(x: Self.nameX, y: Self.firstRowY)),
-                              ("the resets row's label", CGPoint(x: Self.nameX, y: resetsRowY))] {
+                              ("the resets row's label", CGPoint(x: Self.nameX, y: Self.resetsRowY))] {
             try hover(point, hosted.window, hosted.host)
             XCTAssertTrue(opened().isEmpty, "hovering \(name) opens something")
             XCTAssertNil(HoverTooltips.visibleText, "hovering \(name) shows a tooltip")
@@ -69,8 +76,8 @@ final class DashboardSectionTests: QuietWindowTestCase {
         }
 
         let session = lines[0].data
-        for (name, point, text) in [("the bar", CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY), session.paceTooltip()),
-                                    ("the value", CGPoint(x: trailing - DashboardGrid.resetWidth - DashboardGrid.columnGap - 10, y: Self.firstRowY), session.meterStyleTooltip),
+        for (name, point, text) in [("the bar", CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstBarY), session.paceTooltip()),
+                                    ("the value", CGPoint(x: Self.valueX, y: Self.firstRowY), session.meterStyleTooltip),
                                     ("the reset", CGPoint(x: trailing - 10, y: Self.firstRowY), session.resetTooltip())] {
             try hover(point, hosted.window, hosted.host)
             XCTAssertEqual(opened().count, 1, "hovering \(name) opens no tooltip")
@@ -80,7 +87,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
             XCTAssertTrue(opened().isEmpty, "the tooltip on \(name) stayed after the pointer left")
         }
 
-        try hover(CGPoint(x: figureX, y: resetsRowY), hosted.window, hosted.host)
+        try hover(CGPoint(x: trailing - 12, y: Self.resetsRowY), hosted.window, hosted.host)
         XCTAssertFalse(opened().isEmpty, "hovering the resets count opens no popover")
         XCTAssertEqual(hosted.host.fittingSize.height, height, "the hover changed the height")
         XCTAssertEqual(log.accountDrags + log.metricDrags, 0)
@@ -94,17 +101,16 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let view = DashboardProviderSection(family: family) { account in
             VStack(alignment: .leading, spacing: 0) {
                 DashboardAccountCaption(account: account, plan: "Max 5x")
-                ForEach(account.lines) { DashboardLiveRow(line: $0) }
-                DashboardLiveRow(line: live.line)
+                    .padding(.bottom, DashboardGrid.captionGap)
+                DashboardLineStack(lines: account.lines + [live.line]) { DashboardLiveRow(line: $0) }
             }
         }
         let (window, host) = hostView(view, renaming: renaming)
         let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
         func opened() -> [NSWindow] { NSApp.windows.filter { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }
-        let resetsRowY = Self.firstRowY + 3 * DashboardGrid.rowHeight
-        let figureX = DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.labelWidth + DashboardGrid.columnGap + 12
+        let figureX = host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset - 12
 
-        try hover(CGPoint(x: figureX, y: resetsRowY), window, host)
+        try hover(CGPoint(x: figureX, y: Self.resetsRowY), window, host)
         XCTAssertEqual(opened().count, 1, "hovering the resets count opens no popover")
 
         var data = resets.data
@@ -120,11 +126,12 @@ final class DashboardSectionTests: QuietWindowTestCase {
     func testHoveringTheWarningShowsTheNoticeAndHoveringTheNameShowsNothing() throws {
         let notice = "Refresh failed: the token has expired."
         let (renaming, provider) = storedAccount(label: "Work")
-        let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
+        let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider), account(self.work)])
         let section = DashboardProviderSection(family: family) { account in
             VStack(alignment: .leading, spacing: 0) {
                 DashboardAccountCaption(account: account, plan: "Max 5x", status: AccountStatus(notice: notice))
-                ForEach(account.lines) { DashboardMetricRow(model: $0.data.dashboardRow()) }
+                    .padding(.bottom, DashboardGrid.captionGap)
+                DashboardLineStack(lines: account.lines) { DashboardMetricRow(model: $0.data.dashboardRow()) }
             }
         }
         let (window, host) = hostView(section, renaming: renaming)
@@ -134,11 +141,11 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let captionFont = NSFont.systemFont(ofSize: DashboardGrid.planNSFont.pointSize, weight: .semibold)
         let nameEnd = Self.nameX - 10 + ("Work" as NSString).size(withAttributes: [.font: captionFont]).width
 
-        try hover(CGPoint(x: DashboardGrid.cardPadding + DashboardGrid.inset + DashboardGrid.iconSize / 2, y: headerMid), window, host)
+        try hover(CGPoint(x: host.bounds.width - Self.leading - DashboardGrid.iconSize / 2, y: headerMid), window, host)
         XCTAssertTrue(opened().isEmpty, "hovering the logo opens something")
         XCTAssertNil(HoverTooltips.visibleText)
 
-        try hover(CGPoint(x: Self.headerNameX, y: headerMid), window, host)
+        try hover(CGPoint(x: Self.nameX, y: headerMid), window, host)
         XCTAssertTrue(opened().isEmpty, "hovering the provider's name opens something")
         XCTAssertNil(HoverTooltips.visibleText)
 
@@ -162,10 +169,10 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let hosted = hostWithRenaming(log: log)
         let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
         let resetX = hosted.host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset - 6
-        let valueX = resetX - DashboardGrid.resetWidth - DashboardGrid.columnGap
+        let valueX = Self.valueX
 
         click(CGPoint(x: Self.nameX, y: Self.firstRowY), hosted.window, hosted.host)
-        click(CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY), hosted.window, hosted.host)
+        click(CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstBarY), hosted.window, hosted.host)
         XCTAssertEqual(log.styleFlips + log.resetFlips, 0, "a click on the label or the bar flipped a display")
 
         click(CGPoint(x: valueX, y: Self.firstRowY), hosted.window, hosted.host)
@@ -174,7 +181,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
 
         click(CGPoint(x: resetX, y: Self.firstRowY), hosted.window, hosted.host)
         XCTAssertEqual(log.resetFlips, 1, "a click on the reset didn't flip the reset display")
-        click(CGPoint(x: resetX, y: Self.firstRowY + DashboardGrid.rowHeight), hosted.window, hosted.host)
+        click(CGPoint(x: resetX, y: Self.firstRowY + Self.rowPitch), hosted.window, hosted.host)
         XCTAssertEqual(log.resetFlips, 2, "a click on the second row's reset didn't flip the reset display")
         XCTAssertEqual(log.styleFlips, 1)
 
@@ -190,7 +197,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
         let points = [
             CGPoint(x: Self.nameX, y: Self.captionY),
             CGPoint(x: hosted.host.bounds.width - DashboardGrid.cardPadding - DashboardGrid.inset - 12, y: Self.captionY),
-            CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY),
+            CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstBarY),
         ]
         for point in points {
             send(.mouseMoved, at: point, hosted.window, hosted.host)
@@ -212,7 +219,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(log.metricDrags, 0)
 
         log.accountDrags = 0
-        drag(from: CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstRowY), hosted.window, hosted.host)
+        drag(from: CGPoint(x: hosted.host.bounds.width / 2, y: Self.firstBarY), hosted.window, hosted.host)
         XCTAssertGreaterThan(log.metricDrags, 0)
         XCTAssertEqual(log.accountDrags, 0)
     }
@@ -236,41 +243,38 @@ final class DashboardSectionTests: QuietWindowTestCase {
         XCTAssertEqual(log.accountDrags + log.metricDrags, 0)
     }
 
-    func testAOneAccountCardIsCaptionedLikeAnyOther() throws {
+    func testASoleAccountIsNamedInTheHeaderWhichRenamesItAndDragsTheProvider() throws {
         let log = Log()
         let (renaming, provider) = storedAccount(label: "Work")
         let family = DashboardFamily(id: "claude", provider: provider, accounts: [account(provider)])
         let section = DashboardProviderSection(family: family) {
-            DashboardProviderHeader(provider: provider)
+            DashboardProviderHeader(family: family, plan: "Max 5x")
                 .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })
         } account: { account in
-            VStack(alignment: .leading, spacing: 0) {
-                DashboardAccountCaption(account: account, plan: "Max 5x")
-                    .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.accountDrags += 1 })
-                ForEach(account.lines) { DashboardMetricRow(model: $0.data.dashboardRow()) }
-            }
+            DashboardAccountRows(account: account, isCaptioned: false)
         }
         let (window, host) = hostView(section, renaming: renaming)
 
         XCTAssertEqual(
             host.fittingSize.height,
-            DashboardGrid.headerHeight + DashboardGrid.headerGap + 2 * DashboardGrid.cardPadding + DashboardGrid.captionHeight + 3 * DashboardGrid.rowHeight,
-            accuracy: 1,
-            "a header and a card of a caption over three rows"
+            DashboardGrid.headerHeight + DashboardGrid.headerGap + 2 * DashboardGrid.cardPadding + 3 * Self.rowHeight + 2 * DashboardGrid.limitGap,
+            accuracy: 3,
+            "a header and a card of three limits, with no caption"
         )
 
         let headerMid = DashboardGrid.headerHeight / 2
-        doubleClick(CGPoint(x: Self.headerNameX, y: headerMid), window, host)
+        doubleClick(CGPoint(x: Self.nameX, y: headerMid), window, host)
         RunLoop.main.run(until: Date().addingTimeInterval(0.3))
         XCTAssertNil(renaming.edit, "a double-click on the provider's name starts a rename")
 
-        let name = CGPoint(x: Self.nameX, y: Self.captionY)
+        let prefix = ("Claude — " as NSString).size(withAttributes: [.font: DashboardGrid.headerNSFont]).width
+        let name = CGPoint(x: Self.leading + prefix + 12, y: headerMid)
         click(name, window, host)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
-        XCTAssertNil(renaming.edit, "a single click on the caption's name starts a rename")
+        XCTAssertNil(renaming.edit, "a single click on the account's name starts a rename")
 
         doubleClick(name, window, host)
-        XCTAssertEqual(renaming.edit?.providerID, provider.id, "a double-click on the caption's name opens no rename")
+        XCTAssertEqual(renaming.edit?.providerID, provider.id, "a double-click on the account's name opens no rename")
         XCTAssertEqual(renaming.draft, "Work")
         try assertWholeNameSelected("Work", in: window)
         renaming.cancel()
@@ -278,8 +282,6 @@ final class DashboardSectionTests: QuietWindowTestCase {
 
         drag(from: CGPoint(x: host.bounds.width / 2, y: headerMid), window, host)
         XCTAssertGreaterThan(log.headerDrags, 0, "the header doesn't drag the provider")
-        drag(from: CGPoint(x: host.bounds.width / 2, y: Self.captionY), window, host)
-        XCTAssertGreaterThan(log.accountDrags, 0, "the caption doesn't drag the account")
         XCTAssertNil(renaming.edit)
     }
 
@@ -331,7 +333,8 @@ final class DashboardSectionTests: QuietWindowTestCase {
             VStack(alignment: .leading, spacing: 0) {
                 DashboardAccountCaption(account: account, plan: "Max 5x")
                     .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.accountDrags += 1 })
-                ForEach(account.lines) { line in
+                    .padding(.bottom, DashboardGrid.captionGap)
+                DashboardLineStack(lines: account.lines) { line in
                     DashboardLiveRow(line: line, onToggleMeterStyle: { log.styleFlips += 1 }, onToggleResetDisplay: { log.resetFlips += 1 })
                         .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.metricDrags += 1 })
                 }

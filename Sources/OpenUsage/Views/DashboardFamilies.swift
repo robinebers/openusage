@@ -30,6 +30,7 @@ struct DashboardLine: Identifiable {
     let descriptor: WidgetDescriptor
     let data: WidgetData
     var id: String { descriptor.id }
+    var hasBar: Bool { data.hasData && data.isBounded }
 }
 
 extension DashboardFamily {

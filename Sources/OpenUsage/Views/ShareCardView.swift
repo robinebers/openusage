@@ -12,8 +12,8 @@ struct ShareCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DashboardProviderSection(family: family.hidingEmails) { account in
-                DashboardAccountRows(account: account, plan: plans[account.id])
+            DashboardProviderSection(family: family.hidingEmails, plans: plans) { account in
+                DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: family.soleAccount == nil)
             }
             watermarkFooter
         }

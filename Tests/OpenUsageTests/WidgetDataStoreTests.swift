@@ -173,7 +173,7 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.displayedValue, 58)
         XCTAssertEqual(data.valueText, "58%")
         guard case .bar(_, _, let value, let reset, _) = data.dashboardRow().mark else { return XCTFail("not a bar") }
-        XCTAssertEqual(value, "58%")
+        XCTAssertEqual(value, "58% left")
         XCTAssertNotNil(reset, "a meter with a reset date shows its countdown")
     }
 
@@ -213,7 +213,7 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(remaining.isBounded)
         XCTAssertEqual(remaining.unboundedDetail, "$40 · 1K credits")
         XCTAssertEqual(remaining.menuBarValue, "$40")
-        XCTAssertEqual(remaining.dashboardRow().mark, .value("$40 · 1K credits"))
+        XCTAssertEqual(remaining.dashboardRow().mark, .value("$40", detail: "1K credits"))
 
         store.meterStyle = .used
         let used = store.data(for: descriptor)

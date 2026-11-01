@@ -40,7 +40,7 @@ final class ResetDisplayTests: XCTestCase {
         data.resetsAt = now.addingTimeInterval(period / 2)
 
         XCTAssertTrue(data.isFreshSessionWindow(now: now))
-        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0, severity: .normal, value: "0%", reset: nil))
+        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0, severity: .normal, value: "0% used", reset: nil))
         XCTAssertEqual(data.meterState(now: now), .level(.normal))
 
         XCTAssertFalse(data.isFreshSessionWindow(now: data.resetsAt!.addingTimeInterval(1)))
@@ -79,7 +79,7 @@ final class ResetDisplayTests: XCTestCase {
         data.periodDurationMs = 10 * 3600 * 1000
 
         data.resetDisplayMode = .relative
-        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0.9, severity: .critical, value: "90%", reset: "5h", flame: true))
+        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0.9, severity: .critical, value: "90% used", reset: "Resets in 5h"))
 
         data.resetDisplayMode = .absolute
         XCTAssertEqual(data.compactResetText(now: now), Formatters.compactClock(data.resetsAt!, now: now))

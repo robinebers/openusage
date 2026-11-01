@@ -3,9 +3,9 @@ import SwiftUI
 struct CopyFeedbackButton: View {
     let accessibilityLabel: String
     var isRevealed = true
+    @Binding var copied: Bool
     let action: () -> Bool
 
-    @State private var copied = false
     @State private var resetTask: Task<Void, Never>?
     @Environment(\.reduceAnimations) private var reduceAnimations
 

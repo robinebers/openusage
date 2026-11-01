@@ -52,8 +52,13 @@ struct WidgetGroupedListView: View {
 
     private func section(_ family: DashboardFamily) -> some View {
         DashboardProviderSection(family: family) {
-            DashboardProviderHeader(provider: family.provider, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
-                .highPriorityGesture(familyDragGesture(for: family))
+            DashboardProviderHeader(
+                family: family,
+                plan: family.soleAccount.flatMap { dataStore.plan(for: $0.id) },
+                status: family.soleAccount.map { status(for: $0.id) } ?? AccountStatus(),
+                onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) }
+            )
+            .highPriorityGesture(familyDragGesture(for: family))
         } account: { account in
             accountSection(account, in: family)
         }
@@ -62,8 +67,11 @@ struct WidgetGroupedListView: View {
 
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
-                .highPriorityGesture(accountDragGesture(for: account, in: family))
+            if family.soleAccount == nil {
+                DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
+                    .highPriorityGesture(accountDragGesture(for: account, in: family))
+                    .padding(.bottom, DashboardGrid.captionGap)
+            }
             rows(of: account)
         }
         .contextMenu {
@@ -78,19 +86,17 @@ struct WidgetGroupedListView: View {
     }
 
     private func rows(of account: DashboardAccount) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(account.lines) { line in
-                DashboardLiveRow(
-                    line: line,
-                    resetClaim: container.resetClaim(for: account.id),
-                    breakdown: container.usageBreakdown(for: line.descriptor),
-                    onToggleMeterStyle: { dataStore.meterStyle.toggle() },
-                    onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
-                )
-                    .opacity(activeMetricID == line.id ? 0 : 1)
-                    .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
-                    .reorderFrame(id: line.id, in: .named(reorderSpaceName))
-            }
+        DashboardLineStack(lines: account.lines) { line in
+            DashboardLiveRow(
+                line: line,
+                resetClaim: container.resetClaim(for: account.id),
+                breakdown: container.usageBreakdown(for: line.descriptor),
+                onToggleMeterStyle: { dataStore.meterStyle.toggle() },
+                onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
+            )
+            .opacity(activeMetricID == line.id ? 0 : 1)
+            .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
+            .reorderFrame(id: line.id, in: .named(reorderSpaceName))
         }
     }
 
@@ -177,8 +183,8 @@ struct WidgetGroupedListView: View {
             lift: $reorderLift,
             makeLift: { value in
                 let plans = plans(for: family)
-                let preview = DashboardProviderSection(family: family) { account in
-                    DashboardAccountRows(account: account, plan: plans[account.id])
+                let preview = DashboardProviderSection(family: family, plans: plans) { account in
+                    DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: family.soleAccount == nil)
                 }
                 return ReorderLift.make(id: frameID, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },

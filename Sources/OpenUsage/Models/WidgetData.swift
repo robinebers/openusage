@@ -119,19 +119,19 @@ struct WidgetData: Hashable {
     }
 
     var unboundedDetail: String {
-        guard hasData else { return Self.noDataDetail }
-        if let valueTextOverride { return valueTextOverride }
-        if !values.isEmpty {
-            if values.count == 1 {
-                let value = values[0]
-                if value.kind == .dollars, let word = unboundedValueWord {
-                    return "\(MetricFormatter.number(value.number, kind: .dollars, style: .row)) \(word)"
-                }
-                return MetricFormatter.string(for: value, style: .row)
-            }
-            return values.map { MetricFormatter.string(for: $0, style: .row) }.joined(separator: " · ")
+        unboundedFigures.joined(separator: " · ")
+    }
+
+    var unboundedFigures: [String] {
+        guard hasData else { return [Self.noDataDetail] }
+        if let valueTextOverride { return [valueTextOverride] }
+        if values.count == 1, values[0].kind == .dollars, let word = unboundedValueWord {
+            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row)) \(word)"]
         }
-        return "\(valueText) \(unboundedValueWord ?? displayMode.label.lowercased())"
+        if !values.isEmpty {
+            return values.map { MetricFormatter.string(for: $0, style: .row) }
+        }
+        return ["\(valueText) \(unboundedValueWord ?? displayMode.label.lowercased())"]
     }
 
     static let expiryWarningWindow: TimeInterval = 7 * 24 * 60 * 60

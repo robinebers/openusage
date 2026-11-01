@@ -17,13 +17,13 @@ final class WidgetMeterStyleTests: XCTestCase {
 
             let remaining = store.data(for: descriptor)
             XCTAssertEqual(remaining.valueText, item.remaining, item.name)
-            XCTAssertEqual(barValue(remaining.dashboardRow()), item.remaining, item.name)
+            XCTAssertEqual(barValue(remaining.dashboardRow()), "\(item.remaining) left", item.name)
             XCTAssertEqual(remaining.fraction, 1 - item.used / item.limit, accuracy: 0.0001, item.name)
 
             store.meterStyle = .used
             let used = store.data(for: descriptor)
             XCTAssertEqual(used.valueText, item.consumed, item.name)
-            XCTAssertEqual(barValue(used.dashboardRow()), item.consumed, item.name)
+            XCTAssertEqual(barValue(used.dashboardRow()), "\(item.consumed) used", item.name)
             XCTAssertEqual(used.fraction, item.used / item.limit, accuracy: 0.0001, item.name)
         }
     }
