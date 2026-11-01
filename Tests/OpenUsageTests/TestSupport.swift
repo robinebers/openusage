@@ -246,8 +246,10 @@ extension QuietWindowTestCase {
                 }
             )
         }
+        defaults.set(DashboardTab.allMetrics.rawValue, forKey: DashboardTab.key)
         let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
+                .defaultAppStorage(defaults)
                 .environment(\.reduceAnimations, false)
                 .environment(container)
                 .environment(container.layout)

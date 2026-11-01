@@ -28,6 +28,11 @@ extension WidgetData {
         )
     }
 
+    /// The reading with the word that explains it, like `49% left`.
+    var amountText: String {
+        hasMeterStyleToggle ? "\(valueText) \(displayMode.label.lowercased())" : valueText
+    }
+
     func compactResetText(now: Date = Date()) -> String? {
         guard hasData, let resetsAt, !isFreshSessionWindow(now: now) else { return nil }
         guard resetsAt.timeIntervalSince(now) > 0 else { return Formatters.imminent }

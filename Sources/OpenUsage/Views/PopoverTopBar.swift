@@ -11,7 +11,7 @@ struct PopoverTopBar: View {
     var body: some View {
         switch screen {
         case .dashboard:
-            EmptyView()
+            DashboardTabBar(horizontalPadding: horizontalPadding)
         case .accounts:
             if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
                 navigationBar(back: { popover.back() }) {
@@ -94,6 +94,25 @@ struct PopoverTopBar: View {
         .controlSize(.large)
         .hoverTooltip("Add Account")
         .accessibilityLabel("Add Account")
+    }
+}
+
+private struct DashboardTabBar: View {
+    let horizontalPadding: CGFloat
+
+    @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
+
+    var body: some View {
+        Picker("Dashboard Tab", selection: $tab) {
+            ForEach(DashboardTab.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, PanelMetrics.margin)
+        .padding(.bottom, DashboardContentView.tabBarGap)
+        .barGlass()
     }
 }
 

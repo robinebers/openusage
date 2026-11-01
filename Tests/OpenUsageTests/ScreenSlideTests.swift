@@ -20,10 +20,9 @@ final class ScreenSlideTests: QuietWindowTestCase {
         for _ in 0..<120 where !sampled {
             try await Task.sleep(for: .milliseconds(10))
             host.layoutSubtreeIfNeeded()
-            let pages = scrollViews(in: host)
-            guard pages.count == 2,
-                  let accounts = pages.first(where: { $0.contentInsets.top > 0 }),
-                  let dashboard = pages.first(where: { $0.contentInsets.top == 0 }) else { continue }
+            let pages = scrollViews(in: host).sorted { host.convert($0.bounds, from: $0).minX < host.convert($1.bounds, from: $1).minX }
+            guard pages.count == 2 else { continue }
+            let (dashboard, accounts) = (pages[0], pages[1])
             let accountsFrame = host.convert(accounts.bounds, from: accounts)
             guard accountsFrame.minX > 40, panel.frame.height > resting + 5 else { continue }
             sampled = true
@@ -36,7 +35,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
 
         try await Task.sleep(for: .seconds(1.5))
         XCTAssertEqual(scrollViews(in: host).count, 1, "the pager didn't collapse once the slide settled")
-        XCTAssertEqual(panel.frame.height, 166, "the dashboard doesn't rest at its content's height")
+        XCTAssertEqual(panel.frame.height, dashboardHeight(in: host), accuracy: 1, "the dashboard doesn't rest at its content's height")
         XCTAssertEqual(panel.frame.maxY, top, "the panel's top edge moved")
     }
 
@@ -67,7 +66,7 @@ final class ScreenSlideTests: QuietWindowTestCase {
         let parked = try XCTUnwrap(scrollViews(in: host).first { ($0.documentView?.frame.height ?? 0) > 400 }, "Settings was torn down instead of parked")
         XCTAssertEqual(host.convert(parked.bounds, from: parked).minX, 2 * PanelMetrics.width)
         XCTAssertEqual(parked.contentInsets.top, 0, "parked Settings keeps a top bar")
-        XCTAssertEqual(panel.frame.height, 166)
+        XCTAssertEqual(panel.frame.height, dashboardHeight(in: host), accuracy: 1)
     }
 
     /// One Claude account of two rows on the dashboard, the panel following SwiftUI's height from its
@@ -84,7 +83,13 @@ final class ScreenSlideTests: QuietWindowTestCase {
             panel.setFrame(PanelGeometry.frame(topLeft: topLeft, width: PanelMetrics.width, height: height), display: false)
         }
         try await hosted.open()
-        XCTAssertEqual(panel.frame.height, 166, "the dashboard didn't open at its content's height")
+        XCTAssertEqual(panel.frame.height, dashboardHeight(in: hosted.host), accuracy: 1, "the dashboard didn't open at its content's height")
         return hosted
+    }
+
+    /// The dashboard's rows with its tab bar and footer, whichever height this macOS gives the picker.
+    private func dashboardHeight(in host: NSView) -> CGFloat {
+        guard let page = scrollViews(in: host).min(by: { host.convert($0.bounds, from: $0).minX < host.convert($1.bounds, from: $1).minX }) else { return 0 }
+        return (page.documentView?.frame.height ?? 0) + page.contentInsets.top + page.contentInsets.bottom
     }
 }

@@ -21,6 +21,7 @@ struct WidgetGroupedListView: View {
         VStack(alignment: .leading, spacing: DashboardGrid.sectionSpacing) {
             ForEach(families) { family in
                 section(family)
+                    .id(family.soleAccount?.id ?? family.id)
                     .contextMenu { DashboardMenu(sections: DashboardMenus.provider(family), perform: perform) }
                     .opacity(activeFamilyID == Self.familyFrameID(family.id) ? 0 : 1)
                     .reorderFrame(id: Self.familyFrameID(family.id), in: .named(reorderSpaceName))
@@ -71,6 +72,7 @@ struct WidgetGroupedListView: View {
                 perform: perform
             )
         }
+        .id(family.soleAccount == nil ? account.id : "rows:\(account.id)")
         .opacity(activeAccountID == account.id ? 0 : 1)
         .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }

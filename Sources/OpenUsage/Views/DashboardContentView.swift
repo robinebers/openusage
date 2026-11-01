@@ -9,6 +9,12 @@ struct DashboardContentView: View {
     @Binding var scrollPosition: ScrollPosition
 
     @Environment(UpdaterController.self) private var updater
+    @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
+    @State private var accountToOpen: String?
+
+    /// Half the space under the tabs: the bar and the content each hold this much, so the picker sits
+    /// as far from the first row as from the panel's top.
+    static let tabBarGap = PanelMetrics.margin / 2
 
     var body: some View {
         PopoverScrollView {
@@ -23,10 +29,21 @@ struct DashboardContentView: View {
                 widgetContent
             }
             .animation(Motion.spring, value: updater.availableUpdateVersion)
-            .padding(PanelMetrics.margin)
+            .padding(.horizontal, PanelMetrics.margin)
+            .padding(.top, Self.tabBarGap)
+            .padding(.bottom, PanelMetrics.margin)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)
+        .onChange(of: tab) { _, _ in
+            guard let accountToOpen else {
+                scrollPosition.scrollTo(edge: .top)
+                return
+            }
+            self.accountToOpen = nil
+            // All Metrics mounts with this change, so its accounts only exist to scroll to on the next turn.
+            Task { @MainActor in scrollPosition.scrollTo(id: accountToOpen, anchor: .top) }
+        }
     }
 
     @ViewBuilder
@@ -34,10 +51,18 @@ struct DashboardContentView: View {
         if layout.registry.providers.isEmpty {
             EmptyDashboardView { popover.isAddingAccount = true }
         } else {
-            WidgetGroupedListView(
-                reorderSpaceName: reorderSpaceName,
-                reorderLift: $reorderLift
-            )
+            switch tab {
+            case .priority:
+                PriorityDashboardView { accountID in
+                    accountToOpen = accountID
+                    tab = .allMetrics
+                }
+            case .allMetrics:
+                WidgetGroupedListView(
+                    reorderSpaceName: reorderSpaceName,
+                    reorderLift: $reorderLift
+                )
+            }
         }
     }
 }
