@@ -15,7 +15,7 @@ enum ZAIUsageMapper {
             throw ProviderError.unavailable("No active GLM Coding Plan. Subscribe at z.ai/subscribe to see usage.")
         }
         if (root["success"] as? Bool) == false, (root["code"] as? Int) == 401 {
-            throw ProviderError.keyRejected("Z.ai rejected the API key.")
+            throw ProviderError.signInExpired(.zai)
         }
         let container: [String: Any]
         if let data = root["data"] {
