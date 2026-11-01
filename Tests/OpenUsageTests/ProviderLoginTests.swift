@@ -153,7 +153,7 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(prompt.value?.deviceCode?.userCode, "GROK-CODE")
         let start = try XCTUnwrap(http.requests.first { $0.url.path == "/oauth2/device/code" })
         XCTAssertEqual(Self.formBody(start)["client_id"], GrokLogin.clientID)
-        XCTAssertEqual(Self.formBody(start)["scope"], "openid profile email offline_access grok-cli:access api:access")
+        XCTAssertEqual(Self.formBody(start)["scope"], "openid email offline_access grok-cli:access")
         let token = try XCTUnwrap(http.requests.first { $0.url.path == "/oauth2/token" })
         XCTAssertEqual(Self.formBody(token)["grant_type"], "urn:ietf:params:oauth:grant-type:device_code")
         XCTAssertEqual(Self.formBody(token)["device_code"], "device")
