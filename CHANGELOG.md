@@ -15,8 +15,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
 - The Pi provider, which has no account sign-in.
-- The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
-  or off per account, and starred metrics show in the menu bar.
+- The welcome screen, provider enable/disable switches, and the On Demand metric tier.
+- Menu-bar stars. The menu bar picks its own limits.
 - The Density setting and Reset All Customization.
 - The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
   Animations follow macOS's Reduce Motion setting.
@@ -26,7 +26,13 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
 - Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
-  right-click menus hold hide, star, share screenshot, and quick links.
+  right-click menus hold refresh, share screenshot, and quick links.
+- Dashboard: two tabs, **Priority** for the limits running out or used up, most urgent first, and
+  **All Usage** for every account. The panel opens on the **Default Tab** in Settings, Priority at first.
+- Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
+  Display → Priority Icons, sets how many, from App Icon Only to Up to 5. It starts at Up to 3.
+- Notifications: Cutting It Close now fires when a limit drops under 30% left, not when its pace nears
+  the limit. A switch you turned on in 0.7.x stays on.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
@@ -56,15 +62,12 @@ shows only what each provider's API reports for the accounts you sign in to.
   without Credits or Balance, which OpenRouter keeps from workspace keys.
 - OpenRouter: Today, This Week, and This Month add BYOK spend. A Management key adds Yesterday, Prior
   30 Days, and Requests from OpenRouter's activity, and resting the pointer on a range shows its
-  requests, tokens, and top models. A standard key adds Budget and Free Requests. Today is a new default
-  menu-bar star.
+  requests, tokens, and top models. A standard key adds Budget and Free Requests.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
-- Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
-  them.
 - Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
 - Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
   counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
@@ -81,13 +84,13 @@ shows only what each provider's API reports for the accounts you sign in to.
   banner.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
-- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
+- Notifications, keyboard shortcuts, Launch at Login, Theme, and Time Format.
 - The Almost Out, Cutting It Close, and Will Run Out switches in Settings, named after the alerts they
   send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
-- Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
-  each provider. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
+- Your 0.7.x metric order and provider order, on the first account you add for each provider. Stars
+  don't carry over. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
 - The OpenRouter and Z.ai keys you typed into 0.7.x, added once as accounts on the first launch when
   the provider has no account yet and the key still passes a usage read. The key files stay unchanged.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
