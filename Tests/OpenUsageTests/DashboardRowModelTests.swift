@@ -86,6 +86,18 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(data.compactResetText(now: now), "soon")
     }
 
+    func testTheResetLabelSaysResetsInForACountdownAndResetsForAClockTime() {
+        var data = paced(used: 30)
+        data.resetsAt = now.addingTimeInterval(22 * 3600 + 10 * 60)
+        XCTAssertEqual(data.resetLabel(now: now), "Resets in 22h 10m")
+        data.resetDisplayMode = .absolute
+        XCTAssertEqual(data.resetLabel(now: now), "Resets \(Formatters.compactClock(data.resetsAt!, now: now))")
+        data.resetDisplayMode = .relative
+        data.resetsAt = now.addingTimeInterval(-1)
+        XCTAssertEqual(data.resetLabel(now: now), "Resets soon")
+        XCTAssertNil(WidgetData(title: "On-demand", kind: .dollars, used: 12, limit: 20).resetLabel(now: now))
+    }
+
     func testAFreshSessionACapWithoutAResetAndABadgeLeaveTheResetEmpty() {
         var fresh = paced(used: 0, elapsed: 0.1, period: 5 * 3600, title: "Session")
         fresh.sessionStartSignal = .zeroUsage

@@ -1,6 +1,7 @@
 import XCTest
 @testable import OpenUsage
 
+@MainActor
 final class PriorityBoardTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let hour: TimeInterval = 3600
@@ -128,6 +129,130 @@ final class PriorityBoardTests: XCTestCase {
 
         XCTAssertTrue(result.attention.isEmpty)
         XCTAssertTrue(result.usedUp.isEmpty)
+    }
+
+    private func realLine(_ kind: ProviderKind, _ key: String, values: [MetricValue], expiries: [Date] = []) throws -> DashboardLine {
+        let descriptor = try XCTUnwrap(realDescriptors(kind).first { $0.key == key }, "\(kind) has no \(key)")
+        var data = descriptor.sample
+        data.values = values
+        data.expiriesAt = expiries
+        data.limit = nil
+        return DashboardLine(descriptor: descriptor, data: data)
+    }
+
+    private func realDescriptors(_ kind: ProviderKind, organization: String? = nil) -> [WidgetDescriptor] {
+        AccountProviderRuntime.widgetDescriptors(for: Account(kind: kind, label: kind.displayName, organization: organization))
+    }
+
+    private func zero(_ kind: MetricKind, label: String? = nil) -> MetricValue {
+        MetricValue(number: 0, kind: kind, label: label)
+    }
+
+    func testExactlyTheseMetricsAreBalances() {
+        var balances: [String] = []
+        for kind in ProviderKind.allCases {
+            for descriptor in realDescriptors(kind) + (kind == .copilot ? realDescriptors(kind, organization: "acme") : []) {
+                var data = descriptor.sample
+                data.limit = nil
+                data.values = [zero(.dollars), zero(.count, label: "credits"), zero(.count, label: "available"), zero(.count)]
+                if descriptor.balance(in: data) != nil { balances.append(descriptor.kindScopedKey) }
+            }
+        }
+        XCTAssertEqual(balances.sorted(), ["codex.credits", "cursor.credits", "devin.extra", "ollama.purchasedCredits", "openrouter.balance"])
+    }
+
+    func testAnOpenBalanceAtZeroIsUsedUpAndShowsItsAmountInsteadOfATime() throws {
+        let cursor = try realLine(.cursor, "credits", values: [zero(.dollars)])
+        let codex = try realLine(.codex, "credits", values: [zero(.dollars), zero(.count, label: "credits")])
+        let result = PriorityBoard.make(accounts: [
+            DashboardAccount(provider: personal, lines: [cursor]),
+            DashboardAccount(provider: chatGPT, lines: [codex]),
+        ], now: now)
+
+        XCTAssertTrue(result.attention.isEmpty, "a balance has no pace or limit to run toward")
+        XCTAssertEqual(result.usedUp.map(\.id), [cursor.id, codex.id])
+        XCTAssertEqual(result.usedUp.map { $0.usedUpNote(now: now) }, ["$0 left", "0 credits"])
+        XCTAssertEqual(result.usedUp.map(\.reason.severity), [.critical, .critical])
+        XCTAssertEqual(result.summary, .listed)
+        XCTAssertTrue(MenuBarContentBuilder.build(board: result, limit: .upToFive).isEmpty, "a balance never reaches the menu bar")
+    }
+
+    func testAnEmptyBalanceRanksAfterEveryLimitWithAReset() throws {
+        let balance = try realLine(.openrouter, "balance", values: [zero(.dollars)])
+        let result = PriorityBoard.make(accounts: [
+            DashboardAccount(provider: personal, lines: [balance]),
+            account(work, paced("Later", used: 100, left: 20 * day), paced("Sooner", used: 100, left: hour)),
+        ], now: now)
+
+        XCTAssertEqual(result.usedUp.map(\.id), ["claude@2.Sooner", "claude@2.Later", balance.id])
+    }
+
+    func testABalanceWithAnythingLeftIsNotListed() throws {
+        let cents = try realLine(.cursor, "credits", values: [MetricValue(number: 0.01, kind: .dollars)])
+        let credits = try realLine(.codex, "credits", values: [MetricValue(number: 0.04, kind: .dollars), MetricValue(number: 1, kind: .count, label: "credits")])
+        let result = PriorityBoard.make(accounts: [DashboardAccount(provider: personal, lines: [cents, credits])], now: now)
+
+        XCTAssertTrue(result.attention.isEmpty)
+        XCTAssertTrue(result.usedUp.isEmpty)
+    }
+
+    func testABalanceMeasuredAgainstALimitFollowsTheLimitRules() throws {
+        let descriptor = try XCTUnwrap(realDescriptors(.cursor).first { $0.key == "credits" })
+        var low = unpaced("Credits", used: 90)
+        low.values = [zero(.dollars)]
+        let result = PriorityBoard.make(accounts: [DashboardAccount(provider: personal, lines: [DashboardLine(descriptor: descriptor, data: low)])], now: now)
+
+        XCTAssertEqual(result.attention.map(\.reason), [.level(.critical, usedShare: 0.9)])
+        XCTAssertTrue(result.usedUp.isEmpty)
+    }
+
+    func testNothingButABalanceReachesUsedUpAtZero() {
+        for kind in ProviderKind.allCases {
+            for descriptor in realDescriptors(kind) + (kind == .copilot ? realDescriptors(kind, organization: "acme") : [])
+            where !["codex.credits", "cursor.credits", "devin.extra", "ollama.purchasedCredits", "openrouter.balance"].contains(descriptor.kindScopedKey) {
+                var data = descriptor.sample
+                data.limit = nil
+                data.values = [zero(.dollars), zero(.count, label: "credits"), zero(.count, label: "available"), zero(.count)]
+                let line = DashboardLine(descriptor: descriptor, data: data)
+                let result = PriorityBoard.make(accounts: [DashboardAccount(provider: personal, lines: [line])], now: now)
+                XCTAssertTrue(result.usedUp.isEmpty, descriptor.kindScopedKey)
+                XCTAssertTrue(result.attention.isEmpty, descriptor.kindScopedKey)
+            }
+        }
+    }
+
+    func testSpendTotalsAndLimitResetsAtZeroAreNotUsedUp() throws {
+        let lines = try [
+            realLine(.openrouter, "today", values: [zero(.dollars)]),
+            realLine(.cursor, "last30", values: [zero(.dollars), zero(.count, label: "tokens")]),
+            realLine(.copilot, "extra", values: [zero(.count)]),
+            realLine(.claude, "rateLimitResets", values: [zero(.count, label: "available")]),
+            realLine(.codex, "rateLimitResets", values: [zero(.count, label: "available")], expiries: [now.addingTimeInterval(day)]),
+        ]
+        XCTAssertNotNil(lines.first { $0.descriptor.limitResources.contains { $0.kind == .balance } }, "Limit Resets export as a balance and still don't count")
+
+        let result = PriorityBoard.make(accounts: [DashboardAccount(provider: personal, lines: lines)], now: now)
+
+        XCTAssertTrue(result.usedUp.isEmpty)
+        XCTAssertTrue(result.attention.isEmpty)
+    }
+
+    func testAUsedUpLimitsNoteIsTheBareTimeUntilItResets() {
+        var limit = paced("Weekly", used: 100, left: 22 * hour + 10 * 60)
+        var result = board(account(personal, limit))
+        XCTAssertEqual(result.usedUp[0].usedUpNote(now: now), "22h 10m")
+
+        limit.resetDisplayMode = .absolute
+        result = board(account(personal, limit))
+        XCTAssertEqual(result.usedUp[0].usedUpNote(now: now), Formatters.compactClock(now.addingTimeInterval(22 * hour + 10 * 60), now: now))
+
+        limit.resetDisplayMode = .relative
+        limit.resetsAt = now.addingTimeInterval(-1)
+        limit.periodDurationMs = nil
+        result = board(account(personal, limit))
+        XCTAssertEqual(result.usedUp[0].usedUpNote(now: now), "soon")
+
+        XCTAssertNil(board(account(personal, unpaced("Credits", used: 100))).usedUp[0].usedUpNote(now: now))
     }
 
     func testTheSummarySaysWhetherThereIsAnythingToReport() {

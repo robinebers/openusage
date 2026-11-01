@@ -7,8 +7,14 @@ struct PriorityItem: Identifiable {
         case closeToLimit(runway: TimeInterval)
         case level(WidgetData.MeterSeverity, usedShare: Double)
         case usedUp(resetsAt: Date?)
+        case emptyBalance(MetricValue)
 
-        init?(_ data: WidgetData, now: Date) {
+        init?(_ line: DashboardLine, now: Date) {
+            let data = line.data
+            if let balance = line.descriptor.balance(in: data), balance.number == 0 {
+                self = .emptyBalance(balance)
+                return
+            }
             switch data.meterState(now: now) {
             case .runningOut:
                 self = .runningOut(runway: data.runway(now: now) ?? .infinity)
@@ -25,15 +31,17 @@ struct PriorityItem: Identifiable {
 
         var severity: WidgetData.MeterSeverity {
             switch self {
-            case .runningOut, .usedUp: .critical
+            case .runningOut, .usedUp, .emptyBalance: .critical
             case .closeToLimit: .warning
             case .level(let severity, _): severity
             }
         }
 
         fileprivate var isUsedUp: Bool {
-            if case .usedUp = self { return true }
-            return false
+            switch self {
+            case .usedUp, .emptyBalance: true
+            case .runningOut, .closeToLimit, .level: false
+            }
         }
 
         /// Sorts ascending: first by tier, then by how close the limit is within it.
@@ -43,6 +51,7 @@ struct PriorityItem: Identifiable {
             case .closeToLimit(let runway): (1, runway)
             case .level(_, let usedShare): (2, -usedShare)
             case .usedUp(let resetsAt): (3, resetsAt?.timeIntervalSinceReferenceDate ?? .infinity)
+            case .emptyBalance: (3, .infinity)
             }
         }
     }
@@ -53,6 +62,12 @@ struct PriorityItem: Identifiable {
 
     var id: String { line.id }
     var data: WidgetData { line.data }
+
+    /// The trailing text of a Used Up row: the time until it resets, or for a balance, which has no reset, its amount.
+    func usedUpNote(now: Date) -> String? {
+        guard case .emptyBalance(let balance) = reason else { return data.compactResetText(now: now) }
+        return data.values.count > 1 ? MetricFormatter.string(for: balance, style: .row) : data.unboundedDetail
+    }
 }
 
 /// The limits that need the user, most urgent first, for the menu bar and the Priority tab.
@@ -71,7 +86,7 @@ struct PriorityBoard {
     static func make(accounts: [DashboardAccount], now: Date) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
-            PriorityItem.Reason(line.data, now: now).map { PriorityItem(provider: provider, line: line, reason: $0) }
+            PriorityItem.Reason(line, now: now).map { PriorityItem(provider: provider, line: line, reason: $0) }
         }
         let ranked = items.enumerated().sorted { lhs, rhs in
             let (left, right) = (lhs.element.reason.rank, rhs.element.reason.rank)
