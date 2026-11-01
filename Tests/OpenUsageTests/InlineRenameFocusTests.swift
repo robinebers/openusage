@@ -5,19 +5,23 @@ import XCTest
 
 @MainActor
 final class InlineRenameFocusTests: QuietWindowTestCase {
+    private final class Frames {
+        var byID: [String: CGRect] = [:]
+    }
+
     private struct Hosted {
         let panel: MenuBarPanel
         let host: NSView
         let container: AppContainer
         let accounts: [String: String]
+        let frames: Frames
     }
 
     func testDoubleClickingAnAccountNameTakesTheKeyboard() async throws {
         let hosted = try await host()
         try await resignKey(hosted)
-        let caption = PanelMetrics.margin + DashboardGrid.headerHeight + DashboardGrid.headerGap
-            + DashboardGrid.cardPadding + DashboardGrid.captionHeight / 2
-        try await doubleClick(CGPoint(x: PanelMetrics.margin + DashboardGrid.cardPadding + DashboardGrid.inset + 10, y: caption), hosted)
+        let personal = try XCTUnwrap(hosted.frames.byID[try XCTUnwrap(hosted.accounts["Personal"])], "All Metrics isn't showing")
+        try await doubleClick(CGPoint(x: personal.minX + DashboardGrid.inset + 10, y: personal.minY + DashboardGrid.captionHeight / 2), hosted)
         try await assertRenameTakesTyping("Personal", hosted)
     }
 
@@ -68,8 +72,12 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
             try await Task.sleep(for: .milliseconds(5))
         }
 
+        defaults.set(DashboardTab.allMetrics.rawValue, forKey: DashboardTab.key)
+        let frames = Frames()
         let hosting = NSHostingView(rootView: AnyView(
             DashboardView()
+                .defaultAppStorage(defaults)
+                .onPreferenceChange(ReorderFramePreferenceKey.self) { frames.byID = $0 }
                 .reduceAnimationsWhenRequested()
                 .environment(container)
                 .environment(container.layout)
@@ -96,7 +104,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
             container.popover.screen = .accounts
             try await Task.sleep(for: .milliseconds(1200))
         }
-        return Hosted(panel: panel, host: hosting, container: container, accounts: accounts)
+        return Hosted(panel: panel, host: hosting, container: container, accounts: accounts, frames: frames)
     }
 
     private func resignKey(_ hosted: Hosted) async throws {
