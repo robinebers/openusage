@@ -104,7 +104,6 @@ yesterday cannot be read, the rows that cover it are hidden rather than showing 
 once every day it covers has been read. After Cursor answers a history read with 429, history reads wait
 for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
 
-Total Usage and Today are the default menu-bar stars.
 
 ## Antigravity
 
@@ -132,7 +131,6 @@ the extra-usage balance, and the plan. A plan that hides its daily quota shows i
 the plan has no weekly quota. An account with neither quota nor a balance has nothing to show, and the
 card says so.
 
-Daily and Weekly are the default menu-bar stars.
 
 ## Grok
 
@@ -195,7 +193,7 @@ resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Manage
 credits and the activity, so a standard key's card has no Credits, Balance, Yesterday, Prior 30 Days, or
 Requests.
 
-Credits and Today are the default menu-bar stars. The card's right-click menu adds a **Credits** link to
+The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai

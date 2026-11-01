@@ -1,53 +1,79 @@
 # Dashboard
 
-The panel that opens from the menu bar icon. It is 340 pt wide and shows one provider after another,
-each a header above a card.
+The panel that opens from the menu bar icon. It is 340 pt wide and has two tabs, **Priority** and
+**All Metrics**. It remembers the last one you used and starts on Priority.
 
-## Providers and accounts
+When you have no accounts, both tabs show **Add Account**, which opens the provider chooser.
 
-The header starts with the provider's logo, and one rule names the rest: a provider with one account
-puts that account's name on the header, with its plan at the right end of the line, and a provider
-with several accounts puts its own name on the header and each account's name and plan inside the card
-above its rows. Nothing on the line is ever cut short. The card holds every metric that has data, in
-the order you set, one row each.
+## Priority
 
-When you have no accounts, the dashboard shows **Add Account**, which opens the provider chooser. When
-you have hidden every metric, it says so and points you to Accounts to turn them back on.
+Priority shows only what needs you, most urgent first.
 
-## Rows
+**Running Out** lists the limits in trouble, in this order:
 
-A row is the metric's label, a bar, its value, and its reset, in fixed columns, so every bar in the
-panel starts and ends at the same place. The bar fills with what is left (or what is used, under the
-Used setting); the value reads `52%`, `$12`, or `320`; the reset reads `1h 26m` or `6d 22h`, or
-`Wed 4 PM` under the exact-times setting, and `soon` once it is due. Click any bar row's value to flip
-every row between used and left, and any reset to flip between a countdown and the exact time;
-**Settings → Usage Display** holds the same two switches. Rest the pointer on a value to read the other
-side of it (`48% used` under `52%`), and on a reset to read the other format (the exact time under a
-countdown). Rows with a reset tick every 30 seconds, so countdowns stay live between refreshes.
+1. Limits on course to run out before they reset, soonest to hit the limit first.
+2. Limits on course to land inside their last 10%, soonest first.
+3. Limits with no pace to go by that are past 75% used, most used first.
+
+Limits that tie keep your dashboard order. Each row shows what's left around the provider's mark, the
+limit, the account, the amount, and the time until it resets.
+
+**Used Up** lists what has run out, soonest reset first, with the time until it resets. A balance with
+no limit, such as Cursor credits, can never be running out, so it appears here only once it reaches
+exactly zero. It comes after every limit with a reset and shows its amount, such as `$0 left` or
+`0 credits`. Spend totals, day totals, and Limit Resets counts never appear here.
+
+Click a row to open All Metrics at that account. Times tick every 30 seconds.
+
+When nothing is listed, Priority says **All Clear**. When only used-up limits are listed, a short All
+Clear row sits above them. Until a limit has data, Priority says **Waiting for Usage** rather than All
+Clear.
+
+## All Metrics
+
+One provider after another, each a header above a card. One rule names the header: a provider with one
+account puts that account's name and plan on the header, and a provider with several accounts puts its
+own name on the header and each account's name and plan inside the card above its rows. A long account
+name can be cut short; a plan never is. The card holds every metric that has data, in the order you set.
+
+### Limits
+
+A limit is its label, its amount, and its reset, over a bar. The bar fills with what is left (or what is
+used, under the Used setting); the amount reads `52% left`, `$12 used`, or `320 left`; the reset reads
+`Resets in 1h 26m`, or `Resets Wed 4 PM` under the exact-times setting, and `Resets soon` once it is
+due. Click any amount to flip every row between used and left, and any reset to flip between a countdown
+and the exact time; **Settings → Usage Display** holds the same two switches. Rest the pointer on an
+amount to read the other side of it (`48% used` under `52% left`), and on a reset to read the other
+format (the exact time under a countdown). Rows with a reset tick every 30 seconds, so countdowns stay
+live between refreshes.
 
 With a reset window, the bar's colour is where your pace lands at the reset: blue while you are on
 course to finish with at least 10% to spare, orange when you are on course to land inside the last 10%,
-red when you are on course to run out before the reset. A flame before the value marks that last case,
-and only that one: a blue or an orange bar never carries a flame. Under 5% used there is too little to
-project from, so the bar stays blue. Without a window the colour follows how much is used instead:
-blue, orange once 75% is used, red once 90% is. The value takes the bar's colour once the bar is orange
-or red. Once a balance is spent, the bar stays red, with no flame. A session window with nothing spent
-in it yet shows a full bar and no reset. The colours come from the system palette, so they follow
-light, dark, and accessibility settings. Rest the pointer on a bar to read where the pace lands:
-`~35% left at reset` on a blue bar, `~92% used at reset` on an orange one, `~12% over limit at reset`
-on a red one, `Limit reached` once spent; a bar coloured by how much is used says nothing.
+red when you are on course to run out before the reset. Under 5% used there is too little to project
+from, so the bar stays blue. Without a window the colour follows how much is used instead: blue, orange
+once 75% is used, red once 90% is. The amount takes the bar's colour once the bar is orange or red. A
+used-up limit's amount and track turn red. A session window with nothing spent in it yet shows a full
+bar and no reset. The colours come from the system palette, so they follow light, dark, and
+accessibility settings. Rest the pointer on a bar to read where the pace lands: `~35% left at reset` on
+a blue bar, `~92% used at reset` on an orange one, `~12% over limit at reset` on a red one, `Limit
+reached` once spent; a bar coloured by how much is used says nothing.
 
 The same pace verdict drives the [notifications](settings.md).
 
-A metric without a limit (a balance, a day's spend, a status) shows its value where the bar would be,
-such as `$12.40 left`. A metric the provider has not reported is hidden.
+### Values
 
-## Resets
+A metric without a limit (a balance, a day's spend, a status) shows its label and its value, such as
+`$12.40 left`, with any second figure after it, as in `$12.50 · 3K tokens`. A metric the provider has
+not reported is left out.
+
+### Resets
 
 Claude and ChatGPT accounts show a **Limit Resets** row with the number of available rate-limit resets
 while they have any. The count turns orange when the next reset expires within 7 days and red within
 48 hours. Rest the pointer on the count for a moment to see when each reset expires. To spend
 one, choose **Use** on it, then **Reset**.
+
+### Account status
 
 A spinner after an account's name means it is refreshing. A warning icon means its last refresh failed,
 or that the provider has no usage to report for it, as for a Grok team account. A clock means its
@@ -61,14 +87,12 @@ menu starts with the reason too.
   such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. If the account
   shows a warning or stale icon, the menu starts with the reason. A Copilot organization account also
-  has **Organization Billing**, which opens the organization's billing page on GitHub. **Show Hidden
-  Metrics** appears when you have hidden any.
-- A metric: **Star for Menu Bar** (or **Unstar**) and **Hide**. Hiding a metric, here or on the
-  Accounts screen, also takes its star off the menu bar. Starring a hidden metric shows it again.
+  has **Organization Billing**, which opens the organization's billing page on GitHub. Right-clicking a
+  metric opens its account's menu.
 
 ## Reordering
 
-Drag a provider by its header, an account by its name inside the card, or a metric by its row. On the Accounts
+On All Metrics, drag a provider by its header, an account by its name inside the card, or a metric by its row. On the Accounts
 screen, an account moves past another provider only when both providers have one account; move a
 provider with several accounts by its header on the dashboard. A new provider goes to the
 bottom of the dashboard and of the Accounts list, and a new account goes to the bottom of its
@@ -76,17 +100,17 @@ provider's accounts. The app never sorts providers or accounts for you. After an
 provider in the order you saved in 0.7.x goes to that place instead. See
 [Upgrading from 0.7.x](settings.md#upgrading-from-07x).
 
-Press **⌘Z** to undo the last layout change (hiding or showing a metric, reordering, starring). Undo is
-per session.
+Press **⌘Z** to undo the last reorder. Undo is per session.
 
 ## Rename
 
-Double-click an account's name, or choose **Rename** from its menu. The field opens with the whole
+Double-click an account's name, on its provider's header or inside the card, or choose **Rename** from
+its menu. The field opens with the whole
 name selected. Return or a click elsewhere saves; Esc cancels.
 
 ## Share
 
-Rest the pointer on a provider's header and a copy button appears at its right edge; click it, or
+Rest the pointer on a provider's header and its logo becomes a copy button; click it, or
 right-click the provider and choose **Share Screenshot**, to copy a PNG of its header and card, with
 every account, to the clipboard. On an account inside a card of several, **Share Screenshot** copies
 that account alone under the provider's header. The copy button shows a checkmark for a moment on

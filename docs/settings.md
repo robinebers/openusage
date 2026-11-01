@@ -21,8 +21,14 @@ survives relaunch.
 
 | Setting | Control | What it changes |
 |---|---|---|
-| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any bar row's value in the dashboard flips it too. |
-| Reset Times | Countdown, Exact time | Whether reset labels read `Resets in 3h 25m` or `Resets today at 6:38 PM`. A click on any reset in the dashboard flips it too. |
+| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
+| Reset Times | Countdown, Exact time | Whether resets read `Resets in 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
+
+## Menu Bar
+
+| Setting | Control | What it changes |
+|---|---|---|
+| Show in Menu Bar | Icon Only, Up to 1, Up to 2, Up to 3, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
 
 ## Notifications
 
@@ -73,17 +79,13 @@ so an account you remove later doesn't come back. If the provider rejects the ke
 If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
 doesn't save the key, it tries again on the next launch.
 
-When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
+When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x order:
 
-- **Stars.** It keeps the provider's 0.7.x stars on its metrics, or gets the default stars if none of
-  those stars is on a metric it has.
-- **Hidden metrics.** A metric that 0.7.x had and you turned off stays hidden. An account never starts
-  with every metric hidden.
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
 - **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
 
-When 0.7.x had several accounts of a provider on, the one it showed first gives the layout. Any other
-account of that provider starts with the default stars, as on a new install.
+When 0.7.x had several accounts of a provider on, the one it showed first gives the order. Stars and
+hidden metrics don't carry over: the menu bar picks its own limits and every metric with data shows.
 
 OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
 back to 0.7.x, it finds its stars and order as you left them.

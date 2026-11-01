@@ -3,7 +3,7 @@
 Track your AI coding subscriptions from the macOS menu bar.
 
 OpenUsage shows how much of each AI plan you have used: session and weekly limits, credits, and
-balances, in one panel. Star the metrics you watch most and they appear in the menu bar.
+balances, in one panel. The menu bar shows the limits closest to running out, on its own.
 
 You add each account in the app. OpenUsage reads nothing that belongs to other tools: no Keychain
 items, auth files, logs, databases, or environment variables. It shows only the limits and dollar
@@ -43,7 +43,7 @@ app's own Keychain service.
 
 After an update from 0.7.x, the OpenRouter and Z.ai keys you typed into 0.7.x are added as accounts
 once, and the first account you add for each provider takes that provider's 0.7.x
-stars, hidden metrics, and order. OpenUsage never changes 0.7.x's saved
+order. OpenUsage never changes 0.7.x's saved
 layout, so going back to 0.7.x finds its stars and order as you left them. See
 [Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
 
@@ -61,13 +61,16 @@ tokens, and the turns by UTC day, and a workspace's credit limit.
 
 ## Features
 
-- **Menu bar stars.** Star up to two metrics per provider. When more than one account of a provider is
-  starred, each mark carries the account name's initials.
-- **Dashboard.** A header and a card per provider. The header shows the provider's logo and name, and
-  inside the card every account, even when it is the only one, has a caption with its name and plan
-  above its rows. One row per metric: label, bar, value, and reset. With a reset window the bar's colour is where your pace lands at the
-  reset: blue on course, orange inside the last 10%, red with a flame before the value when you would
-  run out first; without one, blue, orange once 75% is used, red once 90% is. Click a value to flip
+- **Menu bar.** The limits closest to running out show on their own, each named, up to the number you
+  set, with any others as a count like `+7`. When more than one account of a provider shows, each mark
+  carries the account name's initials.
+- **Priority.** What's running out, most urgent first, and what's used up. Click a row to jump to its
+  account.
+- **All Metrics.** A header and a card per provider. One account shares the header with the provider
+  and its plan; several get a caption with their name and plan inside the card. A limit is its label,
+  amount, and reset over a bar. With a reset window the bar's colour is where your pace lands at the
+  reset: blue on course, orange inside the last 10%, red when you would run out first; without one,
+  blue, orange once 75% is used, red once 90% is. Click a value to flip
   every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.

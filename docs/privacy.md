@@ -35,8 +35,7 @@ the choice they already stored.
 ### What is always shared
 
 - Once per local day, an **app use** ping: that the app was active today, the app and macOS version,
-  which providers you have accounts for, which metrics are shown, and which are starred in the menu
-  bar. Metric ids name the provider and the metric (`claude.session`), never the account. A random
+  which providers you have accounts for and which metrics they have. Metric ids name the provider and the metric (`claude.session`), never the account. A random
   install id, not tied to you or any account, lets the team count daily active users.
 - **Crash reports**: if OpenUsage crashes, it saves a report and sends it the next time it starts. The
   report holds the stack trace of OpenUsage's own code and the app and macOS version. It holds no

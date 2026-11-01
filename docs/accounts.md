@@ -45,15 +45,9 @@ elsewhere saves; Esc cancels.
 ## Replace an API key
 
 **Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
-before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
+before saving it. The account keeps its name and place; if the provider refuses the key, the
 old key stays and the page shows why. A saved key is read at once, even while the old key was waiting
 out a provider's rate limit. A Copilot organization account has **Replace Token…** instead.
-
-## Hide and star metrics
-
-An account's page lists its metrics with a switch and a star each. Turn a metric off to hide it from
-the dashboard and the menu bar; hiding it also removes its star. Star a metric to show it in the menu
-bar; see [Menu bar](menu-bar.md).
 
 ## Remove an account
 
