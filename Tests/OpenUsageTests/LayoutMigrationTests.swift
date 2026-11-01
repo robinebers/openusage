@@ -3,19 +3,29 @@ import XCTest
 
 @MainActor
 final class LayoutMigrationTests: XCTestCase {
-    func testTheFirstAccountOfAProviderTakesItsZeroSevenMetricOrder() throws {
+    func testTheFirstAccountOfAProviderTakesItsZeroSevenHiddenMetricsAndOrder() throws {
         let app = try MigrationApp(defaults: zeroSevenDefaults())
 
         let claude = app.add(.claude)
+        XCTAssertEqual(app.hidden(claude), ["extra", "sonnet"])
         XCTAssertEqual(app.order(claude), ["session", "weekly", "sonnet", "extra", "fable", "rateLimitResets"])
 
         let codex = app.add(.codex)
+        XCTAssertEqual(app.hidden(codex), ["last30", "spark", "sparkWeekly", "today", "yesterday"],
+                       "a star 0.7.x showed only in the menu bar shows its metric")
         XCTAssertEqual(app.order(codex), ["weekly", "session", "credits", "rateLimitResets", "spark", "sparkWeekly",
                                           "creditLimit", "today", "yesterday", "last30"])
 
         let secondClaude = app.add(.claude)
         XCTAssertEqual(app.order(secondClaude), ["session", "weekly", "sonnet", "fable", "extra", "rateLimitResets"],
                        "a provider's later accounts start in declaration order")
+        XCTAssertEqual(app.hidden(secondClaude), [], "a provider's later accounts start with every metric shown")
+    }
+
+    func testZeroSevenHidingSpeaksOnlyForMetricsItHad() throws {
+        let app = try MigrationApp(defaults: zeroSevenDefaults())
+        XCTAssertEqual(app.hidden(app.add(.grok)), [], "0.7.x showed only Grok metrics that are gone, so no account starts empty")
+        XCTAssertEqual(app.hidden(app.add(.ollama)), [], "0.7.x had Ollama off")
     }
 
     func testADisabledZeroSevenAccountGivesNoLayout() throws {
@@ -90,16 +100,19 @@ final class LayoutMigrationTests: XCTestCase {
 
         app.layout.apply(registry: app.layout.registry)
         app.relaunch()
+        XCTAssertEqual(app.hidden(claude), ["extra", "sonnet"])
         XCTAssertEqual(app.order(claude).prefix(3), ["session", "weekly", "sonnet"])
         XCTAssertEqual(defaults.data(forKey: "openusage.layout.v2"), saved, "a second run writes nothing")
 
         XCTAssertTrue(app.layout.reorderMetric(dragged: "\(claude.cardID).sonnet", target: "\(claude.cardID).session", in: claude.cardID))
+        XCTAssertTrue(app.layout.setMetric("\(claude.cardID).sonnet", shown: true))
         app.relaunch()
         XCTAssertEqual(app.order(claude).prefix(3), ["sonnet", "session", "weekly"])
+        XCTAssertEqual(app.hidden(claude), ["extra"])
     }
 
-    /// Shaped like a real 0.7.16 layout: a second Claude account's `@` id beside bare ids, and stars and
-    /// hidden metrics this build no longer reads.
+    /// Shaped like a real 0.7.16 layout: a second Claude account's `@` id beside bare ids, a star on a
+    /// metric it did not place, stars on rows that are gone, and a provider with no account today.
     private func zeroSevenDefaults() throws -> UserDefaults {
         let defaults = isolatedDefaults()
         let claude = "claude@aaaa1111"
@@ -159,6 +172,10 @@ private final class MigrationApp {
 
     func relaunch() {
         layout = LayoutStore(registry: Self.registry(accounts), defaults: defaults)
+    }
+
+    func hidden(_ account: Account) -> [String] {
+        layout.registry.descriptors(for: account.cardID).filter { !layout.isMetricShown($0.id) }.map(\.key).sorted()
     }
 
     func order(_ account: Account) -> [String] {

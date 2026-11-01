@@ -44,7 +44,7 @@ app's own Keychain service.
 
 After an update from 0.7.x, the OpenRouter and Z.ai keys you typed into 0.7.x are added as accounts
 once, and the first account you add for each provider takes that provider's 0.7.x
-order. OpenUsage never changes 0.7.x's saved
+hidden metrics and order. OpenUsage never changes 0.7.x's saved
 layout, so going back to 0.7.x finds its stars and order as you left them. See
 [Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
 
@@ -76,6 +76,8 @@ and a workspace's credit limit.
   A usage range shows the provider's total or sums the days it reported. Open its breakdown to see
   model usage and whether any days are missing, including after reopening the app.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
+- **Metrics per account.** An account's page in Accounts has a switch per metric to hide it everywhere
+  and a handle to drag its metrics into order.
 - **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
   resets. Click the count or focus it and press Space to see when each expires and spend one.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or

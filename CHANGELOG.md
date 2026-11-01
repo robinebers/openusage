@@ -25,6 +25,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
+- Accounts: an account's page lists its metrics, each with a switch that hides it everywhere and a
+  handle that drags it into order.
 - Accounts: once **Sign In Again** works, the sign-in closes and the panel opens on your Default Tab.
 - Accounts: **Sign In Again** shows on an account's page only while Priority lists it under Needs Attention.
 - Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
@@ -91,8 +93,9 @@ shows only what each provider's API reports for the accounts you sign in to.
   send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
-- Your 0.7.x metric order and provider order, on the first account you add for each provider. Stars
-  don't carry over. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
+- Your 0.7.x hidden metrics, metric order, and provider order, on the first account you add for each
+  provider. Stars don't carry over. 0.7.x's saved layout stays on disk unchanged, so a downgrade
+  finds it as it was.
 - The OpenRouter and Z.ai keys you typed into 0.7.x, added once as accounts on the first launch when
   the provider has no account yet and the key still passes a usage read. The key files stay unchanged.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the

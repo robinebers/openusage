@@ -28,7 +28,12 @@ struct AccountsView: View {
     @ViewBuilder
     private var level: some View {
         if let id = popover.customizeProviderID {
-            AccountDetailView(providerID: id)
+            AccountDetailView(
+                providerID: id,
+                reorderSpaceName: reorderSpaceName,
+                reorderLift: $reorderLift,
+                frameStore: frameStore
+            )
                 .transition(.move(edge: .trailing))
         } else {
             AccountListView(

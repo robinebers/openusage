@@ -6,6 +6,7 @@ struct LayoutV1Keys {
     let placed: [String]?
     let providerOrder: [String]?
     let metricOrderByProvider: [String: [String]]?
+    let menuBarPins: [String]?
     let enabledProviders: [String]?
 
     init(defaults: UserDefaults) {
@@ -13,6 +14,7 @@ struct LayoutV1Keys {
         placed = Self.decode([Placed].self, key, defaults)?.map(\.descriptorID)
         providerOrder = Self.decode([String].self, "\(key).providerOrder", defaults)
         metricOrderByProvider = Self.decode([String: [String]].self, "\(key).metricOrderByProvider", defaults)
+        menuBarPins = defaults.stringArray(forKey: "\(key).menuBarPins")
         enabledProviders = defaults.stringArray(forKey: "openusage.enabledProviders.v1")
     }
 
@@ -33,17 +35,43 @@ struct LayoutV1Keys {
 
 /// A 0.7.x account's layout, mapped onto an account added today.
 struct CarriedLayout {
+    var hidden: [String]
     var metricOrder: [String]?
     /// Where the account goes among the others, or nil when 0.7.x saved no place for its provider.
     var providerIndex: Int?
 }
 
 extension LayoutV1Keys {
+    /// The metric keys 0.7.16 had for each provider. 0.7.x's layout speaks only for these: a metric added
+    /// since is new to the user and starts shown.
+    static let metricKeys: [ProviderKind: Set<String>] = [
+        .claude: ["session", "weekly", "fable", "sonnet", "extra", "rateLimitResets", "trend", "today", "yesterday", "last30"],
+        .codex: ["session", "weekly", "spark", "sparkWeekly", "credits", "rateLimitResets", "trend", "today", "yesterday", "last30"],
+        .cursor: ["usage", "auto", "api", "grokBot", "onDemand", "requests", "credits", "trend", "today", "yesterday", "last30"],
+        .antigravity: ["geminiPro", "geminiWeekly", "argonWeekly", "claude", "claudeWeekly", "trend", "today", "yesterday", "last30"],
+        .copilot: ["premium", "extra", "orgCredits", "orgSpend", "chat", "completions"],
+        .devin: ["daily", "weekly", "extra"],
+        .grok: ["weekly", "payAsYouGo", "trend", "today", "yesterday", "last30"],
+        .ollama: ["session", "weekly", "monthly", "purchasedCredits"],
+        .opencodeGo: ["session", "weekly", "monthly", "trend", "today", "yesterday", "last30"],
+        .openrouter: ["credits", "balance", "today", "week", "month", "keyLimit"],
+        .zai: ["session", "weekly", "webSearches"]
+    ]
+
     /// The layout of the account 0.7.x showed first for `provider`'s kind, mapped onto `metrics` and placed
     /// among `others`, the providers already shown, in order. Nil when 0.7.x had the provider off.
     func carriedOver(to provider: Provider, metrics: [WidgetDescriptor], among others: [Provider]) -> CarriedLayout? {
         guard let account = firstAccount(of: provider.kind) else { return nil }
+        let known = Self.metricKeys[provider.kind] ?? []
+        // A metric 0.7.x showed only in the menu bar was still one the user chose to see.
+        let starred = Set(Self.keys(of: account, in: menuBarPins ?? []))
+        var hidden: [WidgetDescriptor] = placed.map { placed in
+            let shown = Set(Self.keys(of: account, in: placed)).union(starred)
+            return metrics.filter { known.contains($0.key) && !shown.contains($0.key) }
+        } ?? []
+        if hidden.count == metrics.count { hidden = [] }
         return CarriedLayout(
+            hidden: hidden.map(\.id),
             metricOrder: metricOrderByProvider?[account].map { ids in
                 Self.keys(of: account, in: ids).compactMap { key in metrics.first { $0.key == key }?.id }
             },
