@@ -30,6 +30,32 @@ final class SignInAgainTests: XCTestCase {
         XCTAssertTrue(try vault.load(account.id) == old, "A rejected candidate overwrote the working login.")
     }
 
+    func testOnlyASuccessfulSignInAgainLeavesTheAccountPageForTheDefaultTab() async throws {
+        let defaults = isolatedDefaults()
+        defaults.set(DashboardTab.allUsage.rawValue, forKey: DashboardTab.defaultKey)
+        let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let account = accounts.add(kind: .grok, label: "Work", credential: .oauth(.init(accessToken: "expired")))
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: RoutingHTTPClient { Self.usage($0) })
+        let popover = container.popover
+        popover.openAccounts(account.cardID)
+        popover.signingInAgainProviderID = account.cardID
+        popover.isAddingAccount = true
+
+        _ = try? await container.signInAgain(.oauth(.init(accessToken: "rejected", refreshToken: "bad-r")), for: account.cardID)
+        let cancelled = Task { try await container.signInAgain(.oauth(.init(accessToken: "new")), for: account.cardID) }
+        cancelled.cancel()
+        _ = try? await cancelled.value
+        XCTAssertEqual(popover.screen, .accounts, "A failed or cancelled sign-in left the account's page.")
+        XCTAssertEqual(popover.customizeProviderID, account.cardID)
+        XCTAssertTrue(popover.isAddingAccount, "A failed sign-in closed the sheet that shows its error.")
+
+        try await container.signInAgain(.oauth(.init(accessToken: "new")), for: account.cardID)
+        XCTAssertEqual(popover.screen, .dashboard, "A successful sign-in stayed on the account's page.")
+        XCTAssertEqual(popover.dashboardTab, .allUsage, "A successful sign-in did not open the Default Tab.")
+        XCTAssertFalse(popover.isAddingAccount)
+        XCTAssertNil(popover.customizeProviderID)
+    }
+
     func testOldOAuthRenewalCannotOverwriteTheNewSignIn() async throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()

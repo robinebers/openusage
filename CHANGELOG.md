@@ -25,6 +25,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
+- Accounts: once **Sign In Again** works, the sign-in closes and the panel opens on your Default Tab.
 - Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
   right-click menus hold hide, star, share screenshot, and quick links.
 - Severity colours are blue, orange, and red.

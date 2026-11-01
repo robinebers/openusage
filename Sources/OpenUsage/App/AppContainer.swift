@@ -127,6 +127,12 @@ final class AppContainer {
         }
     }
 
+    /// Once the new sign-in reads usage, the sign-in sheet closes and the panel shows the Default Tab.
+    func signInAgain(_ credential: AccountCredential, for providerID: String) async throws {
+        try await replaceCredential(credential, for: providerID)
+        popover.showDashboard(on: .preferred(in: defaults))
+    }
+
     /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.
     func replaceHubKey(_ key: String, for hubID: UUID) async throws {
         try await hubs.replaceKey(key, for: hubID)
