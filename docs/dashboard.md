@@ -38,7 +38,15 @@ running low or used up stay visible.
 One provider after another, each a header above a card. The header is the provider's name and logo,
 and every account's name and plan sit inside the card above its rows. A single account named after
 the provider shows just its plan. With several accounts, each keeps a name you can drag. The card
-holds every metric that has data, in the order you set.
+holds every metric that has data and that you have not hidden, in the order you set.
+
+## Hiding and ordering metrics
+
+An account's page in **Accounts** lists all of its metrics, in its order. Turn a metric's switch off to
+hide it everywhere: All Usage, Priority, the menu bar, and notifications. Drag a metric by its handle to
+change where it sits within the account. Both choices are saved and survive a restart. A new account
+shows every metric, in the provider's order. If you hide every metric of every account, the dashboard
+says so and points you to Accounts.
 
 ### Limits
 
@@ -93,7 +101,8 @@ menu starts with the reason too.
 
 ## Reordering
 
-On All Usage, drag a provider by its header, an account by its name inside the card, or a metric by its row. On the Accounts
+On All Usage, drag a provider by its header, an account by its name inside the card, or a metric by its row. An
+account's page orders its metrics too. On the Accounts
 screen, an account moves past another provider only when both providers have one account; move a
 provider with several accounts by its header on the dashboard. A new provider goes to the
 bottom of the dashboard and of the Accounts list, and a new account goes to the bottom of its

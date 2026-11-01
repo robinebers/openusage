@@ -83,13 +83,17 @@ so an account you remove later doesn't come back. If the provider rejects the ke
 If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
 doesn't save the key, it tries again on the next launch.
 
-When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x order:
+When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x
+hidden metrics and order:
+
+- **Hidden metrics.** A metric 0.7.x showed neither on the dashboard nor in the menu bar starts hidden.
+  Metrics that 0.7.x did not have start shown.
 
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
 - **Provider order.** Each provider takes the place of its first enabled account in the saved 0.7.x order.
 
-When 0.7.x had several accounts of a provider on, the one it showed first gives the order. Stars and
-hidden metrics don't carry over: the menu bar picks its own limits and every metric with data shows.
+When 0.7.x had several accounts of a provider on, the one it showed first gives the hidden metrics and
+order. Stars don't carry over: the menu bar picks its own limits.
 
 OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
 back to 0.7.x, it finds its stars and order as you left them.

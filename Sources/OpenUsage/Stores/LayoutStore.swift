@@ -36,13 +36,14 @@ final class LayoutStore {
         }
 
         state = LayoutState(
+            hiddenMetricIDs: saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil },
             providerOrder: saved.providerOrder,
             metricOrderByProvider: saved.metricOrderByProvider.filter { registry.provider(id: $0.key) != nil },
             seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil }
         )
     }
 
-    /// The only account of its provider takes that provider's 0.7.x order.
+    /// The only account of its provider takes that provider's 0.7.x hidden metrics and order.
     private func seed(_ provider: Provider, into saved: inout LayoutState) {
         saved.seededProviderIDs.insert(provider.id)
         let metrics = registry.descriptors(for: provider.id)
@@ -52,6 +53,7 @@ final class LayoutStore {
         guard !others.contains(where: { $0.kind == provider.kind }),
               let carried = LayoutV1Keys(defaults: defaults).carriedOver(to: provider, metrics: metrics, among: others)
         else { return }
+        saved.hiddenMetricIDs.formUnion(carried.hidden)
         if let order = carried.metricOrder { saved.metricOrderByProvider[provider.id] = order }
         if let index = carried.providerIndex {
             var providers = others.map(\.id)
@@ -59,6 +61,19 @@ final class LayoutStore {
             saved.providerOrder = providers
         }
         AppLog.notice(.config, "layout: \(provider.id) takes its provider's 0.7.x layout")
+    }
+
+    func isMetricShown(_ descriptorID: String) -> Bool {
+        !state.hiddenMetricIDs.contains(descriptorID)
+    }
+
+    @discardableResult
+    func setMetric(_ descriptorID: String, shown: Bool) -> Bool {
+        recordingUndoStep {
+            guard registry.descriptor(id: descriptorID) != nil else { return false }
+            if shown { return state.hiddenMetricIDs.remove(descriptorID) != nil }
+            return state.hiddenMetricIDs.insert(descriptorID).inserted
+        }
     }
 
     var canUndo: Bool { !undoSnapshots.isEmpty }
