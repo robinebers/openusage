@@ -14,6 +14,9 @@ enum ZAIUsageMapper {
            (root["msg"] as? String)?.localizedCaseInsensitiveContains("coding plan") == true {
             throw ProviderError.unavailable("No active GLM Coding Plan. Subscribe at z.ai/subscribe to see usage.")
         }
+        if (root["success"] as? Bool) == false, (root["code"] as? Int) == 401 {
+            throw ProviderError.keyRejected("Z.ai rejected the API key.")
+        }
         let container: [String: Any]
         if let data = root["data"] {
             guard let data = data as? [String: Any] else { throw ProviderError.invalidResponse }

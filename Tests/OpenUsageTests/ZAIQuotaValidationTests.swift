@@ -41,6 +41,13 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
         }
     }
 
+    func testAKeyZaiRefusesInsideAnOKResponseIsRejected() {
+        let refused = Data(#"{"code":401,"msg":"token expired or incorrect","success":false}"#.utf8)
+        XCTAssertThrowsError(try ZAIUsageMapper.mapQuota(refused)) { error in
+            XCTAssertEqual(error as? ProviderError, .keyRejected("Z.ai rejected the API key."))
+        }
+    }
+
     func testUnknownEntriesDoNotHideKnownMeters() throws {
         let body = Data(
             #"{"data":{"limits":[{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":25}]}}"#.utf8
