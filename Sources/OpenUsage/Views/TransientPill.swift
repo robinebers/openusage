@@ -5,7 +5,6 @@ struct TransientPill: View {
     let text: String
     let tint: AnyShapeStyle
     let trigger: Int
-    var showsShadow = true
 
     var body: some View {
         HStack(spacing: 5) {
@@ -19,7 +18,7 @@ struct TransientPill: View {
         .padding(.vertical, 6)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(showsShadow ? 0.12 : 0), radius: 6, y: 2)
+        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
         .id(trigger)
         .transition(.scale(scale: 0.85).combined(with: .opacity))
     }

@@ -44,12 +44,10 @@ extension WidgetDescriptor {
         title: String,
         metricLabel: String? = nil,
         valueWord: String? = nil,
-        traySuffix: String? = nil,
         showsResetExpiries: Bool = false
     ) -> WidgetDescriptor {
         var sample = WidgetData(title: title, kind: .dollars, used: 0, limit: nil,
                                 unboundedValueWord: valueWord)
-        sample.traySuffix = traySuffix
         sample.showsResetExpiries = showsResetExpiries
         return make(key: key, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
     }

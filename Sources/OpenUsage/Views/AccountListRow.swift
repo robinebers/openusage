@@ -39,3 +39,13 @@ struct AccountListRow<Grip: View>: View {
         .padding(.vertical, PanelMetrics.controlRowPadding)
     }
 }
+
+struct ReorderGrip: View {
+    var body: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .frame(width: 16, height: 22)
+            .contentShape(Rectangle())
+    }
+}

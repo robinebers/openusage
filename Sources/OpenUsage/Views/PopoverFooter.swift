@@ -4,28 +4,33 @@ import SwiftUI
 struct PopoverFooter: View {
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(LayoutStore.self) private var layout
+    @Environment(\.colorScheme) private var colorScheme
     let screen: PopoverScreen
     let horizontalPadding: CGFloat
 
     @ViewBuilder
     var body: some View {
         Group {
-            if screen == .accounts {
-                EmptyView()
-            } else {
+            if screen == .dashboard {
                 HStack(alignment: .center, spacing: 8) {
-                    footerIdentity
+                    if !layout.displayGroups.isEmpty { nextUpdateButton }
                     Spacer(minLength: 8)
-                    if screen == .dashboard {
-                        optionsMenu
-                    }
+                    if popover.dashboardTab == .priority, liveBoard.summary == .listed { copyPriorityButton }
+                    optionsMenu
                 }
+                .padding(.horizontal, 4)
+            } else if screen == .accounts, popover.customizeProviderID == nil {
+                addAccountButton
+            } else {
+                EmptyView()
             }
         }
+        .frame(minHeight: 26)
         .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, 12)
+        .padding(.top, DashboardContentView.barGap)
+        .padding(.bottom, PanelMetrics.margin)
         .frame(maxWidth: .infinity)
-        .barGlass()
         .overlay(alignment: .top) {
             if screen == .dashboard, popover.shareNotice.value {
                 shareCopiedPill
@@ -36,11 +41,38 @@ struct PopoverFooter: View {
         .animation(Motion.spring, value: popover.shareNotice.trigger)
     }
 
-    /// The Options pull-down on one glass capsule. The system `.buttonStyle(.glass)` renders flat on a
-    /// `Menu`, so `.menuStyle(.button)` + `.buttonStyle(.plain)` strip the menu chrome and
-    /// `interactiveGlass` owns the surface. Accounts and Settings carry their key equivalents only as
-    /// labels: while the menu is closed `PopoverKeyReader` handles (and consumes) them first, so they
-    /// can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
+    private var addAccountButton: some View {
+        Button { popover.isAddingAccount = true } label: {
+            Text("Add New Account")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+    }
+
+    private var liveBoard: PriorityBoard {
+        dataStore.priorityBoard(in: layout.displayGroups, now: Date(), hidingEmails: true)
+    }
+
+    /// Copies the Priority tab as a picture. It reads the live board when clicked.
+    private var copyPriorityButton: some View {
+        Button {
+            guard ShareCardRenderer.copy(PriorityShareCard(board: liveBoard, now: Date(), appearance: colorScheme), named: "priority") else { return }
+            popover.shareNotice.present(true)
+        } label: {
+            Image(systemName: "doc.on.doc")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Theme.controlFill, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy Priority Screenshot")
+    }
+
+    /// The Options pull-down behind a round button. Accounts and Settings carry their key equivalents
+    /// only as labels: while the menu is closed `PopoverKeyReader` handles (and consumes) them first, so
+    /// they can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
     private var optionsMenu: some View {
         Menu {
             Button { popover.toggle(.accounts) } label: {
@@ -67,22 +99,17 @@ struct PopoverFooter: View {
             }
             .keyboardShortcut("q")
         } label: {
-            HStack(spacing: 5) {
-                Text("Options")
-                    .font(.system(size: 13, weight: .semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 12)
-            .frame(height: 28)
-            .contentShape(Rectangle())
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Theme.controlFill, in: Circle())
+                .contentShape(Circle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .interactiveGlass(in: Capsule())
+        .accessibilityLabel("Options")
     }
 
     private var shareCopiedPill: some View {
@@ -94,22 +121,6 @@ struct PopoverFooter: View {
         )
     }
 
-    private var footerIdentity: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("OpenUsage \(AppInfo.version)")
-            if let notice = popover.pinNotice.value {
-                Text(notice)
-                    .foregroundStyle(Theme.notice)
-                    .denyShake(trigger: popover.pinNotice.trigger, shakeOnAppear: true)
-            } else {
-                nextUpdateButton
-            }
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-        .animation(Motion.spring, value: popover.pinNotice.value)
-    }
-
     private var nextUpdateButton: some View {
         Button {
             refreshNow()
@@ -117,6 +128,8 @@ struct PopoverFooter: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 5) {
                     Text(updateStatusText(now: context.date))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     if isUpdating {

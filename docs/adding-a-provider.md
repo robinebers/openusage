@@ -48,11 +48,12 @@ needs no change.
 
 ## 4. Defaults
 
-Every metric starts shown. Confirm two defaults with the owner before you choose them, never
-silently:
+Every metric with data shows, and the menu bar picks its own limits. Confirm the metric order, the
+`widgetDescriptors` declaration order, with the owner before you choose it, never silently.
 
-1. Which descriptors, if any, start in the menu bar: chain `.pinnedByDefault()` on them.
-2. The metric order: the `widgetDescriptors` declaration order.
+A metric with a limit can appear on the Priority tab and in the menu bar on its own. A balance with no
+limit needs `.exportingLimit(_, kind: .balance, ...)` to count as used up at zero. Leave that off spend
+totals and anything else that isn't money or credits the user holds.
 
 ## 5. Test
 

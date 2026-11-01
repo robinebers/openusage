@@ -38,8 +38,9 @@ struct OllamaHistorySource: UsageHistorySource {
             AppLog.warn(tag, "\(accountID) usage history: invalid response")
             return ([:], nil)
         }
-        let due = Set(days)
-        return (read.filter { due.contains($0.key) }, nil)
+        // The request covered these dates even when Ollama supplied no figures for one of them.
+        let unreported = UsageDay(totals: UsageTotals())
+        return (Dictionary(uniqueKeysWithValues: days.map { ($0, read[$0] ?? unreported) }), nil)
     }
 
     /// Every bucket keyed by its UTC day, or nil when any bucket is not one, so a read is never partly used.

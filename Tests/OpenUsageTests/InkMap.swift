@@ -7,13 +7,6 @@ struct InkMap {
     enum Background {
         case topLeft
         case column(CGFloat)
-        case white
-    }
-
-    struct Span {
-        let first: CGFloat
-        let last: CGFloat
-        var width: CGFloat { last - first }
     }
 
     private let inked: [Bool]
@@ -32,11 +25,9 @@ struct InkMap {
             let reference: [UInt8] = switch background {
             case .topLeft: (0..<bytesPerPixel).map { data[$0] }
             case .column(let x): (0..<bytesPerPixel).map { data[y * rep.bytesPerRow + Int(x * scale) * bytesPerPixel + $0] }
-            case .white: [UInt8](repeating: 255, count: bytesPerPixel)
             }
             for x in 0..<width {
                 let offset = y * rep.bytesPerRow + x * bytesPerPixel
-                if case .white = background, bytesPerPixel == 4, data[offset + 3] <= 200 { continue }
                 map[y * width + x] = (0..<bytesPerPixel).contains {
                     abs(Int(data[offset + $0]) - Int(reference[$0])) > threshold
                 }
@@ -85,43 +76,6 @@ struct InkMap {
         }
         guard maxX >= minX else { return nil }
         return CGRect(x: CGFloat(minX) / scale, y: CGFloat(minY) / scale, width: CGFloat(maxX - minX + 1) / scale, height: CGFloat(maxY - minY + 1) / scale)
-    }
-
-    func span(from start: CGFloat = 0, to end: CGFloat? = nil) -> Span? {
-        let columns = pixels(start..<(end ?? CGFloat(width) / scale), limit: width)
-        let inked = columns.filter { x in (0..<height).contains { self.inked[$0 * width + x] } }
-        guard let first = inked.first, let last = inked.last else { return nil }
-        return Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale)
-    }
-
-    func rows(from start: CGFloat, to end: CGFloat) -> Span? {
-        let columns = pixels(start..<end, limit: width)
-        let inked = (0..<height).filter { y in columns.contains { self.inked[y * width + $0] } }
-        guard let first = inked.first, let last = inked.last else { return nil }
-        return Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale)
-    }
-
-    func bands() -> [Span] {
-        let edge = Int(6 * scale)
-        var bands: [Span] = []
-        var top: Int?
-        var first = Int.max, last = Int.min
-        for y in 0...height {
-            let ink = y < height ? (edge..<(width - edge)).filter { inked[y * width + $0] } : []
-            if let x = ink.first, let end = ink.last {
-                top = top ?? y
-                first = min(first, x)
-                last = max(last, end)
-            } else if let start = top {
-                if CGFloat(y - start) >= 4 * scale {
-                    bands.append(Span(first: CGFloat(first) / scale, last: CGFloat(last + 1) / scale))
-                }
-                top = nil
-                first = .max
-                last = .min
-            }
-        }
-        return bands
     }
 
     private func pixels(_ points: Range<CGFloat>, limit: Int) -> Range<Int> {

@@ -10,7 +10,10 @@
 set -uo pipefail
 
 front_app() {
-  lsappinfo info -only name "$(lsappinfo front)" | sed -nE 's/^"LSDisplayName"="(.*)"$/\1/p'
+  # macOS 27 returns a full app record even for -only name.
+  lsappinfo info -only name "$(lsappinfo front)" | sed -nE \
+    -e 's/^"LSDisplayName"="(.*)"$/\1/p' \
+    -e 's/^"(.*)" ASN:[^ ]+: \(in front\).*$/\1/p'
 }
 
 before="$(front_app)"

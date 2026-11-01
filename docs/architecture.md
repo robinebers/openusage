@@ -19,9 +19,9 @@ environment:
 |---|---|
 | `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `hub`, `addedAt`), persisted under `accounts.v1`; the connected `CLIProxyHub` values under `cliproxyHubs.v1`; and the `CredentialVault`. |
 | `CLIProxyHubSync` | Each CLIProxyAPI hub's last read, and the reads that keep its mirrored accounts in step with its login list. |
-| `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history, saved as one `LayoutState`. A provider's only account starts from that provider's 0.7.x layout, which `LayoutV1Keys` reads. |
-| `PopoverState` | The popover's screen, the Accounts detail and Add Account sheet, the screen-slide bookkeeping, and the transient pills (star denial, Copied, the Accounts star notice). |
-| `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
+| `LayoutStore` | Provider order, metric order, and undo history, saved as one `LayoutState`. A provider's only account starts from that provider's 0.7.x order, which `LayoutV1Keys` reads. |
+| `PopoverState` | The popover's screen, the Accounts detail and Add Account sheet, the screen-slide bookkeeping, and the Copied pill. |
+| `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness, and the display settings that change every reading, including how many limits the menu bar shows. |
 | `AccountRenameStore` | Which account name is being edited. |
 | `TelemetryRecorder` | The daily ping and per-provider rollups (see `Services/Telemetry.swift`). |
 | `HideFromScreenShareSetting` | The Hide From Screen Share switch and, while it is on, whether the screen is being captured (`Services/ScreenCaptureProbe.swift`). |
@@ -110,6 +110,11 @@ refreshes and never opens the Keychain.
 `StatusItemController` (`App/StatusItemController.swift`) owns the `NSStatusItem` and the
 `MenuBarPanel`, a key-capable `NSPanel` that hosts `DashboardView`, and renders the menu-bar strip
 with `MenuBarStripRenderer`. `PanelHeightController` sizes the panel to its content.
+
+`PriorityBoard` (`Models/PriorityBoard.swift`) ranks the dashboard's accounts into `attention` and
+`usedUp`, a pure function of the lines and the time. The Priority tab shows it and `MenuBarContentBuilder`
+takes the strip from `attention`, so the two always agree. An open balance is a metric that exports a
+`.balance` limit resource, except Limit Resets.
 
 `DashboardView` switches between the dashboard (`DashboardContentView` → `WidgetGroupedListView` →
 `DashboardProviderSection` → `DashboardLiveRow` → `DashboardMetricRow`; the share image and the drag

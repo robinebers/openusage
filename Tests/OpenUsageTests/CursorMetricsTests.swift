@@ -103,7 +103,7 @@ final class CursorMetricsTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault())
         XCTAssertEqual(runtime.widgetDescriptors.map(\.sample.title), [
             "Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Requests", "Credits",
-            "Today", "Yesterday", "Last 30 Days", "Usage Events"
+            "Today", "Yesterday", "Last 30 Days"
         ])
     }
 
@@ -118,6 +118,8 @@ final class CursorMetricsTests: XCTestCase {
         XCTAssertEqual(data["Extra Usage"]?.kind, .dollars)
         XCTAssertEqual(data["Extra Usage"]?.used, 120)
         XCTAssertEqual(data["Extra Usage"]?.limit, 500)
+        XCTAssertNotNil(data["Extra Usage"]?.resetsAt)
+        XCTAssertEqual(data["Extra Usage"]?.resetsAt, data["Total Usage"]?.resetsAt, "Extra Usage resets with the billing cycle")
         XCTAssertEqual(data["Grok Bot"]?.used, 30)
         XCTAssertEqual(data["Grok Bot"]?.resetsAt, OpenUsageISO8601.date(from: "2026-10-27T00:00:00Z"))
         XCTAssertNil(data["Credits"]?.limit)

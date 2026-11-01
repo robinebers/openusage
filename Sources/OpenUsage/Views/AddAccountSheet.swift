@@ -16,7 +16,7 @@ struct AddAccountSheet: View {
             } else if let provider = flow.provider {
                 switch flow.method {
                 case nil: MethodChoiceStep(flow: flow, provider: provider, cancel: { flow.back() })
-                case .oauth: BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.back() })
+                case .oauth: BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.isSigningInAgain ? dismiss() : flow.back() })
                 case .apiKey(let keyPage): APIKeyStep(flow: flow, provider: provider, keyPage: keyPage, cancel: { flow.back() })
                 case .organizationToken: OrganizationTokenStep(flow: flow, provider: provider, cancel: { flow.back() })
                 }
@@ -34,6 +34,7 @@ struct AddAccountSheet: View {
         // activated (the test suite) has nothing to gain and would take the keyboard from its owner.
         .onAppear {
             if NSApp.activationPolicy() != .prohibited { NSApp.activate(ignoringOtherApps: true) }
+            flow.startSigningInAgain()
         }
         .onDisappear { flow.cancel() }
         .onChange(of: flow.isFinished) { _, isFinished in

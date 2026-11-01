@@ -4,21 +4,9 @@ struct ProviderMetrics: Identifiable {
     var id: String { provider.id }
 }
 
-enum CustomizationNoticeTone {
-    case positive
-    case notice
-}
-
-struct CustomizationNoticeContent {
-    var message: String
-    var tone: CustomizationNoticeTone
-}
-
 struct LayoutState: Codable, Equatable {
-    var hiddenMetricIDs: Set<String> = []
     var providerOrder: [String] = []
     var metricOrderByProvider: [String: [String]] = [:]
-    var pinnedMetricIDs: Set<String> = []
-    /// Accounts that already got their first stars, so a star the user takes off is never put back.
+    /// Accounts that already had their chance at a 0.7.x layout, so the user's later order is never replaced.
     var seededProviderIDs: Set<String> = []
 }

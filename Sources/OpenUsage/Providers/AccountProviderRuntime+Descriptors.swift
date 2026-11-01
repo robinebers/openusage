@@ -11,11 +11,9 @@ extension AccountProviderRuntime {
         case .claude:
             [
                 .percent(key: "session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
-                    .exportingLimit("session", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("session", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly")
-                    .exportingLimit("weekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("weekly", unit: "percent"),
                 .percent(key: "sonnet", provider: provider, title: "Sonnet")
                     .exportingLimit("sonnet", unit: "percent"),
                 .percent(key: "fable", provider: provider, title: "Fable")
@@ -28,11 +26,9 @@ extension AccountProviderRuntime {
         case .codex:
             [
                 .percent(key: "session", provider: provider, title: "Session")
-                    .exportingLimit("session", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("session", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly")
-                    .exportingLimit("weekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("weekly", unit: "percent"),
                 .percent(key: "spark", provider: provider, title: "Spark")
                     .exportingLimit("spark", unit: "percent"),
                 .percent(key: "sparkWeekly", provider: provider, title: "Spark Weekly")
@@ -41,16 +37,14 @@ extension AccountProviderRuntime {
                     .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits")),
                 .boundedCount(key: "creditLimit", provider: provider, title: "Credit Limit", limit: 0),
                 rateLimitResets(key: "rateLimitResets", provider: provider),
-                .history(key: "today", provider: provider, .window(.today, .credits, then: .tokens)),
-                .history(key: "yesterday", provider: provider, .window(.yesterday, .credits, then: .tokens)),
-                .history(key: "last30", provider: provider, .window(.lastDays(30), .credits, then: .tokens)),
-                .history(key: "turns", provider: provider, .measure("Turns", .turns, over: .lastDays(30)))
+                .history(key: "today", provider: provider, .window(.today, .tokens)),
+                .history(key: "yesterday", provider: provider, .window(.yesterday, .tokens)),
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .tokens))
             ]
         case .cursor:
             [
                 .percent(key: "usage", provider: provider, title: "Total Usage", metricLabel: "Total usage")
-                    .exportingLimit("totalUsage", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("totalUsage", unit: "percent"),
                 .percent(key: "auto", provider: provider, title: "Cursor Models")
                     .exportingLimit("autoUsage", unit: "percent"),
                 .percent(key: "api", provider: provider, title: "Other Models")
@@ -65,21 +59,17 @@ extension AccountProviderRuntime {
                     .exportingLimit("requests", unit: "requests"),
                 .dollarBalance(key: "credits", provider: provider, title: "Credits", valueWord: "left")
                     .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens))
-                    .pinnedByDefault(),
+                .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
-                .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens)),
-                .history(key: "usageEvents", provider: provider, .measure("Usage Events", .usageEvents, over: .lastDays(30)))
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens))
             ]
         case .antigravity:
             [
                 .percent(key: "geminiPro", provider: provider, title: "Gemini 5h",
                          metricLabel: AntigravityMetric.sessionLabel, sessionStartSignal: .zeroUsage)
-                    .exportingLimit("geminiSession", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("geminiSession", unit: "percent"),
                 .percent(key: "geminiWeekly", provider: provider, title: "Gemini", metricLabel: AntigravityMetric.weeklyLabel)
-                    .exportingLimit("geminiWeekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("geminiWeekly", unit: "percent"),
                 .percent(key: "argonWeekly", provider: provider, title: "Argon", metricLabel: AntigravityMetric.argonWeeklyLabel)
                     .exportingLimit("argonWeekly", unit: "percent"),
                 .percent(key: "claude", provider: provider, title: "Claude 5h",
@@ -91,16 +81,14 @@ extension AccountProviderRuntime {
         case .copilot where account.organization != nil:
             [
                 .values(key: "orgCredits", provider: provider, title: "Org Credits")
-                    .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits"))
-                    .pinnedByDefault(),
+                    .exportingLimit("orgCredits", unit: "credits", source: .value(kind: .count, label: "credits")),
                 .values(key: "orgSpend", provider: provider, title: "Org Spend", valueWord: "spent")
                     .exportingLimit("orgSpend", unit: "usd", source: .value(kind: .dollars))
             ]
         case .copilot:
             [
                 .percent(key: "premium", provider: provider, title: "Credits", metricLabel: "Credits")
-                    .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count))
-                    .pinnedByDefault(),
+                    .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count)),
                 .values(key: "extra", provider: provider, title: "Extra Usage")
                     .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
                 .boundedCount(key: "chat", provider: provider, title: "Chat", limit: 0)
@@ -111,19 +99,16 @@ extension AccountProviderRuntime {
         case .devin:
             [
                 .percent(key: "daily", provider: provider, title: "Daily", metricLabel: "Daily quota")
-                    .exportingLimit("daily", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("daily", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota")
-                    .exportingLimit("weekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("weekly", unit: "percent"),
                 .dollarBalance(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
                     .exportingLimit("extraUsageBalance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
             ]
         case .grok:
             [
                 .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly limit")
-                    .exportingLimit("weekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("weekly", unit: "percent"),
                 .badge(key: "payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go")
             ]
         case .ollama:
@@ -133,8 +118,7 @@ extension AccountProviderRuntime {
                 .percent(key: "weekly", provider: provider, title: "Weekly")
                     .exportingLimit("weekly", unit: "percent"),
                 .percent(key: "monthly", provider: provider, title: "Monthly")
-                    .exportingLimit("monthly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("monthly", unit: "percent"),
                 .dollarBalance(key: "purchasedCredits", provider: provider, title: "Extra Usage", metricLabel: "Purchased Credits", valueWord: "left")
                     .exportingLimit("purchasedCredits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .usageValue, then: .tokens)),
@@ -145,8 +129,7 @@ extension AccountProviderRuntime {
         case .opencodeGo:
             [
                 .percent(key: "session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
-                    .exportingLimit("session", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("session", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly")
                     .exportingLimit("weekly", unit: "percent"),
                 .percent(key: "monthly", provider: provider, title: "Monthly")
@@ -155,12 +138,10 @@ extension AccountProviderRuntime {
         case .openrouter:
             [
                 .boundedDollars(key: "credits", provider: provider, title: "Credits", limit: 100)
-                    .exportingLimit("credits", unit: "usd")
-                    .pinnedByDefault(),
+                    .exportingLimit("credits", unit: "usd"),
                 .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
                     .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .history(key: "today", provider: provider, .window(.today, .spend, then: .byokSpend))
-                    .pinnedByDefault(),
+                .history(key: "today", provider: provider, .window(.today, .spend, then: .byokSpend)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
                 .history(key: "week", provider: provider, .window(.thisWeek, .spend, then: .byokSpend)),
                 .history(key: "month", provider: provider, .window(.thisMonth, .spend, then: .byokSpend)),
@@ -174,11 +155,9 @@ extension AccountProviderRuntime {
         case .zai:
             [
                 .percent(key: "session", provider: provider, title: "Session")
-                    .exportingLimit("session", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("session", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly")
-                    .exportingLimit("weekly", unit: "percent")
-                    .pinnedByDefault(),
+                    .exportingLimit("weekly", unit: "percent"),
                 .boundedCount(key: "webSearches", provider: provider, title: "Web Searches", limit: 0)
                     .exportingLimit("webSearches", unit: "searches")
             ]
@@ -187,7 +166,7 @@ extension AccountProviderRuntime {
 
     private static func rateLimitResets(key: String, provider: Provider) -> WidgetDescriptor {
         .values(key: key, provider: provider, title: "Limit Resets", metricLabel: "Rate Limit Resets",
-                traySuffix: "resets", showsResetExpiries: true)
+                showsResetExpiries: true)
             .exportingLimit("rateLimitResets", kind: .balance, unit: "resets", source: .value(kind: .count, label: "available"))
     }
 }

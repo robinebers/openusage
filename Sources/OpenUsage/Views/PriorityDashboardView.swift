@@ -1,0 +1,297 @@
+import SwiftUI
+
+struct PriorityDashboardView: View {
+    @Environment(LayoutStore.self) private var layout
+    @Environment(WidgetDataStore.self) private var dataStore
+    @Environment(PopoverState.self) private var popover
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            PriorityBoardList(
+                board: dataStore.priorityBoard(in: layout.displayGroups, now: context.date),
+                now: context.date,
+                onToggleMeterStyle: { dataStore.meterStyle.toggle() },
+                onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
+                onShowAllUsage: { popover.dashboardTab = .allUsage },
+                onFixAccount: { popover.openAccounts($0) }
+            )
+        }
+    }
+}
+
+struct PriorityBoardList: View {
+    let board: PriorityBoard
+    let now: Date
+    /// Left out where nothing can be clicked, as in a picture.
+    var onToggleMeterStyle: (() -> Void)?
+    var onToggleResetDisplay: (() -> Void)?
+    var onShowAllUsage: (() -> Void)?
+    var onFixAccount: ((String) -> Void)?
+
+    private static let green = Color(nsColor: .systemGreen)
+    private static let gaugeSide: CGFloat = 32
+
+    var body: some View {
+        switch board.summary {
+        case .waitingForUsage:
+            waitingRow
+        case .noReportedLimits:
+            VStack(spacing: 4) {
+                Text("No Reported Limits")
+                    .font(.system(size: 13, weight: .medium))
+                allUsageButton
+            }
+            .frame(maxWidth: .infinity, minHeight: 46)
+        case .unavailable:
+            accountNotices
+        case .allClear:
+            allClear
+        case .listed:
+            VStack(alignment: .leading, spacing: PanelMetrics.margin) {
+                if !board.attention.isEmpty {
+                    attentionSection
+                } else if board.hasCompleteUsage {
+                    clearRow
+                }
+                if !board.usedUp.isEmpty { usedUpSection }
+                if !board.notices.isEmpty { accountNotices }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var allUsageButton: some View {
+        if let onShowAllUsage {
+            Button("View All Usage", action: onShowAllUsage)
+                .buttonStyle(.link)
+                .font(.system(size: 12))
+        }
+    }
+
+    private var accountNotices: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 2) {
+                sectionLabel("Needs Attention")
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.notice)
+                    .padding(.bottom, 2)
+                    .accessibilityHidden(true)
+            }
+            ForEach(board.notices) { notice in
+                noticeRow(notice)
+                    .padding(.horizontal, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func noticeRow(_ notice: PriorityBoard.AccountNotice) -> some View {
+        HStack(spacing: 8) {
+            ProviderIcon(id: notice.provider.icon, side: 15, inset: 0.04)
+                .frame(width: 16)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(notice.provider.displayName)
+                    .font(.system(size: 13, weight: .semibold))
+                if let account = notice.provider.labelBesideName {
+                    Text(account)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .truncationMode(notice.provider.isNamedByEmail ? .middle : .tail)
+                }
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            if let onFixAccount {
+                Button("Fix") { onFixAccount(notice.provider.id) }
+                    .controlSize(.small)
+            }
+        }
+        .frame(height: 28)
+        .accessibilityValue(notice.message)
+    }
+
+    private var attentionSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Running Out")
+            ForEach(board.attention) { item in
+                attentionRow(item)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private var usedUpSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Used Up")
+            ForEach(board.usedUp) { item in
+                usedUpRow(item)
+                    .padding(.horizontal, 4)
+            }
+        }
+        .opacity(0.5)
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Flips a reading the way a click on it does in All Usage.
+    @ViewBuilder
+    private func toggling(_ action: (() -> Void)?, @ViewBuilder label: () -> some View) -> some View {
+        if let action {
+            Button(action: action, label: label)
+                .buttonStyle(.plain)
+        } else {
+            label()
+        }
+    }
+
+    private func attentionRow(_ item: PriorityItem) -> some View {
+        HStack(spacing: 10) {
+            PriorityGauge(fraction: item.data.fraction, severity: item.reason.severity, icon: item.provider.icon)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.data.title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(item.provider.accountName)
+                    .accessibilityLabel(item.provider.fullName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 1) {
+                toggling(item.data.hasMeterStyleToggle ? onToggleMeterStyle : nil) {
+                    Text(item.data.amountText)
+                        .font(.system(size: 13, weight: .medium))
+                        .monospacedDigit()
+                }
+                if let reset = item.data.compactResetText(now: now) {
+                    toggling(onToggleResetDisplay) {
+                        Text(reset)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .lineLimit(1)
+            .fixedSize()
+        }
+        .frame(height: 46)
+    }
+
+    private func usedUpRow(_ item: PriorityItem) -> some View {
+        HStack(spacing: 8) {
+            ProviderIcon(id: item.provider.icon, side: 15, inset: 0.04)
+                .frame(width: 16)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(item.data.title)
+                    .font(.system(size: 13))
+                Text(item.provider.accountName)
+                    .accessibilityLabel(item.provider.fullName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
+            }
+            .lineLimit(1)
+            Spacer(minLength: 0)
+            if let note = item.usedUpNote(now: now) {
+                toggling(item.data.resetsAt == nil ? nil : onToggleResetDisplay) {
+                    Text(note)
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+            }
+        }
+        .frame(height: 28)
+    }
+
+    private var clearRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Self.green)
+                .frame(width: Self.gaugeSide, height: Self.gaugeSide)
+                .background(Self.green.opacity(0.16), in: Circle())
+            VStack(alignment: .leading, spacing: 1) {
+                Text("All Clear")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Nothing is running out.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 46)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var allClear: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle().stroke(Self.green.opacity(0.10), lineWidth: 1).frame(width: 110, height: 110)
+                Circle().stroke(Self.green.opacity(0.20), lineWidth: 1).frame(width: 86, height: 86)
+                Circle().fill(Self.green.opacity(0.16)).frame(width: 60, height: 60)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Self.green)
+            }
+            .frame(width: 112, height: 112)
+            .padding(.bottom, 12)
+            .accessibilityHidden(true)
+            Text("All Clear")
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.bottom, 3)
+            Text("Nothing needs your attention right now.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 18)
+        .padding(.bottom, 22)
+    }
+
+    private var waitingRow: some View {
+        Text("Waiting for Usage")
+            .font(.system(size: 13))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+    }
+}
+
+/// A limit's bar as a ring around its provider's mark, filling the same way under Used or Left.
+private struct PriorityGauge: View {
+    let fraction: Double
+    let severity: WidgetData.MeterSeverity
+    let icon: String
+
+    private static let lineWidth: CGFloat = 3
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .inset(by: Self.lineWidth / 2)
+                .stroke(Theme.meterTrack, lineWidth: Self.lineWidth)
+            Circle()
+                .inset(by: Self.lineWidth / 2)
+                .trim(from: 0, to: fraction)
+                .stroke(Theme.severityColor(severity), style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            ProviderIcon(id: icon, side: 16, inset: 0.04)
+        }
+        .frame(width: 32, height: 32)
+        .accessibilityHidden(true)
+    }
+}

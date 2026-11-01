@@ -96,7 +96,8 @@ final class AccountStore {
     /// check that the account is still added and the write. It saves rather than updates: a pasted key
     /// is the whole credential, so it also restores an account whose Keychain item has gone missing.
     func replaceCredential(_ credential: AccountCredential, for id: UUID) throws {
-        guard accounts.contains(where: { $0.id == id }) else { return }
+        guard let account = accounts.first(where: { $0.id == id }) else { return }
+        try checkForDuplicate(credential, kind: account.kind, organization: account.organization, excluding: id)
         try credentialVault.save(credential, for: id)
     }
 
@@ -104,16 +105,24 @@ final class AccountStore {
         try credentialVault.load(id)
     }
 
-    /// The added account a new sign-in would duplicate: an organization account by its organization,
-    /// in any case, and every other account by its credential's identity. An account mirrored from a hub
-    /// never counts, so a login signed in both directly and on a hub shows twice.
-    func account(kind: ProviderKind, organization: String?, signedInAs credential: AccountCredential) -> Account? {
-        if let organization {
-            return accounts.first { $0.kind == kind && $0.organization?.caseInsensitiveCompare(organization) == .orderedSame }
-        }
-        guard let identity = credential.identity else { return nil }
-        return accounts.first { account in
-            account.kind == kind && account.hub == nil && (try? credentialVault.load(account.id))??.identity == identity
+    /// Matches a direct sign-in by organization or credential identity. A missing Keychain item
+    /// cannot match, but an unreadable one cannot establish that the sign-in is distinct.
+    func checkForDuplicate(_ credential: AccountCredential, kind: ProviderKind, organization: String?, excluding id: UUID? = nil) throws {
+        let identity = credential.identity
+        for account in accounts where account.kind == kind && account.hub == nil && account.id != id {
+            if let organization {
+                guard account.organization?.caseInsensitiveCompare(organization) == .orderedSame else { continue }
+            } else {
+                guard account.organization == nil else { continue }
+                guard let identity else { return }
+                do {
+                    guard try credentialVault.load(account.id)?.identity == identity else { continue }
+                } catch {
+                    AppLog.error(.auth, "\(account.cardID) could not check its Keychain item for a duplicate sign-in: \(error.localizedDescription)")
+                    throw ProviderError.unavailable("OpenUsage couldn't check the saved sign-in for \(account.label). Check Keychain access and try again.")
+                }
+            }
+            throw ProviderError.unavailable("This account is already added as \(account.label).")
         }
     }
 

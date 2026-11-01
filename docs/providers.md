@@ -8,7 +8,7 @@ report stays hidden.
 | Provider | Sign-in | Card shows |
 |---|---|---|
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days, Turns |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
@@ -55,32 +55,34 @@ plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, 
 Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
 account sets none.
 
-The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
-when each expires; choose **Use**, then **Reset** to spend one.
+The **Limit Resets** row counts the account's available rate-limit resets. Click the count to see
+when each expires. Choose **Use**, then **Reset** to spend one.
 
 ## ChatGPT
 
 Sign in through OpenAI in your browser. The account shows as ChatGPT; its provider id, as the command line
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
-windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
-with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
+windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row shows
+the dollar value of the credits you have, an estimate at 4¢ a credit, and hides when you have none. Rate-limit reset credits work like Claude's
 Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
 it shows only when the workspace sets one.
 
-Today, Yesterday, and Last 30 Days show the credits ChatGPT charged and the text tokens it counted on
-UTC days, from the reports the Codex app's Analytics view reads, and Turns counts the last 30 days'
-turns. A day with no charge reads 0 credits. The rows never show dollars, and a workspace's relative
-usage units never show as credits. Rest the pointer on a range to see its credits, turns, and tokens,
-and on a workspace plan the top five models by credits. The card reads the reports once an hour, on the
-first refresh of a new UTC day, and on ⌘R. A failed read hides the rows that cover today and yesterday
-until the next read.
+Today, Yesterday, and Last 30 Days show the text tokens ChatGPT counted on UTC days, from the reports the
+Codex app's Analytics view reads. A range adds up the days that report tokens. Open a range to see
+the token breakdown and each named model's share of reported credits or turns. ChatGPT reports no
+dollar amount for these ranges.
+
+The card reads the reports once an hour, on the first refresh of a new UTC day, and on ⌘R. Each
+report has its own cache and retry schedule. If the credit report is unavailable, the token counts
+still show. If today's or yesterday's counts cannot be read, Last 30 Days still includes the older
+days already read.
 
 ## Cursor
 
 Sign in through cursor.com in your browser. The card reads Cursor's dashboard API for Total Usage,
 Cursor Models (auto), Other Models (API), on-demand Extra Usage, Grok Bot, Requests, and Credits, and
-the plan. Cursor stores the sign-in's expiry and renews it before then.
+the plan. Extra Usage resets with the billing cycle, like Total Usage. Cursor stores the sign-in's expiry and renews it before then.
 
 Cursor's plan endpoint says Pro for some Enterprise and Team seats. Once an hour, together with the
 plan, the card reads Cursor's `usage-summary`, which names the seat's membership. A seat whose
@@ -93,24 +95,24 @@ The charge is the sum of `chargedCents` on the account's on-demand usage events
 (`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the list on Cursor's Usage page. Usage the
 plan includes, and errored or free requests, count as $0. Tokens are the input, output, cache read, and
 cache write tokens of every event, whatever its kind; an event that reports no token usage counts as
-zero tokens. Usage Events counts every event of the last 30 days, free and errored ones too.
+zero tokens.
 Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
-the charge, the usage events, each kind of token, and the top five models, the rest as Other.
+the charge, each kind of token, and the top five models, the rest as Other.
 The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
-30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
-yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
-once every day it covers has been read. After Cursor answers a history read with 429, history reads wait
-for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
+30 days again. Last 30 Days sums the days read so far, even if today or yesterday could not be read.
+A failed day stays out of the sum, and the range details note the gap. If Cursor rate-limits a
+history read, retries wait for its Retry-After or an hour when it gives no time.
 
-Total Usage and Today are the default menu-bar stars.
 
 ## Antigravity
 
 Sign in with Google in your browser. The card reads the Cloud Code quota API for the Gemini and Claude
 pools (5-hour and weekly windows) and the Argon weekly window, and shows the plan under the name
 Google sells it as (Google AI Pro, Google AI Ultra, Google AI Ultra Lite) or the tier's own name.
+If Google reports that the project has no quota subscription, the card explains the access issue.
+If the project lookup failed, try refreshing again.
 
 ## Copilot
 
@@ -132,7 +134,6 @@ the extra-usage balance, and the plan. A plan that hides its daily quota shows i
 the plan has no weekly quota. An account with neither quota nor a balance has nothing to show, and the
 card says so.
 
-Daily and Weekly are the default menu-bar stars.
 
 ## Grok
 
@@ -153,11 +154,12 @@ value in dollars (`usage_usd`, what the requests are worth, whether the plan or 
 for them) and the tokens, input plus output. Cached input is already part of input. Requests counts the
 last 30 days' requests. A legacy plan reports only requests, so its card shows Requests alone. Rest the
 pointer on a Today, Yesterday, or Last 30 Days figure to see what Ollama reported for that range: the
-usage value, requests, each kind of token, and the top five models, the rest as Other. A range with a
-day whose usage falls beyond the ten models Ollama names shows no models.
+usage value, each kind of token, and the top five models, the rest as Other. When Ollama reports
+usage beyond the ten models it names for a day, that day contributes to the range totals only.
+Other days can still contribute to the model ranking.
 The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
-hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
-read hides the rows it would have filled until the next read an hour later.
+hour, at the start of a new UTC day, and on ⌘R. If a read fails, the range can still show figures
+from the other days already read.
 
 ## OpenCode
 
@@ -179,13 +181,14 @@ Today, This Week, and This Month show the credit spend first, then what the keys
 own provider keys (BYOK), which is never added to it. A Management key also reads `/api/v1/activity`,
 which covers the 30 UTC days before today: **Yesterday** and **Prior 30 Days** show the spend and the
 tokens (prompt plus completion), and **Requests** counts the requests of those 30 days. The card reads
-all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight. A failed
-read hides those rows and is tried again an hour later; it never affects the other rows.
+all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight.
+If the activity read fails, Prior 30 Days can still show older days already read. The spend totals
+from the keys endpoint remain available.
 
 Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
 OpenRouter reported for that range. For Today, This Week, and This Month that is the spend and BYOK. For
-Yesterday and Prior 30 Days it adds the requests, the prompt, cached, completion, and reasoning tokens,
-and the top five models by tokens, the rest as Other. Prompt tokens include the cached ones, and
+Yesterday and Prior 30 Days it adds the prompt, cached, completion, and reasoning tokens, and the top
+five models, the rest as Other. Prompt tokens include the cached ones, and
 completion tokens include the reasoning ones.
 
 A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, **Key Limit**
@@ -195,7 +198,7 @@ resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Manage
 credits and the activity, so a standard key's card has no Credits, Balance, Yesterday, Prior 30 Days, or
 Requests.
 
-Credits and Today are the default menu-bar stars. The card's right-click menu adds a **Credits** link to
+The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai

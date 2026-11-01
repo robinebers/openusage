@@ -59,20 +59,6 @@ final class AccountRemovalTests: XCTestCase {
             "OpenUsage couldn't use its Keychain item for this account (User interaction is not allowed.)."
         )
     }
-
-    func testTheVaultOnlyUpdatesAnExistingCredential() throws {
-        let vault = InMemoryCredentialVault()
-        let id = UUID()
-
-        XCTAssertThrowsError(try vault.update(.apiKey("late"), for: id)) { error in
-            guard case CredentialVaultError.missingCredential = error else { return XCTFail("\(error)") }
-        }
-        XCTAssertNil(try vault.load(id))
-
-        try vault.save(.apiKey("first"), for: id)
-        try vault.update(.apiKey("second"), for: id)
-        XCTAssertEqual(try vault.load(id), .apiKey("second"))
-    }
 }
 
 private final class UndeletableVault: CredentialVault {

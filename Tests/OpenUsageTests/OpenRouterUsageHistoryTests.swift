@@ -78,20 +78,18 @@ final class OpenRouterUsageHistoryTests: XCTestCase {
 
         await refresh(store, runtime)
 
-        let prior = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("prior30")))
-        XCTAssertEqual(prior.clockNote, "UTC days")
+        let prior = try XCTUnwrap(store.usageBreakdown(for: try descriptor("prior30")))
         XCTAssertEqual(prior.totals.values, [
             .spend: 43.5, .byokSpend: 14.5, .requests: 348, .tokens: 124_700,
             .inputTokens: 116_000, .cacheReadTokens: 17_400, .outputTokens: 8_700, .reasoningTokens: 1_450
         ])
-        XCTAssertEqual(prior.models.map(\.name), ["openai/gpt-5", "anthropic/claude-sonnet-4.5"])
-        XCTAssertEqual(prior.models.map(\.number), [89_900, 34_800])
-        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
-        XCTAssertEqual(today.clockNote, "UTC day")
+        XCTAssertEqual(prior.models.map(\.name), ["anthropic/claude-sonnet-4.5", "openai/gpt-5"])
+        XCTAssertEqual(prior.models.map(\.dollars), [36.25, 7.25])
+        XCTAssertEqual(prior.models.map(\.tokens), [34_800, 89_900])
+        let today = try XCTUnwrap(store.usageBreakdown(for: try descriptor("today")))
         XCTAssertEqual(today.totals.values, [.spend: 26.5, .byokSpend: 0])
         XCTAssertEqual(today.models, [])
-        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("week"))?.clockNote, "UTC week from Monday")
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("requests")))
+        XCTAssertNil(store.usageBreakdown(for: try descriptor("requests")))
     }
 
     func testActivityIsReadAgainHourlyAndANewUTCDayAtOnce() async throws {

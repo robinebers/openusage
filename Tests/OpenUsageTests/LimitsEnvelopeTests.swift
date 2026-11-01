@@ -72,75 +72,25 @@ final class LimitsEnvelopeTests: XCTestCase {
                 .progress(label: "Session", used: 42, limit: 100, format: .percent,
                           resetsAt: OpenUsageISO8601.date(from: "2026-07-13T06:00:00.000Z"),
                           periodDurationMs: 18_000_000),
-                .values(label: "Credits", values: [MetricValue(number: 821, kind: .count, label: "credits")])
-            ],
-            refreshedAt: fetchedAt
-        )
-        let descriptors = AccountProviderRuntime.widgetDescriptors(for: account)
-        let provider = AccountProviderRuntime.provider(for: account)
-        let actual = try json(LimitsEnvelope.encode(input(provider, snapshot: snapshot, descriptors: descriptors)))
-        let expected = try json(Data(
-            Self.documentedExample.replacingOccurrences(of: "\"codex\": {", with: "\"\(account.cardID)\": {").utf8
-        ))
-
-        XCTAssertEqual(actual as NSDictionary, expected as NSDictionary)
-    }
-
-    func testEnvelopeCarriesRawScalarsAndFreshnessWithoutUIPresentation() throws {
-        let provider = Provider(id: "codex", kind: .codex)
-        let session = WidgetDescriptor.percent(key: "session", provider: provider, title: "Session")
-            .exportingLimit("session", unit: "percent")
-        let credits = WidgetDescriptor.values(
-            key: "credits", provider: provider, title: "Extra Usage", metricLabel: "Credits"
-        )
-        .exportingLimit("credits", kind: .balance, unit: "credits", source: .value(kind: .count, label: "credits"))
-        let snapshot = ProviderSnapshot(
-            providerID: "codex",
-            displayName: "ChatGPT",
-            plan: "Pro 200",
-            lines: [
-                .progress(
-                    label: "Session", used: 42, limit: 100, format: .percent,
-                    resetsAt: OpenUsageISO8601.date(from: "2026-07-13T06:00:00.000Z"),
-                    periodDurationMs: 18_000_000
-                ),
                 .values(label: "Credits", values: CodexUsageMapper.creditValues(remaining: 821.6)),
                 .badge(label: "Pay as you go", text: "2500 cap")
             ],
             refreshedAt: fetchedAt
         )
-        let input = input(provider, snapshot: snapshot, descriptors: [session, credits])
+        let descriptors = AccountProviderRuntime.widgetDescriptors(for: account)
+        let provider = AccountProviderRuntime.provider(for: account)
+        var request = input(provider, snapshot: snapshot, descriptors: descriptors)
+        let actual = try json(LimitsEnvelope.encode(request))
+        let expected = try json(Data(
+            Self.documentedExample.replacingOccurrences(of: "\"codex\": {", with: "\"\(account.cardID)\": {").utf8
+        ))
 
-        let root = try json(LimitsEnvelope.encode(input))
-        let providerJSON = try XCTUnwrap((root["providers"] as? [String: Any])?["codex"] as? [String: Any])
-        let resources = try XCTUnwrap(providerJSON["resources"] as? [String: Any])
-        let sessionJSON = try XCTUnwrap(resources["session"] as? [String: Any])
-        let creditsJSON = try XCTUnwrap(resources["credits"] as? [String: Any])
+        XCTAssertEqual(actual as NSDictionary, expected as NSDictionary)
 
-        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v2")
-        XCTAssertEqual(root["generatedAt"] as? String, "2026-07-13T01:40:00.000Z")
-        XCTAssertEqual(providerJSON["plan"] as? String, "Pro 200")
-        XCTAssertEqual(providerJSON["fetchedAt"] as? String, "2026-07-13T01:39:30.000Z")
-        XCTAssertEqual(providerJSON["expiresAt"] as? String, "2026-07-13T01:49:30.000Z")
-        XCTAssertEqual(providerJSON["stale"] as? Bool, false)
-        XCTAssertEqual(sessionJSON["kind"] as? String, "consumption")
-        XCTAssertEqual(sessionJSON["unit"] as? String, "percent")
-        XCTAssertEqual(sessionJSON["used"] as? Double, 42)
-        XCTAssertEqual(sessionJSON["limit"] as? Double, 100)
-        XCTAssertEqual(sessionJSON["remaining"] as? Double, 58)
-        XCTAssertEqual(try XCTUnwrap(sessionJSON["utilization"] as? Double), 0.42, accuracy: 0.000_001)
-        XCTAssertEqual(sessionJSON["windowSeconds"] as? Double, 18_000)
-        XCTAssertEqual(creditsJSON["kind"] as? String, "balance")
-        XCTAssertEqual(creditsJSON["available"] as? Double, 821)
-        XCTAssertEqual(creditsJSON["unit"] as? String, "credits")
-        XCTAssertEqual(Set(resources.keys), ["session", "credits"])
-        XCTAssertNil(sessionJSON["label"])
-
-        var expired = input
-        expired.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.stalenessThreshold)
-        let expiredRoot = try json(LimitsEnvelope.encode(expired))
-        let expiredProvider = try XCTUnwrap((expiredRoot["providers"] as? [String: Any])?["codex"] as? [String: Any])
-        XCTAssertEqual(expiredProvider["stale"] as? Bool, true)
+        request.generatedAt = fetchedAt.addingTimeInterval(RefreshSetting.stalenessThreshold)
+        let expired = try json(LimitsEnvelope.encode(request))
+        let entries = try XCTUnwrap(expired["providers"] as? [String: [String: Any]])
+        XCTAssertEqual(entries[account.cardID]?["stale"] as? Bool, true)
     }
 
     func testCardWithoutSnapshotHasNoEntryAndTheEnvelopeHasOnlyFilledKeys() throws {
@@ -242,6 +192,20 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertEqual(resource["unit"] as? String, "requests")
         XCTAssertEqual(resource["used"] as? Double, 37)
         XCTAssertEqual(resource["limit"] as? Double, 750)
+    }
+
+    @MainActor
+    func testAReportedZeroCodexBalanceIsExported() throws {
+        let account = Account(kind: .codex, label: "ChatGPT")
+        let provider = AccountProviderRuntime.provider(for: account)
+        let usage = try CodexUsageMapper.mapUsageResponse(
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"credits":{"balance":"0"}}"#.utf8))
+        )
+        let resource = try limitResource(
+            "credits", of: provider, snapshot: ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines),
+            descriptors: AccountProviderRuntime.widgetDescriptors(for: account)
+        )
+        XCTAssertEqual(resource["available"] as? Double, 0)
     }
 
     @MainActor

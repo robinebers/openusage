@@ -60,8 +60,7 @@ final class AppContainer {
                 }
                 return TelemetryConfigSnapshot(
                     enabledProviders: kinds,
-                    enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey),
-                    pinnedMetricIDs: layout.pinnedMetricIDs.compactMap { layout.registry.descriptor(id: $0)?.kindScopedKey }.sorted()
+                    enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey)
                 )
             }
         )
@@ -83,27 +82,49 @@ final class AppContainer {
         }
     }
 
-    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
-        providers.first { $0.provider.id == descriptor.providerID }?.usageBreakdown(for: descriptor)
-    }
-
     /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
+        try await replaceCredential(.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines)), for: providerID)
+    }
+
+    /// Keeps the account, its name and its place: only the sign-in changes, once its usage read works.
+    func replaceCredential(_ credential: AccountCredential, for providerID: String) async throws {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
-        let credential = AccountCredential.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines))
-        if let existing = accounts.account(kind: runtime.account.kind, organization: runtime.account.organization, signedInAs: credential),
-           existing.id != runtime.account.id {
-            throw ProviderError.unavailable("This account is already added as \(existing.label).")
+        let account = runtime.account
+        if case .oauth = credential, let signedIn = credential.identity,
+           let saved = (try? accounts.credential(for: account.id))?.identity, saved != signedIn {
+            throw ProviderError.unavailable("That's a different account. Sign in to this one, or use Add New Account.")
         }
+        try accounts.checkForDuplicate(credential, kind: account.kind, organization: account.organization, excluding: account.id)
+        // The new sign-in reads into its own runtime and vault: the previous sign-in's history and plan
+        // can't be reused, and a refused token can't fall back on the stored one.
+        let provisional = ProvisionalCredentialVault(credential)
+        let replacement = AccountProviderRuntime(account: account, vault: provisional, http: runtime.http, claudeSessions: claudeSessions)
+        let snapshot: ProviderSnapshot
         do {
-            try await runtime.validate(credential)
+            snapshot = try await replacement.readSnapshot(using: credential)
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
         }
-        try accounts.replaceCredential(credential, for: runtime.account.id)
-        dataStore.forgetBackoff(for: providerID)
-        await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
+        try Task.checkCancellation()
+        await runtime.stopRenewals()
+        do {
+            try Task.checkCancellation()
+            guard let index = providers.firstIndex(where: { $0.account.id == account.id }) else { return }
+            guard providers[index] === runtime else {
+                throw ProviderError.unavailable("This account’s sign-in changed while OpenUsage was checking it. Try again.")
+            }
+            // A read can renew the sign-in, so what's saved is what the read ended on.
+            try accounts.replaceCredential(provisional.load(account.id) ?? credential, for: account.id)
+            replacement.adopt(accounts.credentialVault)
+            replacement.update(runtime.account) // The account may have been renamed during the read.
+            providers[index] = replacement
+            dataStore.replaceProvider(replacement, snapshot: snapshot)
+        } catch {
+            runtime.resumeRenewals()
+            throw error
+        }
     }
 
     /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.

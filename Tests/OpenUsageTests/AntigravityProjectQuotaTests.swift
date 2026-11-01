@@ -23,7 +23,7 @@ final class AntigravityProjectQuotaTests: XCTestCase {
     {"error":{"code":403,"message":"fake","status":"PERMISSION_DENIED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"SUBSCRIPTION_REQUIRED","domain":"cloudaicompanion.googleapis.com"}]}}
     """#
 
-    private func refresh(summaryStatus: Int? = nil) async throws -> Result<ProviderSnapshot, RefreshFailure> {
+    private func refresh(forbiddenBody: String? = nil) async throws -> Result<ProviderSnapshot, RefreshFailure> {
         let account = Account(kind: .antigravity, label: "Google Account")
         let vault = InMemoryCredentialVault()
         try vault.save(.oauth(OAuthTokens(accessToken: "access", refreshToken: "refresh", expiresAt: .distantFuture)), for: account.id)
@@ -33,8 +33,8 @@ final class AntigravityProjectQuotaTests: XCTestCase {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(Self.loadCodeAssist.utf8))
             case AntigravityUsageClient.quotaSummaryPath:
                 let project = request.body.flatMap(ProviderParse.jsonObject)?["project"] as? String
-                if let summaryStatus {
-                    return HTTPResponse(statusCode: summaryStatus, headers: [:], body: Data(Self.subscriptionRequired.utf8))
+                if let forbiddenBody {
+                    return HTTPResponse(statusCode: 403, headers: [:], body: Data(forbiddenBody.utf8))
                 }
                 guard project == "fake-project-123" else {
                     return HTTPResponse(statusCode: 403, headers: [:], body: Data(Self.subscriptionRequired.utf8))
@@ -54,11 +54,12 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         XCTAssertEqual(snapshot.plan, "Antigravity Starter Quota")
     }
 
-    func testRejectedQuotaCallReadsAsExpiredSignIn() async throws {
-        let snapshot = try await refresh(summaryStatus: 403)
+    func testQuotaAccessDenialReportsTheReasonGoogleSupplied() async throws {
+        let noSubscription = try await refresh(forbiddenBody: Self.subscriptionRequired)
+        XCTAssertEqual(noSubscription.failure?.message, "Google reports no Antigravity quota subscription for this project.")
 
-        guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
-        XCTAssertEqual(text, ProviderError.signInExpired(.antigravity).localizedDescription)
+        let refused = try await refresh(forbiddenBody: #"{"error":{"status":"PERMISSION_DENIED"}}"#)
+        XCTAssertEqual(refused.failure?.message, ProviderError.signInExpired(.antigravity).localizedDescription)
     }
 
     func testEveryBaseOfflineIsUnreachable() async throws {
@@ -136,7 +137,7 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
         let first = await runtime.refresh()
-        XCTAssertNotNil(first.failure)
+        XCTAssertEqual(first.failure?.message, "Antigravity couldn't find a project with quota access for this account. Try again shortly.")
 
         lookupWorks.withLock { $0 = true }
         let snapshot = try await runtime.refresh().get()

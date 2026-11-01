@@ -14,21 +14,6 @@ final class DashboardRowModelTests: XCTestCase {
         return data
     }
 
-    func testABoundedReadingIsABarWithItsValueAndResetAndAnUnboundedOneAValue() {
-        let bar = paced(used: 30).dashboardRow(now: now)
-        XCTAssertEqual(bar.label, "Weekly")
-        XCTAssertEqual(bar.mark, .bar(fill: 0.7, severity: .normal, value: "70%", reset: "3d 12h"))
-
-        var credits = WidgetData(title: "Credits", kind: .count, used: 452, limit: nil)
-        credits.values = [MetricValue(number: 452, kind: .count, label: "credits")]
-        XCTAssertEqual(credits.dashboardRow(now: now).mark, .value("452 credits"))
-
-        var resets = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
-        resets.values = [MetricValue(number: 2, kind: .count, label: "available")]
-        resets.showsResetExpiries = true
-        XCTAssertEqual(resets.dashboardRow(now: now).mark, .value("2 available"))
-    }
-
     func testTheResetsFigureWarnsInTheColourOfTheResetThatExpiresNext() {
         var resets = WidgetData(title: "Limit Resets", kind: .count, used: 2, limit: nil)
         resets.values = [MetricValue(number: 2, kind: .count, label: "available")]
@@ -36,9 +21,9 @@ final class DashboardRowModelTests: XCTestCase {
         let day: TimeInterval = 24 * 3600
         let cases: [(expiries: [TimeInterval], severity: WidgetData.MeterSeverity)] = [
             ([], .normal),
-            ([10 * day], .normal),
-            ([3 * day, 20 * day], .warning),
-            ([20 * day, 1 * day], .critical),
+            ([7 * day + 3600], .normal),
+            ([7 * day, 20 * day], .warning),
+            ([20 * day, 2 * day], .critical),
             ([-1 * day, 20 * day], .critical)
         ]
         for (expiries, severity) in cases {
@@ -60,19 +45,48 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertFalse(empty.hasMeterStyleToggle)
     }
 
-    func testTheColourAndTheFlameFollowOneState() {
-        XCTAssertEqual(paced(used: 60).dashboardRow(now: now).mark, .bar(fill: 0.4, severity: .critical, value: "40%", reset: "3d 12h", flame: true))
-        XCTAssertEqual(paced(used: 93, elapsed: 0.2).dashboardRow(now: now).mark, .bar(fill: 0.07, severity: .critical, value: "7%", reset: "5d 14h", flame: true))
-        XCTAssertEqual(paced(used: 49).dashboardRow(now: now).mark, .bar(fill: 0.51, severity: .warning, value: "51%", reset: "3d 12h", flame: false))
-        XCTAssertEqual(paced(used: 85, elapsed: 0.9).dashboardRow(now: now).mark, .bar(fill: 0.15, severity: .warning, value: "15%", reset: "16h 48m", flame: false))
-        XCTAssertEqual(paced(used: 30).dashboardRow(now: now).mark, .bar(fill: 0.7, severity: .normal, value: "70%", reset: "3d 12h", flame: false))
-        XCTAssertEqual(paced(used: 76, elapsed: 0.9).dashboardRow(now: now).mark, .bar(fill: 0.24, severity: .normal, value: "24%", reset: "16h 48m", flame: false))
-        XCTAssertEqual(paced(used: 100).dashboardRow(now: now).mark, .bar(fill: 0, severity: .critical, value: "0%", reset: "3d 12h", flame: false))
-        for (used, severity) in [(74.0, WidgetData.MeterSeverity.normal), (75, .warning), (89, .warning), (90, .critical)] {
-            var noWindow = WidgetData(title: "Credits", kind: .dollars, used: used, limit: 100)
-            noWindow.displayMode = .remaining
-            XCTAssertEqual(noWindow.dashboardRow(now: now).mark, .bar(fill: (100 - used) / 100, severity: severity, value: "$\(Int(100 - used))", reset: nil, flame: false), "$\(used) of $100")
+    func testTheBarAndTheAmountCarryTheColour() {
+        XCTAssertEqual(paced(used: 93, elapsed: 0.2).dashboardRow(now: now).mark, .bar(fill: 0.07, severity: .critical, value: "7%", reset: "5d 14h"))
+        XCTAssertEqual(paced(used: 49).dashboardRow(now: now).mark, .bar(fill: 0.51, severity: .normal, value: "51%", reset: "3d 12h"))
+        XCTAssertEqual(paced(used: 85, elapsed: 0.9).dashboardRow(now: now).mark, .bar(fill: 0.15, severity: .warning, value: "15%", reset: "16h 48m"))
+    }
+
+    func testAUsedUpLimitIsMarkedAndKeepsItsOrdinaryResetLine() {
+        XCTAssertEqual(paced(used: 100).dashboardRow(now: now).mark, .bar(fill: 0, severity: .critical, value: "0%", reset: "3d 12h", isUsedUp: true))
+        var used = paced(used: 100)
+        used.displayMode = .used
+        XCTAssertEqual(used.dashboardRow(now: now).mark, .bar(fill: 1, severity: .critical, value: "100%", reset: "3d 12h", isUsedUp: true))
+    }
+
+    func testDollarLimitShowsCentsOnBothSidesOfTheMeter() {
+        var data = WidgetData(title: "Key Limit", kind: .dollars, used: 9.6, limit: 10)
+        for (mode, expected) in [(WidgetDisplayMode.remaining, "$0.40"), (.used, "$9.60")] {
+            data.displayMode = mode
+            guard case .bar(_, _, let amount, _, _) = data.dashboardRow(now: now).mark else {
+                return XCTFail("Expected a bounded dollar row")
+            }
+            XCTAssertEqual(amount, expected)
         }
+    }
+
+    func testTheAmountSaysWhichReadingItIs() {
+        var dollars = WidgetData(title: "Credits", kind: .dollars, used: 184.72, limit: 500)
+        dollars.displayMode = .remaining
+        XCTAssertEqual(dollars.amountText, "$315.28 left")
+        dollars.displayMode = .used
+        XCTAssertEqual(dollars.amountText, "$184.72 used")
+        var badge = paced(used: 30)
+        badge.valueTextOverride = "Disabled"
+        XCTAssertEqual(badge.amountText, "Disabled")
+    }
+
+    func testAValueRowsSecondFigureIsItsDetail() {
+        var today = WidgetData(title: "Today", kind: .dollars, used: 0, limit: nil)
+        today.values = [MetricValue(number: 12.5, kind: .dollars), MetricValue(number: 3_000, kind: .count, label: "tokens")]
+        XCTAssertEqual(today.dashboardRow(now: now).mark, .value("$12.50", detail: "3K tokens"))
+        XCTAssertEqual(today.unboundedDetail, "$12.50 · 3K tokens")
+        today.values.append(MetricValue(number: 4, kind: .count, label: "turns"))
+        XCTAssertEqual(today.dashboardRow(now: now).mark, .value("$12.50", detail: "3K tokens · 4 turns"))
     }
 
     func testTheResetFollowsTheClockSettingAndReadsSoonWhenDue() {
@@ -134,5 +148,14 @@ final class DashboardRowModelTests: XCTestCase {
         fresh.sessionStartSignal = .zeroUsage
         XCTAssertNil(fresh.resetTooltip(now: now))
         XCTAssertNil(credits.resetTooltip(now: now))
+    }
+
+    func testOnlyAnEmptyBarFades() {
+        let row = { (fill: Double, isUsedUp: Bool) in
+            DashboardRowModel(label: "Weekly", mark: .bar(fill: fill, severity: .critical, value: "", reset: nil, isUsedUp: isUsedUp))
+        }
+        XCTAssertTrue(row(0, true).isFaded, "used up, shown as left")
+        XCTAssertFalse(row(1, true).isFaded, "used up, shown as used")
+        XCTAssertFalse(row(0.05, false).isFaded)
     }
 }

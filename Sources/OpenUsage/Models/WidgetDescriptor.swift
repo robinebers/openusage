@@ -8,7 +8,6 @@ struct WidgetDescriptor: Identifiable, Hashable {
     let metricLabel: String
     let sample: WidgetData
     var limitResources: [LimitResourceDescriptor] = []
-    var isPinnedByDefault = false
     var historyRow: HistoryRow?
 
     init(provider: Provider, key: String, metricLabel: String, sample: WidgetData) {
@@ -22,13 +21,14 @@ struct WidgetDescriptor: Identifiable, Hashable {
 
     var kindScopedKey: String { "\(providerKind.rawValue).\(key)" }
 
-    func pinnedByDefault() -> WidgetDescriptor {
-        var copy = self
-        copy.isPinnedByDefault = true
-        return copy
-    }
-
     var title: String { sample.title }
+
+    /// What's left of an open balance: money or credits the user holds, with no limit to measure it
+    /// against. Limit Resets export as a balance too, but having none is not having run out of anything.
+    func balance(in data: WidgetData) -> MetricValue? {
+        guard !sample.showsResetExpiries, data.hasData, data.limit == nil else { return nil }
+        return limitResources.first { $0.kind == .balance }?.value(in: data.values)
+    }
 
     static func == (lhs: WidgetDescriptor, rhs: WidgetDescriptor) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }

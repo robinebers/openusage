@@ -25,6 +25,27 @@ final class AddAccountFlowTests: XCTestCase {
         XCTAssertEqual(store.accounts.map(\.kind), [.claude])
     }
 
+    func testSigningInAgainReplacesTheSignInAndAddsNoAccount() async throws {
+        let store = makeStore()
+        let account = store.add(kind: .claude, label: "Personal", credential: .oauth(OAuthTokens(accessToken: "old")))
+        var replaced: [(AccountCredential, String)] = []
+        let flow = AddAccountFlow(
+            store: store,
+            openURL: { _ in },
+            login: { _, _, _ in StubLogin { _ in ("someone@example.com", .oauth(OAuthTokens(accessToken: "new"))) } },
+            replaceCredential: { replaced.append(($0, $1)) },
+            signingInAgainTo: account
+        )
+        XCTAssertEqual(flow.provider, .claude, "the sheet opens on the account's sign-in, not the provider list")
+        XCTAssertFalse(flow.isWorking, "creating the flow must not open a browser")
+
+        flow.startSigningInAgain()
+        try await waitUntil { flow.isFinished }
+
+        XCTAssertEqual(replaced.map(\.1), [account.cardID])
+        XCTAssertEqual(store.accounts.map(\.label), ["Personal"])
+    }
+
     func testPastedCodeReachesTheWaitingSignIn() async throws {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))

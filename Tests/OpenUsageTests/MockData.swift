@@ -9,13 +9,13 @@ enum MockData {
     static let providers: [Provider] = [claude, codex, cursor]
 
     static let descriptors: [WidgetDescriptor] = [
-        percent(key: "session", provider: claude, title: "Session", used: 0).pinnedByDefault(),
-        percent(key: "weekly", provider: claude, title: "Weekly", used: 34).pinnedByDefault(),
+        percent(key: "session", provider: claude, title: "Session", used: 0),
+        percent(key: "weekly", provider: claude, title: "Weekly", used: 34),
         amount(key: "extra", provider: claude, title: "Extra usage", used: 217.59),
         amount(key: "today", provider: claude, title: "Today", used: 64.20),
 
-        percent(key: "session", provider: codex, title: "Session", used: 80).pinnedByDefault(),
-        percent(key: "weekly", provider: codex, title: "Weekly", used: 20).pinnedByDefault(),
+        percent(key: "session", provider: codex, title: "Session", used: 80),
+        percent(key: "weekly", provider: codex, title: "Weekly", used: 20),
         countBounded(key: "credits", provider: codex, title: "Extra Usage", used: 320, limit: 1000),
         amount(key: "today", provider: codex, title: "Today", used: 569.09),
 

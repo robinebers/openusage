@@ -10,27 +10,14 @@ final class AccountInitialsTests: XCTestCase {
         XCTAssertEqual(AccountInitials.tag(for: ""), "")
     }
 
-    @MainActor
-    func testStripBadgesOnlyProvidersWithSeveralAccounts() {
-        func group(_ id: String, _ label: String) -> ProviderMetrics {
-            let provider = Provider(id: id, kind: id.hasPrefix("codex") ? .codex : .claude, accountLabel: label)
-            let sample = WidgetData(title: "Session", kind: .percent, used: 10, limit: 100)
-            let descriptor = WidgetDescriptor(provider: provider, key: "session", metricLabel: "Session", sample: sample)
-            return ProviderMetrics(provider: provider, metrics: [descriptor])
-        }
-        let content = MenuBarContentBuilder.build(
-            groups: [
-                group("claude@1", "Personal"), group("claude@2", "Attention Machine 1"),
-                group("claude@3", "Attention Machine 2"), group("codex@1", "rob@sunstory.com"),
-            ],
-            data: { $0.sample }
-        )
-        XCTAssertEqual(content.groups.map(\.badge), ["P", "A1", "A2", nil])
+    func testEveryAccountOfAProviderWithSeveralCarriesItsInitials() {
+        let registry = WidgetRegistry(providers: [
+            Provider(id: "claude@1", kind: .claude, accountLabel: "Personal"),
+            Provider(id: "claude@2", kind: .claude, accountLabel: "Attention Machine 1"),
+            Provider(id: "codex@1", kind: .codex, accountLabel: "rob@sunstory.com"),
+        ], descriptors: [])
 
-        let alike = MenuBarContentBuilder.build(
-            groups: [group("claude@1", "Work"), group("claude@2", "Work")],
-            data: { $0.sample }
-        )
-        XCTAssertEqual(alike.groups.map(\.badge), ["W", "W"])
+        XCTAssertEqual(registry.providers.map(\.badge), ["P", "A1", nil])
+        XCTAssertEqual(registry.provider(id: "claude@2")?.badge, "A1")
     }
 }

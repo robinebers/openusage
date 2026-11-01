@@ -1,11 +1,11 @@
 # Accounts
 
 The Accounts screen lists every account you have added, or reads **No Accounts** until you add one.
-Open it from the panel's **Options** menu or press Return on the dashboard.
+Open it from the panel's **⋯** menu or press Return on the dashboard.
 
 ## Add an account
 
-1. Click **+** at the top of the Accounts screen.
+1. Click **Add New Account** at the bottom of the Accounts screen.
 2. Click a provider, or select it with the arrow keys and press Return. The sign-in starts at once.
    Copilot asks first: **Sign In with GitHub** for your own seat, or **Organization Billing** for an
    organization's credits and spend.
@@ -32,9 +32,9 @@ You can add several accounts for the same provider. A new account goes to the bo
 provider's accounts and starts refreshing right away. A new account takes the email or name the
 provider reports. An Ollama account takes the email ollama.com reports for its key. Any other API-key
 account reports neither, so it shows the provider's name once.
-Signing in to an account that's already added (the same provider account, or the same API key) adds
-no second copy; the sheet says "This account is already added as <name>." A Claude account in two organizations counts as two accounts, and so does a
-Devin email in two organizations.
+If you enter a sign-in or key you already use, the sheet names the account that uses it.
+If Keychain prevents that check, the sheet asks you to check access and try again.
+A Claude account in two organizations counts as two accounts, and so does a Devin email in two organizations.
 
 ## Rename an account
 
@@ -45,15 +45,10 @@ elsewhere saves; Esc cancels.
 ## Replace an API key
 
 **Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
-before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
-old key stays and the page shows why. A saved key is read at once, even while the old key was waiting
-out a provider's rate limit. A Copilot organization account has **Replace Token…** instead.
-
-## Hide and star metrics
-
-An account's page lists its metrics with a switch and a star each. Turn a metric off to hide it from
-the dashboard and the menu bar; hiding it also removes its star. Star a metric to show it in the menu
-bar; see [Menu bar](menu-bar.md).
+before saving it. The account keeps its name and place; if the provider refuses the key, the
+old key stays and the page shows why. After a successful replacement, the account shows the new key's
+usage and history, even if the old key was waiting out a provider's rate limit. A Copilot organization
+account has **Replace Token…** instead.
 
 ## Remove an account
 
@@ -69,3 +64,8 @@ databases, or environment variables that belong to other tools.
 
 A version of OpenUsage that cannot read one of your accounts, such as one for a provider that version
 lacks, leaves it out of the list and keeps it saved, with its sign-in, for a version that reads it.
+
+## Sign In Again
+
+When a sign-in expires, open the account's page and click **Sign In Again**. The account keeps its name,
+its place, and its settings; only the sign-in changes, once the new one can read usage.

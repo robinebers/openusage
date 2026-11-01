@@ -15,6 +15,28 @@ enum PopoverScreen: Hashable, Sendable {
     }
 }
 
+enum SettingsTab: Hashable, Sendable, CaseIterable {
+    case general, display, alerts, advanced
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .display: "Display"
+        case .alerts: "Alerts"
+        case .advanced: "Advanced"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .general: "gearshape"
+        case .display: "macwindow"
+        case .alerts: "bell"
+        case .advanced: "terminal"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class PopoverState {
@@ -36,6 +58,10 @@ final class PopoverState {
     private(set) var screenSlideID = 0
     var customizeProviderID: String?
     var isAddingAccount = false
+    /// The account the Add Account sheet signs in again, in place of adding a new one.
+    var signingInAgainProviderID: String?
+    var dashboardTab = DashboardTab.priority
+    var settingsTab = SettingsTab.general
     /// Whether the popover is on-screen. `StatusItemController` flips it at its show/hide chokepoints,
     /// synchronously with `makeKeyAndOrderFront`/`orderOut`, and `DashboardView` re-seeds the panel
     /// height on reopen from it. Deliberately not derived from occlusion or window key state: a
@@ -43,9 +69,7 @@ final class PopoverState {
     /// user on-screen. Never persisted.
     var popoverShown = false
 
-    let pinNotice = TransientNotice<String?>(clearedValue: nil, timeout: .seconds(3))
     let shareNotice = TransientNotice<Bool>(clearedValue: false, timeout: .seconds(2.5))
-    let accountsNotice = TransientNotice<CustomizationNoticeContent?>(clearedValue: nil, timeout: .seconds(2.5))
 
     @discardableResult
     func back() -> Bool {
@@ -69,9 +93,14 @@ final class PopoverState {
         }
     }
 
+    func show(dashboardTab: DashboardTab) {
+        self.dashboardTab = dashboardTab
+        popoverShown = true
+    }
+
     func reset() {
         if screen != .dashboard { screen = .dashboard }
+        settingsTab = .general
         shareNotice.clear()
-        accountsNotice.clear()
     }
 }

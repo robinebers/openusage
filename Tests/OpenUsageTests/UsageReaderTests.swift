@@ -27,7 +27,7 @@ final class UsageReaderTests: XCTestCase {
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
         let codex = store.add(kind: .codex, label: "Work", credential: .apiKey("k"))
         let claude = store.add(kind: .claude, label: "Claude", credential: .apiKey("k"))
-        let pending = store.add(kind: .codex, label: "Home", credential: .apiKey("k"))
+        store.add(kind: .codex, label: "Home", credential: .apiKey("k"))
         cache(weekly(codex, used: 20), in: defaults)
         cache(weekly(claude, used: 30), in: defaults)
 
@@ -36,7 +36,6 @@ final class UsageReaderTests: XCTestCase {
 
         XCTAssertTrue(result.hasSnapshots)
         XCTAssertEqual(Set(providers.keys), [codex.cardID, claude.cardID])
-        XCTAssertNil(providers[pending.cardID])
         let resources = try XCTUnwrap(providers[codex.cardID]?["resources"] as? [String: Any])
         XCTAssertEqual((resources["weekly"] as? [String: Any])?["used"] as? Double, 20)
         XCTAssertEqual(providers[codex.cardID]?["displayName"] as? String, "ChatGPT · Work")

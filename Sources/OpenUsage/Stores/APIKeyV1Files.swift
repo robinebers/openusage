@@ -26,7 +26,7 @@ enum APIKeyV1Files {
                let key = key(at: home.appending(path: ".config/openusage/\(file)")) {
                 let runtime = AccountProviderRuntime(account: Account(kind: kind, label: kind.displayName), vault: accounts.credentialVault, http: http)
                 do {
-                    try await runtime.validate(.apiKey(key))
+                    try await runtime.readSnapshot(using: .apiKey(key))
                     if !accounts.accounts.contains(where: { $0.kind == kind }) {
                         let account = accounts.add(kind: kind, label: kind.displayName, credential: .apiKey(key))
                         guard accounts.accounts.contains(where: { $0.id == account.id }) else {

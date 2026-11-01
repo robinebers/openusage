@@ -119,6 +119,20 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime), ["requests": "120 in 30 days"])
     }
 
+    func testASuccessfulReadCoversOmittedDaysWithoutInventingFigures() async {
+        let sparse = #"{"granularity":"day","buckets":[{"from":"2026-10-29T00:00:00Z","until":"2026-10-30T00:00:00Z","request_count":3}]}"#
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data(sparse.utf8)))
+        let source = OllamaHistorySource(client: OllamaUsageClient(http: http), apiKey: "key", accountID: "ollama")
+        let dates = UsageHistory.dayStarts(0..<2, now: Self.now, calendar: source.calendar)
+        let read = await source.read(dates, asOf: Self.now, calendar: source.calendar)
+        XCTAssertEqual(read.days[dates[0]], UsageDay(totals: UsageTotals()))
+        XCTAssertEqual(read.days[dates[1]]?.totals.values, [.requests: 3])
+
+        http.response = HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        let failed = await source.read(dates, asOf: Self.now, calendar: source.calendar)
+        XCTAssertTrue(failed.days.isEmpty)
+    }
+
     func testAFailedReadHidesTheRowsKeepsTheCardAndWaitsAnHour() async throws {
         let status = TestSwitch<Int?>(500)
         let (store, runtime, http, clock) = try makeAccount(usage: status)
@@ -146,18 +160,17 @@ final class OllamaUsageHistoryTests: XCTestCase {
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
-        XCTAssertEqual(today.clockNote, "UTC day")
+        let today = try XCTUnwrap(store.usageBreakdown(for: try descriptor("today")))
         XCTAssertEqual(today.totals.values, [
             .usageValue: 0.5, .requests: 8, .tokens: 6_600, .inputTokens: 6_000, .cacheReadTokens: 2_000, .outputTokens: 600
         ])
-        XCTAssertEqual(today.modelMeasure, .tokens)
+        XCTAssertEqual(today.modelFigures, [.cost, .tokens])
         XCTAssertEqual(today.models.map(\.name), ["glm-5.3-flash", "gpt-oss:120b"])
-        XCTAssertEqual(today.models.map(\.number), [5_400, 1_200])
-        let last30 = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("last30")))
-        XCTAssertEqual(last30.clockNote, "UTC days")
-        XCTAssertEqual(last30.models.map(\.number), [81_000, 18_000])
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("requests")))
+        XCTAssertEqual(today.models.map(\.dollars), [0.4, 0.1])
+        XCTAssertEqual(today.models.map(\.tokens), [5_400, 1_200])
+        let last30 = try XCTUnwrap(store.usageBreakdown(for: try descriptor("last30")))
+        XCTAssertEqual(last30.models.map(\.tokens), [81_000, 18_000])
+        XCTAssertNil(store.usageBreakdown(for: try descriptor("requests")))
     }
 
     func testDaysParseOllamasBucketsAndAnyMalformedBucketRejectsTheRead() throws {

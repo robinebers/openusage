@@ -2,30 +2,45 @@ import Foundation
 
 struct DashboardRowModel: Equatable {
     enum Mark: Equatable {
-        case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, flame: Bool = false)
-        case value(String, severity: WidgetData.MeterSeverity = .normal)
+        case bar(fill: Double, severity: WidgetData.MeterSeverity, value: String, reset: String?, isUsedUp: Bool = false)
+        case value(String, detail: String? = nil, severity: WidgetData.MeterSeverity = .normal)
     }
 
     let label: String
     let mark: Mark
+    /// Clock times run wider than countdowns, so they get the wider reset lane.
+    var showsClockTimes = false
+
+    /// A limit that's used up with nothing left to draw. Under Used its bar is full and stays at full strength.
+    var isFaded: Bool {
+        guard case .bar(let fill, _, _, _, let isUsedUp) = mark else { return false }
+        return isUsedUp && fill == 0
+    }
 }
 
 extension WidgetData {
     func dashboardRow(now: Date = Date()) -> DashboardRowModel {
         guard hasData, isBounded else {
-            return DashboardRowModel(label: title, mark: .value(unboundedDetail, severity: expirySeverity(now: now)))
+            let figures = unboundedFigures
+            let detail = figures.count > 1 ? figures.dropFirst().joined(separator: " · ") : nil
+            return DashboardRowModel(label: title, mark: .value(figures[0], detail: detail, severity: expirySeverity(now: now)))
         }
-        let state = meterState(now: now)
         return DashboardRowModel(
             label: title,
             mark: .bar(
                 fill: fraction,
-                severity: state.severity ?? .normal,
+                severity: severity,
                 value: valueText,
                 reset: compactResetText(now: now),
-                flame: state == .runningOut
-            )
+                isUsedUp: meterState(now: now) == .spent
+            ),
+            showsClockTimes: resetDisplayMode == .absolute
         )
+    }
+
+    /// The reading with the word that explains it, like `49% left`.
+    var amountText: String {
+        hasMeterStyleToggle ? "\(valueText) \(displayMode.label.lowercased())" : valueText
     }
 
     func compactResetText(now: Date = Date()) -> String? {

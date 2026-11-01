@@ -19,6 +19,7 @@ final class RefreshSettingTests: XCTestCase {
         XCTAssertEqual(runtime.refreshCount, 0, "a snapshot under 5 minutes old is fresh at launch")
         XCTAssertEqual(store.snapshots["test"]?.line(label: "Session"),
                        .progress(label: "Session", used: 20, limit: 100, format: .percent))
+        XCTAssertEqual(store.data(for: runtime.widgetDescriptors[0]).valueText, "80%")
     }
 
     func testRelaunchRefetchesASnapshotOlderThanTheInterval() async {
@@ -35,6 +36,7 @@ final class RefreshSettingTests: XCTestCase {
         XCTAssertEqual(runtime.refreshCount, 1)
         XCTAssertEqual(store.snapshots["test"]?.line(label: "Session"),
                        .progress(label: "Session", used: 80, limit: 100, format: .percent))
+        XCTAssertEqual(store.data(for: runtime.widgetDescriptors[0]).valueText, "20%")
     }
 
     func testASnapshotFromTheFutureIsRefetched() async {

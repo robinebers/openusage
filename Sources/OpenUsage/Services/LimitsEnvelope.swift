@@ -94,11 +94,9 @@ enum LimitsEnvelope {
                 resetsAt = reset.map(OpenUsageISO8601.string(from:))
                 windowSeconds = periodMs.map { Double($0) / 1_000 }
 
-            case (.value(let expectedKind, let expectedLabel), .values(_, let values, let expiries)),
-                 (.progressOrValue(let expectedKind, let expectedLabel), .values(_, let values, let expiries)):
-                guard let metric = values.first(where: { value in
-                    value.kind == expectedKind && (expectedLabel == nil || value.label == expectedLabel)
-                }) else { return nil }
+            case (.value, .values(_, let values, let expiries)),
+                 (.progressOrValue, .values(_, let values, let expiries)):
+                guard let metric = resource.value(in: values) else { return nil }
                 if resource.kind == .balance {
                     available = metric.number
                 } else {

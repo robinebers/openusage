@@ -142,7 +142,9 @@ enum CursorUsageMapper {
                     label: "On-demand",
                     used: ProviderParse.centsToDollars(spent),
                     limit: ProviderParse.centsToDollars(limit),
-                    format: .dollars
+                    format: .dollars,
+                    resetsAt: cycle.resetsAt,
+                    periodDurationMs: cycle.periodDurationMs
                 ))
             } else if spent > 0 {
                 lines.append(.values(

@@ -3,7 +3,7 @@ import Foundation
 @MainActor
 @Observable
 final class HoverPopoverState {
-    var isPresented = false
+    private(set) var isPresented = false
 
     /// Every live coordinator, so the menu-bar panel's close path can dismiss any open hover popover —
     /// the dashboard view tree (and this `@State`) survives the panel's `orderOut`, so `.onDisappear`
@@ -15,6 +15,7 @@ final class HoverPopoverState {
     }
 
     private(set) var overInline = false
+    private(set) var openedExplicitly = false
     @ObservationIgnored private var overDetail = false
     @ObservationIgnored private var pinned = false
     @ObservationIgnored private var showTask: Task<Void, Never>?
@@ -45,11 +46,19 @@ final class HoverPopoverState {
         if active { hideTask?.cancel(); hideTask = nil } else { scheduleHide() }
     }
 
+    /// An explicit activation stays open until dismissed, even if the pointer is elsewhere.
+    func openDetails() {
+        hideTask?.cancel()
+        openedExplicitly = true
+        isPresented = true
+    }
+
     func dismiss() {
         showTask?.cancel(); showTask = nil
         hideTask?.cancel(); hideTask = nil
         overInline = false
         overDetail = false
+        openedExplicitly = false
         pinned = false
         isPresented = false
     }
@@ -67,7 +76,7 @@ final class HoverPopoverState {
     }
 
     private func scheduleHide() {
-        guard !pinned else { return }
+        guard !pinned, !openedExplicitly else { return }
         showTask?.cancel(); showTask = nil
         hideTask?.cancel()
         let delay = hideGrace

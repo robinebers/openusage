@@ -16,7 +16,8 @@ extension UsageHistorySource {
 }
 
 /// An account's read days, in memory only. Its source is its only writer.
-struct UsageLedger: Sendable {
+@MainActor
+final class UsageLedger {
     private(set) var days: [Date: UsageDay] = [:]
     /// Nothing is read before this once the provider rate-limited a read.
     private var resumeAt: Date?
@@ -33,7 +34,7 @@ struct UsageLedger: Sendable {
 
     /// Days outside `span` are dropped, and a due day that did not come back is unread, so a failed re-read
     /// hides its rows instead of showing an old value.
-    mutating func record(_ read: [Date: UsageDay], due: [Date], span: [Date]) {
+    func record(_ read: [Date: UsageDay], due: [Date], span: [Date]) {
         let kept = Set(span).subtracting(due)
         days = days.filter { kept.contains($0.key) }.merging(read) { _, new in new }
         partialDay = span.first
@@ -41,7 +42,7 @@ struct UsageLedger: Sendable {
 
     func isHeld(at now: Date) -> Bool { resumeAt.map { now < $0 } ?? false }
 
-    mutating func hold(for wait: TimeInterval, from now: Date) { resumeAt = now.addingTimeInterval(wait) }
+    func hold(for wait: TimeInterval, from now: Date) { resumeAt = now.addingTimeInterval(wait) }
 
     /// Whether nothing is due for a source that rereads once per `interval`: the last read was sent on this
     /// same day, less than `interval` ago. A new day is read at once.
@@ -50,31 +51,32 @@ struct UsageLedger: Sendable {
         return now < lastRead.at.addingTimeInterval(interval)
     }
 
-    mutating func noteRead(at now: Date, today: Date) { lastRead = (now, today) }
+    func noteRead(at now: Date, today: Date) { lastRead = (now, today) }
 
     /// A forced refresh reads today and yesterday again at once.
-    mutating func forgetLastRead() { lastRead = nil }
+    func forgetLastRead() { lastRead = nil }
 }
 
 extension AccountProviderRuntime {
     /// Reads the due days and returns every read day. Never throws, so history cannot fail the card.
-    func refreshHistory(using source: some UsageHistorySource) async -> UsageHistory? {
+    func refreshHistory(using source: some UsageHistorySource, ledger: UsageLedger? = nil) async -> UsageHistory? {
+        let ledger = ledger ?? usageLedger
         guard let dayCount = HistoryRow.dayCount(for: widgetDescriptors) else { return nil }
         let calendar = source.calendar
         let asOf = now()
         let span = UsageHistory.dayStarts(0..<dayCount, now: asOf, calendar: calendar)
-        if let interval = source.rereadInterval, usageLedger.isResting(span, at: asOf, interval: interval) {
-            return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
+        if let interval = source.rereadInterval, ledger.isResting(span, at: asOf, interval: interval) {
+            return UsageHistory(calendar: calendar, asOf: asOf, days: ledger.days)
         }
-        let due = usageLedger.due(span)
-        if usageLedger.isHeld(at: asOf) {
-            usageLedger.record([:], due: due, span: span)
+        let due = ledger.due(span)
+        if ledger.isHeld(at: asOf) {
+            ledger.record([:], due: due, span: span)
         } else {
-            usageLedger.noteRead(at: asOf, today: span[0])
+            ledger.noteRead(at: asOf, today: span[0])
             let read = await source.read(due, asOf: asOf, calendar: calendar)
-            usageLedger.record(read.days, due: due, span: span)
-            if let wait = read.rateLimitedFor { usageLedger.hold(for: wait, from: now()) }
+            ledger.record(read.days, due: due, span: span)
+            if let wait = read.rateLimitedFor { ledger.hold(for: wait, from: now()) }
         }
-        return UsageHistory(calendar: calendar, asOf: asOf, days: usageLedger.days)
+        return UsageHistory(calendar: calendar, asOf: asOf, days: ledger.days)
     }
 }

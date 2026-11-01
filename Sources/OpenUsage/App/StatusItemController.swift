@@ -13,7 +13,7 @@ import SwiftUI
 /// app, so keyboard input (Esc/Return navigation, the Settings shortcut recorder) works on the first
 /// try. (The pattern keyboard-first menu-bar apps use; cross-checked via GitHits.)
 class MenuBarPanel: NSPanel {
-    static let cornerRadius: CGFloat = 13
+    static let cornerRadius: CGFloat = 20
 
     /// A clear, borderless panel whose frame view is clipped to the rounded shape. The clip lives on
     /// the frame view, not the content view: AppKit inserts a sheet's dimming view as the content
@@ -75,6 +75,7 @@ final class StatusItemController: NSObject {
     private let container: AppContainer
     private let statusItem: NSStatusItem
     private var stripGate = StripGate()
+    private var rankingTick: Task<Void, Never>?
     private let panel: MenuBarPanel
     private let heightController: PanelHeightController
     private lazy var outsideClickMonitor = PanelOutsideClickMonitor(
@@ -112,7 +113,11 @@ final class StatusItemController: NSObject {
             height: PanelHeightController.defaultHeight
         ))
         self.panel = panel
-        self.heightController = PanelHeightController(panel: panel) { container.popover.screen }
+        self.heightController = PanelHeightController(
+            panel: panel,
+            currentScreen: { container.popover.screen },
+            currentTab: { container.popover.dashboardTab }
+        )
 
         super.init()
 
@@ -132,10 +137,11 @@ final class StatusItemController: NSObject {
             guard let self else { return }
             container.popover.screen = .dashboard
             if panel.isVisible {
+                container.popover.dashboardTab = .allUsage
                 panel.makeKeyAndOrderFront(nil)
                 statusItem.button?.highlight(true)
             } else {
-                showPanel()
+                showPanel(dashboardTab: .allUsage)
             }
         }
 
@@ -153,7 +159,6 @@ final class StatusItemController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        panel.backgroundColor = Theme.trayNSColor
         panel.host(host)
     }
 
@@ -177,22 +182,35 @@ final class StatusItemController: NSObject {
     }
 
     private func updateImage() {
-        let content = withObservationTracking {
-            container.hideFromScreenShare.isConcealing
-                ? MenuBarContent(groups: [])
-                : MenuBarContentBuilder.build(
-                    groups: container.layout.pinnedGroups,
-                    data: { container.dataStore.data(for: $0) }
-                )
+        let (accounts, limit) = withObservationTracking {
+            let limit = container.hideFromScreenShare.isConcealing ? .iconOnly : container.dataStore.menuBarLimit
+            let accounts = limit == .iconOnly ? [] : container.dataStore.accounts(in: container.layout.displayGroups)
+            return (accounts, limit)
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))
                 self?.updateImage()
             }
         }
+        rankingTick?.cancel()
+        showStrip(accounts: accounts, limit: limit)
+    }
+
+    private func showStrip(accounts: [DashboardAccount], limit: MenuBarLimit) {
+        let now = Date()
+        let board = PriorityBoard.make(accounts: accounts, now: now)
+        let content = MenuBarContentBuilder.build(board: board, limit: limit)
         stripGate.show(content) { content in
             statusItem.button?.image = MenuBarStripRenderer.image(for: content)
                 ?? MenuBarStripRenderer.appIcon
+        }
+        // The pace order can change between provider reads. A tick only reuses the current data;
+        // registering another observation here would multiply subscriptions on every tick.
+        guard board.requiresRankingClock(at: now) else { return }
+        rankingTick = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(30), tolerance: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.showStrip(accounts: accounts, limit: limit)
         }
     }
 
@@ -243,14 +261,14 @@ final class StatusItemController: NSObject {
         }
     }
 
-    private func showPanel() {
+    private func showPanel(dashboardTab: DashboardTab = .preferred()) {
         guard let button = statusItem.button, let buttonWindow = button.window else {
             AppLog.error(.statusItem, "Cannot show panel: status item has no button")
             return
         }
         let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        heightController.prepareForOpening(below: buttonRectOnScreen)
-        container.popover.popoverShown = true
+        heightController.prepareForOpening(below: buttonRectOnScreen, tab: dashboardTab)
+        container.popover.show(dashboardTab: dashboardTab)
 
         host.layoutSubtreeIfNeeded()
 
