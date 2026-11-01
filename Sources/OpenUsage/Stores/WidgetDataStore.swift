@@ -257,6 +257,11 @@ final class WidgetDataStore {
         snapshots[providerID]?.plan
     }
 
+    /// Why an account needs the user: Priority lists it under Needs Attention, and its page says why and offers Sign In Again.
+    func problem(for providerID: String) -> String? {
+        notice(for: providerID) ?? stalenessHint(for: providerID)
+    }
+
     func stalenessHint(for providerID: String) -> String? {
         let date = now()
         let backoff = backoffs[providerID]

@@ -21,7 +21,7 @@ struct AccountDetailView: View {
                     metricsCard
                     managedRow(host)
                 } else {
-                    if let problem = dataStore.notice(for: providerID) ?? dataStore.stalenessHint(for: providerID) {
+                    if let problem = dataStore.problem(for: providerID) {
                         Label {
                             Text(problem)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -33,11 +33,11 @@ struct AccountDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(12)
                         .cardSurface()
+                        if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
+                            signInAgainRow
+                        }
                     }
                     metricsCard
-                    if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
-                        signInAgainRow
-                    }
                     if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
                         ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
                     }
