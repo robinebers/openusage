@@ -41,7 +41,7 @@ struct DashboardView: View {
                 AddAccountSheet(flow: AddAccountFlow(
                     store: container.accounts,
                     connectHub: { url, key in try await container.hubs.connect(url: url, key: key) },
-                    replaceCredential: { credential, id in try await container.replaceCredential(credential, for: id) },
+                    replaceCredential: { credential, id in try await container.signInAgain(credential, for: id) },
                     signingInAgainTo: popover.signingInAgainProviderID.flatMap(container.accounts.account(cardID:))
                 ))
             }
