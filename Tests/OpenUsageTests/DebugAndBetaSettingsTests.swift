@@ -1,57 +1,41 @@
-import AppKit
-import SwiftUI
 import XCTest
 @testable import OpenUsage
 
 @MainActor
-final class DebugAndBetaSettingsTests: QuietWindowTestCase {
-    func testAdvancedShowsLogLevelWithTheChoiceSavedByZeroSevenSixteen() async throws {
-        let defaults = isolatedDefaults()
-        defaults.set("warn", forKey: "logLevel")
+final class DebugAndBetaSettingsTests: XCTestCase {
+    func testLogLevelReadsTheChoiceSavedByZeroSevenSixteen() {
+        restoringStandardDefault("logLevel") {
+            UserDefaults.standard.removeObject(forKey: "logLevel")
+            XCTAssertEqual(LogLevelSetting.current, .info)
 
-        let host = showAdvancedSettings(defaults: defaults)
+            UserDefaults.standard.set("warn", forKey: "logLevel")
+            XCTAssertEqual(LogLevelSetting.current, .warn)
 
-        try await waitUntil { popUpTitles(in: host) == ["Warning"] }
+            UserDefaults.standard.set("debug", forKey: "logLevel")
+            XCTAssertEqual(LogLevelSetting.current, .debug)
+        }
     }
 
-    func testLogLevelStartsAtInfo() async throws {
-        let host = showAdvancedSettings(defaults: isolatedDefaults())
-
-        try await waitUntil { popUpTitles(in: host) == ["Info"] }
+    func testALogLevelKeepsOnlyLinesAtLeastAsSevere() {
+        XCTAssertTrue(LogLevelSetting.info.includes(.warn))
+        XCTAssertFalse(LogLevelSetting.info.includes(.debug))
+        XCTAssertTrue(LogLevelSetting.debug.includes(.debug))
+        XCTAssertFalse(LogLevelSetting.error.includes(.warn))
     }
 
     func testBetaUpdatesReadsTheChoiceSavedByZeroSevenSixteen() {
-        let key = "betaUpdatesEnabled"
+        restoringStandardDefault("betaUpdatesEnabled") {
+            UserDefaults.standard.removeObject(forKey: "betaUpdatesEnabled")
+            XCTAssertFalse(UpdaterController().betaChannelEnabled)
+
+            UserDefaults.standard.set(true, forKey: "betaUpdatesEnabled")
+            XCTAssertTrue(UpdaterController().betaChannelEnabled)
+        }
+    }
+
+    private func restoringStandardDefault(_ key: String, _ body: () -> Void) {
         let saved = UserDefaults.standard.object(forKey: key)
         defer { UserDefaults.standard.set(saved, forKey: key) }
-
-        UserDefaults.standard.removeObject(forKey: key)
-        XCTAssertFalse(UpdaterController().betaChannelEnabled)
-
-        UserDefaults.standard.set(true, forKey: key)
-        XCTAssertTrue(UpdaterController().betaChannelEnabled)
-    }
-
-    private func showAdvancedSettings(defaults: UserDefaults) -> NSView {
-        let container = AppContainer.forTesting(
-            accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()),
-            defaults: defaults
-        )
-        container.popover.screen = .settings
-        container.popover.settingsTab = .advanced
-        let view = SettingsScreen()
-            .defaultAppStorage(defaults)
-            .environment(container)
-            .environment(container.popover)
-            .environment(container.dataStore)
-            .environment(UpdaterController())
-        return show(view, in: .borderless, size: CGSize(width: PanelMetrics.width, height: 700)).host
-    }
-
-    private func popUpTitles(in view: NSView) -> [String] {
-        if view is NSPopUpButton {
-            return view.subviews.compactMap { ($0 as? NSTextField)?.stringValue }
-        }
-        return view.subviews.flatMap(popUpTitles)
+        body()
     }
 }
