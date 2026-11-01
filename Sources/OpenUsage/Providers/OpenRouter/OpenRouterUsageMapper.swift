@@ -41,11 +41,8 @@ enum OpenRouterUsageMapper {
               let totalUsage = ProviderParse.number(data["total_usage"]) else {
             throw ProviderError.invalidResponse
         }
-        let credits = max(0, totalCredits)
-        let used = max(0, totalUsage)
-        let balance = MetricLine.values(label: "Balance", values: [MetricValue(number: max(0, credits - used), kind: .dollars)])
-        guard credits > 0 else { return [balance] }
-        return [.progress(label: "Credits", used: used, limit: credits, format: .dollars), balance]
+        let balance = max(0, max(0, totalCredits) - max(0, totalUsage))
+        return [.values(label: "Balance", values: [MetricValue(number: balance, kind: .dollars)])]
     }
 
     static func keysPage(_ body: Data) throws -> [[UsageWindow: UsageTotals]] {

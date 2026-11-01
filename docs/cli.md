@@ -108,7 +108,7 @@ the account's right-click menu.
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
-| OpenRouter | `credits`, `balance`, `keyLimit` |
+| OpenRouter | `balance`, `keyLimit` |
 | Z.ai | `session`, `weekly`, `webSearches` |
 
 When ChatGPT reports an empty credit balance, `resources.credits.available` is `0`. If ChatGPT

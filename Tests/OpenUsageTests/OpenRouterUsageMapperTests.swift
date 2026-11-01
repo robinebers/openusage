@@ -42,12 +42,15 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         XCTAssertNil(try keyLimit(#""limit":null,"limit_remaining":null,"limit_reset":null"#))
     }
 
-    func testCreditsShowAMeterOnceCreditsWereBoughtAndBalanceAlways() throws {
+    /// `total_credits` is every credit ever bought, not a limit, so the credits show as a balance and never as a meter.
+    func testCreditsShowOnlyTheBalance() throws {
         XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(OpenRouterFixtures.credits)), [
-            .progress(label: "Credits", used: 22.25, limit: 100, format: .dollars),
             .values(label: "Balance", values: [MetricValue(number: 77.75, kind: .dollars)])
         ])
         XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":0,"total_usage":0}}"#)), [
+            .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
+        ])
+        XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":10,"total_usage":12.5}}"#)), [
             .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
         ])
         XCTAssertThrowsError(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":100}}"#)))
