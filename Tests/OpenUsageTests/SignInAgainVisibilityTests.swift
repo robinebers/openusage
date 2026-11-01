@@ -61,7 +61,7 @@ final class SignInAgainVisibilityTests: QuietWindowTestCase {
             lines: [.progress(label: "Session", used: 10, limit: 100, format: .percent)]
         )
         _ = await container.dataStore.refresh(providerID: id, force: true)
-        let view = AccountDetailView(providerID: id)
+        let view = AccountDetailView(providerID: id, reorderSpaceName: "reorder", reorderLift: .constant(nil), frameStore: ReorderFrameStore())
             .environment(container)
             .environment(container.layout)
             .environment(container.popover)
