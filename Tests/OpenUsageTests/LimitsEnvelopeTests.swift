@@ -7,7 +7,7 @@ final class LimitsEnvelopeTests: XCTestCase {
 
     private static let documentedExample = """
     {
-      "schema": "openusage.limits.v1",
+      "schema": "openusage.limits.v2",
       "generatedAt": "2026-07-13T01:40:00.000Z",
       "providers": {
         "codex": {
@@ -117,7 +117,7 @@ final class LimitsEnvelopeTests: XCTestCase {
         let sessionJSON = try XCTUnwrap(resources["session"] as? [String: Any])
         let creditsJSON = try XCTUnwrap(resources["credits"] as? [String: Any])
 
-        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v1")
+        XCTAssertEqual(root["schema"] as? String, "openusage.limits.v2")
         XCTAssertEqual(root["generatedAt"] as? String, "2026-07-13T01:40:00.000Z")
         XCTAssertEqual(providerJSON["plan"] as? String, "Pro 200")
         XCTAssertEqual(providerJSON["fetchedAt"] as? String, "2026-07-13T01:39:30.000Z")

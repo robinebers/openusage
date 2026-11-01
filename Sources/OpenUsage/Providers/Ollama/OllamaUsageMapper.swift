@@ -41,6 +41,13 @@ enum OllamaUsageMapper {
         return name.capitalized
     }
 
+    static func email(from body: Data) -> String? {
+        guard let root = ProviderParse.jsonObject(body),
+              let text = (root["Email"] ?? root["email"]) as? String
+        else { return nil }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    }
+
     private static func legacyLine(_ entry: Any?, label: String, periodMs: Int) -> MetricLine? {
         guard let entry = entry as? [String: Any],
               let remaining = ProviderParse.number(entry["remaining_percent"]) else { return nil }

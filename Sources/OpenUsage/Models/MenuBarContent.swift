@@ -14,23 +14,21 @@ struct MenuBarContent: Equatable {
     }
 
     let groups: [Group]
-    var isStale = false
 
     var isEmpty: Bool { groups.isEmpty }
 
     var accessibilityText: String {
-        let summary = groups.map { group in
+        groups.map { group in
             let metrics = group.metrics.map { "\($0.label) \($0.value)" }.joined(separator: ", ")
             return "\(group.provider.fullName) \(metrics)"
         }
         .joined(separator: "; ")
-        return isStale ? summary + ", waiting for a provider" : summary
     }
 }
 
 @MainActor
 enum MenuBarContentBuilder {
-    static func build(groups: [ProviderMetrics], isStale: Bool = false, data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
+    static func build(groups: [ProviderMetrics], data: (WidgetDescriptor) -> WidgetData) -> MenuBarContent {
         let resolvedGroups = groups.compactMap { group -> MenuBarContent.Group? in
             let metrics = group.metrics.compactMap { descriptor -> MenuBarContent.Metric? in
                 let data = data(descriptor)
@@ -40,7 +38,7 @@ enum MenuBarContentBuilder {
             guard !metrics.isEmpty else { return nil }
             return MenuBarContent.Group(provider: group.provider, metrics: metrics)
         }
-        return MenuBarContent(groups: badged(resolvedGroups), isStale: isStale)
+        return MenuBarContent(groups: badged(resolvedGroups))
     }
 
     private static func badged(_ groups: [MenuBarContent.Group]) -> [MenuBarContent.Group] {

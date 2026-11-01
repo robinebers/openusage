@@ -4,6 +4,7 @@ struct OllamaUsageClient: Sendable {
     static let host = "https://ollama.com"
     static let balancePath = "/api/balance"
     static let accountPath = "/api/me"
+    static let usagePath = "/api/usage"
 
     var http: any HTTPClient
 
@@ -13,6 +14,11 @@ struct OllamaUsageClient: Sendable {
 
     func fetchBalance(apiKey: String) async throws -> HTTPResponse {
         try await send(method: "GET", path: Self.balancePath, apiKey: apiKey)
+    }
+
+    /// `range` is 7d or 30d: whole UTC days back from today, plus today so far.
+    func fetchUsage(apiKey: String, range: String) async throws -> HTTPResponse {
+        try await send(method: "GET", path: Self.usagePath + "?range=\(range)&group_by=model", apiKey: apiKey)
     }
 
     func fetchAccount(apiKey: String) async throws -> HTTPResponse {

@@ -31,8 +31,14 @@ struct DashboardContentView: View {
 
     @ViewBuilder
     private var widgetContent: some View {
-        if layout.displayGroups.isEmpty {
+        if layout.registry.providers.isEmpty {
             EmptyDashboardView { popover.isAddingAccount = true }
+        } else if layout.displayGroups.isEmpty {
+            Text("Every metric is hidden. Turn them back on in Accounts.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22)
         } else {
             WidgetGroupedListView(
                 reorderSpaceName: reorderSpaceName,

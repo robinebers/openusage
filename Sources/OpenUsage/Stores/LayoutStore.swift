@@ -24,7 +24,7 @@ final class LayoutStore {
     }
 
     func apply(registry: WidgetRegistry) {
-        undoSnapshots.removeAll()
+        if Set(registry.providers.map(\.id)) != Set(self.registry.providers.map(\.id)) { undoSnapshots.removeAll() }
         self.registry = registry
         loadLayout()
     }
@@ -33,7 +33,10 @@ final class LayoutStore {
         var saved = persistence.load() ?? LayoutState()
         let unseeded = registry.providers.filter { !saved.seededProviderIDs.contains($0.id) }
         for provider in unseeded { seed(provider, into: &saved) }
-        if !unseeded.isEmpty { persistence.save(saved) }
+        if !unseeded.isEmpty {
+            saved.providerOrder = registry.orderedProviderIDs(savedOrder: saved.providerOrder)
+            persistence.save(saved)
+        }
 
         let hidden = saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil }
         state = LayoutState(

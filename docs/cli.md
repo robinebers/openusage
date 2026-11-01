@@ -40,7 +40,7 @@ path that OpenUsage did not install is left alone and the setting reads **Unavai
 
 ```json
 {
-  "schema": "openusage.limits.v1",
+  "schema": "openusage.limits.v2",
   "generatedAt": "2026-07-13T01:40:00.000Z",
   "providers": {
     "codex@1a2b3c4d": {

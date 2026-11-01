@@ -52,7 +52,11 @@ layout, so going back to 0.7.x finds its stars and order as you left them. See
 Claude, ChatGPT, Cursor, Antigravity, Copilot, Devin, Grok, Ollama, OpenCode, OpenRouter, and Z.ai.
 Claude, ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Devin signs in on
 Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, OpenRouter, and Z.ai use
-API keys. OpenRouter's balance and account-wide spend need a Management key.
+API keys. OpenRouter's balance, account-wide spend, and activity need a Management key. Cursor accounts also show
+what Cursor charged for on-demand usage and the tokens it reported today, yesterday, and in the last
+30 days, with what each range reported on hover. Ollama accounts show the same ranges on UTC days, with
+the usage value, tokens, and requests Ollama reports. ChatGPT accounts show the credits charged, the
+tokens, and the turns by UTC day, and a workspace's credit limit.
 [Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features
@@ -113,7 +117,8 @@ script/test_quiet.sh        # run the test suite without it taking the keyboard 
 `script/test_quiet.sh` takes `swift test` arguments such as `--filter`.
 
 The dev app is staged as `dist/OpenUsage.app` with the bundle identifier
-`com.robinebers.openusage.dev`, so it runs beside an installed OpenUsage and never checks for updates.
+`com.robinebers.openusage.dev`, so it runs beside an installed OpenUsage, never checks for updates, and
+never imports the OpenRouter and Z.ai keys 0.7.x saved.
 
 ## Architecture
 

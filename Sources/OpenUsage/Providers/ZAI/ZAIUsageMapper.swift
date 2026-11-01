@@ -88,10 +88,9 @@ enum ZAIUsageMapper {
         default: return nil
         }
         let duration = unitMs * number
-        guard duration >= 1, duration < Double(Int.max) else {
+        guard duration >= 1, let periodMs = ProviderParse.int(duration) else {
             throw ProviderError.invalidResponse
         }
-        let periodMs = Int(duration)
         if periodMs < 24 * 60 * 60 * 1000 {
             return .session(periodMs: periodMs)
         }

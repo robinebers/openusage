@@ -182,7 +182,6 @@ final class StatusItemController: NSObject {
                 ? MenuBarContent(groups: [])
                 : MenuBarContentBuilder.build(
                     groups: container.layout.pinnedGroups,
-                    isStale: container.dataStore.hasStaleAccount,
                     data: { container.dataStore.data(for: $0) }
                 )
         } onChange: { [weak self] in
@@ -193,7 +192,7 @@ final class StatusItemController: NSObject {
         }
         stripGate.show(content) { content in
             statusItem.button?.image = MenuBarStripRenderer.image(for: content)
-                ?? MenuBarStripRenderer.appIcon(for: content)
+                ?? MenuBarStripRenderer.appIcon
         }
     }
 

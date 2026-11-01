@@ -22,12 +22,16 @@ struct AccountDetailView: View {
                     }
                 }
                 .cardSurface()
-                if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
-                    ReplaceKeyRow(providerID: providerID, field: field)
-                }
-                removeAccountRow(group.provider)
-                if let removalError {
-                    ErrorText(removalError)
+                if let host = group.provider.hubHost {
+                    managedRow(host)
+                } else {
+                    if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
+                        ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
+                    }
+                    removeAccountRow(group.provider)
+                    if let removalError {
+                        ErrorText(removalError)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -42,6 +46,21 @@ struct AccountDetailView: View {
         case .organizationToken: "Token"
         case .oauth: nil
         }
+    }
+
+    /// A hub's login is added, signed in, and removed on the hub, so its page offers none of that here.
+    private func managedRow(_ host: String) -> some View {
+        HStack(spacing: 8) {
+            ProviderIcon(id: CLIProxyHub.markID, side: 16, inset: 0)
+            Text("Managed by CLIProxyAPI at \(host)")
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, PanelMetrics.controlRowPadding)
+        .cardSurface()
     }
 
     private func removeAccountRow(_ provider: Provider) -> some View {
@@ -125,10 +144,10 @@ struct AccountDetailView: View {
     }
 }
 
-private struct ReplaceKeyRow: View {
-    let providerID: String
+/// Replaces a key in place: the new key is kept only once `commit` accepts it.
+struct ReplaceKeyRow: View {
     let field: String
-    @Environment(AppContainer.self) private var container
+    let commit: @MainActor (String) async throws -> Void
     @State private var isEditing = false
     @State private var key = ""
     @State private var isSaving = false
@@ -193,7 +212,7 @@ private struct ReplaceKeyRow: View {
         errorMessage = nil
         Task {
             do {
-                try await container.replaceKey(key, for: providerID)
+                try await commit(key)
                 close()
             } catch {
                 errorMessage = error.localizedDescription

@@ -5,6 +5,8 @@ struct Provider: Identifiable, Hashable {
     let kind: ProviderKind
     var accountLabel: String? = nil
     var organization: String? = nil
+    /// The host of the CLIProxyAPI hub an account is mirrored from.
+    var hubHost: String? = nil
 
     var displayName: String { kind.displayName }
     var icon: String { kind.rawValue }

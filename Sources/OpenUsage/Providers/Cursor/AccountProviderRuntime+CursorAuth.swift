@@ -10,10 +10,11 @@ extension AccountProviderRuntime {
         let hadExpiry = tokens.expiresAt != nil
         tokens.expiresAt = tokens.expiresAt ?? ProviderParse.jwtExpiry(tokens.accessToken)
         guard let expiresAt = tokens.expiresAt else { return tokens }
-        if expiresAt.addingTimeInterval(-Self.cursorRefreshLead) <= now() {
+        if expiresAt.addingTimeInterval(-Self.cursorRefreshLead) <= now(), !earlyRenewalIsHeld(expiresAt: expiresAt) {
             do {
                 return try await refreshCursorTokens(tokens)
             } catch let error where expiresAt > now() {
+                holdEarlyRenewal(after: error)
                 AppLog.warn(
                     LogTag.plugin("cursor"),
                     "\(account.cardID) early token refresh failed; keeping the current token: \(error.localizedDescription)"
@@ -36,7 +37,7 @@ extension AccountProviderRuntime {
         refreshed.accessToken = token.accessToken
         refreshed.refreshToken = token.refreshToken ?? token.accessToken
         refreshed.expiresAt = ProviderParse.jwtExpiry(token.accessToken)
-        try await replaceCredential(.oauth(refreshed))
+        await saveRenewal(refreshed)
         return refreshed
     }
 }

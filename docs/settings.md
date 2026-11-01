@@ -32,9 +32,9 @@ links to System Settings.
 
 | Setting | What it sends |
 |---|---|
-| Under 10% Remaining | The first time a metric with a limit drops under 10% left in its period. |
-| Healthy Pace Changes | When a metric's pace worsens from on course to close to the limit. |
-| Near-Limit Pace Changes | When a metric's pace worsens from close to the limit to running out. |
+| Almost Out | The first time a metric with a limit drops under 10% left in its period. |
+| Cutting It Close | When a metric's pace worsens from on course to close to the limit. |
+| Will Run Out | When a metric's pace worsens from close to the limit to running out. |
 
 Each notification names the trigger, the provider, and the metric, and fires once per metric per reset window.
 
@@ -69,8 +69,9 @@ See [Updates](updates.md).
 OpenRouter or Z.ai key you typed into 0.7.x, which it saved in `~/.config/openusage/openrouter.json` or
 `~/.config/openusage/zai.json`. On the first launch after the update, OpenUsage adds each saved key as
 an account when that provider has no account yet and a usage read accepts the key. It does this once,
-so an account you remove later doesn't come back. If the usage read fails for a reason other than the
-provider rejecting the key, it tries again on the next launch.
+so an account you remove later doesn't come back. If the provider rejects the key, it doesn't try again.
+If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
+doesn't save the key, it tries again on the next launch.
 
 When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
 
@@ -81,7 +82,7 @@ When you add the only account of a provider that was on in 0.7.x, it takes that 
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
 - **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
 
-When 0.7.x showed several accounts of a provider, the one it showed first gives the layout. Any other
+When 0.7.x had several accounts of a provider on, the one it showed first gives the layout. Any other
 account of that provider starts with the default stars, as on a new install.
 
 OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go

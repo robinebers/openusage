@@ -120,7 +120,9 @@ final class WidgetDataStore {
                 AppLog.debug(.refresh, "cache skip \(providerID) (already in flight)")
                 return .skipped
             }
-            _ = await running.value
+            if case .failure(let failure) = await running.value, case .rateLimited = failure.kind {
+                return .backedOff
+            }
             if let next = inFlight[providerID], next != running {
                 return await refresh(providerID: providerID, force: force, rereadHourly: rereadHourly)
             }
@@ -129,7 +131,8 @@ final class WidgetDataStore {
         if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout] in
-            await ProviderRefreshDeadline.refresh(provider, timeout: providerRefreshTimeout)
+            await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { await provider.refresh() }
+                ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(providerRefreshTimeout))s", kind: .refused))
         }
         inFlight[providerID] = work
         defer { if inFlight[providerID] == work { inFlight[providerID] = nil } }
@@ -167,9 +170,14 @@ final class WidgetDataStore {
             guard let provider = providersByID[id], inFlight[id] == nil, let snapshot = snapshots[id],
                   backoffs[id]?.holds(at: now(), forced: false) != true
             else { continue }
-            guard let updated = await provider.refreshHourlyReads(of: snapshot),
-                  providersByID[id] === provider, snapshots[id] == snapshot
-            else { continue }
+            let read = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) {
+                await provider.refreshHourlyReads(of: snapshot)
+            }
+            guard let read else {
+                AppLog.warn(.refresh, "\(id) hourly reads timed out after \(Int(providerRefreshTimeout))s")
+                continue
+            }
+            guard let updated = read, providersByID[id] === provider, snapshots[id] == snapshot else { continue }
             snapshots[id] = updated
             cache.save(snapshots)
         }
@@ -186,6 +194,10 @@ final class WidgetDataStore {
 
     private func durationMilliseconds(since start: TimeInterval) -> Int {
         max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
+    }
+
+    func forgetBackoff(for providerID: String) {
+        backoffs[providerID] = nil
     }
 
     func errorMessage(for providerID: String) -> String? {
@@ -228,13 +240,6 @@ final class WidgetDataStore {
             return nil
         }
         return "Last updated \(duration) ago"
-    }
-
-    var hasStaleAccount: Bool {
-        guard let lastRefreshAt else { return false }
-        return snapshots.contains { id, snapshot in
-            backoffs[id] != nil && lastRefreshAt.timeIntervalSince(snapshot.refreshedAt) >= RefreshSetting.interval
-        }
     }
 
     private func resolve(_ line: MetricLine, descriptor: WidgetDescriptor) -> WidgetData? {

@@ -41,6 +41,19 @@ final class CursorTeamPoolTests: XCTestCase {
         assertPercent(mapped, "Other Models", 0)
     }
 
+    func testABillingCycleTooLongForAnIntFallsBackToAMonth() throws {
+        let mapped = try CursorUsageMapper.mapUsage(
+            usage: [
+                "enabled": true, "planUsage": ["autoPercentUsed": 0, "apiPercentUsed": 0],
+                "billingCycleStart": 0, "billingCycleEnd": 1e300
+            ],
+            planName: nil, creditGrants: nil, stripeBalanceCents: 0
+        )
+        guard case .progress(_, _, _, _, _, let periodMs) = mapped.lines.first(where: { $0.label == "Cursor Models" })
+        else { return XCTFail("expected Cursor Models") }
+        XCTAssertEqual(periodMs, CursorUsageMapper.billingPeriodMs)
+    }
+
     func testLegacyFiveThousandDollarPoolWithZeroPlaceholdersKeepsDollarMeter() throws {
         let mapped = try map([
             "limit": 500_000, "totalSpend": 234_500,

@@ -11,6 +11,7 @@ final class AppContainer {
     let popover = PopoverState()
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
+    let hubs: CLIProxyHubSync
     private let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     @ObservationIgnored private var providers: [AccountProviderRuntime]
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -18,6 +19,7 @@ final class AppContainer {
     @ObservationIgnored private let http: any HTTPClient
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let claudeSessions: ClaudeSessions
+    @ObservationIgnored private let hubGate = CLIProxyHubGate()
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
 
     init(
@@ -34,7 +36,7 @@ final class AppContainer {
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
-            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, claudeSessions: claudeSessions
+            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, hubGate: hubGate, claudeSessions: claudeSessions
         )
         let registry = WidgetRegistry.from(providers)
         let layout = LayoutStore(registry: registry, defaults: defaults)
@@ -48,6 +50,7 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
+        self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,
@@ -90,6 +93,10 @@ final class AppContainer {
         }
     }
 
+    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
+        providers.first { $0.provider.id == descriptor.providerID }?.usageBreakdown(for: descriptor)
+    }
+
     /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
@@ -105,13 +112,22 @@ final class AppContainer {
             throw ProviderError.unavailable(message)
         }
         try accounts.replaceCredential(credential, for: runtime.account.id)
+        dataStore.forgetBackoff(for: providerID)
         await dataStore.refresh(providerID: providerID, force: true, rereadHourly: true)
+    }
+
+    /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.
+    func replaceHubKey(_ key: String, for hubID: UUID) async throws {
+        try await hubs.replaceKey(key, for: hubID)
+        let ids = Set(accounts.accounts(onHub: hubID).map(\.cardID))
+        await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
     }
 
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {
             while !Task.isCancelled {
+                await hubs.syncDue()
                 await dataStore.refreshAll()
                 await quotaNotifications.evaluate(
                     layout.visibleDescriptors,
@@ -131,11 +147,12 @@ final class AppContainer {
     }
 
     private func syncAccounts() {
-        let previousIDs = Set(providers.map(\.provider.id))
+        let previous = providers.map { ObjectIdentifier($0) }
         providers = ProviderCatalog.make(
             accounts: accounts.accounts,
             vault: accounts.credentialVault,
             http: http,
+            hubGate: hubGate,
             claudeSessions: claudeSessions,
             reusing: providers
         )
@@ -146,8 +163,8 @@ final class AppContainer {
         }
         dataStore.apply(providers: providers, registry: registry)
         widgetBridgeCoordinator?.exportIfChanged()
-        for id in providers.map(\.provider.id) where !previousIDs.contains(id) {
-            Task { await dataStore.refresh(providerID: id, force: true) }
+        for runtime in providers where !previous.contains(ObjectIdentifier(runtime)) {
+            Task { await dataStore.refresh(providerID: runtime.provider.id, force: true) }
         }
     }
 }

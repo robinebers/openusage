@@ -18,14 +18,14 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         for entry in object["grants"] as? [Any] ?? [] {
             guard let grant = entry as? [String: Any],
                   let id = grant["id"] as? String, !id.isEmpty,
-                  let left = ProviderParse.number(grant["resets_left"]), left.isFinite
+                  let left = ProviderParse.number(grant["resets_left"]).flatMap({ ProviderParse.int($0.rounded(.down)) })
             else {
                 AppLog.warn(LogTag.plugin("claude"), "reset grants block has a malformed grant; ignoring the block")
                 return nil
             }
             grants.append(Grant(
                 id: id,
-                resetsLeft: max(0, Int(left.rounded(.down))),
+                resetsLeft: max(0, left),
                 endsAt: ClaudeUsageMapper.resetDate(grant["ends_at"]),
                 clears: grant["clears"] as? [String] ?? []
             ))

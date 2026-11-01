@@ -27,6 +27,7 @@ struct CodexUsageClient: Sendable {
     static let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     static let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
     static let consumeResetCreditURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume")!
+    static let reportsURL = URL(string: "https://chatgpt.com/backend-api/wham/")!
 
     var http: any HTTPClient
 
@@ -35,20 +36,21 @@ struct CodexUsageClient: Sendable {
     }
 
     func fetchUsage(accessToken: String, accountID: String?) async throws -> HTTPResponse {
-        var headers = [
-            "Authorization": "Bearer \(accessToken)",
-            "Accept": "application/json",
-            "User-Agent": "OpenUsage"
-        ]
-        if let accountID, !accountID.isEmpty {
-            headers["ChatGPT-Account-Id"] = accountID
-        }
-
-        return try await http.send(HTTPRequest(
+        try await http.send(HTTPRequest(
             method: "GET",
             url: Self.usageURL,
-            headers: headers,
+            headers: Self.usageHeaders(accessToken: accessToken, accountID: accountID),
             timeout: 10
+        ))
+    }
+
+    /// One of the daily usage reports the Codex client's Analytics view reads, such as
+    /// `usage/credit-usage-events`, at `path` under `wham/`.
+    func fetchReport(_ path: String, query: [URLQueryItem], accessToken: String, accountID: String?) async throws -> HTTPResponse {
+        var url = Self.reportsURL.appending(path: path)
+        if !query.isEmpty { url.append(queryItems: query) }
+        return try await http.send(HTTPRequest(
+            method: "GET", url: url, headers: Self.usageHeaders(accessToken: accessToken, accountID: accountID), timeout: 15
         ))
     }
 
@@ -89,6 +91,18 @@ struct CodexUsageClient: Sendable {
             "User-Agent": "OpenUsage",
             "OpenAI-Beta": "codex-1",
             "originator": "Codex Desktop"
+        ]
+        if let accountID, !accountID.isEmpty {
+            headers["ChatGPT-Account-Id"] = accountID
+        }
+        return headers
+    }
+
+    private static func usageHeaders(accessToken: String, accountID: String?) -> [String: String] {
+        var headers = [
+            "Authorization": "Bearer \(accessToken)",
+            "Accept": "application/json",
+            "User-Agent": "OpenUsage"
         ]
         if let accountID, !accountID.isEmpty {
             headers["ChatGPT-Account-Id"] = accountID

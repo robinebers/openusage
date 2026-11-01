@@ -11,12 +11,25 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var cursorMembershipRead = SecondaryRead<String>()
+    var usageLedger = UsageLedger()
+    /// The history behind the last snapshot's history rows.
+    private(set) var usageHistory: UsageHistory?
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
     /// the same one, so a caller that needs a renewal while one is in flight waits for its tokens, and a
     /// caller whose tokens another renewal already replaced takes the stored ones.
     private var renewal: Task<OAuthTokens, Error>?
+    /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
+    /// the refresh token they replace, so they stand in for the stored credential until they are saved.
+    private var unsavedRenewal: OAuthTokens?
+    /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
+    private var earlyRenewalNotBefore = Date.distantPast
+    /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
+    /// it returns, so a later caller waits for that read instead of blocking another thread. A caller
+    /// after a write waits for a read started before it to end, then reads again.
+    private var credentialLoad: (task: Task<AccountCredential?, Error>, writes: Int)?
+    private var credentialWrites = 0
 
     init(
         account: Account,
@@ -43,11 +56,15 @@ final class AccountProviderRuntime: ProviderRuntime {
         planBodyRead.forget()
         codexResetCreditsRead.forget()
         cursorMembershipRead.forget()
+        usageLedger.forgetLastRead()
         claude.forcedReadsPending = true
     }
 
     static func provider(for account: Account) -> Provider {
-        Provider(id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization)
+        Provider(
+            id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization,
+            hubHost: account.hub?.host
+        )
     }
 
     func resetClaimService(
@@ -61,8 +78,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 isClaimable: status?.claimableGrantID != nil,
                 confirmDetail: status?.confirmDetail,
                 claimReset: { [self] _, redeemRequestID in await claimClaudeResetGrant(redeemRequestID: redeemRequestID) },
-                refreshAccount: refreshAccount,
-                refreshDelay: .seconds(30)
+                refreshAccount: refreshAccount
             )
         case .codex:
             return ResetClaimService(
@@ -72,8 +88,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 claimReset: { [self] expiry, redeemRequestID in
                     await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: redeemRequestID)
                 },
-                refreshAccount: refreshAccount,
-                refreshDelay: .seconds(5)
+                refreshAccount: refreshAccount
             )
         case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
             return nil
@@ -83,22 +98,41 @@ final class AccountProviderRuntime: ProviderRuntime {
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
             let usage = try await refresh(try await loadCredential())
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice))
+            usageHistory = usage.history
+            let lines = usage.lines + HistoryRow.lines(for: widgetDescriptors, in: usage.history)
+            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: lines, notice: usage.notice))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
     }
 
+    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
+        usageHistory.flatMap { descriptor.historyRow?.breakdown(in: $0) }
+    }
+
     func loadCredential() async throws -> AccountCredential {
-        guard let credential = try await loadOffMainActor({ [vault, account] in try vault.load(account.id) }) else {
-            throw refusedCredential
+        if let unsavedRenewal {
+            await saveRenewal(unsavedRenewal)
+            return .oauth(unsavedRenewal)
         }
+        while let stale = credentialLoad?.task, credentialLoad?.writes != credentialWrites {
+            _ = try? await stale.value
+            if credentialLoad?.task == stale { credentialLoad = nil }
+        }
+        let load = credentialLoad?.task ?? Task { try await loadOffMainActor { [vault, account] in try vault.load(account.id) } }
+        credentialLoad = (load, credentialWrites)
+        defer { if credentialLoad?.task == load { credentialLoad = nil } }
+        guard let credential = try await load.value else { throw refusedCredential }
         return credential
     }
 
-    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page.
+    /// A refused sign-in has to be added again; a refused key or token can be replaced on the page; a
+    /// hub's login is fixed on the hub.
     private var refusedCredential: ProviderError {
-        switch account.authMethod {
+        if let hub = account.hub {
+            return HubRefusal.noToken.error(host: hub.host, upstream: nil)
+        }
+        return switch account.authMethod {
         case .oauth: .signInExpired(account.kind)
         case .apiKey: .keyRejected("\(account.kind.displayName) rejected the API key.")
         case .organizationToken: .keyRejected("GitHub rejected the token.")
@@ -131,9 +165,11 @@ final class AccountProviderRuntime: ProviderRuntime {
     ) async throws -> OAuthTokens {
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
         guard tokens.needsRefresh(at: now()), let expiresAt = tokens.expiresAt else { return tokens }
+        guard !earlyRenewalIsHeld(expiresAt: expiresAt) else { return tokens }
         do {
             return try await renewedTokens(tokens, grant: grant)
         } catch let error where expiresAt > now() {
+            holdEarlyRenewal(after: error)
             AppLog.warn(.auth, "\(account.cardID) early token renewal failed; keeping the current token: \(error.localizedDescription)")
             return tokens
         }
@@ -171,7 +207,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             tokens.accessToken = granted.accessToken
             if let refresh = granted.refreshToken { tokens.refreshToken = refresh }
             tokens.expiresAt = granted.expiresAt
-            try await replaceCredential(.oauth(tokens))
+            await saveRenewal(tokens)
             return tokens
         }
         self.renewal = renewal
@@ -184,7 +220,12 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
         let accountID = tokens.extras["chatgpt_account_id"]
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
-        return try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
+        var usage = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
+        usage.history = await refreshHistory(using: CodexHistorySource(
+            client: CodexUsageClient(http: http), accessToken: tokens.accessToken, chatGPTAccountID: accountID,
+            cardID: account.cardID, plan: .init(planType: ProviderParse.jsonObject(response.body)?["plan_type"] as? String)
+        ))
+        return usage
     }
 
     private func refreshCopilot(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -233,15 +274,31 @@ final class AccountProviderRuntime: ProviderRuntime {
         return try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
     }
 
+    /// Antigravity's usage read with the sign-in renewed once on a 401, the way `authorizedRead` does it
+    /// for one response: a second 401 is the expired sign-in.
     private func refreshAntigravity(_ credential: AccountCredential) async throws -> ProviderUsage {
         let tokens = try await freshTokens(credential, grant: AntigravityLogin.refresh)
+        do {
+            return try await antigravityUsage(token: tokens.accessToken)
+        } catch is AntigravityUsageClient.TokenRefused {
+            AppLog.debug(.auth, "\(account.cardID) usage read unauthorized; renewing the sign-in once")
+            let renewed = try await renewedTokens(tokens, grant: AntigravityLogin.refresh)
+            do {
+                return try await antigravityUsage(token: renewed.accessToken)
+            } catch is AntigravityUsageClient.TokenRefused {
+                throw ProviderError.signInExpired(.antigravity)
+            }
+        }
+    }
+
+    private func antigravityUsage(token: String) async throws -> ProviderUsage {
         let client = AntigravityUsageClient(http: http)
-        if planBodyRead.isDue(at: now()) {
-            planBodyRead.record(try? await client.loadCodeAssist(token: tokens.accessToken), at: now())
+        if planBodyRead.isDue(at: now()), let codeAssist = try? await client.loadCodeAssist(token: token) {
+            planBodyRead.record(codeAssist, at: now())
         }
         let codeAssist = planBodyRead.value
         let bodies = try await client.quotaSummary(
-            token: tokens.accessToken,
+            token: token,
             project: codeAssist.flatMap(AntigravityUsageMapper.parseProject)
         )
         guard let lines = AntigravityUsageMapper.parseQuotaSummaries(bodies) else { throw ProviderError.invalidResponse }
@@ -256,7 +313,9 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchAccount(apiKey: key)), at: now())
         }
-        return try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
+        var usage = try OllamaUsageMapper.map(balanceBody: balance.body, accountBody: planBodyRead.value)
+        usage.history = await refreshHistory(using: OllamaHistorySource(client: client, apiKey: key, accountID: account.cardID))
+        return usage
     }
 
     private func refreshOpenCode(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -287,6 +346,26 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func replaceCredential(_ credential: AccountCredential) async throws {
         try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        credentialWrites += 1
+        if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
+    }
+
+    func earlyRenewalIsHeld(expiresAt: Date) -> Bool {
+        expiresAt > now() && now() < earlyRenewalNotBefore
+    }
+
+    func holdEarlyRenewal(after error: Error) {
+        guard case ProviderError.rateLimited(let retryAfter?) = error else { return }
+        earlyRenewalNotBefore = now().addingTimeInterval(retryAfter)
+    }
+
+    func saveRenewal(_ tokens: OAuthTokens) async {
+        unsavedRenewal = tokens
+        do {
+            try await replaceCredential(.oauth(tokens))
+        } catch {
+            AppLog.error(.auth, "\(account.cardID) couldn't save the renewed sign-in; keeping it and retrying: \(error.localizedDescription)")
+        }
     }
 
     func validate(_ credential: AccountCredential) async throws {

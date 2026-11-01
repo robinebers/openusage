@@ -29,6 +29,7 @@ final class ClaudeSession {
 
     func send(at now: Date, _ request: @escaping @MainActor () async throws -> HTTPResponse) async throws -> HTTPResponse {
         if let wait = wait(at: now) { throw ProviderError.rateLimited(retryAfter: wait) }
+        let window = sessions.windows[key]
         let response = try await request()
         if response.statusCode == 429 {
             let strikes = (sessions.windows[key]?.strikes ?? 0) + 1
@@ -36,7 +37,7 @@ final class ClaudeSession {
             sessions.setWindow(ClaudeRateLimitWindow(until: now.addingTimeInterval(wait), strikes: strikes), for: key)
             throw ProviderError.rateLimited(retryAfter: wait)
         }
-        if (200..<300).contains(response.statusCode) { sessions.setWindow(nil, for: key) }
+        if (200..<300).contains(response.statusCode), sessions.windows[key] == window { sessions.setWindow(nil, for: key) }
         return response
     }
 

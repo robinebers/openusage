@@ -37,8 +37,12 @@ enum CodexUsageMapper {
             ))
         }
 
-        if let remaining = readCreditsRemaining(response: response, body: body) {
+        if let remaining = readCreditsRemaining(response: response, body: body), ProviderParse.int(remaining) != nil {
             lines.append(.values(label: "Credits", values: creditValues(remaining: remaining)))
+        }
+
+        if let creditLimit = creditLimitLine(body: body) {
+            lines.append(creditLimit)
         }
 
         return ProviderUsage(plan: formatCodexPlan(body["plan_type"]), lines: lines)
@@ -112,7 +116,7 @@ enum CodexUsageMapper {
     private static func readPeriodMs(_ window: [String: Any]?) -> Int? {
         guard let window else { return nil }
         guard let seconds = ProviderParse.number(window["limit_window_seconds"]) else { return nil }
-        return Int(seconds * 1000)
+        return ProviderParse.int(seconds * 1000)
     }
 
     static func creditValues(remaining: Double) -> [MetricValue] {
@@ -148,7 +152,7 @@ enum CodexUsageMapper {
     /// `ProviderParse.number` because a JSON `null` decodes to `NSNull`, which a bare nil-check would accept.
     private static func availableCount(in source: [String: Any]) -> Int? {
         guard let count = ProviderParse.number(source["available_count"]), count >= 0 else { return nil }
-        return Int(count.rounded(.down))
+        return ProviderParse.int(count.rounded(.down))
     }
 
     static func resetCreditID(in body: [String: Any], expiringAt expiry: Date) -> String? {
@@ -194,6 +198,18 @@ enum CodexUsageMapper {
         case "no_credit": return .noCredit
         default: return .failed(.refused)
         }
+    }
+
+    /// The credit limit a workspace sets on the member; ChatGPT sends its numbers as decimal strings.
+    private static func creditLimitLine(body: [String: Any]) -> MetricLine? {
+        guard let limit = (body["spend_control"] as? [String: Any])?["individual_limit"] as? [String: Any],
+              let used = ProviderParse.number(limit["used"]), used >= 0,
+              let cap = ProviderParse.number(limit["limit"]), cap >= 0
+        else { return nil }
+        return .progress(
+            label: "Credit Limit", used: used, limit: cap, format: .count(suffix: "credits"),
+            resetsAt: ProviderParse.number(limit["reset_at"]).map(Date.init(timeIntervalSince1970:))
+        )
     }
 
     private static func readCreditsRemaining(response: HTTPResponse, body: [String: Any]) -> Double? {

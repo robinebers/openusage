@@ -117,6 +117,16 @@ final class LayoutStoreTests: XCTestCase {
         XCTAssertFalse(store.undo())
     }
 
+    func testAnAccountChangeThatKeepsEveryCardKeepsUndo() {
+        let store = makeStore()
+        store.setMetricEnabled("cursor.today", true)
+
+        store.apply(registry: store.registry)
+
+        XCTAssertTrue(store.undo(), "renaming an account keeps the layout's undo history")
+        XCTAssertFalse(store.isMetricEnabled("cursor.today"))
+    }
+
     func testUndoStackIsCappedAtMaxDepth() {
         let store = makeStore()
         store.setMetricEnabled("claude.weekly", true)

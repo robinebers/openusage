@@ -9,6 +9,7 @@ struct WidgetDescriptor: Identifiable, Hashable {
     let sample: WidgetData
     var limitResources: [LimitResourceDescriptor] = []
     var isPinnedByDefault = false
+    var historyRow: HistoryRow?
 
     init(provider: Provider, key: String, metricLabel: String, sample: WidgetData) {
         id = "\(provider.id).\(key)"

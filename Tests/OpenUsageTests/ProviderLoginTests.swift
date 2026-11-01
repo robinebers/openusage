@@ -10,7 +10,7 @@ final class ProviderLoginTests: XCTestCase {
             case "/v1/oauth/token":
                 Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
             case "/api/oauth/profile":
-                Self.response(#"{"account":{"email":"claude@example.com"}}"#)
+                Self.response(#"{"account":{"email":"claude@example.com","uuid":"acct"}}"#)
             default:
                 Self.response("{}", status: 404)
             }
@@ -38,6 +38,29 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertNotEqual(body["state"] as? String, verifier)
         XCTAssertEqual(body["state"] as? String, query.first { $0.name == "state" }?.value)
         XCTAssertFalse(authorizeURL.absoluteString.contains(verifier), "the authorize URL carries the challenge, never the verifier")
+    }
+
+    func testClaudeLoginFailsWhenItCannotReadTheProfile() async throws {
+        let profiles = [
+            Self.response(#"{"type":"error","error":{"type":"rate_limit_error"}}"#, status: 429),
+            Self.response(#"{"account":{"email":"claude@example.com"}}"#),
+        ]
+        for profile in profiles {
+            let http = RoutingHTTPClient { request in
+                request.url.path == "/v1/oauth/token"
+                    ? Self.response(#"{"access_token":"claude-access","refresh_token":"claude-refresh","expires_in":3600}"#)
+                    : profile
+            }
+            do {
+                let result = try await ClaudeLogin(http: http).login(
+                    prompt: Self.browserPrompt(PromptCapture(), callback: CallbackStatus()),
+                    pastedCode: emptyInput()
+                )
+                XCTFail("signed in as \(result.label) without the profile that identifies the account (HTTP \(profile.statusCode))")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, "Claude didn’t return your profile. Click Try Again to sign in again.")
+            }
+        }
     }
 
     func testCodexLoginUsesPiOriginatorAndMapsAccountClaims() async throws {
@@ -191,6 +214,27 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(result.credential.identity, "cursor:user_abc")
     }
 
+    func testOllamaKeyLoginNamesTheAccountByTheEmailOfItsPlanRead() async throws {
+        for account in [#"{"Email":"dev@example.com","Name":"dev","Plan":"pro"}"#, #"{"email":"dev@example.com","name":"dev","plan":"pro"}"#] {
+            let http = Self.ollamaHTTP(account: account)
+
+            let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
+
+            XCTAssertEqual(result.label, "dev@example.com")
+            XCTAssertEqual(http.requests.filter { $0.url.path == "/api/me" }.count, 1, "the plan read names the account; no second request")
+        }
+    }
+
+    func testOllamaKeyLoginKeepsTheProviderNameWithoutAnEmail() async throws {
+        for (account, status) in [(#"{"Name":"dev","Plan":"free"}"#, 200), (#"{"Email":""}"#, 200), ("{}", 401)] {
+            let http = Self.ollamaHTTP(account: account, status: status)
+
+            let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
+
+            XCTAssertEqual(result.label, "Ollama")
+        }
+    }
+
     func testAntigravityLoginExchangesCodeAndMapsGoogleProfile() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
@@ -231,6 +275,18 @@ final class ProviderLoginTests: XCTestCase {
 
     private func emptyInput() -> AsyncStream<String> {
         AsyncStream { $0.finish() }
+    }
+
+    private func pastedInput(_ value: String) -> AsyncStream<String> {
+        AsyncStream { $0.yield(value); $0.finish() }
+    }
+
+    private static func ollamaHTTP(account: String, status: Int = 200) -> RoutingHTTPClient {
+        RoutingHTTPClient { request in
+            request.url.path == "/api/me"
+                ? Self.response(account, status: status)
+                : Self.response(#"{"included":{"balance_usd":72.5,"allowance_usd":100}}"#)
+        }
     }
 
     private static func browserPrompt(

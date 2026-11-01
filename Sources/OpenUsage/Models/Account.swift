@@ -80,6 +80,9 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     /// A Copilot organization account carries the login whose billing its token reads; every other
     /// account has none.
     let organization: String?
+    /// An account mirrored from a CLIProxyAPI hub carries where its login lives there; every other
+    /// account has none.
+    var hub: HubLink?
     let addedAt: Date
 
     var authMethod: ProviderAuthMethod {
@@ -90,11 +93,14 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
         "\(kind.rawValue)@\(id.uuidString.lowercased().prefix(8))"
     }
 
-    init(id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, addedAt: Date = Date()) {
+    init(
+        id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, hub: HubLink? = nil, addedAt: Date = Date()
+    ) {
         self.id = id
         self.kind = kind
         self.label = label
         self.organization = organization
+        self.hub = hub
         self.addedAt = addedAt
     }
 }

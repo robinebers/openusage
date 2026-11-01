@@ -43,7 +43,7 @@ enum Formatters {
 
     static func compactDuration(_ seconds: TimeInterval) -> String? {
         guard seconds.isFinite, seconds > 0 else { return nil }
-        let totalMinutes = max(1, Int((seconds / 60).rounded(.up)))
+        let totalMinutes = max(1, ProviderParse.int((seconds / 60).rounded(.up)) ?? .max)
         let days = totalMinutes / (24 * 60)
         let hours = (totalMinutes % (24 * 60)) / 60
         let minutes = totalMinutes % 60

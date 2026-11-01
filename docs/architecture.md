@@ -19,7 +19,8 @@ environment:
 
 | Store | Owns |
 |---|---|
-| `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `addedAt`), persisted under `accounts.v1`, and the `CredentialVault`. |
+| `AccountStore` | The list of `Account` values (`id`, `kind`, `label`, `hub`, `addedAt`), persisted under `accounts.v1`; the connected `CLIProxyHub` values under `cliproxyHubs.v1`; and the `CredentialVault`. |
+| `CLIProxyHubSync` | Each CLIProxyAPI hub's last read, and the reads that keep its mirrored accounts in step with its login list. |
 | `LayoutStore` | Provider order, metric order and visibility, menu-bar stars, and undo history, saved as one `LayoutState`. A provider's only account starts from that provider's 0.7.x layout, which `LayoutV1Keys` reads. |
 | `PopoverState` | The popover's screen, the Accounts detail and Add Account sheet, the screen-slide bookkeeping, and the transient pills (star denial, Copied, the Accounts star notice). |
 | `WidgetDataStore` | The latest `ProviderSnapshot` per account, the refresh loop's per-account outcomes, errors, and staleness. |
@@ -30,8 +31,8 @@ environment:
 Accounts are the source of truth. Every `AccountStore` change runs `AppContainer.syncAccounts`
 synchronously, which rebuilds the runtimes with `ProviderCatalog.make(accounts:vault:http:reusing:)`,
 applies the new `WidgetRegistry` to the layout and data store in place (a removed account's in-flight
-refresh is cancelled there, so a late response has nothing to commit to), and refreshes any account that
-is new. The status item and the panel are never rebuilt on an account change.
+refresh is cancelled there, so a late response has nothing to commit to), and refreshes any account whose
+runtime is new: a new account, or a hub account whose link to its hub changed. The status item and the panel are never rebuilt on an account change.
 
 ## Accounts and sign-in
 
@@ -53,6 +54,17 @@ paste, and lives in `Providers/Devin/DevinLogin.swift`. `AddAccountFlow` runs a 
 
 `CredentialVault` (`Services/AccountCredentialVault.swift`) stores one `AccountCredential` (OAuth
 tokens or an API key) per account id in the app's Keychain service.
+
+A CLIProxyAPI hub (`Models/CLIProxyHub.swift`) is not a provider. Each supported login on it is
+an ordinary account of its provider (`.claude`, `.codex`, `.antigravity`, `.devin`, or `.grok`) whose
+`hub` link names the hub and the login's `auth_index`;
+its stored credential is the literal `$TOKEN$` with no refresh token, and the hub's management key is
+stored under the hub's id. `ProviderCatalog` gives such an account a `HubTunnel`
+(`Services/CLIProxyHubClient.swift`) as its `HTTPClient`, which wraps each request in the hub's
+`POST /v0/management/api-call` and unwraps the upstream answer, so the providers' own clients,
+mappers, and refresh code run unchanged. `CLIProxyHubGate` sends a hub one request at a time and stops
+calling it after a rejected key or an IP ban. `AccountStore.mirror` reconciles the accounts with the
+hub's `auth-files` listing, and applying the same listing twice changes nothing.
 
 ## Usage
 
@@ -92,8 +104,9 @@ entitlements. Development and release bundles have separate groups and URL schem
 `AppContainer.startRefreshing` runs `WidgetDataStore.refreshAll`, then `QuotaNotificationEvaluator.evaluate` over the shown metrics, then
 `TelemetryRecorder.tick`, at launch and then every `RefreshSetting.interval` (5 minutes), with
 `WidgetDataStore.refreshHourlyReads` halfway between passes for the reads a provider must not get in
-the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Every cadence
-and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
+the same burst as usage (`ProviderRuntime.refreshHourlyReads`; Claude's plan and reset grants). Each
+account's hourly reads get the same two-minute deadline as its refresh, so one that hangs never holds up
+the loop. Every cadence and wait is a named constant in `RefreshSetting`. ⌘R runs `refreshAll(force: true)`, which skips the
 cache and asks each runtime's hourly reads again (`ProviderRuntime.forgetHourlyReads`); whether a
 forced refresh waits out a backoff is `RefreshBackoff.holds`.
 `refresh(providerID:)` skips an account whose snapshot is less than an interval old, honours its `RefreshBackoff`,
@@ -106,7 +119,7 @@ fetched snapshot is written to the cache as it lands.
 `ContainingAppBundle`) to open that app's defaults domain, and hands the rest to `UsageReader` in the
 library. `UsageReader` builds a `WidgetRegistry` from the stored accounts (`AccountStore.load`) with
 the same `AccountProviderRuntime.provider(for:)` and `widgetDescriptors(for:)` the app's runtimes use,
-and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v1` JSON that
+and `LimitsEnvelope` projects it and the snapshot cache into the `openusage.limits.v2` JSON that
 `exportingLimit` declares resource by resource. Each entry's `displayName` is the account's
 `Provider.fullName`, and its `stale` and `expiresAt` come from `ProviderSnapshot.isStale(at:)` and
 `staleAt`, the rule `WidgetDataStore.stalenessHint` uses for the account's clock. The command never

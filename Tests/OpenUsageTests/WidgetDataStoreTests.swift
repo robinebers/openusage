@@ -55,6 +55,31 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertFalse(untracked, "a read ran while the account was not marked refreshing")
     }
 
+    func testAForcedRefreshWaitingOnARead429HoldsUntilRetryAfter() async throws {
+        let account = Account(kind: .openrouter, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.apiKey("key"), for: account.id)
+        let firstRead = HeldResponse()
+        let http = RoutingHTTPClient { _ in
+            await firstRead.hold()
+            return HTTPResponse(statusCode: 429, headers: ["retry-after": "600"], body: Data())
+        }
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+        let id = runtime.provider.id
+
+        let first = Task { await store.refresh(providerID: id) }
+        await firstRead.waitUntilHeld()
+        let forced = Task { await store.refresh(providerID: id, force: true) }
+        try await Task.sleep(for: .milliseconds(50))
+        await firstRead.release()
+        _ = await first.value
+
+        let outcome = await forced.value
+        XCTAssertEqual(outcome, .backedOff)
+        XCTAssertEqual(http.requests.count, 1, "the waiting refresh asked again inside the provider's wait")
+    }
+
     func testSingleProviderRefreshPersistsImmediately() async {
         let fixture = makeRuntime("single")
         let defaults = isolatedDefaults()
@@ -342,6 +367,25 @@ final class WidgetDataStoreTests: XCTestCase {
         let data = store.data(for: descriptor)
         XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
         XCTAssertEqual(data.menuBarValue, "$1.2K")
+    }
+
+    func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {
+        let account = Account(kind: .claude, label: "Ultra")
+        let descriptors = AccountProviderRuntime.widgetDescriptors(for: account)
+        let session = try XCTUnwrap(descriptors.first { $0.key == "session" })
+        let weekly = try XCTUnwrap(descriptors.first { $0.key == "weekly" })
+        let provider = AccountProviderRuntime.provider(for: account)
+        for body in [#"{"five_hour":null,"seven_day":{"utilization":40,"resets_at":"2099-01-01T00:00:00.000Z"}}"#,
+                     #"{"seven_day":{"utilization":40,"resets_at":"2099-01-01T00:00:00.000Z"}}"#] {
+            let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8)))
+            let runtime = StubRuntime(provider: provider, descriptors: [session, weekly],
+                                      snapshot: ProviderSnapshot(provider: provider, plan: "Ultra", lines: lines))
+            let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+            await store.refreshAll()
+
+            XCTAssertFalse(store.data(for: session).hasData, body)
+            XCTAssertTrue(store.data(for: weekly).hasData, body)
+        }
     }
 
     func testCreditValuesFloorAndClampBalance() {

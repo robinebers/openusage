@@ -8,7 +8,7 @@ report stays hidden.
 | Provider | Sign-in | Card shows |
 |---|---|---|
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Rate Limit Resets |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days, Turns |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
@@ -17,7 +17,7 @@ report stays hidden.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
-| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, This Week, This Month, Key Limit |
+| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Requests, Key Limit, Budget, Free Requests |
 | Z.ai | API key | Session, Weekly, Web Searches |
 
 ## What you grant
@@ -51,8 +51,9 @@ popover says this sign-in can't use resets, and you can spend the reset in Claud
 Sign in through claude.ai in your browser. The sheet also accepts a pasted code if your browser shows
 one instead of returning to the app. The card reads `/api/oauth/usage` for the session, weekly,
 Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
-plan, such as Pro or Max. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent`
-when the account sets none.
+plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, so its card has no
+Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
+account sets none.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Rest the pointer on it to see
 when each expires; choose **Use**, then **Reset** to spend one.
@@ -64,7 +65,16 @@ takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
 with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
-Limit Resets row.
+Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
+it shows only when the workspace sets one.
+
+Today, Yesterday, and Last 30 Days show the credits ChatGPT charged and the text tokens it counted on
+UTC days, from the reports the Codex app's Analytics view reads, and Turns counts the last 30 days'
+turns. A day with no charge reads 0 credits. The rows never show dollars, and a workspace's relative
+usage units never show as credits. Rest the pointer on a range to see its credits, turns, and tokens,
+and on a workspace plan the top five models by credits. The card reads the reports once an hour, on the
+first refresh of a new UTC day, and on ⌘R. A failed read hides the rows that cover today and yesterday
+until the next read.
 
 ## Cursor
 
@@ -77,6 +87,24 @@ plan, the card reads Cursor's `usage-summary`, which names the seat's membership
 membership is Enterprise or Team shows that name where the plan endpoint says Pro or nothing. Any other
 plan name, such as Ultra, stays. When the seat's usage read has no Extra Usage, the card takes Extra
 Usage from `usage-summary` and reads it on every refresh.
+
+Today, Yesterday, and Last 30 Days show what Cursor charged the account and the tokens it reported.
+The charge is the sum of `chargedCents` on the account's on-demand usage events
+(`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the list on Cursor's Usage page. Usage the
+plan includes, and errored or free requests, count as $0. Tokens are the input, output, cache read, and
+cache write tokens of every event, whatever its kind; an event that reports no token usage counts as
+zero tokens. Usage Events counts every event of the last 30 days, free and errored ones too.
+Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
+the charge, the usage events, each kind of token, and the top five models, the rest as Other.
+The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
+refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
+succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
+30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
+yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
+once every day it covers has been read. After Cursor answers a history read with 429, history reads wait
+for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
+
+Total Usage and Today are the default menu-bar stars.
 
 ## Antigravity
 
@@ -116,8 +144,20 @@ Its card shows the plan and says so, with no rows.
 
 Paste an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys). The card reads the
 balance API for the session, weekly, and monthly windows that your plan has, plus purchased credits,
-and the plan. The card's right-click menu adds an **API Keys** link to
+and the plan. A new account is named after the email ollama.com reports for the key, or "Ollama" if
+it reports none. The card's right-click menu adds an **API Keys** link to
 [ollama.com/settings/keys](https://ollama.com/settings/keys).
+
+Today, Yesterday, and Last 30 Days show what Ollama's `/api/usage` reports for each UTC day: the usage
+value in dollars (`usage_usd`, what the requests are worth, whether the plan or purchased credits paid
+for them) and the tokens, input plus output. Cached input is already part of input. Requests counts the
+last 30 days' requests. A legacy plan reports only requests, so its card shows Requests alone. Rest the
+pointer on a Today, Yesterday, or Last 30 Days figure to see what Ollama reported for that range: the
+usage value, requests, each kind of token, and the top five models, the rest as Other. A range with a
+day whose usage falls beyond the ten models Ollama names shows no models.
+The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
+hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
+read hides the rows it would have filled until the next read an hour later.
 
 ## OpenCode
 
@@ -131,14 +171,31 @@ Paste a **Management** key from
 whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
 bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
 your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
-workspaces don't count.
+workspaces don't count. A Management key scoped to one workspace can't read the account's credits, so
+its card has no Credits or Balance, and its Today, This Week, and This Month add up that workspace's
+keys.
 
-A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, and **Key
-Limit** when the key has a credit limit. A daily, weekly, or monthly limit resets at midnight UTC, and
-weeks start on Monday. OpenRouter lets only a Management key read the credits, so a standard key's card
-has no Credits or Balance.
+Today, This Week, and This Month show the credit spend first, then what the keys spent through your
+own provider keys (BYOK), which is never added to it. A Management key also reads `/api/v1/activity`,
+which covers the 30 UTC days before today: **Yesterday** and **Prior 30 Days** show the spend and the
+tokens (prompt plus completion), and **Requests** counts the requests of those 30 days. The card reads
+all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight. A failed
+read hides those rows and is tried again an hour later; it never affects the other rows.
 
-Credits is the default menu-bar star. The card's right-click menu adds a **Credits** link to
+Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
+OpenRouter reported for that range. For Today, This Week, and This Month that is the spend and BYOK. For
+Yesterday and Prior 30 Days it adds the requests, the prompt, cached, completion, and reasoning tokens,
+and the top five models by tokens, the rest as Other. Prompt tokens include the cached ones, and
+completion tokens include the reasoning ones.
+
+A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, **Key Limit**
+when the key has a credit limit, **Budget** when a guardrail or workspace budget applies to it, and
+**Free Requests**, the account's free-model requests for the UTC day. A daily, weekly, or monthly limit
+resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Management key read the
+credits and the activity, so a standard key's card has no Credits, Balance, Yesterday, Prior 30 Days, or
+Requests.
+
+Credits and Today are the default menu-bar stars. The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).
 
 ## Z.ai

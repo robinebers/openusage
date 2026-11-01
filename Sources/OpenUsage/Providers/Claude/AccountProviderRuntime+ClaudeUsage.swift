@@ -11,7 +11,8 @@ struct ClaudeAccountState {
 extension AccountProviderRuntime {
     /// One usage read per pass, shared with any other card on the same login and never sent inside its
     /// 429 window. The profile and the reset grants are read in the secondary-reads slot instead, apart
-    /// from it: Anthropic answers a grants read sent right after a usage read with a 429.
+    /// from it: Anthropic answers a grants read sent right after a usage read with a 429. A hub account
+    /// reads its profile with its first usage read, so it shows its plan as soon as it appears.
     func refreshClaude(_ credential: AccountCredential) async throws -> ProviderUsage {
         let session = claudeSession(for: credential)
         let forced = claude.forcedReadsPending
@@ -27,6 +28,8 @@ extension AccountProviderRuntime {
                 await readClaudeResetGrants(session, accessToken: tokens.accessToken)
             }
             try? await readClaudeProfile(session, tokens: tokens)
+        } else if account.hub != nil, session.planRead.value == nil, session.planRead.isDue(at: now()) {
+            try? await readClaudeProfile(session, tokens: tokens)
         }
         if let resets = claudeResetsLine(session) { lines.append(resets) }
         return ProviderUsage(plan: session.planRead.value, lines: lines)
@@ -39,12 +42,13 @@ extension AccountProviderRuntime {
     }
 
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? {
-        guard account.kind == .claude, let credential = try? await loadCredential() else { return nil }
-        let session = claudeSession(for: credential)
+        guard account.kind == .claude else { return nil }
+        let launched = claude.session == nil ? try? await loadCredential() : nil
+        guard let session = claude.session ?? launched.map({ claudeSession(for: $0) }) else { return nil }
         let profileDue = session.planRead.isDue(at: now())
         let grantsDue = session.resetGrants.isOlder(than: RefreshSetting.secondaryReadInterval, at: now())
         guard profileDue || grantsDue, session.wait(at: now()) == nil,
-              let tokens = try? await freshTokens(credential, grant: ClaudeLogin.refresh)
+              let tokens = try? await freshTokens(try await loadCredential(), grant: ClaudeLogin.refresh)
         else { return nil }
         if profileDue { try? await readClaudeProfile(session, tokens: tokens) }
         if grantsDue { await readClaudeResetGrants(session, accessToken: tokens.accessToken) }
@@ -71,6 +75,7 @@ extension AccountProviderRuntime {
             if let uuid = profile.organization?.uuid, UUID(uuidString: uuid) != nil { session.organizationUUID = uuid }
             session.planRead.record(ClaudeUsageMapper.formatLivePlan(profile: profile), at: now())
         } catch {
+            guard !Task.isCancelled else { throw error }
             AppLog.warn(LogTag.plugin("claude"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
             session.planRead.record(nil, at: now())
             throw error

@@ -3,6 +3,7 @@ import SwiftUI
 struct DashboardLiveRow: View {
     let line: DashboardLine
     var resetClaim: ResetClaimService?
+    var breakdown: UsageBreakdown?
     var onToggleMeterStyle: (() -> Void)?
     var onToggleResetDisplay: (() -> Void)?
 
@@ -30,11 +31,27 @@ struct DashboardLiveRow: View {
             paceTooltip: line.data.paceTooltip(now: now),
             valueTooltip: line.data.meterStyleTooltip,
             resetTooltip: line.data.resetTooltip(now: now),
-            figure: line.data.showsResetExpiries ? { AnyView(resetsTrigger($0)) } : { $0 }
+            figure: figure
         )
     }
 
-    private func resetsTrigger(_ figure: AnyView) -> some View {
+    private var figure: (AnyView) -> AnyView {
+        if line.data.showsResetExpiries { return { AnyView(hoverTrigger($0) { resetsDetail }) } }
+        if let breakdown {
+            return {
+                AnyView(hoverTrigger($0) {
+                    UsageBreakdownDetail(
+                        breakdown: breakdown,
+                        providerName: line.descriptor.providerKind.displayName,
+                        onHoverChange: { inside in hover.detailHover(inside) }
+                    )
+                })
+            }
+        }
+        return { $0 }
+    }
+
+    private func hoverTrigger<Detail: View>(_ figure: AnyView, @ViewBuilder detail: @escaping () -> Detail) -> some View {
         let lit = hover.overInline || hover.isPresented
         return figure
             .background {
@@ -56,20 +73,23 @@ struct DashboardLiveRow: View {
                     // so a plain assignment would strand the hover bookkeeping and block future hides.
                     set: { if !$0 { hover.dismiss() } }
                 ),
-                reduceAnimations: reduceAnimations
-            ) {
-                RateLimitResetsDetail(
-                    count: line.data.resetCreditCount,
-                    expiries: line.data.expiriesAt,
-                    onHoverChange: { inside in hover.detailHover(inside) },
-                    onPinChange: { pinned in hover.setPinned(pinned) },
-                    claim: resetClaim.flatMap { service in
-                        service.isClaimable ? { expiry, redeemRequestID in
-                            await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
-                        } : nil
-                    },
-                    confirmDetail: resetClaim?.confirmDetail
-                )
-            }
+                reduceAnimations: reduceAnimations,
+                content: detail
+            )
+    }
+
+    private var resetsDetail: some View {
+        RateLimitResetsDetail(
+            count: line.data.resetCreditCount,
+            expiries: line.data.expiriesAt,
+            onHoverChange: { inside in hover.detailHover(inside) },
+            onPinChange: { pinned in hover.setPinned(pinned) },
+            claim: resetClaim.flatMap { service in
+                service.isClaimable ? { expiry, redeemRequestID in
+                    await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
+                } : nil
+            },
+            confirmDetail: resetClaim?.confirmDetail
+        )
     }
 }

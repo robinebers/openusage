@@ -103,6 +103,19 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(values.first?.number, 0)
     }
 
+    func testAClaimAnswerWithACountTooLargeForAnIntSpendsOneReset() async throws {
+        let http = makeHTTP(claim: { _ in Self.json(#"{"result":"reset","resets_left":1e300}"#) })
+        let runtime = try makeRuntime(http: http)
+        await prime(runtime)
+
+        let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .success)
+        let row = try XCTUnwrap(runtime.claude.session?.resetGrants.check?.status?.line(now: Date()))
+        guard case .values(_, let values, _) = row else { return XCTFail("expected the resets row") }
+        XCTAssertEqual(values.first?.number, 0)
+    }
+
     func testAClaimWithoutACachedOrganizationReadsTheProfileOnce() async throws {
         let http = makeHTTP(claim: { _ in Self.json(#"{"result":"reset","resets_left":0}"#) })
         let runtime = try makeRuntime(http: http)

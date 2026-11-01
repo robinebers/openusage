@@ -53,7 +53,7 @@ struct SettingsScreen: View {
             .inlineGroupedForm()
         }
         .scrollPosition($scrollPosition)
-        .onChange(of: popover.screen) { _, screen in
+        .onChange(of: popover.screen, initial: true) { _, screen in
             if screen == .settings {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
@@ -77,9 +77,9 @@ struct SettingsScreen: View {
 
     private var notificationsSection: some View {
         Section {
-            notificationToggle("Under 10% Remaining", isOn: $underTenPercent)
-            notificationToggle("Healthy Pace Changes", isOn: $healthyToClose)
-            notificationToggle("Near-Limit Pace Changes", isOn: $closeToRunningOut)
+            notificationToggle(.underTenPercent, isOn: $underTenPercent)
+            notificationToggle(.healthyToClose, isOn: $healthyToClose)
+            notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
         } header: {
             Text("Notifications")
         } footer: {
@@ -158,14 +158,17 @@ struct SettingsScreen: View {
         }
     }
 
-    private func notificationToggle(_ title: String, isOn: Binding<Bool>) -> some View {
-        Toggle(title, isOn: isOn)
-            .onChange(of: isOn.wrappedValue) { _, enabled in
-                if enabled { checkNotificationPermission() }
-            }
+    private func notificationToggle(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(milestone.notificationTitle)
+            Text(milestone.settingSubtitle)
+        }
+        .onChange(of: isOn.wrappedValue) { _, enabled in
+            if enabled { checkNotificationPermission() }
+        }
     }
 
     private func checkNotificationPermission() {
-        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization().value }
+        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization() }
     }
 }

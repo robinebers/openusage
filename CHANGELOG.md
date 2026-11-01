@@ -18,6 +18,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
   or off per account, and starred metrics show in the menu bar.
 - The Density setting and Reset All Customization.
+- The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
+  Animations follow macOS's Reduce Motion setting.
 
 ### Changed
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
@@ -30,6 +32,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
   by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
   `displayName` names the account the way the app does (`ChatGPT · Work`).
+  `schema` is now `openusage.limits.v2`, so a script can tell this shape from 0.7.x's `v1`.
   The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
   `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
   the app shows its clock next to the account.
@@ -40,21 +43,47 @@ shows only what each provider's API reports for the accounts you sign in to.
 - New app icon.
 - Claude: when Anthropic rate-limits a login, every card on it waits out the limit, across a relaunch
   too, and cards signed in to one login share one usage request.
-- Menu bar: the strip, or the app icon in its place, dims while an account's values are out of date
-  because refreshes fail or a provider asked OpenUsage to wait.
+- A provider's `Retry-After` wait is honored up to an hour; a longer one is cut to an hour.
+- A provider number too large for the app, such as a window length, count, or credit balance, no
+  longer crashes it: the value is treated as malformed. A reset that far off shows the longest countdown.
 - Sign-ins: an outage, a rate limit, or a lost connection while renewing a sign-in no longer reads as
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
+- Sign-ins: a renewed sign-in the Keychain refuses to save stays in use and is saved on the next
+  refresh, so the account no longer has to be added again.
 - OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
+- OpenRouter: a Management key scoped to one workspace can be added. It shows that workspace's spend,
+  without Credits or Balance, which OpenRouter keeps from workspace keys.
+- OpenRouter: Today, This Week, and This Month add BYOK spend. A Management key adds Yesterday, Prior
+  30 Days, and Requests from OpenRouter's activity, and resting the pointer on a range shows its
+  requests, tokens, and top models. A standard key adds Budget and Free Requests. Today is a new default
+  menu-bar star.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
   account shows its provider's name once, not `OpenRouter · OpenRouter`.
+- Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
+  and usage they carry stay off disk, and every read goes to the provider.
+- Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
+- Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
+  them.
+- Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
+- Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
+  counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
+  it: the charge, usage events, each kind of token, and the top models.
+- Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
+  for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
+  range shows what Ollama reported for it: requests, each kind of token, and the top models.
+- ChatGPT: Today, Yesterday, and Last 30 Days show the credits charged and the tokens counted on UTC
+  days, a Turns row counts the last 30 days' turns, and Credit Limit shows a workspace's spending limit.
+  Resting the pointer on a range shows what ChatGPT reported for it.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
-- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, and the appearance settings.
+- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
+- The Almost Out, Cutting It Close, and Will Run Out switches in Settings, named after the alerts they
+  send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
@@ -76,8 +105,12 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor Enterprise and Team seats that Cursor's plan endpoint reports as Pro keep their Enterprise or
   Team label, Extra Usage, and request-based usage. The membership now comes from Cursor's
   `usage-summary`, read once an hour, not from Cursor's local database.
+- Cursor's Today, Yesterday, and Last 30 Days rows, now the dollars Cursor reports it charged for
+  on-demand usage. Usage your plan includes counts as $0, and the Usage Trend chart is gone.
 - Devin's Daily, Weekly, and Extra Usage rows. Sign in on windsurf.com and paste the token it shows,
   or paste a Windsurf API key.
+- Claiming a Claude or ChatGPT rate-limit reset refreshes that account right away, so its meters and
+  Limit Resets count update as soon as the result shows.
 
 ## v0.7.16
 

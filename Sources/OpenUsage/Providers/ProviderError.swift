@@ -8,6 +8,8 @@ enum ProviderError: Error, LocalizedError, Equatable {
     case rateLimited(retryAfter: TimeInterval?)
     case unavailable(String)
     case keyRejected(String)
+    /// A server between OpenUsage and the provider, such as a CLIProxyAPI hub, can't be reached.
+    case unreachable(String)
 
     var errorDescription: String? {
         switch self {
@@ -18,11 +20,18 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .rateLimited: "The provider asked OpenUsage to wait before asking again."
         case .unavailable(let message): message
         case .keyRejected(let message): "\(message) Replace it on the account's page."
+        case .unreachable(let message): message
         }
     }
 
     static func isAuthFailure(_ response: HTTPResponse) -> Bool {
-        response.statusCode == 401 || response.statusCode == 403
+        response.statusCode == 401 || (response.statusCode == 403 && !isRateLimit(response))
+    }
+
+    /// GitHub sends its rate limits as 403 with `x-ratelimit-remaining: 0` or `retry-after`.
+    private static func isRateLimit(_ response: HTTPResponse) -> Bool {
+        response.statusCode == 429
+            || (response.statusCode == 403 && (response.header("x-ratelimit-remaining") == "0" || response.header("retry-after") != nil))
     }
 
     static func requireSuccess(_ response: HTTPResponse, kind: ProviderKind) throws {
@@ -31,6 +40,6 @@ enum ProviderError: Error, LocalizedError, Equatable {
     }
 
     static func failed(_ response: HTTPResponse, now: Date = Date()) -> ProviderError {
-        response.statusCode == 429 ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
+        isRateLimit(response) ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
     }
 }

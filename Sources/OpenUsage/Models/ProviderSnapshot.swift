@@ -53,7 +53,7 @@ extension RefreshFailure {
     init(error: Error) {
         let kind: Kind = switch error {
         case ProviderError.rateLimited(let retryAfter): .rateLimited(retryAfter: retryAfter)
-        case is URLError, ProviderError.connectionFailed: .unreachable
+        case is URLError, ProviderError.connectionFailed, ProviderError.unreachable: .unreachable
         default: .refused
         }
         self.init(message: error.localizedDescription, kind: kind)

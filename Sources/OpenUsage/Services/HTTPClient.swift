@@ -25,7 +25,7 @@ struct HTTPResponse: Sendable {
         guard let value = header("Retry-After")?.trimmingCharacters(in: .whitespaces) else { return nil }
         let seconds = TimeInterval(value) ?? Self.httpDateFormatter.date(from: value).map { $0.timeIntervalSince(now) }
         guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
-        return seconds
+        return min(seconds, RefreshSetting.failureBackoffCap)
     }
 
     private static let httpDateFormatter: DateFormatter = {
@@ -45,7 +45,9 @@ struct URLSessionHTTPClient: HTTPClient {
     private static let session = URLSession(configuration: sessionConfiguration(proxy: ProxyConfig.load()))
 
     static func sessionConfiguration(proxy: ProxyConfig?) -> URLSessionConfiguration {
-        let configuration = URLSessionConfiguration.default
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.proxyConfigurations = proxy.map { [$0.proxyConfiguration] } ?? []
         return configuration
     }

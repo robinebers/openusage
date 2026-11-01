@@ -10,10 +10,11 @@
 set -uo pipefail
 
 front_app() {
-  lsappinfo info -only name "$(lsappinfo front)" | head -1 | sed -E 's/^"([^"]*)".*$/\1/'
+  lsappinfo info -only name "$(lsappinfo front)" | sed -nE 's/^"LSDisplayName"="(.*)"$/\1/p'
 }
 
 before="$(front_app)"
+[ -n "$before" ] || { echo "test_quiet: could not read the front app" >&2; exit 1; }
 seen="$(mktemp -t test_quiet)"
 is_test_process() {
   case "$1" in

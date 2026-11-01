@@ -10,7 +10,7 @@ struct AccountListRow<Grip: View>: View {
             grip
 
             HStack(spacing: 8) {
-                ProviderIcon(id: provider.icon, side: 18)
+                AccountIcon(provider: provider, side: 18)
                 Text(provider.displayName)
                     .foregroundStyle(.primary)
                     .layoutPriority(1)

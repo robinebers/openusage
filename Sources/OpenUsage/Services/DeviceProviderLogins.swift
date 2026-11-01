@@ -124,12 +124,19 @@ struct APIKeyLogin: ProviderLogin {
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw LoginError.invalidCode }
         let account = Account(kind: kind, label: kind.displayName)
+        let runtime = await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http)
         do {
-            try await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http).validate(.apiKey(key))
+            try await runtime.validate(.apiKey(key))
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
         }
-        return (kind.displayName, .apiKey(key))
+        guard kind == .ollama else { return (kind.displayName, .apiKey(key)) }
+        let accountBody = await MainActor.run { runtime.planBodyRead.value }
+        guard let email = accountBody.flatMap(OllamaUsageMapper.email(from:)) else {
+            AppLog.warn(LogTag.auth("ollama"), "account read reported no email, naming the account Ollama")
+            return (kind.displayName, .apiKey(key))
+        }
+        return (email, .apiKey(key))
     }
 }
 

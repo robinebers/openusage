@@ -2,6 +2,8 @@ import Foundation
 
 extension AccountProviderRuntime {
     func cursorUsage(_ usage: [String: Any], client: CursorUsageClient, accessToken: String) async throws -> ProviderUsage {
+        let historySource = CursorHistorySource(client: client, accessToken: accessToken, accountID: account.cardID)
+        async let history = refreshHistory(using: historySource)
         var summary: [String: Any]?
         var summaryWasRead = false
         func readSummary() async -> [String: Any]? {
@@ -67,6 +69,7 @@ extension AccountProviderRuntime {
            let line = CursorUsageMapper.mapGrokBotUsage(grokBot) {
             mapped.lines.append(line)
         }
+        mapped.history = await history
         return mapped
     }
 

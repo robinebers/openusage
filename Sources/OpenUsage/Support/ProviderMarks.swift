@@ -13,6 +13,39 @@ struct ProviderIcon: View {
     }
 }
 
+/// An account's provider mark. An account mirrored from a CLIProxyAPI hub carries the hub's mark in
+/// the bottom-trailing corner, cut out of the provider's mark so the two never touch.
+struct AccountIcon: View {
+    let provider: Provider
+    let side: CGFloat
+    var inset: CGFloat = 0.14
+
+    var body: some View {
+        if provider.hubHost == nil {
+            ProviderIcon(id: provider.icon, side: side, inset: inset)
+        } else {
+            let badge = side * 0.52
+            let offset = side * 0.08
+            ProviderIcon(id: provider.icon, side: side, inset: inset)
+                .mask {
+                    Rectangle()
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle()
+                                .frame(width: badge * 1.24, height: badge * 1.24)
+                                .offset(x: offset + badge * 0.12, y: offset + badge * 0.12)
+                                .blendMode(.destinationOut)
+                        }
+                        .compositingGroup()
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    ProviderIcon(id: CLIProxyHub.markID, side: badge, inset: 0)
+                        .offset(x: offset, y: offset)
+                }
+                .accessibilityLabel("Managed by CLIProxyAPI")
+        }
+    }
+}
+
 struct ProviderMark {
     let rep: NSImageRep
     let bounds: CGRect

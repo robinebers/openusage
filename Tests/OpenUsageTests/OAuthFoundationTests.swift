@@ -26,6 +26,32 @@ final class OAuthFoundationTests: XCTestCase {
         XCTAssertEqual(sleeps.values, [1, 6])
     }
 
+    func testDeviceCodePollerKeepsPollingThroughANetworkError() async throws {
+        let calls = LockedCounter()
+        let token: String = try await DeviceCodePoller.poll(interval: 1, expiresIn: 100, sleep: { _ in }) {
+            if calls.next() == 0 { throw URLError(.timedOut) }
+            return .complete("token")
+        }
+
+        XCTAssertEqual(token, "token", "one timed-out poll must not end the sign-in")
+    }
+
+    func testDeviceCodePollerReportsTheNetworkErrorOnceTheCodeExpires() async {
+        let clock = TestClock(Date(timeIntervalSince1970: 0))
+        do {
+            let _: String = try await DeviceCodePoller.poll(
+                interval: 1,
+                expiresIn: 10,
+                now: { clock.now },
+                sleep: { clock.set(clock.now.addingTimeInterval($0)) },
+                request: { throw URLError(.notConnectedToInternet) }
+            )
+            XCTFail("Expected the poll to fail once the code expired")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .notConnectedToInternet)
+        }
+    }
+
     func testDeviceCodeExpiredTokenFails() async {
         do {
             _ = try await DeviceCodePoller.poll(
@@ -40,31 +66,26 @@ final class OAuthFoundationTests: XCTestCase {
         }
     }
 
-    func testLoopbackCallbackAcceptsCodeAndRejectsWrongState() async throws {
+    func testLoopbackCallbackAnswersStrayRequestsAndKeepsListeningForTheCode() async throws {
         let server = try await LoopbackCallbackServer.start(state: "expected")
         XCTAssertEqual(URLComponents(string: server.redirectURI)?.host, "localhost")
         let callback = Task { try await server.waitForCode() }
-        let validURL = server.redirectURI
-            .replacingOccurrences(of: "localhost", with: "127.0.0.1")
-            + "?code=accepted&state=expected"
-        let valid = try await URLSession.shared.data(from: URL(string: validURL)!)
+        let callbackURL = server.redirectURI.replacingOccurrences(of: "localhost", with: "127.0.0.1")
+        var post = URLRequest(url: URL(string: callbackURL + "?code=ignored&state=expected")!)
+        post.httpMethod = "POST"
+        let strays = [
+            (URLRequest(url: URL(string: callbackURL.replacingOccurrences(of: "/callback", with: "/cancel"))!), 404),
+            (URLRequest(url: URL(string: callbackURL + "?code=ignored&state=wrong")!), 400),
+            (post, 405)
+        ]
+        for (request, status) in strays {
+            let response = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response.1 as? HTTPURLResponse)?.statusCode, status, request.url!.absoluteString)
+        }
+        let valid = try await URLSession.shared.data(from: URL(string: callbackURL + "?code=accepted&state=expected")!)
         XCTAssertEqual((valid.1 as? HTTPURLResponse)?.statusCode, 200)
         let acceptedCode = try await callback.value
         XCTAssertEqual(acceptedCode, "accepted")
-
-        let invalid = try await LoopbackCallbackServer.start(state: "expected")
-        let rejected = Task { try await invalid.waitForCode() }
-        let invalidURL = invalid.redirectURI
-            .replacingOccurrences(of: "localhost", with: "127.0.0.1")
-            + "?code=ignored&state=wrong"
-        let response = try await URLSession.shared.data(from: URL(string: invalidURL)!)
-        XCTAssertEqual((response.1 as? HTTPURLResponse)?.statusCode, 400)
-        do {
-            _ = try await rejected.value
-            XCTFail("Expected state mismatch")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "The sign-in response did not match this request.")
-        }
     }
 
     func testLoopbackCallbackWaitsForTheWholeHeaderBeforeItAnswers() async throws {

@@ -28,7 +28,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         pressEscape(in: sheet)
         try await waitUntil { flow.provider == nil }
         try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(flow.selection, .codex)
+        XCTAssertEqual(flow.selection, .provider(.codex))
         XCTAssertNil(flow.prompt)
         XCTAssertFalse(flow.isWorking)
         XCTAssertTrue(presentation.isPresented)
@@ -52,7 +52,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
 
         press(keyCode: 125, character: "\u{F701}", in: sheet)
         press(keyCode: 125, character: "\u{F701}", in: sheet)
-        try await waitUntil { flow.selection == .codex }
+        try await waitUntil { flow.selection == .provider(.codex) }
         XCTAssertNil(flow.provider, "Moving the selection must not choose the provider")
 
         press(keyCode: 36, character: "\r", in: sheet)
@@ -60,6 +60,9 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         XCTAssertEqual(flow.provider, .codex)
     }
 
+    /// Before macOS 26 a prominent button drops its accent fill in a window that isn't key, as AppKit's
+    /// inactive appearance asks, and the test's window never becomes key, so the fill is checked on
+    /// macOS 26 only.
     func testSignInStepsPutTheCloseButtonTopRightAndTheStatusCentredUnderTheButtons() async throws {
         let defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
@@ -95,10 +98,38 @@ final class AddAccountSheetTests: QuietWindowTestCase {
                 let status = try XCTUnwrap(ink.bounds(y: size.height - 40..<size.height - 18), "\(label): nothing under the buttons")
                 XCTAssertEqual(status.midX, size.width / 2, accuracy: 3, "\(label): the status line isn't centred")
                 let buttons = (size.height - 80)..<(size.height - 44)
-                XCTAssertGreaterThan(accent(rep, size: size, x: size.width / 2..<size.width - 20, y: buttons), 400, "\(label): the primary button isn't accent-filled")
+                if #available(macOS 26, *) {
+                    XCTAssertGreaterThan(accent(rep, size: size, x: size.width / 2..<size.width - 20, y: buttons), 400, "\(label): the primary button isn't accent-filled")
+                }
                 XCTAssertEqual(accent(rep, size: size, x: 20..<size.width / 2, y: buttons), 0, "\(label): the secondary button is accent-filled")
             }
         }
+    }
+
+    func testAPastedTokenIsMaskedAndAPastedCodeIsNot() async throws {
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault())
+        let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
+        let steps: [(provider: ProviderKind, prompt: LoginPrompt, masked: Bool)] = [
+            (.devin, .browserToken(url), true),
+            (.claude, .browser(url, acceptsPastedCode: true), false),
+        ]
+        for (provider, prompt, masked) in steps {
+            let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in SlowLogin(prompt: prompt) }
+            addTeardownBlock { flow.cancel() }
+            flow.choose(provider)
+            try await waitUntil { flow.prompt != nil }
+            flow.pastedCode = "pasted-secret"
+            let host = show(AddAccountSheet(flow: flow), in: .titled).host
+            try await Task.sleep(for: .milliseconds(300))
+            host.layoutSubtreeIfNeeded()
+            let field = try XCTUnwrap(textFields(in: host).first { $0.stringValue == "pasted-secret" }, "\(provider): no field shows the pasted value")
+            XCTAssertEqual(field is NSSecureTextField, masked, "\(provider): the pasted value is \(masked ? "shown in plain text" : "masked")")
+        }
+    }
+
+    private func textFields(in view: NSView) -> [NSTextField] {
+        if let field = view as? NSTextField { return [field] }
+        return view.subviews.flatMap(textFields(in:))
     }
 
     private func accent(_ rep: NSBitmapImageRep, size: CGSize, x: Range<CGFloat>, y: Range<CGFloat>) -> Int {

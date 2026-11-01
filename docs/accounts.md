@@ -30,7 +30,8 @@ goes back to the provider list; **Cancel** on the list closes the sheet.
 
 You can add several accounts for the same provider. A new account goes to the bottom of its
 provider's accounts and starts refreshing right away. A new account takes the email or name the
-provider reports, and an API-key account, which reports neither, shows the provider's name once.
+provider reports. An Ollama account takes the email ollama.com reports for its key. Any other API-key
+account reports neither, so it shows the provider's name once.
 Signing in to an account that's already added (the same provider account, or the same API key) adds
 no second copy; the sheet says "This account is already added as <name>." A Claude account in two organizations counts as two accounts, and so does a
 Devin email in two organizations.
@@ -45,7 +46,8 @@ elsewhere saves; Esc cancels.
 
 **Replace API Key…** on an API-key account's page takes a new key and checks it with one usage read
 before saving it. The account keeps its name, place, and stars; if the provider refuses the key, the
-old key stays and the page shows why. A Copilot organization account has **Replace Token…** instead.
+old key stays and the page shows why. A saved key is read at once, even while the old key was waiting
+out a provider's rate limit. A Copilot organization account has **Replace Token…** instead.
 
 ## Hide and star metrics
 

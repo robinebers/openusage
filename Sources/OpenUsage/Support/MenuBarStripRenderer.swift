@@ -18,15 +18,8 @@ enum MenuBarStripRenderer {
         return image
     }
 
-    static func appIcon(for content: MenuBarContent) -> NSImage {
-        let icon = ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
-        guard content.isStale else { return icon }
-        let dimmed = NSImage(size: icon.size, flipped: false) { rect in
-            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.5)
-            return true
-        }
-        dimmed.isTemplate = true
-        return dimmed
+    static var appIcon: NSImage {
+        ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
     }
 
     nonisolated static func trimmedToVisibleContent(_ image: CGImage) -> CGImage? {
@@ -90,7 +83,6 @@ private struct MenuBarTextStrip: View {
         .padding(.vertical, 1)
         .fixedSize()
         .compositingGroup()
-        .opacity(content.isStale ? 0.5 : 1)
     }
 
     @ViewBuilder

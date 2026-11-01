@@ -37,7 +37,9 @@ struct DashboardView: View {
             }
             .coordinateSpace(name: Self.reorderSpace)
             .sheet(isPresented: $popover.isAddingAccount) {
-                AddAccountSheet(flow: AddAccountFlow(store: container.accounts))
+                AddAccountSheet(flow: AddAccountFlow(store: container.accounts, connectHub: { url, key in
+                    try await container.hubs.connect(url: url, key: key)
+                }))
             }
             .background(
                 PopoverKeyReader { key in
@@ -73,6 +75,7 @@ struct DashboardView: View {
             .onChange(of: popover.screen) { _, screen in
                 reorderLift = nil
                 if screen == .settings { hasVisitedSettings = true }
+                if screen == .accounts { Task { await container.hubs.syncDue(maxAge: 60) } }
             }
             // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
             // then spring to the incoming one on the next runloop tick. Deferring the animation one
@@ -113,12 +116,14 @@ struct DashboardView: View {
                     }
                 }
             }
+            // A screen mounted by the slide can measure before its bars are inset (macOS 15 does), so the
+            // slide's co-target may be short: follow the corrected height mid-slide, not after it.
             .onChange(of: measuredIdeal[popover.screen]) { _, _ in
                 guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
                     didEstablishHeight = true
                     animatedHeight = target
-                } else if !isSliding, abs(target - animatedHeight) > 1 {
+                } else if abs(target - animatedHeight) > 1 {
                     withAnimation(Motion.spring) { animatedHeight = target }
                 }
             }
