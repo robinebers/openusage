@@ -5,6 +5,21 @@ import XCTest
 
 @MainActor
 final class OAuthRefreshPersistenceTests: XCTestCase {
+    func testARenewalCantOverwriteTheSignInReplacingIt() async throws {
+        let vault = InMemoryCredentialVault()
+        let account = Account(kind: .claude, label: "Personal")
+        try vault.save(.oauth(OAuthTokens(accessToken: "replacement")), for: account.id)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: RoutingHTTPClient { _ in HTTPResponse(statusCode: 404, headers: [:], body: Data()) })
+
+        await runtime.stopRenewals()
+        await runtime.saveRenewal(OAuthTokens(accessToken: "old"))
+        XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "replacement")))
+
+        runtime.resumeRenewals()
+        await runtime.saveRenewal(OAuthTokens(accessToken: "renewed"))
+        XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "renewed")))
+    }
+
     func testClaudeRefreshPersistsRotatedCredentialToVault() async throws {
         let account = Account(kind: .claude, label: "Claude")
         let vault = InMemoryCredentialVault()

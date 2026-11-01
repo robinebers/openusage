@@ -22,6 +22,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
     /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
+    private var renewalsStopped = false
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
     /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
@@ -362,7 +363,20 @@ final class AccountProviderRuntime: ProviderRuntime {
         earlyRenewalNotBefore = now().addingTimeInterval(retryAfter)
     }
 
+    /// Lets a renewal that's underway finish without saving, so it can't overwrite the sign-in replacing
+    /// this runtime. `resumeRenewals` undoes it if the replacement doesn't go through.
+    func stopRenewals() async {
+        renewalsStopped = true
+        renewal?.cancel()
+        _ = try? await renewal?.value
+    }
+
+    func resumeRenewals() {
+        renewalsStopped = false
+    }
+
     func saveRenewal(_ tokens: OAuthTokens) async {
+        guard !renewalsStopped else { return }
         unsavedRenewal = tokens
         do {
             try await replaceCredential(.oauth(tokens))

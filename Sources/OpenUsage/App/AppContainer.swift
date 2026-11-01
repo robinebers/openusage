@@ -103,11 +103,17 @@ final class AppContainer {
             throw ProviderError.unavailable(message)
         }
         try Task.checkCancellation()
+        await runtime.stopRenewals()
         guard let index = providers.firstIndex(where: { $0.account.id == account.id }) else { return }
         guard providers[index] === runtime else {
             throw ProviderError.unavailable("This account’s key changed while OpenUsage was checking it. Try again.")
         }
-        try accounts.replaceCredential(credential, for: account.id)
+        do {
+            try accounts.replaceCredential(credential, for: account.id)
+        } catch {
+            runtime.resumeRenewals()
+            throw error
+        }
         replacement.update(runtime.account) // The account may have been renamed during the read.
         providers[index] = replacement
         dataStore.replaceProvider(replacement, snapshot: snapshot)
