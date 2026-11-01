@@ -23,6 +23,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
     private var renewalsStopped = false
+    /// Set while a new sign-in is proving itself, so nothing else's answer can stand in for its own.
+    var isCheckingNewSignIn = false
     private var credentialWrite: Task<Void, Error>?
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
@@ -384,6 +386,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// Moves a runtime that proved a new sign-in onto the store that now holds it.
     func adopt(_ vault: any CredentialVault) {
         self.vault = vault
+        isCheckingNewSignIn = false
     }
 
     func resumeRenewals() {

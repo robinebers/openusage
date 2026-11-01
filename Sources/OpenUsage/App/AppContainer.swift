@@ -101,6 +101,7 @@ final class AppContainer {
         // can't be reused, and a refused token can't fall back on the stored one.
         let provisional = ProvisionalCredentialVault(credential)
         let replacement = AccountProviderRuntime(account: account, vault: provisional, http: runtime.http, claudeSessions: claudeSessions)
+        replacement.isCheckingNewSignIn = true
         let snapshot: ProviderSnapshot
         do {
             snapshot = try await replacement.readSnapshot(using: credential)
