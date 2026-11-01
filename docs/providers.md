@@ -168,11 +168,9 @@ Paste an API key from the [OpenCode console](https://opencode.ai/console). The c
 
 ## OpenRouter
 
-Paste a **read-only Management** key with an expiry date from
+Paste a **Management** key from
 [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys) to see the
-whole account. OpenUsage only reads, and a full Management key can create, change, and delete every
-API key on the account.
-The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
+whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
 bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
 your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
 workspaces don't count. A Management key scoped to one workspace can't read the account's credits, so
