@@ -137,8 +137,6 @@ extension AccountProviderRuntime {
             ]
         case .openrouter:
             [
-                .boundedDollars(key: "credits", provider: provider, title: "Credits", limit: 100)
-                    .exportingLimit("credits", unit: "usd"),
                 .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
                     .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .spend, then: .byokSpend)),

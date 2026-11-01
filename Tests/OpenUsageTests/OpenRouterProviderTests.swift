@@ -79,12 +79,12 @@ final class OpenRouterProviderTests: XCTestCase {
 
         let snapshot = try await runtime.refresh().get()
 
-        XCTAssertEqual(shownRows(snapshot, runtime), ["credits", "balance", "today", "yesterday", "week", "month", "prior30", "requests"])
+        XCTAssertEqual(shownRows(snapshot, runtime), ["balance", "today", "yesterday", "week", "month", "prior30", "requests"])
         XCTAssertEqual(dollars(snapshot, "Today"), 26.5)
         XCTAssertEqual(dollars(snapshot, "This Week"), 54)
         XCTAssertEqual(dollars(snapshot, "This Month"), 112)
         XCTAssertEqual(dollars(snapshot, "Balance"), 77.75)
-        XCTAssertEqual(snapshot.line(label: "Credits"), .progress(label: "Credits", used: 22.25, limit: 100, format: .dollars))
+        XCTAssertNil(snapshot.line(label: "Credits"))
         XCTAssertEqual(snapshot.plan, "Pay-as-you-go")
         XCTAssertEqual(http.requests.map { $0.url.path() }, ["/api/v1/key", "/api/v1/credits", "/api/v1/keys", "/api/v1/keys", "/api/v1/activity"])
         for (request, offset) in zip(http.requests.dropFirst(2), ["0", "100"]) {
@@ -147,7 +147,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
 
         XCTAssertEqual(runtime.widgetDescriptors.map(\.title), [
-            "Credits", "Balance", "Today", "Yesterday", "This Week", "This Month", "Prior 30 Days", "Requests",
+            "Balance", "Today", "Yesterday", "This Week", "This Month", "Prior 30 Days", "Requests",
             "Key Limit", "Budget", "Free Requests"
         ])
     }

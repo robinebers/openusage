@@ -17,7 +17,7 @@ report stays hidden.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage |
 | OpenCode | API key | Session, Weekly, Monthly |
-| OpenRouter | Management API key, or a standard API key | Credits, Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Requests, Key Limit, Budget, Free Requests |
+| OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Requests, Key Limit, Budget, Free Requests |
 | Z.ai | API key | Session, Weekly, Web Searches |
 
 ## What you grant
@@ -170,12 +170,12 @@ Paste an API key from the [OpenCode console](https://opencode.ai/console). The c
 
 Paste a **Management** key from
 [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys) to see the
-whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
-bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
-your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
-workspaces don't count. A Management key scoped to one workspace can't read the account's credits, so
-its card has no Credits or Balance, and its Today, This Week, and This Month add up that workspace's
-keys.
+whole account. The card reads `/api/v1/credits` for **Balance**, the credits you bought minus what you
+spent. Balance has no bar, because the credits you bought are not a limit. Today, This Week, and This
+Month add up the spend of every standard API key in your default workspace, disabled and expired keys
+included, from `/api/v1/keys`. Keys in other workspaces don't count. A Management key scoped to one
+workspace can't read the account's credits, so its card has no Balance, and its Today, This Week, and
+This Month add up that workspace's keys.
 
 Today, This Week, and This Month show the credit spend first, then what the keys spent through your
 own provider keys (BYOK), which is never added to it. A Management key also reads `/api/v1/activity`,
@@ -195,7 +195,7 @@ A standard API key shows its own spend from `/api/v1/key`: Today, This Week, Thi
 when the key has a credit limit, **Budget** when a guardrail or workspace budget applies to it, and
 **Free Requests**, the account's free-model requests for the UTC day. A daily, weekly, or monthly limit
 resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Management key read the
-credits and the activity, so a standard key's card has no Credits, Balance, Yesterday, Prior 30 Days, or
+credits and the activity, so a standard key's card has no Balance, Yesterday, Prior 30 Days, or
 Requests.
 
 The card's right-click menu adds a **Credits** link to

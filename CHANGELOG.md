@@ -18,6 +18,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - The welcome screen, provider enable/disable switches, and the On Demand metric tier.
 - Menu-bar stars. The menu bar picks its own limits.
 - The Density setting and Reset All Customization.
+- OpenRouter's Credits bar, which measured spend against every credit ever bought, not a limit.
+  Balance still shows what's left.
 - The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
   Animations follow macOS's Reduce Motion setting.
 
@@ -66,10 +68,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - Sign-ins: a renewed sign-in the Keychain refuses to save stays in use and is saved on the next
   refresh, so the account no longer has to be added again.
-- OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
+- OpenRouter: a Management key shows Balance and what the standard keys in your default
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
 - OpenRouter: a Management key scoped to one workspace can be added. It shows that workspace's spend,
-  without Credits or Balance, which OpenRouter keeps from workspace keys.
+  without Balance, which OpenRouter keeps from workspace keys.
 - OpenRouter: Today, This Week, and This Month add BYOK spend. A Management key adds Yesterday, Prior
   30 Days, and Requests from OpenRouter's activity, and resting the pointer on a range shows its
   requests, tokens, and top models. A standard key adds Budget and Free Requests.
