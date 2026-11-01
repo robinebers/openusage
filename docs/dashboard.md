@@ -10,7 +10,7 @@ When you have no accounts, both tabs show **Add Account**, which opens the provi
 
 Priority shows only what needs you, most urgent first.
 
-**Running Out** lists every limit with half or less left, whose bar is orange or red. Time never decides
+**Running Out** lists every limit with 30% or less left, whose bar is orange or red. Time never decides
 what's listed, only the order: what would run out soonest at your current pace comes first, then limits
 with no pace to go by, least left first.
 
@@ -51,7 +51,7 @@ pointer on an amount to read the other side of it (`48% used` next to `52%`), an
 the other format (the exact time next to a countdown). Rows with a reset tick every 30 seconds, so
 countdowns stay live between refreshes.
 
-A bar's colour follows only what's left: blue, orange at 50% left, red at 10% left. The amount takes the
+A bar's colour follows only what's left: blue, orange at 30% left, red at 10% left. The amount takes the
 bar's colour once the bar is orange or red. A
 used-up limit's amount and reset turn red, and its row fades when its bar is empty. A session window with nothing spent in it yet shows a full
 bar and no reset. The colours come from the system palette, so they follow light, dark, and

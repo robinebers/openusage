@@ -9,7 +9,7 @@ struct SettingsScreen: View {
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
     @AppStorage(PaceMilestone.underTenPercent.settingKey) private var underTenPercent = false
-    @AppStorage(PaceMilestone.underHalf.settingKey) private var underHalf = false
+    @AppStorage(PaceMilestone.underThirtyPercent.settingKey) private var underThirtyPercent = false
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
@@ -41,7 +41,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if underTenPercent || underHalf || closeToRunningOut { checkNotificationPermission() }
+                if underTenPercent || underThirtyPercent || closeToRunningOut { checkNotificationPermission() }
             }
         }
     }
@@ -107,7 +107,7 @@ struct SettingsScreen: View {
     private var alertsTab: some View {
         Section {
             notificationToggle(.underTenPercent, isOn: $underTenPercent)
-            notificationToggle(.underHalf, isOn: $underHalf)
+            notificationToggle(.underThirtyPercent, isOn: $underThirtyPercent)
             notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
         } header: {
             Text("Notifications")
@@ -172,8 +172,11 @@ struct SettingsScreen: View {
     }
 
     private func notificationToggle(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
-        Toggle(milestone.settingTitle, isOn: isOn)
-            .onChange(of: isOn.wrappedValue) { _, enabled in
+        Toggle(isOn: isOn) {
+            Text(milestone.notificationTitle)
+            Text(milestone.settingSubtitle)
+        }
+        .onChange(of: isOn.wrappedValue) { _, enabled in
             if enabled { checkNotificationPermission() }
         }
     }

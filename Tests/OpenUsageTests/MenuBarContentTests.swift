@@ -45,7 +45,7 @@ final class MenuBarContentTests: XCTestCase {
     }
 
     func testTheStripReranksAtResetEvenWithoutANewReading() {
-        var session = limit("Session", used: 60)
+        var session = limit("Session", used: 75)
         session.resetsAt = now.addingTimeInterval(20)
         session.periodDurationMs = 5 * 60 * 60 * 1_000
         let accounts = [account(personal, session, limit("Budget", used: 95))]
@@ -144,7 +144,7 @@ final class MenuBarContentTests: XCTestCase {
 
     func testALimitIsNamedAsThePanelNamesIt() {
         let provider = Provider(id: "cursor", kind: .cursor)
-        let data = WidgetData(title: "Extra Usage", kind: .dollars, used: 300, limit: 500)
+        let data = WidgetData(title: "Extra Usage", kind: .dollars, used: 400, limit: 500)
         let descriptor = WidgetDescriptor(provider: provider, key: "onDemand", metricLabel: "On-demand", sample: data)
         let account = DashboardAccount(provider: provider, lines: [DashboardLine(descriptor: descriptor, data: data)])
         let board = PriorityBoard.make(accounts: [account], now: Date())

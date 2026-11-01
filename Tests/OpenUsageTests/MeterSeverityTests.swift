@@ -12,7 +12,7 @@ final class MeterSeverityTests: XCTestCase {
 
     func testTheBandsUseRoundedPercentagesLeft() {
         let cases: [(used: Double, severity: WidgetData.MeterSeverity)] = [
-            (49.4, .normal), (49.6, .warning), (50, .warning),
+            (69.4, .normal), (69.6, .warning), (70, .warning),
             (89.4, .warning), (89.6, .critical), (90, .critical)
         ]
 

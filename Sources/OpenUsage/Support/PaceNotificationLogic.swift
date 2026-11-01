@@ -2,7 +2,8 @@ import Foundation
 
 enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
     case underTenPercent
-    case underHalf
+    /// Keeps its old raw value, so a saved switch stays on or off through the rename.
+    case underThirtyPercent = "healthyToClose"
     case closeToRunningOut
 }
 
@@ -12,10 +13,10 @@ extension PaceMilestone {
     /// The two levels follow what's left, the same rule as Priority. Only this one follows the pace.
     var isPace: Bool { self == .closeToRunningOut }
 
-    var settingTitle: String {
+    var settingSubtitle: String {
         switch self {
         case .underTenPercent: return "A limit drops under 10%"
-        case .underHalf: return "A limit drops under 50%"
+        case .underThirtyPercent: return "A limit drops under 30%"
         case .closeToRunningOut: return "A limit may run out before its reset"
         }
     }
@@ -23,15 +24,15 @@ extension PaceMilestone {
     var notificationTitle: String {
         switch self {
         case .underTenPercent: return "Almost Out"
-        case .underHalf: return "Running Low"
-        case .closeToRunningOut: return "May Run Out"
+        case .underThirtyPercent: return "Cutting It Close"
+        case .closeToRunningOut: return "Will Run Out"
         }
     }
 
     var body: String {
         switch self {
         case .underTenPercent: return "Under 10% left for this window."
-        case .underHalf: return "Under 50% left for this window."
+        case .underThirtyPercent: return "Under 30% left for this window."
         case .closeToRunningOut: return "May run out before the limit resets."
         }
     }
@@ -105,9 +106,9 @@ enum PaceNotificationLogic {
         }
 
         if severity == .critical, next.previousSeverity != .critical { candidate(.underTenPercent) }
-        if severity != .normal, next.previousSeverity == .normal { candidate(.underHalf) }
+        if severity != .normal, next.previousSeverity == .normal { candidate(.underThirtyPercent) }
         if severity != .critical { next.firedMilestones.remove(.underTenPercent) }
-        if severity == .normal { next.firedMilestones.remove(.underHalf) }
+        if severity == .normal { next.firedMilestones.remove(.underThirtyPercent) }
         next.previousSeverity = severity
 
         return Transition(fire: fire, newState: next)

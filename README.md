@@ -69,7 +69,7 @@ and a workspace's credit limit.
   sign-in. Click an amount or a reset time to switch how it reads.
 - **All Usage.** A header per provider above a card, with each account's name and plan inside the
   card. A limit is one line: its label, a level bar, its amount, and its reset. The bar is blue, orange
-  at 50% left, and red at 10% left. Click a value to flip
+  at 30% left, and red at 10% left. Click a value to flip
   every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.
@@ -82,7 +82,7 @@ and a workspace's credit limit.
   right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with
   every account, to the clipboard; from an account's right-click, that account alone. The picture uses
   the account's name when you have set one and leaves an email out.
-- **Notifications.** Optional alerts when a limit falls under 50% or 10%, or may run out before its reset.
+- **Notifications.** Optional alerts when a limit falls under 30% or 10%, or may run out before its reset.
 - **Global shortcut.** Toggle the panel from anywhere.
 - **[Command line](docs/cli.md).** Install the `openusage` command from Settings; it prints the usage
   the app last fetched as JSON, for scripts and agents.

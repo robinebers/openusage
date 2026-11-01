@@ -41,9 +41,9 @@ links to System Settings.
 
 | Setting | What it sends |
 |---|---|
-| A limit drops under 10% | When a limit turns red, at 10% left or less. |
-| A limit drops under 50% | When a limit turns orange, at 50% left or less. |
-| A limit may run out before its reset | When a limit's pace says it will run out before it resets. |
+| Almost Out | When a limit drops under 10%, as it turns red. |
+| Cutting It Close | When a limit drops under 30%, as it turns orange. |
+| Will Run Out | When a limit may run out before its reset. |
 
 Each notification names the trigger, the provider, and the metric, and fires once per metric per reset
 window. Click it to open All Usage. The next time you open the panel yourself it uses your Default Tab.

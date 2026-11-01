@@ -63,7 +63,7 @@ struct WidgetData: Hashable {
         guard hasData, let limit, limit > 0 else { return .normal }
         let percentLeft = Int((remainingFraction * 100).rounded())
         if percentLeft <= 10 { return .critical }
-        return percentLeft <= 50 ? .warning : .normal
+        return percentLeft <= 30 ? .warning : .normal
     }
 
     enum MeterState: Hashable {

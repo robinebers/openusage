@@ -106,7 +106,7 @@ final class DashboardRowModelTests: XCTestCase {
         XCTAssertEqual(fresh.dashboardRow(now: now).mark, .bar(fill: 1, severity: .normal, value: "100%", reset: nil))
 
         let dollars = WidgetData(title: "On-demand", kind: .dollars, used: 12, limit: 20)
-        XCTAssertEqual(dollars.dashboardRow(now: now).mark, .bar(fill: 0.6, severity: .warning, value: "$12", reset: nil))
+        XCTAssertEqual(dollars.dashboardRow(now: now).mark, .bar(fill: 0.6, severity: .normal, value: "$12", reset: nil))
 
         var badge = WidgetData(title: "Status", kind: .count, used: 0, limit: nil)
         badge.valueTextOverride = "Disabled"

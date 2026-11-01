@@ -38,15 +38,15 @@ final class PriorityBoardTests: XCTestCase {
 
     private func ids(_ items: [PriorityItem]) -> [String] { items.map(\.id) }
 
-    func testALimitIsListedAtHalfLeftHoweverSlowOrFastItIsBurning() {
+    func testALimitIsListedAt30PercentLeftHoweverSlowOrFastItIsBurning() {
         let result = board(
             account(personal,
-                    paced("Half Left, Nearly Reset", used: 50, left: hour),
-                    paced("Half Left, Fresh", used: 50, left: 6.9 * day),
-                    paced("More Than Half, Burning Fast", used: 49, left: 6.9 * day))
+                    paced("At 30%, Nearly Reset", used: 70, left: hour),
+                    paced("At 30%, Fresh", used: 70, left: 6.9 * day),
+                    paced("More Than 30%, Burning Fast", used: 69, left: 6.9 * day))
         )
 
-        XCTAssertEqual(Set(ids(result.attention)), ["claude@1.Half Left, Nearly Reset", "claude@1.Half Left, Fresh"])
+        XCTAssertEqual(Set(ids(result.attention)), ["claude@1.At 30%, Nearly Reset", "claude@1.At 30%, Fresh"])
     }
 
     func testARingFillsLikeItsBarUnderUsedAndLeft() {
@@ -63,27 +63,27 @@ final class PriorityBoardTests: XCTestCase {
     }
 
     func testTheClockNeverChangesWhatIsListed() {
-        let accounts = [account(personal, paced("Weekly", used: 61, left: 4 * day), paced("Fable", used: 40, left: 4 * day))]
+        let accounts = [account(personal, paced("Weekly", used: 75, left: 4 * day), paced("Fable", used: 40, left: 4 * day))]
         for later in [0, hour, day, 3 * day] {
             let result = PriorityBoard.make(accounts: accounts, now: now.addingTimeInterval(later))
             XCTAssertEqual(ids(result.attention), ["claude@1.Weekly"], "\(later) seconds later")
         }
     }
 
-    func testOrangeAtHalfLeftAndRedAtATenthLeft() {
+    func testOrangeAt30PercentLeftAndRedAtATenthLeft() {
         func severity(_ used: Double) -> WidgetData.MeterSeverity? {
             board(account(personal, unpaced("Credits", used: used))).attention.first?.reason.severity
         }
-        XCTAssertNil(severity(49))
-        XCTAssertEqual(severity(50), .warning)
+        XCTAssertNil(severity(69))
+        XCTAssertEqual(severity(70), .warning)
         XCTAssertEqual(severity(89), .warning)
         XCTAssertEqual(severity(90), .critical)
     }
 
     func testTheSoonestToRunOutComesFirstWhateverIsLeft() {
         let result = board(account(personal,
-                                   paced("Weekly", used: 55, left: 3.5 * day),
-                                   paced("Session", used: 55, left: 2.5 * hour, period: 5 * hour),
+                                   paced("Weekly", used: 75, left: 3.5 * day),
+                                   paced("Session", used: 75, left: 2.5 * hour, period: 5 * hour),
                                    unpaced("Extra Usage", used: 95)))
 
         XCTAssertEqual(ids(result.attention), ["claude@1.Session", "claude@1.Weekly", "claude@1.Extra Usage"],
@@ -97,7 +97,7 @@ final class PriorityBoardTests: XCTestCase {
     }
 
     func testEqualRanksKeepTheSavedOrder() {
-        let limit = paced("Weekly", used: 60, left: 3.5 * day)
+        let limit = paced("Weekly", used: 75, left: 3.5 * day)
         XCTAssertEqual(ids(board(account(personal, limit), account(work, limit)).attention), ["claude@1.Weekly", "claude@2.Weekly"])
         XCTAssertEqual(ids(board(account(work, limit), account(personal, limit)).attention), ["claude@2.Weekly", "claude@1.Weekly"])
 
@@ -108,7 +108,7 @@ final class PriorityBoardTests: XCTestCase {
     func testLimitsWithNoPaceFollowThePacedOnesLeastLeftFirst() {
         let result = board(
             account(personal, unpaced("Warning", used: 80), unpaced("Critical", used: 95), unpaced("Fine", used: 40)),
-            account(work, unpaced("Warned More", used: 170, limit: 200), paced("Paced", used: 60, left: 3.5 * day))
+            account(work, unpaced("Warned More", used: 170, limit: 200), paced("Paced", used: 75, left: 3.5 * day))
         )
 
         XCTAssertEqual(ids(result.attention), ["claude@2.Paced", "claude@1.Critical", "claude@2.Warned More", "claude@1.Warning"])
@@ -126,7 +126,7 @@ final class PriorityBoardTests: XCTestCase {
     func testUsedUpLimitsSortBySoonestResetWithNoResetLastAndNeverNeedAttention() {
         let result = board(
             account(personal, unpaced("No Reset", used: 100), paced("Later", used: 100, left: 2 * day)),
-            account(work, paced("Sooner", used: 100, left: 3 * hour), paced("Running Out", used: 60, left: 3.5 * day))
+            account(work, paced("Sooner", used: 100, left: 3 * hour), paced("Running Out", used: 75, left: 3.5 * day))
         )
 
         XCTAssertEqual(ids(result.usedUp), ["claude@2.Sooner", "claude@1.Later", "claude@1.No Reset"])
