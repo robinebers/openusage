@@ -45,6 +45,7 @@ struct SettingsScreen: View {
                     }
                 }
                 usageDisplaySection
+                menuBarSection
                 notificationsSection
                 privacySection
                 commandLineSection
@@ -72,6 +73,21 @@ struct SettingsScreen: View {
             Picker("Reset Times", selection: $dataStore.resetDisplayMode) {
                 ForEach(ResetDisplayMode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
+        }
+    }
+
+    private var menuBarSection: some View {
+        @Bindable var dataStore = dataStore
+        return Section {
+            Picker("Show in Menu Bar", selection: $dataStore.menuBarLimit) {
+                ForEach(MenuBarLimit.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+        } header: {
+            Text("Menu Bar")
+        } footer: {
+            Text("Limits closest to running out come first. Any others show as a count, like +7.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 

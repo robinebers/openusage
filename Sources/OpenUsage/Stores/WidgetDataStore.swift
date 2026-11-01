@@ -13,6 +13,7 @@ final class WidgetDataStore {
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
+    private static let menuBarLimitKey = "menuBarLimit"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
@@ -33,6 +34,10 @@ final class WidgetDataStore {
         didSet { defaults.set(resetDisplayMode.rawValue, forKey: Self.resetDisplayModeKey) }
     }
 
+    var menuBarLimit: MenuBarLimit {
+        didSet { defaults.set(menuBarLimit.rawValue, forKey: Self.menuBarLimitKey) }
+    }
+
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
@@ -50,6 +55,7 @@ final class WidgetDataStore {
         self.providerRefreshTimeout = providerRefreshTimeout
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
+        self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -222,6 +228,15 @@ final class WidgetDataStore {
         result.displayMode = meterStyle
         result.resetDisplayMode = resetDisplayMode
         return result
+    }
+
+    /// The accounts with their lines, in the order the dashboard shows them.
+    func accounts(in groups: [ProviderMetrics]) -> [DashboardAccount] {
+        families(in: groups).flatMap(\.accounts)
+    }
+
+    func families(in groups: [ProviderMetrics]) -> [DashboardFamily] {
+        DashboardFamily.make(groups: groups) { DashboardLine(descriptor: $0, data: data(for: $0)) }
     }
 
     func plan(for providerID: String) -> String? {

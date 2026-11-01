@@ -31,12 +31,8 @@ struct WidgetGroupedListView: View {
         .animation(Motion.spring, value: families.map(\.id))
     }
 
-    private func resolveLine(_ descriptor: WidgetDescriptor) -> DashboardLine {
-        DashboardLine(descriptor: descriptor, data: dataStore.data(for: descriptor))
-    }
-
     private func liveFamilies() -> [DashboardFamily] {
-        DashboardFamily.make(groups: layout.displayGroups, line: resolveLine)
+        dataStore.families(in: layout.displayGroups)
     }
 
     private func plans(for family: DashboardFamily) -> [String: String] {

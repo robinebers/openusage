@@ -368,6 +368,6 @@ final class LayoutStoreTests: XCTestCase {
     }
 
     private func trayMetricIDs(_ store: LayoutStore) -> [String] {
-        MenuBarContentBuilder.build(groups: store.pinnedGroups, data: { $0.sample }).groups.flatMap { $0.metrics.map(\.id) }
+        store.pinnedGroups.flatMap { $0.metrics.map(\.id) }
     }
 }

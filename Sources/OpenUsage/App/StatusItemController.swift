@@ -179,10 +179,13 @@ final class StatusItemController: NSObject {
     private func updateImage() {
         let content = withObservationTracking {
             container.hideFromScreenShare.isConcealing
-                ? MenuBarContent(groups: [])
+                ? MenuBarContent(items: [])
                 : MenuBarContentBuilder.build(
-                    groups: container.layout.pinnedGroups,
-                    data: { container.dataStore.data(for: $0) }
+                    board: PriorityBoard.make(
+                        accounts: container.dataStore.accounts(in: container.layout.displayGroups),
+                        now: Date()
+                    ),
+                    limit: container.dataStore.menuBarLimit
                 )
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
