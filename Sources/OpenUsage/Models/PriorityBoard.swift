@@ -142,7 +142,7 @@ extension WidgetDataStore {
     func priorityBoard(in groups: [ProviderMetrics], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
         let accounts = accounts(in: groups)
         return PriorityBoard.make(accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, now: now) { account in
-            if let message = self.notice(for: account.id) ?? self.stalenessHint(for: account.id) {
+            if let message = self.problem(for: account.id) {
                 // A provider's notice can itself contain account details. Share only the status.
                 return .unavailable(hidingEmails ? "Current usage unavailable." : message)
             }

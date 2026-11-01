@@ -71,3 +71,7 @@ When a sign-in expires, open the account's page and click **Sign In Again**. The
 its place, and its settings; only the sign-in changes, once the new one can read usage.
 Once it works, the sign-in closes and the panel opens on your Default Tab. If it fails, the sign-in
 stays open with the error, and cancelling it leaves you on the account's page.
+
+The button shows only while the account has a problem. Whenever Priority lists a signed-in account
+under **Needs Attention**, its **Fix** button opens the account's page, which gives the reason and offers
+**Sign In Again**. A working account's page has no **Sign In Again**.
