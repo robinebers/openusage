@@ -376,8 +376,8 @@ final class AccountProviderRuntime: ProviderRuntime {
     }
 
     func saveRenewal(_ tokens: OAuthTokens) async {
-        guard !renewalsStopped else { return }
         unsavedRenewal = tokens
+        guard !renewalsStopped else { return }
         do {
             try await replaceCredential(.oauth(tokens))
         } catch {

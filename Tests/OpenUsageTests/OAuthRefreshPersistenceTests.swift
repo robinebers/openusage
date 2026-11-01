@@ -16,6 +16,8 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "replacement")))
 
         runtime.resumeRenewals()
+        let kept = try await runtime.loadCredential()
+        XCTAssertEqual(kept, .oauth(OAuthTokens(accessToken: "old")), "a grant kept while stopped is lost once saves resume")
         await runtime.saveRenewal(OAuthTokens(accessToken: "renewed"))
         XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "renewed")))
     }
