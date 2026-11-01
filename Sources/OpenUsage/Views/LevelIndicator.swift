@@ -1,16 +1,32 @@
 import SwiftUI
 
-/// Apple's capacity bar at the height of a row. It's drawn here because `NSLevelIndicator` and `Gauge`
-/// both stay 16 pt tall at every control size.
+extension EnvironmentValues {
+    /// `ImageRenderer` can't draw AppKit controls, so a share image draws its bars as shapes.
+    @Entry var drawsLevelsAsShapes = false
+}
+
+/// A limit's level as Apple's progress bar.
 struct LevelIndicator: View {
     let fill: Double
     let severity: WidgetData.MeterSeverity
 
+    @Environment(\.drawsLevelsAsShapes) private var drawsAsShapes
+
     private static let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
-    /// Enough for the rounded ends to stay round on a sliver of a level.
     private static let shortestFill: CGFloat = 4
 
     var body: some View {
+        if drawsAsShapes {
+            shapes
+        } else {
+            ProgressView(value: min(max(fill, 0), 1))
+                .progressViewStyle(.linear)
+                .tint(Theme.severityColor(severity))
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var shapes: some View {
         Self.shape
             .fill(Theme.meterTrack)
             .overlay(alignment: .leading) {

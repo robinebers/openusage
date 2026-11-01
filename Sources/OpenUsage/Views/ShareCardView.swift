@@ -72,6 +72,7 @@ private struct ShareCardFrame<Content: View>: View {
         .padding(ShareCardView.inset)
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
+        .environment(\.drawsLevelsAsShapes, true)
         .environment(\.colorScheme, appearance)
     }
 
