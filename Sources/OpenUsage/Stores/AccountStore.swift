@@ -192,6 +192,7 @@ final class AccountStore {
             }
         }
         accounts.removeAll { removed.contains($0.id) }
+        unlistedHubAccounts.formUnion(Set(plan.removed).subtracting(removed))
         for index in accounts.indices {
             guard let link = plan.relinked[accounts[index].id] else { continue }
             do {

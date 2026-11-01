@@ -136,6 +136,24 @@ final class CLIProxyHubHardeningTests: XCTestCase {
         XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 0))
     }
 
+    func testAFailedRemovalIsTriedAgainAtTheNextRead() throws {
+        let vault = SaveRefusingVault()
+        vault.refusesSaves = false
+        let store = AccountStore(defaults: isolatedDefaults(), vault: vault, hubKeys: InMemoryHubKeyVault())
+        let hub = CLIProxyHub(url: hubURL)
+        try store.addHub(hub, key: "mgmt-key")
+        try store.mirror([Self.login("a", "claude")], from: hub.id)
+        try store.mirror([], from: hub.id)
+
+        vault.refusesDeletes = true
+        XCTAssertThrowsError(try store.mirror([], from: hub.id))
+        XCTAssertEqual(store.accounts.count, 1)
+        vault.refusesDeletes = false
+        try store.mirror([], from: hub.id)
+
+        XCTAssertTrue(store.accounts.isEmpty, "the login two listings lacked is removed once the Keychain lets it go")
+    }
+
     private static func login(_ id: String, _ provider: String) -> HubLogin {
         HubLogin(id: id, authIndex: "index-\(id)", provider: provider, label: id, isOAuth: true, isDisabled: false, chatGPTAccountID: nil)
     }
@@ -145,10 +163,16 @@ private final class SaveRefusingVault: CredentialVault, @unchecked Sendable {
     private let stored = InMemoryCredentialVault()
     private let lock = NSLock()
     private var refuses = true
+    private var refusesDeleting = false
 
     var refusesSaves: Bool {
         get { lock.withLock { refuses } }
         set { lock.withLock { refuses = newValue } }
+    }
+
+    var refusesDeletes: Bool {
+        get { lock.withLock { refusesDeleting } }
+        set { lock.withLock { refusesDeleting = newValue } }
     }
 
     func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
@@ -157,5 +181,8 @@ private final class SaveRefusingVault: CredentialVault, @unchecked Sendable {
         try stored.save(credential, for: id)
     }
     func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
-    func delete(_ id: UUID) throws { try stored.delete(id) }
+    func delete(_ id: UUID) throws {
+        if refusesDeletes { throw CredentialVaultError.missingCredential }
+        try stored.delete(id)
+    }
 }
