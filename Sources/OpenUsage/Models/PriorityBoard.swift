@@ -7,12 +7,12 @@ struct PriorityItem: Identifiable {
         case closeToLimit(runway: TimeInterval)
         case level(WidgetData.MeterSeverity, usedShare: Double)
         case usedUp(resetsAt: Date?)
-        case emptyBalance(MetricValue)
+        case emptyBalance
 
         init?(_ line: DashboardLine, now: Date) {
             let data = line.data
-            if let balance = line.descriptor.balance(in: data), balance.number == 0 {
-                self = .emptyBalance(balance)
+            if line.descriptor.balance(in: data)?.number == 0 {
+                self = .emptyBalance
                 return
             }
             switch data.meterState(now: now) {
@@ -65,8 +65,8 @@ struct PriorityItem: Identifiable {
 
     /// The trailing text of a Used Up row: the time until it resets, or for a balance, which has no reset, its amount.
     func usedUpNote(now: Date) -> String? {
-        guard case .emptyBalance(let balance) = reason else { return data.compactResetText(now: now) }
-        return data.values.count > 1 ? MetricFormatter.string(for: balance, style: .row) : data.unboundedDetail
+        guard case .emptyBalance = reason else { return data.compactResetText(now: now) }
+        return data.unboundedDetail
     }
 }
 

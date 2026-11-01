@@ -20,8 +20,8 @@ limit, the account, the amount, and the time until it resets.
 
 **Used Up** lists what has run out, soonest reset first, with the time until it resets. A balance with
 no limit, such as Cursor credits, can never be running out, so it appears here only once it reaches
-exactly zero. It comes after every limit with a reset and shows its amount, such as `$0 left` or
-`0 credits`. Spend totals, day totals, and Limit Resets counts never appear here.
+exactly zero. It comes after every limit with a reset and shows its amount, such as `$0 left`.
+Spend totals, day totals, and Limit Resets counts never appear here.
 
 Click a row to open All Metrics at that account. Times tick every 30 seconds.
 
@@ -31,16 +31,16 @@ Clear.
 
 ## All Metrics
 
-One provider after another, each a header above a card. One rule names the header: a provider with one
-account puts that account's name and plan on the header, and a provider with several accounts puts its
-own name on the header and each account's name and plan inside the card above its rows. A long account
-name can be cut short; a plan never is. The card holds every metric that has data, in the order you set.
+One provider after another, each a header above a card. The header is the provider's name and logo,
+and every account's name and plan sit inside the card above its rows. An account with no name of its
+own shows just its plan. A long account name can be cut short; a plan never is. The card holds every
+metric that has data, in the order you set.
 
 ### Limits
 
 A limit is its label, its amount, and its reset, over a bar. The bar fills with what is left (or what is
 used, under the Used setting); the amount reads `52% left`, `$12 used`, or `320 left`; the reset reads
-`Resets in 1h 26m`, or `Resets Wed 4 PM` under the exact-times setting, and `Resets soon` once it is
+`Resets 1h 26m`, or `Resets Wed 4 PM` under the exact-times setting, and `Resets soon` once it is
 due. Click any amount to flip every row between used and left, and any reset to flip between a countdown
 and the exact time; **Settings → Usage Display** holds the same two switches. Rest the pointer on an
 amount to read the other side of it (`48% used` under `52% left`), and on a reset to read the other
@@ -104,8 +104,7 @@ Press **⌘Z** to undo the last reorder. Undo is per session.
 
 ## Rename
 
-Double-click an account's name, on its provider's header or inside the card, or choose **Rename** from
-its menu. The field opens with the whole
+Double-click an account's name inside the card, or choose **Rename** from its menu. The field opens with the whole
 name selected. Return or a click elsewhere saves; Esc cancels.
 
 ## Share
@@ -127,9 +126,8 @@ check. See [Updates](updates.md).
 
 ## Footer
 
-The bar pinned to the bottom of the panel. On the left: the app version and a live
-**Next update in …** countdown you can click (or press **⌘R**) to refresh now. On the right: the
-**Options** menu with **Accounts**, **Settings**, **Report an Issue…**, **About OpenUsage**, and
+The bottom of the panel. On the left: a live **Next update in …** countdown you can click (or press
+**⌘R**) to refresh now. On the right: the **⋯** menu with **Accounts**, **Settings**, **Report an Issue…**, **About OpenUsage**, and
 **Quit OpenUsage**.
 
 ## Keyboard

@@ -70,19 +70,20 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         XCTAssertGreaterThan(row, 16 + grid.barGap + grid.barHeight - 1, "a limit isn't a line of text over its bar")
         let codexRows = 3 * row + 2 * grid.limitGap
         let claudeAccount = grid.captionHeight + grid.captionGap + 2 * row + grid.limitGap
-        let codexCard = grid.headerHeight + grid.headerGap + 2 * grid.cardPadding + codexRows
-        let claudeCard = grid.headerHeight + grid.headerGap + 2 * grid.cardPadding + 2 * claudeAccount + grid.accountSpacing
+        let cardPadding = grid.cardPadding + grid.cardBottomPadding
+        let codexCard = grid.headerHeight + grid.headerGap + cardPadding + grid.captionHeight + grid.captionGap + codexRows
+        let claudeCard = grid.headerHeight + grid.headerGap + cardPadding + 2 * claudeAccount + grid.accountSpacing
 
         for id in ["codex.session", "codex.weekly", "codex.spark", "claude@1.session", "claude@1.weekly", "claude@2.session", "claude@2.weekly"] {
             XCTAssertEqual(try frame(frames, id).height, row, accuracy: 0.5, id)
         }
         for (above, below) in [("codex.session", "codex.weekly"), ("codex.weekly", "codex.spark"), ("claude@1.session", "claude@1.weekly")] {
-            XCTAssertEqual(try frame(frames, below).minY - frame(frames, above).maxY, grid.limitGap, accuracy: 0.5, "\(above) and \(below) aren't 9 pt apart")
+            XCTAssertEqual(try frame(frames, below).minY - frame(frames, above).maxY, grid.limitGap, accuracy: 0.5, "\(above) and \(below) aren't 10 pt apart")
         }
-        XCTAssertEqual(try frame(frames, "family:codex").height, codexCard, accuracy: 0.5, "a header and a card of three limits, with no caption")
+        XCTAssertEqual(try frame(frames, "family:codex").height, codexCard, accuracy: 0.5, "a header and a card of a caption and three limits")
         XCTAssertEqual(try frame(frames, "family:claude").height, claudeCard, accuracy: 0.5, "a header and two accounts, each a caption and two limits")
         XCTAssertEqual(try frame(frames, "codex").minY - frame(frames, "family:codex").minY, grid.headerHeight + grid.headerGap + grid.cardPadding, accuracy: 0.5)
-        XCTAssertEqual(try frame(frames, "codex.session").minY, try frame(frames, "codex").minY, accuracy: 0.5, "a sole account has a caption")
+        XCTAssertEqual(try frame(frames, "codex.session").minY - frame(frames, "codex").minY, grid.captionHeight + grid.captionGap, accuracy: 0.5, "a sole account has no caption")
         XCTAssertEqual(try frame(frames, "claude@2").minY - frame(frames, "claude@1").maxY, 20, accuracy: 0.5, "accounts aren't 20 pt apart")
         for account in ["claude@1", "claude@2"] {
             XCTAssertEqual(try frame(frames, account).height, claudeAccount, accuracy: 0.5, account)

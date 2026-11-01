@@ -14,7 +14,7 @@ struct PopoverFooter: View {
                 EmptyView()
             } else {
                 HStack(alignment: .center, spacing: 8) {
-                    footerIdentity
+                    nextUpdateButton
                     Spacer(minLength: 8)
                     if screen == .dashboard {
                         optionsMenu
@@ -22,10 +22,11 @@ struct PopoverFooter: View {
                 }
             }
         }
-        .padding(.horizontal, horizontalPadding)
-        .padding(.vertical, 12)
+        .frame(minHeight: 26)
+        .padding(.horizontal, horizontalPadding + 4)
+        .padding(.top, DashboardContentView.barGap)
+        .padding(.bottom, PanelMetrics.margin)
         .frame(maxWidth: .infinity)
-        .barGlass()
         .overlay(alignment: .top) {
             if screen == .dashboard, popover.shareNotice.value {
                 shareCopiedPill
@@ -36,11 +37,9 @@ struct PopoverFooter: View {
         .animation(Motion.spring, value: popover.shareNotice.trigger)
     }
 
-    /// The Options pull-down on one glass capsule. The system `.buttonStyle(.glass)` renders flat on a
-    /// `Menu`, so `.menuStyle(.button)` + `.buttonStyle(.plain)` strip the menu chrome and
-    /// `interactiveGlass` owns the surface. Accounts and Settings carry their key equivalents only as
-    /// labels: while the menu is closed `PopoverKeyReader` handles (and consumes) them first, so they
-    /// can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
+    /// The Options pull-down behind a round button. Accounts and Settings carry their key equivalents
+    /// only as labels: while the menu is closed `PopoverKeyReader` handles (and consumes) them first, so
+    /// they can't double-fire. ⌘Q is unowned elsewhere, so it rides its menu item directly.
     private var optionsMenu: some View {
         Menu {
             Button { popover.toggle(.accounts) } label: {
@@ -67,22 +66,17 @@ struct PopoverFooter: View {
             }
             .keyboardShortcut("q")
         } label: {
-            HStack(spacing: 5) {
-                Text("Options")
-                    .font(.system(size: 13, weight: .semibold))
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .padding(.leading, 14)
-            .padding(.trailing, 12)
-            .frame(height: 28)
-            .contentShape(Rectangle())
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Theme.controlFill, in: Circle())
+                .contentShape(Circle())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .fixedSize()
-        .interactiveGlass(in: Capsule())
+        .accessibilityLabel("Options")
     }
 
     private var shareCopiedPill: some View {
@@ -94,15 +88,6 @@ struct PopoverFooter: View {
         )
     }
 
-    private var footerIdentity: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("OpenUsage \(AppInfo.version)")
-            nextUpdateButton
-        }
-        .font(.caption2)
-        .foregroundStyle(.secondary)
-    }
-
     private var nextUpdateButton: some View {
         Button {
             refreshNow()
@@ -110,6 +95,8 @@ struct PopoverFooter: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 5) {
                     Text(updateStatusText(now: context.date))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     if isUpdating {

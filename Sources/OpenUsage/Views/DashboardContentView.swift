@@ -12,9 +12,8 @@ struct DashboardContentView: View {
     @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
     @State private var accountToOpen: String?
 
-    /// Half the space under the tabs: the bar and the content each hold this much, so the picker sits
-    /// as far from the first row as from the panel's top.
-    static let tabBarGap = PanelMetrics.margin / 2
+    /// Half the space on each side of the content: it and the bar beside it each hold this much.
+    static let barGap: CGFloat = 7
 
     var body: some View {
         PopoverScrollView {
@@ -30,8 +29,7 @@ struct DashboardContentView: View {
             }
             .animation(Motion.spring, value: updater.availableUpdateVersion)
             .padding(.horizontal, PanelMetrics.margin)
-            .padding(.top, Self.tabBarGap)
-            .padding(.bottom, PanelMetrics.margin)
+            .padding(.vertical, Self.barGap)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)

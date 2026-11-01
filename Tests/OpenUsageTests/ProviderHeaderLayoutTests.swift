@@ -5,7 +5,7 @@ import XCTest
 @MainActor
 final class ProviderHeaderLayoutTests: XCTestCase {
     private let boxWidth = PanelMetrics.width - 2 * PanelMetrics.margin
-    private let inset = DashboardGrid.cardPadding + DashboardGrid.inset
+    private let inset = DashboardGrid.cardPadding
 
     private func claude(_ label: String?, _ id: String = "claude@1") -> Provider {
         Provider(id: id, kind: .claude, accountLabel: label)
@@ -15,9 +15,9 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         DashboardFamily(id: "claude", provider: accounts[0], accounts: accounts.map { DashboardAccount(provider: $0, lines: lines) })
     }
 
-    private func section(_ family: DashboardFamily, plans: [String: String] = [:], isCaptioned: Bool = true) -> DashboardProviderSection<DashboardProviderHeader, DashboardAccountRows> {
-        DashboardProviderSection(family: family, plans: plans) { account in
-            DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: isCaptioned)
+    private func section(_ family: DashboardFamily, plans: [String: String] = [:]) -> DashboardProviderSection<DashboardProviderHeader, DashboardAccountRows> {
+        DashboardProviderSection(family: family) { account in
+            DashboardAccountRows(account: account, plan: plans[account.id])
         }
     }
 
@@ -38,52 +38,46 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         try XCTUnwrap(InkMap(rendering: Text(string).font(font).fixedSize().padding(20), width: 400, scale: 2).span()).width
     }
 
-    func testASoleAccountsHeaderNamesTheProviderAccountAndPlanWithTheLogoTrailing() throws {
-        let bitmap = try InkMap(rendering: section(family([claude("Sunstory")]), plans: ["claude@1": "Max 20x"]).header, width: boxWidth, scale: 2)
-        XCTAssertEqual(CGFloat(bitmap.height) / bitmap.scale, DashboardGrid.headerHeight)
+    func testAHeaderNamesOnlyTheProviderWithTheLogoTrailing() throws {
+        for accounts in [[claude("Sunstory")], [claude("Personal"), claude("Work", "claude@2")]] {
+            let plans = ["claude@1": "Max 20x", "claude@2": "Max 5x"]
+            let bitmap = try InkMap(rendering: section(family(accounts), plans: plans).header, width: boxWidth, scale: 2)
+            XCTAssertEqual(CGFloat(bitmap.height) / bitmap.scale, DashboardGrid.headerHeight)
 
-        let logo = try XCTUnwrap(bitmap.span(from: logoStart - 1, to: boxWidth), "no logo at the trailing end")
-        XCTAssertEqual(logo.last, boxWidth - inset, accuracy: 1.5, "the logo doesn't end at the card's inset")
+            let logo = try XCTUnwrap(bitmap.span(from: logoStart - 1, to: boxWidth), "no logo at the trailing end")
+            XCTAssertEqual(logo.last, boxWidth - inset, accuracy: 1.5, "the logo doesn't end at the card's inset")
 
-        let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2), "no title")
-        XCTAssertEqual(title.first, inset, accuracy: 1.5, "the title doesn't start at the card's inset")
-        let name = try text("Claude — Sunstory", DashboardGrid.headerFont)
-        let plan = try text("Max 20x", DashboardGrid.planFont)
-        XCTAssertEqual(title.width, name + DashboardGrid.amountGap + plan, accuracy: 3, "the title isn't the provider, the account and the plan")
+            let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2), "no title")
+            XCTAssertEqual(title.first, inset, accuracy: 1.5, "the title doesn't start at the card's inset")
+            XCTAssertEqual(title.width, try text("Claude", DashboardGrid.headerFont), accuracy: 1.5, "the header draws more than the provider's name")
+        }
     }
 
-    func testAHeaderOverSeveralAccountsNamesOnlyTheProvider() throws {
-        let several = section(family([claude("Personal"), claude("Work", "claude@2")]), plans: ["claude@1": "Max 20x", "claude@2": "Max 5x"])
-        let bitmap = try InkMap(rendering: several.header, width: boxWidth, scale: 2)
-        let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2))
-        XCTAssertEqual(title.width, try text("Claude", DashboardGrid.headerFont), accuracy: 1.5, "the header draws more than the provider's name")
-    }
-
-    func testAnAccountNamedLikeItsProviderReadsOnce() throws {
+    func testAnAccountNamedLikeItsProviderHasNoCaption() throws {
+        let rows = [line(percent("Session", used: 8))]
         for name in ["Claude", nil] {
-            let bitmap = try InkMap(rendering: section(family([claude(name)])).header, width: boxWidth, scale: 2)
-            let title = try XCTUnwrap(bitmap.span(from: 0, to: logoStart - 2))
-            XCTAssertEqual(title.width, try text("Claude", DashboardGrid.headerFont), accuracy: 1.5, name ?? "unnamed")
+            let bands = try InkMap(rendering: section(family([claude(name)], lines: rows)), width: boxWidth).bands()
+            XCTAssertEqual(bands.count, 3, "a header, then a limit of text over a bar: \(name ?? "unnamed")")
         }
     }
 
     func testALongAccountNameTruncatesBeforeThePlanDoes() throws {
-        let long = family([claude("An Account Name Far Too Long For This Header To Hold")])
-        let bitmap = try InkMap(rendering: section(long, plans: ["claude@1": "Max 20x"]).header, width: boxWidth, scale: 2)
+        let account = DashboardAccount(provider: claude("An Account Name Far Too Long For This Caption To Hold"), lines: [])
+        let width = boxWidth - 2 * inset
+        let caption = DashboardAccountCaption(account: account, plan: "Max 20x").environment(AccountRenameStore?.none)
+        let bitmap = try InkMap(rendering: caption, width: width, scale: 2)
         let plan = try text("Max 20x", DashboardGrid.planFont)
-        let planEnd = logoStart - DashboardGrid.columnGap
-        let drawn = try XCTUnwrap(bitmap.span(from: planEnd - plan - 2, to: logoStart - 2), "no plan")
-        XCTAssertGreaterThan(drawn.last, planEnd - 8, "the plan doesn't sit by the logo")
-        XCTAssertLessThanOrEqual(drawn.last, planEnd + 1, "the plan runs into the logo")
+        let drawn = try XCTUnwrap(bitmap.span(from: width - plan - 2, to: width), "no plan")
+        XCTAssertEqual(drawn.last, width, accuracy: 1.5, "the plan doesn't end at the card's inset")
         XCTAssertEqual(drawn.width, plan, accuracy: 3, "the plan was cut")
     }
 
-    func testOnlySeveralAccountsAreCaptioned() throws {
+    func testEveryNamedAccountIsCaptionedInsideTheCard() throws {
         let rows = [line(percent("Session", used: 8)), line(percent("Weekly", used: 81))]
-        let sole = section(family([claude("Personal")], lines: rows), plans: ["claude@1": "Max 20x"], isCaptioned: false)
-        XCTAssertEqual(try InkMap(rendering: sole, width: boxWidth).bands().count, 5, "a header, then two limits of text over a bar")
+        let sole = section(family([claude("Personal")], lines: rows), plans: ["claude@1": "Max 20x"])
+        XCTAssertEqual(try InkMap(rendering: sole, width: boxWidth).bands().count, 6, "a header, a caption, then two limits of text over a bar")
 
-        let several = section(family([claude("Personal"), claude("Work", "claude@2")], lines: rows), plans: ["claude@1": "Max 20x", "claude@2": "Max 5x"])
+        let several = section(family([claude("Personal"), claude("Work", "claude@2")], lines: rows), plans: ["claude@1": "Max 20x", "claude@2": "Max 20x"])
         XCTAssertEqual(try InkMap(rendering: several, width: boxWidth).bands().count, 11, "a header, then a caption and two limits per account")
     }
 
@@ -128,16 +122,16 @@ final class ProviderHeaderLayoutTests: XCTestCase {
         }
         let bar = dashboardLine(bounded: true), value = dashboardLine(bounded: false)
         XCTAssertEqual(DashboardGrid.gap(above: bar, after: nil), 0)
-        XCTAssertEqual(DashboardGrid.gap(above: bar, after: bar), 9)
+        XCTAssertEqual(DashboardGrid.gap(above: bar, after: bar), 10)
         XCTAssertEqual(DashboardGrid.gap(above: value, after: value), 6)
-        XCTAssertEqual(DashboardGrid.gap(above: value, after: bar), 14, "6 pt plus 8 extra after the bars")
-        XCTAssertEqual(DashboardGrid.gap(above: bar, after: value), 14)
+        XCTAssertEqual(DashboardGrid.gap(above: value, after: bar), 16, "6 pt plus 10 extra after the bars")
+        XCTAssertEqual(DashboardGrid.gap(above: bar, after: value), 16)
     }
 
     func testTheHeaderAndCaptionUseTheirFonts() {
-        XCTAssertEqual(DashboardGrid.headerHeight, DashboardGrid.lineHeight(.systemFont(ofSize: 15, weight: .semibold)))
+        XCTAssertEqual(DashboardGrid.headerHeight, 24)
         XCTAssertEqual(DashboardGrid.captionHeight, DashboardGrid.lineHeight(.systemFont(ofSize: 11)))
-        XCTAssertEqual(DashboardGrid.iconSize, DashboardGrid.headerHeight, "the logo isn't as tall as the header's line")
-        XCTAssertEqual(DashboardGrid.sectionSpacing, 16)
+        XCTAssertEqual(DashboardGrid.iconSize, 16)
+        XCTAssertEqual(DashboardGrid.sectionSpacing, 14)
     }
 }

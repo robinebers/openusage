@@ -171,7 +171,7 @@ final class PriorityBoardTests: XCTestCase {
 
         XCTAssertTrue(result.attention.isEmpty, "a balance has no pace or limit to run toward")
         XCTAssertEqual(result.usedUp.map(\.id), [cursor.id, codex.id])
-        XCTAssertEqual(result.usedUp.map { $0.usedUpNote(now: now) }, ["$0 left", "0 credits"])
+        XCTAssertEqual(result.usedUp.map { $0.usedUpNote(now: now) }, ["$0 left", "$0"])
         XCTAssertEqual(result.usedUp.map(\.reason.severity), [.critical, .critical])
         XCTAssertEqual(result.summary, .listed)
         XCTAssertTrue(MenuBarContentBuilder.build(board: result, limit: .upToFive).isEmpty, "a balance never reaches the menu bar")

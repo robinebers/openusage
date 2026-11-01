@@ -12,14 +12,14 @@ struct ShareCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            DashboardProviderSection(family: family.hidingEmails, plans: plans) { account in
-                DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: family.soleAccount == nil)
+            DashboardProviderSection(family: family.hidingEmails) { account in
+                DashboardAccountRows(account: account, plan: plans[account.id])
             }
             watermarkFooter
         }
         .padding(Self.inset)
         .frame(width: Self.width, alignment: .topLeading)
-        .background(Theme.traySurface)
+        .background(Theme.shareCanvas)
         .environment(\.colorScheme, appearance)
     }
 

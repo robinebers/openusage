@@ -18,8 +18,8 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     }
 
     private let headerMid = DashboardGrid.headerHeight / 2
-    private let nameX = DashboardGrid.cardPadding + DashboardGrid.inset + 10
-    private let slot = (DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset - 16)..<(DashboardGrid.cardWidth - DashboardGrid.cardPadding - DashboardGrid.inset)
+    private let nameX = DashboardGrid.cardPadding + 10
+    private let slot = (DashboardGrid.cardWidth - DashboardGrid.cardPadding - 16)..<(DashboardGrid.cardWidth - DashboardGrid.cardPadding)
 
     private func family() -> DashboardFamily {
         DashboardFamily(id: "claude", provider: provider, accounts: [DashboardAccount(provider: provider, lines: lines)])
@@ -32,10 +32,10 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
     func testTheLogoTurnsIntoTheButtonOnHoverAndAClickOnItCopiesOnce() throws {
         let log = Log()
         let section = DashboardProviderSection(family: family()) {
-            DashboardProviderHeader(family: family(), plan: "Max 5x", onCopyScreenshot: { log.copies += 1; return true })
+            DashboardProviderHeader(family: family(), onCopyScreenshot: { log.copies += 1; return true })
                 .highPriorityGesture(DragGesture(minimumDistance: 4).onChanged { _ in log.headerDrags += 1 })
         } account: { account in
-            DashboardAccountRows(account: account, plan: "Max 5x", isCaptioned: false)
+            DashboardAccountRows(account: account, plan: "Max 5x")
         }
         let (window, host) = hostView(section)
         let button = CGPoint(x: slot.lowerBound + 8, y: headerMid)
@@ -62,7 +62,7 @@ final class DashboardCopyButtonTests: QuietWindowTestCase {
 
     func testAHeaderWithoutACopyActionKeepsItsLogo() throws {
         let section = DashboardProviderSection(family: family()) { account in
-            DashboardAccountRows(account: account, plan: "Max 5x", isCaptioned: false)
+            DashboardAccountRows(account: account, plan: "Max 5x")
         }
         let (window, host) = hostView(section)
 

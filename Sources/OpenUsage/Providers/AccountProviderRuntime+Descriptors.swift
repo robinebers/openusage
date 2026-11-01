@@ -39,8 +39,7 @@ extension AccountProviderRuntime {
                 rateLimitResets(key: "rateLimitResets", provider: provider),
                 .history(key: "today", provider: provider, .window(.today, .credits, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .credits, then: .tokens)),
-                .history(key: "last30", provider: provider, .window(.lastDays(30), .credits, then: .tokens)),
-                .history(key: "turns", provider: provider, .measure("Turns", .turns, over: .lastDays(30)))
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .credits, then: .tokens))
             ]
         case .cursor:
             [
@@ -62,8 +61,7 @@ extension AccountProviderRuntime {
                     .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
-                .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens)),
-                .history(key: "usageEvents", provider: provider, .measure("Usage Events", .usageEvents, over: .lastDays(30)))
+                .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens))
             ]
         case .antigravity:
             [

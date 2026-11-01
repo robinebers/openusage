@@ -22,7 +22,7 @@ struct UsageMeterBar: View {
     }
 
     private var track: AnyShapeStyle {
-        tintsTrack ? AnyShapeStyle(Theme.severityColor(severity).opacity(0.24)) : AnyShapeStyle(.quaternary)
+        tintsTrack ? AnyShapeStyle(Theme.severityColor(severity).opacity(0.24)) : AnyShapeStyle(Theme.meterTrack)
     }
 
     private func fillWidth(track: CGFloat) -> CGFloat {

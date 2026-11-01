@@ -13,7 +13,7 @@ import SwiftUI
 /// app, so keyboard input (Esc/Return navigation, the Settings shortcut recorder) works on the first
 /// try. (The pattern keyboard-first menu-bar apps use; cross-checked via GitHits.)
 class MenuBarPanel: NSPanel {
-    static let cornerRadius: CGFloat = 13
+    static let cornerRadius: CGFloat = 20
 
     /// A clear, borderless panel whose frame view is clipped to the rounded shape. The clip lives on
     /// the frame view, not the content view: AppKit inserts a sheet's dimming view as the content
@@ -153,7 +153,6 @@ final class StatusItemController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-        panel.backgroundColor = Theme.trayNSColor
         panel.host(host)
     }
 

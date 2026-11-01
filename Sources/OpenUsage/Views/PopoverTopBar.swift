@@ -58,18 +58,18 @@ struct PopoverTopBar: View {
         .padding(.horizontal, horizontalPadding)
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .barGlass()
     }
 
     private func backButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label("Back", systemImage: "chevron.backward")
                 .labelStyle(.iconOnly)
-                .frame(width: 16, height: 16)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
+        .buttonStyle(.plain)
         .hoverTooltip("Back")
         .accessibilityLabel("Back")
     }
@@ -85,13 +85,12 @@ struct PopoverTopBar: View {
             popover.isAddingAccount = true
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 16, height: 16)
-                .contentShape(Rectangle())
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: 26, height: 26)
+                .background(Theme.controlFill, in: Circle())
+                .contentShape(Circle())
         }
-        .glassButtonStyle()
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
+        .buttonStyle(.plain)
         .hoverTooltip("Add Account")
         .accessibilityLabel("Add Account")
     }
@@ -101,18 +100,43 @@ private struct DashboardTabBar: View {
     let horizontalPadding: CGFloat
 
     @AppStorage(DashboardTab.key) private var tab = DashboardTab.priority
+    @Environment(\.reduceAnimations) private var reduceAnimations
+    @Namespace private var thumb
 
     var body: some View {
-        Picker("Dashboard Tab", selection: $tab) {
-            ForEach(DashboardTab.allCases, id: \.self) { Text($0.label).tag($0) }
+        HStack(spacing: 0) {
+            ForEach(DashboardTab.allCases, id: \.self) { segment($0) }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: .infinity)
+        .padding(2)
+        .frame(height: 28)
+        .background(Theme.controlFill, in: Capsule())
         .padding(.horizontal, horizontalPadding)
         .padding(.top, PanelMetrics.margin)
-        .padding(.bottom, DashboardContentView.tabBarGap)
-        .barGlass()
+        .padding(.bottom, DashboardContentView.barGap)
+    }
+
+    private func segment(_ candidate: DashboardTab) -> some View {
+        let isSelected = tab == candidate
+        return Button {
+            withAnimation(reduceAnimations ? nil : Motion.spring) { tab = candidate }
+        } label: {
+            Text(candidate.label)
+                .font(.system(size: 13, weight: isSelected ? .medium : .regular))
+                .foregroundStyle(isSelected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background {
+                    if isSelected {
+                        Capsule()
+                            .fill(Theme.segmentThumb)
+                            .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+                            .overlay { Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5) }
+                            .matchedGeometryEffect(id: "thumb", in: thumb)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

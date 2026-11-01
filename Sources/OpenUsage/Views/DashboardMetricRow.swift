@@ -21,7 +21,7 @@ struct DashboardMetricRow: View {
                         label
                         valueText(value, severity: severity)
                         Spacer(minLength: DashboardGrid.columnGap)
-                        resetText(reset)
+                        resetText(reset, isUsedUp: isUsedUp)
                     }
                     UsageMeterBar(fill: fill, severity: severity, tintsTrack: isUsedUp)
                         .hoverTooltip(paceTooltip)
@@ -49,7 +49,6 @@ struct DashboardMetricRow: View {
             }
         }
         .font(Self.font)
-        .padding(.horizontal, DashboardGrid.inset)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
@@ -61,11 +60,11 @@ struct DashboardMetricRow: View {
 
     /// A figure keeps the row's colour until it warns.
     private static func figureStyle(_ severity: WidgetData.MeterSeverity) -> AnyShapeStyle {
-        severity == .normal ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.severityColor(severity))
+        severity == .normal ? AnyShapeStyle(.primary) : AnyShapeStyle(Theme.severityTextColor(severity))
     }
 
     private static func amountStyle(_ severity: WidgetData.MeterSeverity) -> AnyShapeStyle {
-        severity == .normal ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.severityColor(severity))
+        severity == .normal ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.severityTextColor(severity))
     }
 
     static func expiryAccessibilityValue(_ severity: WidgetData.MeterSeverity) -> String? {
@@ -94,11 +93,11 @@ struct DashboardMetricRow: View {
     }
 
     @ViewBuilder
-    private func resetText(_ reset: String?) -> some View {
+    private func resetText(_ reset: String?, isUsedUp: Bool) -> some View {
         if let reset {
             let text = Text(reset)
                 .font(Self.resetFont)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Self.amountStyle(isUsedUp ? .critical : .normal))
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize()

@@ -15,6 +15,7 @@ final class SeverityPaletteTests: XCTestCase {
         ("systemBlue", .systemBlue), ("systemOrange", .systemOrange), ("systemRed", .systemRed),
         ("systemYellow", .systemYellow), ("controlAccent", .controlAccentColor),
         ("swiftUIOrange", NSColor(Color.orange)), ("swiftUIRed", NSColor(Color.red)),
+        ("textOrange", NSColor(Theme.severityTextColor(.warning))), ("textRed", NSColor(Theme.severityTextColor(.critical))),
     ]
 
     func testEachSeverityMapsToItsSystemColour() {
@@ -50,12 +51,13 @@ final class SeverityPaletteTests: XCTestCase {
             XCTAssertEqual(try dominant(meter), name, "meter \(severity)")
 
             if severity != .normal {
+                let text = severity == .warning ? "textOrange" : "textRed"
                 let row = DashboardMetricRow(model: DashboardRowModel(label: "Weekly", mark: .bar(fill: 0, severity: severity, value: "0%", reset: "1d 8h")))
                     .frame(width: 292)
-                XCTAssertEqual(try dominant(row), name, "value \(severity)")
+                XCTAssertEqual(try dominant(row), text, "value \(severity)")
                 let count = DashboardMetricRow(model: DashboardRowModel(label: "Limit Resets", mark: .value("2 available", severity: severity)))
                     .frame(width: 292)
-                XCTAssertEqual(try dominant(count), name, "count \(severity)")
+                XCTAssertEqual(try dominant(count), text, "count \(severity)")
             }
 
             let expiry = Date().addingTimeInterval(expiryOffset(severity))

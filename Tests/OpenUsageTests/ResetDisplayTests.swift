@@ -79,7 +79,7 @@ final class ResetDisplayTests: XCTestCase {
         data.periodDurationMs = 10 * 3600 * 1000
 
         data.resetDisplayMode = .relative
-        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0.9, severity: .critical, value: "90% used", reset: "Resets in 5h"))
+        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0.9, severity: .critical, value: "90% used", reset: "Resets 5h"))
 
         data.resetDisplayMode = .absolute
         XCTAssertEqual(data.compactResetText(now: now), Formatters.compactClock(data.resetsAt!, now: now))

@@ -8,9 +8,9 @@ final class DashboardLabelFitTests: XCTestCase {
     private let cardWidth = PanelMetrics.width - 2 * PanelMetrics.margin
 
     func testEveryLimitsTitleFitsBesideALongAmountAndReset() {
-        let room = cardWidth - 2 * (DashboardGrid.cardPadding + DashboardGrid.inset)
+        let room = cardWidth - 2 * (DashboardGrid.cardPadding)
         let others = idealWidth(Text("$315.28 left").font(DashboardMetricRow.font).monospacedDigit())
-            + idealWidth(Text("Resets in 6d 23h").font(DashboardMetricRow.resetFont).monospacedDigit())
+            + idealWidth(Text("Resets 6d 23h").font(DashboardMetricRow.resetFont).monospacedDigit())
             + DashboardGrid.amountGap + DashboardGrid.columnGap
         for kind in ProviderKind.allCases {
             let runtime = AccountProviderRuntime(account: Account(kind: kind, label: kind.displayName), vault: InMemoryCredentialVault())

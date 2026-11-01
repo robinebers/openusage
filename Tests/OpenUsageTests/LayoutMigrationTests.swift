@@ -11,7 +11,7 @@ final class LayoutMigrationTests: XCTestCase {
 
         let codex = app.add(.codex)
         XCTAssertEqual(app.order(codex), ["weekly", "session", "credits", "rateLimitResets", "spark", "sparkWeekly",
-                                          "creditLimit", "today", "yesterday", "last30", "turns"])
+                                          "creditLimit", "today", "yesterday", "last30"])
 
         let secondClaude = app.add(.claude)
         XCTAssertEqual(app.order(secondClaude), ["session", "weekly", "sonnet", "fable", "extra", "rateLimitResets"],

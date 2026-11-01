@@ -204,7 +204,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         }
     }
 
-    func testTheRowsAddTheTokensCursorReportedAndTheUsageEventsRowCountsEveryEvent() async throws {
+    func testTheRowsAddTheTokensCursorReported() async throws {
         let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
@@ -217,12 +217,11 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows, [
             "today": "$1.25 · 3.3K tokens",
             "yesterday": "$1.25 · 3.3K tokens",
-            "last30": "$37.50 · 99.1K tokens",
-            "usageEvents": "60 in 30 days"
+            "last30": "$37.50 · 99.1K tokens"
         ])
     }
 
-    func testEachWindowRowHasABreakdownOfWhatCursorReportedAndTheUsageEventsRowHasNone() async throws {
+    func testEachWindowRowHasABreakdownOfWhatCursorReported() async throws {
         let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
         let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
         XCTAssertNil(runtime.usageBreakdown(for: try descriptor("today")), "nothing read yet")
@@ -240,7 +239,6 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(today.modelMeasure, .tokens)
         XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
         XCTAssertNotNil(runtime.usageBreakdown(for: try descriptor("yesterday")))
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))
     }
 }
 final class CursorHistorySourceTests: XCTestCase {

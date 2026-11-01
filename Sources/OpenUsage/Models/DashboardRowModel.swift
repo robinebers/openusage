@@ -41,11 +41,9 @@ extension WidgetData {
         return Self.resetReading(resetsAt, as: resetDisplayMode, now: now)
     }
 
-    /// The reset with its word: `Resets in 22h 10m`, or `Resets Wed 4 PM` under the exact-time setting.
+    /// The reset with its word: `Resets 22h 10m`, or `Resets Wed 4 PM` under the exact-time setting.
     func resetLabel(now: Date = Date()) -> String? {
-        guard let reset = compactResetText(now: now) else { return nil }
-        let isCountdown = resetDisplayMode == .relative && reset != Formatters.imminent
-        return isCountdown ? "Resets in \(reset)" : "Resets \(reset)"
+        compactResetText(now: now).map { "Resets \($0)" }
     }
 
     func resetTooltip(now: Date = Date()) -> String? {

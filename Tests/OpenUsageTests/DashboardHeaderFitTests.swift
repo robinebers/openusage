@@ -10,11 +10,11 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
     func testRobinsCaptionsFitWhole() async throws {
         let captions: [(ProviderKind, String, String)] = [
             (.grok, "rob@sunstory.com", "SuperGrok Heavy"), (.cursor, "rob@sunstory.com", "Ultra"),
-            (.codex, "sam@hey.com", "Plus"), (.codex, "Sunstory", "Pro 200"), (.opencodeGo, "OpenCode", "Go"),
-            (.claude, "Personal", "Max 20x"), (.ollama, "Ollama", "Free"), (.openrouter, "OpenRouter", "Pay-as-you-go"),
+            (.codex, "sam@hey.com", "Plus"), (.codex, "Sunstory", "Pro 200"), (.opencodeGo, "rob@sunstory.com", "Go"),
+            (.claude, "Personal", "Max 20x"), (.ollama, "rob@sunstory.com", "Free"), (.openrouter, "rob@sunstory.com", "Pay-as-you-go"),
             (.claude, "Attention Machine 1", "Team 5x"), (.claude, "Attention Machine 2", "Team 5x"),
         ]
-        let inset = DashboardGrid.inset
+        let inset: CGFloat = 0
         let planEnd = width - inset
         for (kind, name, plan) in captions {
             let label = "\(name) · \(plan)"
@@ -29,7 +29,7 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
             let nameWidth = try XCTUnwrap(nameAlone.span()).width
             let planWidth = try XCTUnwrap(planAlone.span()).width
             let caption = try await ink(DashboardAccountCaption(account: account, plan: plan), width: width)
-            XCTAssertEqual(CGFloat(caption.height) / caption.scale, DashboardGrid.captionHeight, accuracy: 1, label)
+            XCTAssertEqual(CGFloat(caption.height) / caption.scale, DashboardGrid.captionHeight + DashboardGrid.captionGap, accuracy: 1, label)
 
             let title = try XCTUnwrap(caption.span(from: 0, to: inset + nameWidth + 4), "\(label): no name drawn")
             XCTAssertEqual(title.first, inset, accuracy: 1.5, "\(label): the name doesn't start at the caption's inset")
@@ -43,7 +43,7 @@ final class DashboardHeaderFitTests: QuietWindowTestCase {
     }
 
     func testAHubCaptionMarksTheNameWithTheHubMarkAtCapHeight() async throws {
-        let inset = DashboardGrid.inset
+        let inset: CGFloat = 0
         let planEnd = width - inset
         let capHeight = DashboardGrid.planNSFont.capHeight
         let nameFont = NSFont.systemFont(ofSize: DashboardGrid.planNSFont.pointSize, weight: .semibold)

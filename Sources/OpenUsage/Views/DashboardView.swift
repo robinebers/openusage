@@ -251,8 +251,7 @@ struct DashboardView: View {
             } action: { _, height in
                 if includeChrome, height > 0 { measuredIdeal[screen] = height }
             }
-            .softScrollEdges()
-            .pinnedBar(.top, spacing: 0) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if includeChrome {
                     PopoverTopBar(
                         screen: screen,
@@ -261,7 +260,7 @@ struct DashboardView: View {
                     )
                 }
             }
-            .pinnedBar(.bottom, spacing: 0) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 if includeChrome {
                     PopoverFooter(screen: screen, horizontalPadding: PanelMetrics.margin)
                 }
@@ -294,6 +293,20 @@ struct DashboardView: View {
 
 private struct PopoverSurface: View {
     var body: some View {
-        Theme.traySurface.allowsHitTesting(false)
+        PanelMaterial()
+            .overlay(Theme.panelTint)
+            .allowsHitTesting(false)
     }
+}
+
+private struct PanelMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

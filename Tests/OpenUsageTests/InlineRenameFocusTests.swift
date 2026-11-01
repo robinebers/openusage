@@ -21,7 +21,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         let hosted = try await host()
         try await resignKey(hosted)
         let personal = try XCTUnwrap(hosted.frames.byID[try XCTUnwrap(hosted.accounts["Personal"])], "All Metrics isn't showing")
-        try await doubleClick(CGPoint(x: personal.minX + DashboardGrid.inset + 10, y: personal.minY + DashboardGrid.captionHeight / 2), hosted)
+        try await doubleClick(CGPoint(x: personal.minX + 10, y: personal.minY + DashboardGrid.captionHeight / 2), hosted)
         try await assertRenameTakesTyping("Personal", hosted)
     }
 

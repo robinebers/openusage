@@ -21,7 +21,6 @@ struct WidgetGroupedListView: View {
         VStack(alignment: .leading, spacing: DashboardGrid.sectionSpacing) {
             ForEach(families) { family in
                 section(family)
-                    .id(family.soleAccount?.id ?? family.id)
                     .contextMenu { DashboardMenu(sections: DashboardMenus.provider(family), perform: perform) }
                     .opacity(activeFamilyID == Self.familyFrameID(family.id) ? 0 : 1)
                     .reorderFrame(id: Self.familyFrameID(family.id), in: .named(reorderSpaceName))
@@ -52,12 +51,7 @@ struct WidgetGroupedListView: View {
 
     private func section(_ family: DashboardFamily) -> some View {
         DashboardProviderSection(family: family) {
-            DashboardProviderHeader(
-                family: family,
-                plan: family.soleAccount.flatMap { dataStore.plan(for: $0.id) },
-                status: family.soleAccount.map { status(for: $0.id) } ?? AccountStatus(),
-                onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) }
-            )
+            DashboardProviderHeader(family: family, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
             .highPriorityGesture(familyDragGesture(for: family))
         } account: { account in
             accountSection(account, in: family)
@@ -67,11 +61,8 @@ struct WidgetGroupedListView: View {
 
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if family.soleAccount == nil {
-                DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
-                    .highPriorityGesture(accountDragGesture(for: account, in: family))
-                    .padding(.bottom, DashboardGrid.captionGap)
-            }
+            DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id), status: status(for: account.id))
+                .highPriorityGesture(accountDragGesture(for: account, in: family))
             rows(of: account)
         }
         .contextMenu {
@@ -80,7 +71,7 @@ struct WidgetGroupedListView: View {
                 perform: perform
             )
         }
-        .id(family.soleAccount == nil ? account.id : "rows:\(account.id)")
+        .id(account.id)
         .opacity(activeAccountID == account.id ? 0 : 1)
         .reorderFrame(id: account.id, in: .named(reorderSpaceName))
     }
@@ -183,8 +174,8 @@ struct WidgetGroupedListView: View {
             lift: $reorderLift,
             makeLift: { value in
                 let plans = plans(for: family)
-                let preview = DashboardProviderSection(family: family, plans: plans) { account in
-                    DashboardAccountRows(account: account, plan: plans[account.id], isCaptioned: family.soleAccount == nil)
+                let preview = DashboardProviderSection(family: family) { account in
+                    DashboardAccountRows(account: account, plan: plans[account.id])
                 }
                 return ReorderLift.make(id: frameID, preview: AnyView(preview), value: value, frames: frameStore.frames)
             },

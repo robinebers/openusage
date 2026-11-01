@@ -47,7 +47,7 @@ final class PriorityDashboardTests: QuietWindowTestCase {
 
         XCTAssertEqual(waiting, 46, "waiting is one quiet row")
         XCTAssertGreaterThanOrEqual(allClear, 18 + 112 + 22, "the illustration, 18 pt above and 22 pt below")
-        XCTAssertEqual(usedUpAlone, 46 + Int(PanelMetrics.sectionSpacing) + usedUpSection,
+        XCTAssertEqual(usedUpAlone, 46 + Int(PanelMetrics.margin) + usedUpSection,
                        "a used-up limit alone gets the compact All Clear row above Used Up")
     }
 

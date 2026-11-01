@@ -32,7 +32,7 @@ Either way, the app updates itself in place through signed, notarized
 
 ## Accounts
 
-Open **Accounts** from the panel's **Options** menu (or press Return), click **+**, and click a
+Open **Accounts** from the panel's **⋯** menu (or press Return), click **+**, and click a
 provider to start its sign-in. Browser sign-in opens your browser; **Open Browser** opens it again and
 **Copy Link** lets you pick another browser. Device-code sign-in shows the code to enter. API-key
 sign-in links to the page where you create the key. You can add several accounts for the same provider. See
@@ -55,8 +55,8 @@ Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, Op
 API keys. OpenRouter's balance, account-wide spend, and activity need a Management key. Cursor accounts also show
 what Cursor charged for on-demand usage and the tokens it reported today, yesterday, and in the last
 30 days, with what each range reported on hover. Ollama accounts show the same ranges on UTC days, with
-the usage value, tokens, and requests Ollama reports. ChatGPT accounts show the credits charged, the
-tokens, and the turns by UTC day, and a workspace's credit limit.
+the usage value, tokens, and requests Ollama reports. ChatGPT accounts show what was charged and the
+tokens by UTC day, and a workspace's credit limit.
 [Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features

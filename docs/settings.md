@@ -1,6 +1,6 @@
 # Settings
 
-Open Settings from the panel's **Options** menu or press **⌘,**. Every setting applies at once and
+Open Settings from the panel's **⋯** menu or press **⌘,**. Every setting applies at once and
 survives relaunch.
 
 ## General
@@ -22,7 +22,7 @@ survives relaunch.
 | Setting | Control | What it changes |
 |---|---|---|
 | Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
-| Reset Times | Countdown, Exact time | Whether resets read `Resets in 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
+| Reset Times | Countdown, Exact time | Whether resets read `Resets 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
 
 ## Menu Bar
 

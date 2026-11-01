@@ -52,6 +52,7 @@ struct SettingsScreen: View {
                 updatesSection
             }
             .inlineGroupedForm()
+            .padding(.horizontal, PanelMetrics.margin - 20)
         }
         .scrollPosition($scrollPosition)
         .onChange(of: popover.screen, initial: true) { _, screen in

@@ -11,7 +11,8 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
                 ForEach(family.accounts) { account($0) }
             }
-            .padding(DashboardGrid.cardPadding)
+            .padding([.horizontal, .top], DashboardGrid.cardPadding)
+            .padding(.bottom, DashboardGrid.cardBottomPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface()
         }
@@ -19,19 +20,13 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
 }
 
 extension DashboardProviderSection where Header == DashboardProviderHeader {
-    init(family: DashboardFamily, plans: [String: String] = [:], @ViewBuilder account: @escaping (DashboardAccount) -> Account) {
-        self.init(
-            family: family,
-            header: { DashboardProviderHeader(family: family, plan: family.soleAccount.flatMap { plans[$0.id] }) },
-            account: account
-        )
+    init(family: DashboardFamily, @ViewBuilder account: @escaping (DashboardAccount) -> Account) {
+        self.init(family: family, header: { DashboardProviderHeader(family: family) }, account: account)
     }
 }
 
 struct DashboardProviderHeader: View {
     let family: DashboardFamily
-    var plan: String?
-    var status = AccountStatus()
     var onCopyScreenshot: (() -> Bool)?
 
     @State private var isHovered = false
@@ -41,45 +36,17 @@ struct DashboardProviderHeader: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: DashboardGrid.amountGap) {
-                title
-                if let plan {
-                    Text(plan)
-                        .font(DashboardGrid.planFont)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-            }
-            status.glyph
-                .padding(.leading, DashboardGrid.amountGap)
+            Text(provider.displayName)
+                .font(DashboardGrid.headerFont)
+                .lineLimit(1)
             Spacer(minLength: DashboardGrid.columnGap)
             logoOrCopy
         }
-        .padding(.horizontal, DashboardGrid.cardPadding + DashboardGrid.inset)
+        .padding(.horizontal, DashboardGrid.cardPadding)
         .frame(height: DashboardGrid.headerHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-    }
-
-    @ViewBuilder
-    private var title: some View {
-        if let account = family.soleAccount {
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                if account.provider.labelBesideName != nil {
-                    Text("\(provider.displayName) — ")
-                        .font(DashboardGrid.headerFont)
-                        .lineLimit(1)
-                        .fixedSize()
-                }
-                AccountNameLabel(account: account, font: DashboardGrid.headerFont)
-            }
-        } else {
-            Text(provider.displayName)
-                .font(DashboardGrid.headerFont)
-                .lineLimit(1)
-        }
     }
 
     private var logoOrCopy: some View {
@@ -105,10 +72,26 @@ struct DashboardAccountCaption: View {
     var plan: String?
     var status = AccountStatus()
 
+    @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
+
+    /// An account with no name of its own would only repeat the provider's name right above it.
+    private var showsName: Bool {
+        account.provider.labelBesideName != nil || renaming?.edit?.providerID == account.id
+    }
+
+    @ViewBuilder
     var body: some View {
+        if showsName || plan != nil || status.isShowing {
+            caption.padding(.bottom, DashboardGrid.captionGap)
+        }
+    }
+
+    private var caption: some View {
         HStack(spacing: Theme.Spacing.s) {
-            AccountNameLabel(account: account, font: DashboardGrid.captionFont)
-                .foregroundStyle(.secondary)
+            if showsName {
+                AccountNameLabel(account: account, font: DashboardGrid.captionFont)
+                    .foregroundStyle(.secondary)
+            }
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
             if let plan {
@@ -119,7 +102,6 @@ struct DashboardAccountCaption: View {
                     .fixedSize()
             }
         }
-        .padding(.horizontal, DashboardGrid.inset)
         .frame(height: DashboardGrid.captionHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -169,6 +151,8 @@ struct AccountStatus {
     var notice: String?
     var staleness: String?
 
+    var isShowing: Bool { refreshing || notice != nil || staleness != nil }
+
     @MainActor @ViewBuilder
     var glyph: some View {
         if refreshing {
@@ -193,14 +177,10 @@ struct AccountStatus {
 struct DashboardAccountRows: View {
     let account: DashboardAccount
     var plan: String?
-    var isCaptioned = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if isCaptioned {
-                DashboardAccountCaption(account: account, plan: plan)
-                    .padding(.bottom, DashboardGrid.captionGap)
-            }
+            DashboardAccountCaption(account: account, plan: plan)
             DashboardLineStack(lines: account.lines) { line in
                 DashboardMetricRow(model: line.data.dashboardRow())
             }

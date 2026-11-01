@@ -129,7 +129,8 @@ struct WidgetData: Hashable {
             return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row)) \(word)"]
         }
         if !values.isEmpty {
-            return values.map { MetricFormatter.string(for: $0, style: .row) }
+            let hasDollars = values.contains { $0.kind == .dollars }
+            return values.filter { !hasDollars || $0.label != "credits" }.map { MetricFormatter.string(for: $0, style: .row) }
         }
         return ["\(valueText) \(unboundedValueWord ?? displayMode.label.lowercased())"]
     }

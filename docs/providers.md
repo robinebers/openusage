@@ -8,7 +8,7 @@ report stays hidden.
 | Provider | Sign-in | Card shows |
 |---|---|---|
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days, Turns |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
@@ -63,16 +63,15 @@ when each expires; choose **Use**, then **Reset** to spend one.
 Sign in through OpenAI in your browser. The account shows as ChatGPT; its provider id, as the command line
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
-windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row leads
-with the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
+windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row shows
+the credits' dollar value, an estimate at 4¢ a credit. Rate-limit reset credits work like Claude's
 Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
 it shows only when the workspace sets one.
 
-Today, Yesterday, and Last 30 Days show the credits ChatGPT charged and the text tokens it counted on
-UTC days, from the reports the Codex app's Analytics view reads, and Turns counts the last 30 days'
-turns. A day with no charge reads 0 credits. The rows never show dollars, and a workspace's relative
-usage units never show as credits. Rest the pointer on a range to see its credits, turns, and tokens,
-and on a workspace plan the top five models by credits. The card reads the reports once an hour, on the
+Today, Yesterday, and Last 30 Days show what ChatGPT charged, in dollars at 4¢ a credit, and the text
+tokens it counted on UTC days, from the reports the Codex app's Analytics view reads. A day with no
+charge reads $0, and a workspace's relative usage units never show as dollars. Rest the pointer on a
+range to see what it reported, and on a workspace plan the top five models. The card reads the reports once an hour, on the
 first refresh of a new UTC day, and on ⌘R. A failed read hides the rows that cover today and yesterday
 until the next read.
 
@@ -93,7 +92,7 @@ The charge is the sum of `chargedCents` on the account's on-demand usage events
 (`USAGE_EVENT_KIND_USAGE_BASED`) in Cursor's usage history, the list on Cursor's Usage page. Usage the
 plan includes, and errored or free requests, count as $0. Tokens are the input, output, cache read, and
 cache write tokens of every event, whatever its kind; an event that reports no token usage counts as
-zero tokens. Usage Events counts every event of the last 30 days, free and errored ones too.
+zero tokens.
 Rest the pointer on a Today, Yesterday, or Last 30 Days figure to see what Cursor reported for that range:
 the charge, the usage events, each kind of token, and the top five models, the rest as Other.
 The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per

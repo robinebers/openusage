@@ -12,6 +12,15 @@ enum Theme {
         }
     }
 
+    /// The severity colors darkened enough to read as small text on a light panel.
+    static func severityTextColor(_ severity: WidgetData.MeterSeverity) -> Color {
+        switch severity {
+        case .normal: severityColor(.normal)
+        case .warning: adaptive(light: NSColor(red: 0.7, green: 0.37, blue: 0, alpha: 1), dark: .systemOrange)
+        case .critical: adaptive(light: NSColor(red: 0.84, green: 0, blue: 0.08, alpha: 1), dark: .systemRed)
+        }
+    }
+
     static let notice = AnyShapeStyle(severityColor(.warning))
 
     static let positive = AnyShapeStyle(Color(nsColor: .systemGreen))
@@ -30,7 +39,19 @@ enum Theme {
     static let trayNSColor: NSColor = .textBackgroundColor
     static var traySurface: Color { Color(nsColor: trayNSColor) }
 
-    static let cardFill = AnyShapeStyle(.fill.quaternary)
+    static let shareCanvas = adaptive(light: NSColor(white: 0.95, alpha: 1), dark: NSColor(white: 0.17, alpha: 1))
+    static let panelTint = adaptive(light: NSColor(white: 0.97, alpha: 0.5), dark: NSColor(white: 0.17, alpha: 0.35))
+    static let cardFill = adaptive(light: NSColor(white: 1, alpha: 0.58), dark: NSColor(white: 1, alpha: 0.06))
+    static let hairline = adaptive(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.06))
+    static let meterTrack = adaptive(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.12))
+    static let controlFill = adaptive(light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.1))
+    static let segmentThumb = adaptive(light: .white, dark: NSColor(white: 1, alpha: 0.18))
+
+    private static func adaptive(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        })
+    }
 
     static let cardCornerRadius: CGFloat = 12
 
@@ -65,8 +86,8 @@ private struct CardSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
             Theme.cardShape
-                .fill(Theme.traySurface)
-                .overlay { Theme.cardShape.fill(Theme.cardFill) }
+                .fill(Theme.cardFill)
+                .overlay { Theme.cardShape.strokeBorder(Theme.hairline, lineWidth: 0.5) }
         }
     }
 }

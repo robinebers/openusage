@@ -22,7 +22,7 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
         case .spend: "Charged"
         case .byokSpend: "BYOK"
         case .usageValue: "Usage Value"
-        case .credits: "Credits"
+        case .credits: "Charged"
         case .usageEvents: "Usage Events"
         case .requests: "Requests"
         case .turns: "Turns"
@@ -39,7 +39,7 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
         switch self {
         case .spend, .usageValue: MetricValue(number: number, kind: .dollars)
         case .byokSpend: MetricValue(number: number, kind: .dollars, label: "BYOK")
-        case .credits: MetricValue(number: number, kind: .count, label: "credits")
+        case .credits: MetricValue(number: number * CodexUsageMapper.creditUSDRate, kind: .dollars)
         case .usageEvents: MetricValue(number: number, kind: .count, label: "events")
         case .requests: MetricValue(number: number, kind: .count, label: "requests")
         case .turns: MetricValue(number: number, kind: .count, label: "turns")

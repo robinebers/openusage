@@ -31,7 +31,7 @@ struct PriorityBoardList: View {
         case .allClear:
             allClear
         case .listed:
-            VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
+            VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if board.attention.isEmpty { clearRow } else { attentionSection }
                 if !board.usedUp.isEmpty { usedUpSection }
             }
@@ -198,7 +198,7 @@ private struct PriorityGauge: View {
         ZStack {
             Circle()
                 .inset(by: Self.lineWidth / 2)
-                .stroke(.quaternary, lineWidth: Self.lineWidth)
+                .stroke(Theme.meterTrack, lineWidth: Self.lineWidth)
             Circle()
                 .inset(by: Self.lineWidth / 2)
                 .trim(from: 0, to: fraction)
