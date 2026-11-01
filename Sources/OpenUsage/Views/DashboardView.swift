@@ -10,6 +10,7 @@ struct DashboardView: View {
     @State private var animatedHeight: CGFloat = 0
     @State private var didEstablishHeight = false
     @State private var measuredIdeal: [PopoverScreen: CGFloat] = [:]
+    @State private var isOpening = false
     @State private var slideProgress: CGFloat = 1
     @State private var animatedSlideID = 0
     /// The `popover.screenSlideID` whose slide has ended. Until the store's id lands here the pager keeps
@@ -28,7 +29,7 @@ struct DashboardView: View {
         return modeBody
             .frame(width: PanelMetrics.width)
             .frame(maxHeight: .infinity, alignment: .top)
-            .background(PopoverSurface())
+            .background(Theme.panelBody)
             .drivesPanelHeight(animatedHeight)
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
@@ -65,6 +66,11 @@ struct DashboardView: View {
                     if let target = heightTarget(for: popover.screen) {
                         didEstablishHeight = true
                         animatedHeight = target
+                    }
+                    isOpening = true
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
+                        isOpening = false
                     }
                 } else {
                     resetTransientState()
@@ -124,8 +130,8 @@ struct DashboardView: View {
                 if !didEstablishHeight {
                     didEstablishHeight = true
                     animatedHeight = target
-                } else if popover.screen == .settings, !isSliding {
-                    // A spring here resizes the panel's glass on every frame of a Settings tab switch, which flickers.
+                } else if isOpening || (popover.screen == .settings && !isSliding) {
+                    // The panel opens at its height, and a spring would redraw it on every frame of a Settings tab switch.
                     animatedHeight = target
                 } else if abs(target - animatedHeight) > 1 {
                     withAnimation(Motion.spring) { animatedHeight = target }
@@ -295,24 +301,4 @@ struct DashboardView: View {
             SettingsScreen()
         }
     }
-}
-
-private struct PopoverSurface: View {
-    var body: some View {
-        PanelMaterial()
-            .overlay(Theme.panelTint)
-            .allowsHitTesting(false)
-    }
-}
-
-private struct PanelMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }

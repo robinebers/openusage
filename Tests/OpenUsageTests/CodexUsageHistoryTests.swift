@@ -15,11 +15,11 @@ enum CodexUsageFixtures {
         """
     }
 
-    /// Every day of the 30 is reported, today too, unless `reportsToday` is false. The quiet days report zeros.
+    /// Only the active days are named, plus today's explicit zero once it has been reported.
     static func counts(reportsToday: Bool = true) -> String {
-        let quiet = (3...28).map { "2026-10-\(String(format: "%02d", $0))" } + (reportsToday ? ["2026-10-31"] : [])
-        let quietRows = quiet.map { #"{"date":"\#($0)","clients":[],"totals":{"credits":0,"text_total_tokens":0,"threads":0,"turns":0,"users":0}}"# }
-        return activeCounts.replacingOccurrences(of: "\"data\":[", with: "\"data\":[" + quietRows.joined(separator: ",") + ",")
+        guard reportsToday else { return activeCounts }
+        let today = #"{"date":"2026-10-31","clients":[],"totals":{"text_total_tokens":0,"turns":0}}"#
+        return activeCounts.replacingOccurrences(of: "\"data\":[", with: "\"data\":[" + today + ",")
     }
 
     private static let activeCounts = #"""
@@ -42,6 +42,8 @@ enum CodexUsageFixtures {
     /// `credit_usage_credits` and `on_demand_credits`, and no `units`.
     static let workspaceBreakdown = #"""
     {"data":[
+     {"date":"2026-10-29","premium_usage_values":{"credit_usage_credits":{"cli":3.0}},
+      "models":[{"model":"gpt-6-astra","on_demand_credits":3.0}]},
      {"date":"2026-10-30","product_surface_usage_values":{"desktop_app":20.0},
       "premium_usage_values":{"credit_usage_credits":{"cli":4.0,"desktop_app":8.5},"total_usage_credits":{},
        "uncached_text_input_tokens_by_surface":{},"cached_text_input_tokens_by_surface":{},"text_output_tokens_by_surface":{},
@@ -141,7 +143,7 @@ final class CodexUsageHistoryTests: XCTestCase {
         XCTAssertEqual(counts.headers["Authorization"], "Bearer access")
     }
 
-    func testAPersonalPlansBreakdownShowsTurnSharesOnlyWhenModelsCoverTheRange() async throws {
+    func testAPersonalPlansModelSharesUseAllReportedTurnsEvenWhenOnlySomeAreAttributed() async throws {
         let (store, runtime, _, _) = try makeAccount()
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
@@ -151,7 +153,9 @@ final class CodexUsageHistoryTests: XCTestCase {
         XCTAssertEqual(last30.totals[.turns], 478)
         XCTAssertEqual(last30.totals[.tokens], 2_014_940_056)
         XCTAssertEqual(last30.tokenParts.map(\.title), ["Cache Read", "Input", "Output"])
-        XCTAssertTrue(last30.models.isEmpty, "only 86 of the 478 turns are attributed to models")
+        XCTAssertEqual(last30.models.map(\.name), ["gpt-6.1-sol", "gpt-6-astra"])
+        XCTAssertEqual(last30.models.compactMap(\.share).map(ModelFigure.share.text), ["12%", "6%"],
+                       "55 and 31 named turns out of the 478 reported across the sparse month")
         let oct29 = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-29T00:00:00Z"))
         let (dayStore, dayRuntime, _, _) = try makeAccount(clock: TestClock(oct29))
         _ = await dayStore.refresh(providerID: dayRuntime.provider.id, force: true)
@@ -189,7 +193,6 @@ final class CodexUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime)["today"], "0 tokens")
         let breakdown = try XCTUnwrap(requestsFor(http, "daily-workspace-user-token-usage-breakdown"))
         XCTAssertEqual(query(breakdown), ["start_date=2026-10-02", "end_date=2026-10-31", "group_by=day"])
-        XCTAssertNil(requestsFor(http, "credit-usage-events"))
         let yesterday = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "yesterday")))
         XCTAssertEqual(yesterday.modelFigures, [.share], "a workspace reports only credits per model")
         XCTAssertEqual(yesterday.models.map(\.name), ["gpt-6-astra", "gpt-6.1-sol"])
@@ -262,7 +265,7 @@ final class CodexUsageHistoryTests: XCTestCase {
                        "today, and yesterday, which was read before it ended")
     }
 
-    func testAFailedReadHidesTheRowsKeepsTheCardAndWaitsAnHour() async throws {
+    func testFailedCountsKeepTheCardAndSumOnlyPreviouslyReadDays() async throws {
         let reports = TestSwitch<Int?>(500)
         let (store, runtime, http, clock) = try makeAccount(reports: reports)
 
@@ -278,14 +281,25 @@ final class CodexUsageHistoryTests: XCTestCase {
 
         clock.set(now.addingTimeInterval(61 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        let month = try descriptor(runtime, "last30")
+        XCTAssertEqual(store.usageBreakdown(for: month)?.totals[.tokens], 2_014_940_056)
+
+        reports.value = 503
+        clock.set(now.addingTimeInterval(122 * 60))
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(Set(rows(store, runtime).keys), ["last30"])
+        XCTAssertEqual(store.usageBreakdown(for: month)?.totals[.tokens], 2_006_800_581,
+                       "Oct 2 and Oct 29 remain available after the reread of today and yesterday fails")
     }
 
     func testMissingWorkspaceCreditsDoNotHideOrBlockTokenCounts() async throws {
         let status = TestSwitch<Int?>(429)
         let (store, runtime, http, clock) = try makeAccount(planType: "team", creditStatus: status)
+        let month = try descriptor(runtime, "last30")
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(rows(store, runtime)["yesterday"], "8.1M tokens")
-        XCTAssertNil(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits])
+        let countsOnly = try XCTUnwrap(store.usageBreakdown(for: month))
+        XCTAssertEqual(countsOnly.shareMeasure, .turns)
+        XCTAssertFalse(countsOnly.hasUnreadDays, "the complete turns report can stand on its own")
 
         status.value = nil
         clock.set(now.addingTimeInterval(30 * 60))
@@ -296,7 +310,21 @@ final class CodexUsageHistoryTests: XCTestCase {
 
         clock.set(now.addingTimeInterval(61 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits], 12.5)
+        let full = try XCTUnwrap(store.usageBreakdown(for: month))
+        XCTAssertEqual(full.totals[.credits], 15.5)
+        XCTAssertFalse(full.hasUnreadDays, "quiet dates omitted from a successful credits report are covered")
+
+        status.value = 503
+        clock.set(now.addingTimeInterval(122 * 60))
+        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+        XCTAssertEqual(rows(store, runtime), ["today": "0 tokens", "yesterday": "8.1M tokens", "last30": "2B tokens"])
+        let partial = try XCTUnwrap(store.usageBreakdown(for: month))
+        XCTAssertEqual(partial.totals[.tokens], full.totals[.tokens])
+        XCTAssertEqual(partial.totals[.credits], 3, "only Oct 29's charge remains after the credit reread fails")
+        XCTAssertEqual(partial.shareMeasure, .credits)
+        XCTAssertTrue(partial.hasUnreadDays)
+        let yesterday = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "yesterday")))
+        XCTAssertFalse(yesterday.hasUnreadDays, "yesterday shows only its successfully read token counts")
     }
 
     func testInvalidWorkspaceCreditsStillShowTokenCounts() async throws {
@@ -355,13 +383,13 @@ final class CodexUsageReportsTests: XCTestCase {
         XCTAssertEqual(counts.quietDay.totals.values, [:])
     }
 
-    func testAModelWithoutChargedCreditsLeavesOutTheModelList() throws {
+    func testAModelWithoutChargedCreditsLeavesTheOtherModelsAndDayTotalIntact() throws {
         let report = try XCTUnwrap(CodexUsageReports.workspaceCredits(Data(#"""
         {"data":[{"date":"2026-10-30","premium_usage_values":{"credit_usage_credits":{"cli":2.5,"desktop_app":10}},
                   "models":[{"model":"a","credits":9,"on_demand_credits":2},{"model":"b","credits":9}]}]}
         """#.utf8)))
 
         XCTAssertEqual(report.days["2026-10-30"]?.totals.values, [.credits: 12.5])
-        XCTAssertNil(report.days["2026-10-30"]?.byModel)
+        XCTAssertEqual(report.days["2026-10-30"]?.byModel, ["a": UsageTotals(values: [.credits: 2])])
     }
 }

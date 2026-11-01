@@ -121,6 +121,8 @@ struct UsageHistory: Hashable, Sendable {
     let asOf: Date
     /// Keyed by day start; a day that is absent was not read.
     var days: [Date: UsageDay] = [:]
+    /// A supplementary report can fail on dates the primary history read successfully.
+    var unreadDatesByMeasure: [UsageMeasure: Set<Date>] = [:]
     /// A window's totals as the provider reported them, which win over a sum of days.
     var reported: [UsageWindow: UsageTotals] = [:]
 
@@ -147,6 +149,13 @@ struct UsageHistory: Hashable, Sendable {
             }
         }
         return models
+    }
+
+    /// Sources record a successfully read date even when the provider had no activity to report.
+    func unreadDays(in window: UsageWindow, including measure: UsageMeasure?) -> Int {
+        guard reported[window] == nil, let offsets = window.dayOffsets else { return 0 }
+        let extra = measure.flatMap { unreadDatesByMeasure[$0] } ?? []
+        return Self.dayStarts(offsets, now: asOf, calendar: calendar).count { days[$0] == nil || extra.contains($0) }
     }
 
     private func days(in window: UsageWindow) -> [UsageDay] {
@@ -176,7 +185,7 @@ enum ModelFigure: String, CaseIterable, Codable, CodingKeyRepresentable, Sendabl
         switch self {
         case .cost: MetricFormatter.number(number, kind: .dollars, style: .row)
         case .tokens: MetricFormatter.number(number, kind: .count, style: .row)
-        case .share: "\(Int((number * 100).rounded()))%"
+        case .share: number.formatted(.percent.precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
         }
     }
 }
@@ -210,6 +219,10 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
     private let reportingDay: Date
     private let reportingTimeZone: TimeZone
     let totals: UsageTotals
+    /// Older cached breakdowns didn't record read status or the unit behind model percentages.
+    private let unreadDays: Int?
+    let shareMeasure: UsageMeasure?
+    var hasUnreadDays: Bool { (unreadDays ?? 0) > 0 }
     /// Only the names and figures shown in the popover are kept with the snapshot.
     private let rankings: [ModelFigure: [Model]]
     /// What the models report, in order of preference. Credits or turns supply a share when neither
@@ -224,23 +237,29 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         }
         let dollars = Self.dollarMeasures.first(where: isReported)
         let hasTokens = isReported(.tokens)
-        let share = [UsageMeasure.credits, .turns].first(where: isReported)
-        let shareTotal = share.map { measure in models.values.compactMap { $0[measure] }.filter { $0 > 0 }.reduce(0, +) } ?? 0
+        let share = [UsageMeasure.credits, .turns].first { (totals[$0] ?? 0) > 0 && isReported($0) }
 
         self.window = window
         reportingDay = history.calendar.startOfDay(for: history.asOf)
         reportingTimeZone = history.calendar.timeZone
         self.totals = totals
+        shareMeasure = share
         let everyModel = models.map { name, model in
-            Model(
+            let fraction = share.flatMap { measure -> Double? in
+                guard let amount = model[measure], let total = totals[measure] else { return nil }
+                let contribution = amount / total
+                return contribution.isFinite ? contribution : nil
+            }
+            return Model(
                 name: name,
                 dollars: dollars.flatMap { model[$0] },
                 tokens: hasTokens ? model[.tokens] : nil,
-                share: share.flatMap { model[$0] }.map { max($0, 0) / shareTotal }
+                share: fraction
             )
         }
         let figures: [ModelFigure] = (dollars == nil ? [] : [.cost]) + (hasTokens ? [.tokens] : [])
         let available: [ModelFigure] = figures.isEmpty && share != nil ? [.share] : figures
+        unreadDays = history.unreadDays(in: window, including: figures.isEmpty ? share : nil)
         rankings = Dictionary(uniqueKeysWithValues: available.map { ($0, Self.rank(everyModel, by: $0)) })
     }
 
@@ -277,9 +296,9 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         return ranked.prefix(Self.shownModels) + [Model(name: "Other", dollars: sum(\.dollars), tokens: sum(\.tokens), share: sum(\.share))]
     }
 
-    /// Zero spend alone cannot rule out free requests.
+    /// Unread days can still have activity, and zero spend alone cannot rule out free requests.
     var isEmpty: Bool {
-        [UsageMeasure.tokens, .requests, .turns, .usageEvents].contains { totals[$0] != nil }
+        unreadDays == 0 && [UsageMeasure.tokens, .requests, .turns, .usageEvents].contains { totals[$0] != nil }
             && totals.values.values.allSatisfy { $0 == 0 }
     }
 

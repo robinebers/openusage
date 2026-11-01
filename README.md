@@ -73,7 +73,8 @@ and a workspace's credit limit.
   every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.
-  Hover over a usage range's total to see its breakdown, including after reopening the app.
+  A usage range shows the provider's total or sums the days it reported. Open its breakdown to see
+  model usage and whether any days are missing, including after reopening the app.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
 - **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
   resets. Click the count or focus it and press Space to see when each expires and spend one.

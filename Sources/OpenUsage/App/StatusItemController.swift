@@ -113,7 +113,11 @@ final class StatusItemController: NSObject {
             height: PanelHeightController.defaultHeight
         ))
         self.panel = panel
-        self.heightController = PanelHeightController(panel: panel) { container.popover.screen }
+        self.heightController = PanelHeightController(
+            panel: panel,
+            currentScreen: { container.popover.screen },
+            currentTab: { container.popover.dashboardTab }
+        )
 
         super.init()
 
@@ -263,7 +267,7 @@ final class StatusItemController: NSObject {
             return
         }
         let buttonRectOnScreen = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        heightController.prepareForOpening(below: buttonRectOnScreen)
+        heightController.prepareForOpening(below: buttonRectOnScreen, tab: dashboardTab)
         container.popover.show(dashboardTab: dashboardTab)
 
         host.layoutSubtreeIfNeeded()

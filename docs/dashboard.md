@@ -111,19 +111,24 @@ After relaunch, the total opens with its last saved breakdown. If only the total
 the panel shows it with the account's refresh status. The details update in place when they arrive.
 When a saved breakdown is from an earlier reporting day, its preview and copied image show the date.
 
-The details lead with what the range charged and its tokens, then each kind of token, then the top
-five models, the rest as Other. A bar shows the kinds of token as shares of the total when they add
-up to it; some providers count cached tokens inside input, so they show the list alone.
+A range shows the total the provider reported for it. Otherwise it adds up the days that supplied
+each figure. A quiet day can have no entry. When a day could not be read, the other days still count
+and the details note the gap. For example, Last 30 Days can show the older days while Today is
+unavailable.
 
-Top Models ranks by cost or tokens when the named models account for the range's total in that unit.
-For ChatGPT, each model shows its percentage of the total.
-If the provider supplies only a partial breakdown, the range totals are still shown.
+The details show charges, tokens and the top five models, with the remaining named models grouped
+under **Other**. A bar shows the token split when the parts add up to the total. **Top Models** ranks
+the costs or tokens the provider attributed to each model, even when some usage has no model name.
+
+For ChatGPT, each percentage is the model's share of the credits or turns reported for the range.
+Named models can add up to less than 100% when attribution is partial. An older saved breakdown
+without the original total labels its percentages as shares among named models until it refreshes.
 
 Click the copy button in the corner to copy a PNG of the details, with the provider's name and
 whichever of Cost or Tokens is showing, without the switch.
 
-**No Usage** means the provider counted activity, such as requests or tokens, and every reported
-figure was zero. If the provider reported only spend, a free request is possible, so the detail
+**No Usage** means the range was read, the provider counted activity such as requests or tokens, and
+every reported figure was zero. If the provider reported only spend, a free request is possible, so the detail
 shows the amount under **Totals Only**, even when it is `$0`. A **No Usage** range has nothing to copy.
 
 ## Rename

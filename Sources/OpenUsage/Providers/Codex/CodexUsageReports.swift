@@ -90,6 +90,7 @@ enum CodexUsageReports {
     static func combining(_ counts: UsageHistory, with credits: UsageHistory?) -> UsageHistory {
         guard let credits else { return counts }
         var result = counts
+        result.unreadDatesByMeasure[.credits] = Set(counts.days.keys).subtracting(credits.days.keys)
         for (date, charged) in credits.days {
             guard var day = result.days[date] else { continue }
             day.totals = day.totals.adding(charged.totals)

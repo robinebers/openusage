@@ -39,9 +39,9 @@ enum Theme {
     static let trayNSColor: NSColor = .textBackgroundColor
     static var traySurface: Color { Color(nsColor: trayNSColor) }
 
-    static let shareCanvas = adaptive(light: NSColor(white: 0.95, alpha: 1), dark: NSColor(white: 0.17, alpha: 1))
-    static let panelTint = adaptive(light: NSColor(white: 0.97, alpha: 0.5), dark: NSColor(white: 0.17, alpha: 0.35))
-    static let cardFill = adaptive(light: .white, dark: NSColor(white: 0.2, alpha: 1))
+    /// The same system colours Settings' grouped `Form` uses, so every screen matches it.
+    static let panelBody = Color(nsColor: .windowBackgroundColor)
+    static let cardFill = Color(nsColor: .quaternarySystemFill)
     static let hairline = adaptive(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.06))
     static let meterTrack = adaptive(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.12))
 

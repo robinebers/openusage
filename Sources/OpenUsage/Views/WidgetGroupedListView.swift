@@ -45,7 +45,8 @@ struct WidgetGroupedListView: View {
         AccountStatus(
             refreshing: dataStore.refreshingProviderIDs.contains(accountID),
             notice: dataStore.notice(for: accountID),
-            staleness: dataStore.stalenessHint(for: accountID)
+            staleness: dataStore.stalenessHint(for: accountID),
+            onFix: { popover.openAccounts(accountID) }
         )
     }
 

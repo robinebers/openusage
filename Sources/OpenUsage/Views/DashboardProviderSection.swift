@@ -164,6 +164,8 @@ struct AccountStatus {
     var refreshing = false
     var notice: String?
     var staleness: String?
+    /// Opens the account's page, the same as Fix on Priority.
+    var onFix: (() -> Void)?
 
     var isShowing: Bool { refreshing || notice != nil || staleness != nil }
 
@@ -173,11 +175,15 @@ struct AccountStatus {
             MotionAwareProgressView(controlSize: .mini)
                 .accessibilityLabel("Refreshing")
         } else if let notice {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.notice)
-                .hoverTooltip(notice)
-                .accessibilityLabel(notice)
+            Button { onFix?() } label: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.notice)
+            }
+            .buttonStyle(.plain)
+            .disabled(onFix == nil)
+            .hoverTooltip(notice)
+            .accessibilityLabel(notice)
         } else if let staleness {
             Image(systemName: "clock")
                 .font(.system(size: 10, weight: .medium))

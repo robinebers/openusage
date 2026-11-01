@@ -119,6 +119,20 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime), ["requests": "120 in 30 days"])
     }
 
+    func testASuccessfulReadCoversOmittedDaysWithoutInventingFigures() async {
+        let sparse = #"{"granularity":"day","buckets":[{"from":"2026-10-29T00:00:00Z","until":"2026-10-30T00:00:00Z","request_count":3}]}"#
+        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data(sparse.utf8)))
+        let source = OllamaHistorySource(client: OllamaUsageClient(http: http), apiKey: "key", accountID: "ollama")
+        let dates = UsageHistory.dayStarts(0..<2, now: Self.now, calendar: source.calendar)
+        let read = await source.read(dates, asOf: Self.now, calendar: source.calendar)
+        XCTAssertEqual(read.days[dates[0]], UsageDay(totals: UsageTotals()))
+        XCTAssertEqual(read.days[dates[1]]?.totals.values, [.requests: 3])
+
+        http.response = HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        let failed = await source.read(dates, asOf: Self.now, calendar: source.calendar)
+        XCTAssertTrue(failed.days.isEmpty)
+    }
+
     func testAFailedReadHidesTheRowsKeepsTheCardAndWaitsAnHour() async throws {
         let status = TestSwitch<Int?>(500)
         let (store, runtime, http, clock) = try makeAccount(usage: status)

@@ -69,14 +69,14 @@ Limit Resets row. Credit Limit shows the credits a workspace lets the member spe
 it shows only when the workspace sets one.
 
 Today, Yesterday, and Last 30 Days show the text tokens ChatGPT counted on UTC days, from the reports the
-Codex app's Analytics view reads. A range adds up the days that report tokens. ChatGPT reports credits,
-not dollars, and what a credit cost depends on how it was bought, so the card shows no dollar figure for
-usage. Open a range to see its token breakdown and each model's percentage. A range adds up the days
-that have been read.
+Codex app's Analytics view reads. A range adds up the days that report tokens. Open a range to see
+the token breakdown and each named model's share of reported credits or turns. ChatGPT reports no
+dollar amount for these ranges.
 
 The card reads the reports once an hour, on the first refresh of a new UTC day, and on ⌘R. Each
 report has its own cache and retry schedule. If the credit report is unavailable, the token counts
-still show. When the counts report fails, ranges that need its days are hidden until the next read.
+still show. If today's or yesterday's counts cannot be read, Last 30 Days still includes the older
+days already read.
 
 ## Cursor
 
@@ -101,10 +101,9 @@ the charge, each kind of token, and the top five models, the rest as Other.
 The card reads the history one local day at a time, at most 4 days at once and for at most 20 seconds per
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
-30 days again. A failed read keeps the older days already read and never affects the other rows; when today or
-yesterday cannot be read, the rows that cover it are hidden rather than showing an old value. A row shows
-from the days read so far. After Cursor answers a history read with 429, history reads wait
-for its Retry-After, or an hour without one, and the rows that cover today or yesterday hide during that wait.
+30 days again. Last 30 Days sums the days read so far, even if today or yesterday could not be read.
+A failed day stays out of the sum, and the range details note the gap. If Cursor rate-limits a
+history read, retries wait for its Retry-After or an hour when it gives no time.
 
 
 ## Antigravity
@@ -155,11 +154,12 @@ value in dollars (`usage_usd`, what the requests are worth, whether the plan or 
 for them) and the tokens, input plus output. Cached input is already part of input. Requests counts the
 last 30 days' requests. A legacy plan reports only requests, so its card shows Requests alone. Rest the
 pointer on a Today, Yesterday, or Last 30 Days figure to see what Ollama reported for that range: the
-usage value, each kind of token, and the top five models, the rest as Other. A range with a
-day whose usage falls beyond the ten models Ollama names shows no models.
+usage value, each kind of token, and the top five models, the rest as Other. When Ollama reports
+usage beyond the ten models it names for a day, that day contributes to the range totals only.
+Other days can still contribute to the model ranking.
 The card reads all 30 days once after a launch, then today and yesterday from the last 7 days once an
-hour, at the start of a new UTC day, and on ⌘R. The days are kept in memory for each account. A failed
-read hides the rows it would have filled until the next read an hour later.
+hour, at the start of a new UTC day, and on ⌘R. If a read fails, the range can still show figures
+from the other days already read.
 
 ## OpenCode
 
@@ -181,8 +181,9 @@ Today, This Week, and This Month show the credit spend first, then what the keys
 own provider keys (BYOK), which is never added to it. A Management key also reads `/api/v1/activity`,
 which covers the 30 UTC days before today: **Yesterday** and **Prior 30 Days** show the spend and the
 tokens (prompt plus completion), and **Requests** counts the requests of those 30 days. The card reads
-all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight. A failed
-read hides those rows and is tried again an hour later; it never affects the other rows.
+all 30 days after a launch, yesterday again once an hour, and a new UTC day right after midnight.
+If the activity read fails, Prior 30 Days can still show older days already read. The spend totals
+from the keys endpoint remain available.
 
 Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
 OpenRouter reported for that range. For Today, This Week, and This Month that is the spend and BYOK. For

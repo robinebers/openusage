@@ -41,8 +41,11 @@ final class CursorUsageEventsParserTests: XCTestCase {
         XCTAssertEqual(page.events.map(\.model), ["claude-4.6-opus-high-thinking", "composer-2", "gpt-5", "gpt-5",
                                                    "composer-2", "composer-2", "composer-2"])
 
-        let day = CursorUsageEvents.day(page.events)
-        XCTAssertEqual(day.totals[.tokens], 136_193, "an event without tokenUsage counts as zero tokens")
+        var events = page.events
+        events[0].model = nil
+        let day = CursorUsageEvents.day(events)
+        XCTAssertEqual(day.byModel?["composer-2"]?[.tokens], 3_514, "an unnamed event preserves the named model totals")
+        XCTAssertEqual(day.totals[.tokens], 136_193, "the total includes the event with no model name")
         XCTAssertEqual(day.totals[.usageEvents], 7)
         XCTAssertEqual(CursorUsageEvents.day([]).totals, .zero(CursorUsageEvents.measures), "a quiet day is zeros, not a gap")
     }
@@ -160,7 +163,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
     }
 
-    func testAFailedRereadHidesTheRowsInsteadOfAnOldValueAndNeverBreaksTheCard() async throws {
+    func testAFailedRereadDropsUnreadDaysButKeepsEarlierDaysInTheRange() async throws {
         let events = TestSwitch<Int?>(500)
         let (store, runtime, _) = try makeAccount(events: events)
 
@@ -176,7 +179,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
+        XCTAssertEqual(spend(store, runtime), ["Last 30 Days": 35], "28 complete days at $1.25 after today and yesterday failed")
     }
 
     /// Each rate-limited request takes 15 seconds, so the wait has to start when the 429 arrives.
@@ -291,7 +294,10 @@ final class CursorHistorySourceTests: XCTestCase {
         let cursor = AccountProviderRuntime(account: Account(kind: .cursor, label: "Cursor"), vault: InMemoryCredentialVault())
         var snapshot = ProviderSnapshot(provider: cursor.provider, plan: nil, lines: [])
         HistoryRow.append(to: &snapshot, for: cursor.widgetDescriptors, in: history)
-        XCTAssertEqual(snapshot.lines.map(\.label), ["Today", "Yesterday"])
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Today", "Yesterday", "Last 30 Days"])
+        let totals = snapshot.usageBreakdowns?["last30"]?.totals
+        XCTAssertEqual(totals?[.spend] ?? 0, 65.395, accuracy: 1e-9, "only the 29 complete days at $2.255 count")
+        XCTAssertEqual(totals?[.usageEvents], 87, "the two events on the incomplete day are never added")
     }
 
     @MainActor

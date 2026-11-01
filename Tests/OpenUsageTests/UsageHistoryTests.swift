@@ -48,17 +48,20 @@ final class UsageHistoryTests: XCTestCase {
         }
     }
 
-    func testAReportedZeroShowsAndAWindowWithAnUnreadDayHides() {
-        let row = HistoryRow.window(.lastDays(30), .spend, then: .tokens)
-        var days = everyDay(.zero(CursorUsageEvents.measures))
+    func testAZeroFromReadDaysConfirmsNoUsageOnlyWhenNoDayFailed() throws {
+        let row = HistoryRow.window(.lastDays(2), .tokens)
+        let expected = MetricLine.values(label: row.title, values: [MetricValue(number: 0, kind: .count, label: "tokens")])
+        var days = [0: UsageDay(totals: .zero([.tokens])), 1: UsageDay(totals: UsageTotals())]
 
-        XCTAssertEqual(row.line(label: "Last 30 Days", in: history(days)), .values(label: "Last 30 Days", values: [
-            MetricValue(number: 0, kind: .dollars), MetricValue(number: 0, kind: .count, label: "tokens")
-        ]))
+        let sparse = history(days)
+        XCTAssertEqual(row.line(label: row.title, in: sparse), expected)
+        XCTAssertTrue(try XCTUnwrap(row.breakdown(in: sparse)).isEmpty, "both days were successfully read")
 
-        days[29] = nil
-        XCTAssertNil(row.line(label: "Last 30 Days", in: history(days)))
-        XCTAssertNotNil(HistoryRow.window(.today, .spend).line(label: "Today", in: history(days)))
+        days[1] = nil
+        let partial = history(days)
+        XCTAssertEqual(row.line(label: row.title, in: partial), expected, "keep the figure from the day that was read")
+        XCTAssertFalse(try XCTUnwrap(row.breakdown(in: partial)).isEmpty, "the other day's activity is unknown")
+        XCTAssertNil(row.line(label: row.title, in: history([:])))
     }
 
     func testARowSumsTheDaysThatReportAFigureAndHidesWhenNoneDo() {
@@ -154,58 +157,46 @@ final class UsageHistoryTests: XCTestCase {
         XCTAssertEqual(today.models.map(\.dollars), [nil, nil])
     }
 
-    func testAnUnsplitActiveDayHidesIncompleteRankingsButKeepsTheRangeTotal() throws {
-        let attributed = UsageTotals(values: [.spend: 1, .tokens: 900])
-        var days = [0: UsageDay(totals: attributed, byModel: ["a": attributed])]
-        days[1] = UsageDay(totals: UsageTotals(values: [.spend: 100, .tokens: 100_000]))
+    func testUnattributedUsageCountsTowardTotalsWhileModelFiguresShowOnlyReportedAmounts() throws {
+        let attributed = UsageDay(
+            totals: UsageTotals(values: [.spend: 10, .tokens: 100]),
+            byModel: ["a": UsageTotals(values: [.spend: 8, .tokens: 40]), "b": UsageTotals(values: [.spend: 2])]
+        )
+        let unsplit = UsageDay(totals: UsageTotals(values: [.spend: 100, .tokens: 100_000]))
+        let range = try XCTUnwrap(UsageBreakdown(.lastDays(2), in: history([0: attributed, 1: unsplit])))
 
-        let range = try XCTUnwrap(UsageBreakdown(.lastDays(2), in: history(days)))
-        XCTAssertEqual(range.totals[.spend], 101)
-        XCTAssertTrue(range.models.isEmpty)
-
-        days[1] = UsageDay(totals: .zero([.spend, .tokens]))
-        XCTAssertEqual(UsageBreakdown(.lastDays(2), in: history(days))?.modelFigures, [.cost, .tokens])
-        XCTAssertNil(UsageBreakdown(.lastDays(3), in: history(days)), "an unread day hides the whole breakdown")
+        XCTAssertEqual(range.totals[.spend], 110)
+        XCTAssertEqual(range.totals[.tokens], 100_100)
+        XCTAssertEqual(range.models(by: .cost).map(\.name), ["a", "b"])
+        XCTAssertEqual(range.models(by: .cost).map(\.dollars), [8, 2])
+        XCTAssertEqual(range.models(by: .tokens).map(\.name), ["a"])
+        XCTAssertEqual(range.models(by: .tokens).map(\.tokens), [40])
     }
 
-    func testModelsCanRankByACompleteFigureWhenAnotherIsPartial() throws {
-        let models = [
-            "a": UsageTotals(values: [.spend: 8, .tokens: 40]),
-            "b": UsageTotals(values: [.spend: 2]),
-        ]
-        let days = [0: UsageDay(totals: UsageTotals(values: [.spend: 10, .tokens: 100]), byModel: models)]
-        let breakdown = try XCTUnwrap(UsageBreakdown(.today, in: history(days)))
-        XCTAssertEqual(breakdown.modelFigures, [.cost])
-        XCTAssertEqual(breakdown.models.map(\.dollars), [8, 2])
-    }
-
-    func testModelPercentagesNeedToAccountForTheRange() throws {
-        let models = ["a": UsageTotals(values: [.turns: 55]), "b": UsageTotals(values: [.turns: 31])]
-        var days = [0: UsageDay(totals: UsageTotals(values: [.turns: 86]), byModel: models)]
-        let day = try XCTUnwrap(UsageBreakdown(.today, in: history(days)))
-        XCTAssertEqual(day.models.compactMap(\.share).map(ModelFigure.share.text), ["64%", "36%"])
-
-        days[1] = UsageDay(totals: UsageTotals(values: [.turns: 392]))
-        let range = try XCTUnwrap(UsageBreakdown(.lastDays(2), in: history(days)))
-        XCTAssertTrue(range.modelFigures.isEmpty, "86 attributed turns cannot stand for all 478")
-    }
-
-    func testMissingDailyCreditsFallBackToTurnsAndReportedZeroCreditsAreComplete() throws {
-        let charged = UsageDay(totals: UsageTotals(values: [.credits: 8, .turns: 10]), byModel: [
-            "billed": UsageTotals(values: [.credits: 8]), "turns-only": UsageTotals(values: [.turns: 10])
+    func testModelSharesUseReportedCreditsAndFallBackToTurnsWithoutAPositiveCreditTotal() throws {
+        var charged = UsageDay(totals: UsageTotals(values: [.credits: 8, .turns: 10]), byModel: [
+            "billed": UsageTotals(values: [.credits: 2]), "turns-only": UsageTotals(values: [.turns: 10])
         ])
-        var recent = UsageDay(totals: UsageTotals(values: [.turns: 4]), byModel: ["turns-only": UsageTotals(values: [.turns: 4])])
+        let recent = UsageDay(totals: UsageTotals(values: [.turns: 4]), byModel: ["turns-only": UsageTotals(values: [.turns: 4])])
         func range() throws -> UsageBreakdown {
             try XCTUnwrap(UsageBreakdown(.lastDays(2), in: history([0: recent, 1: charged])))
         }
 
-        let missingCredits = try range()
-        XCTAssertEqual(missingCredits.models.map(\.name), ["turns-only"])
+        let credits = try range()
+        XCTAssertEqual(credits.totals[.credits], 8, "today reported only turns")
+        XCTAssertEqual(credits.models.map(\.name), ["billed"])
+        XCTAssertEqual(credits.models.first?.share, 0.25, "two of the eight reported credits were attributed")
 
-        recent.totals.values[.credits] = 0
-        let completeCredits = try range()
-        XCTAssertEqual(completeCredits.models.map(\.name), ["billed"])
-        XCTAssertEqual(completeCredits.models.first?.share, 1)
+        charged.byModel?["refund"] = UsageTotals(values: [.credits: -1])
+        XCTAssertEqual(try range().models.last?.share, -0.125, "a credit adjustment keeps its sign")
+
+        for total in [nil, 0] as [Double?] {
+            charged.totals.values[.credits] = total
+            let turns = try range()
+            XCTAssertEqual(turns.totals[.credits], total)
+            XCTAssertEqual(turns.models.map(\.name), ["turns-only"])
+            XCTAssertEqual(turns.models.first?.share, 1)
+        }
     }
 
     func testTheFiguresLeadWithDollarsAndBYOKShowsOnlyWhenSpent() throws {

@@ -135,7 +135,13 @@ struct UsageBreakdownContent: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 14) {
             UsageSummary(title: breakdown.archivedTitle() ?? breakdown.window.title, figures: breakdown.figures)
-            if breakdown.isTotalsOnly { totalsOnly }
+            if breakdown.hasUnreadDays {
+                Text("Some figures use only the days loaded so far.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if breakdown.isTotalsOnly {
+                totalsOnly
+            }
             if !breakdown.tokenParts.isEmpty {
                 TokenMix(parts: breakdown.tokenParts, fillsTotal: breakdown.tokenPartsFillTotal)
             }
@@ -145,10 +151,19 @@ struct UsageBreakdownContent: View {
         }
     }
 
+    private var modelHeading: String {
+        guard shownFigure == .share else { return "Top Models" }
+        switch breakdown.shareMeasure {
+        case .credits: return "Top Models by Credits"
+        case .turns: return "Top Models by Turns"
+        default: return "Share Among Named Models"
+        }
+    }
+
     private var topModels: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text("Top Models")
+                Text(modelHeading)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
