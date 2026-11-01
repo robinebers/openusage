@@ -201,6 +201,12 @@ extension WidgetData {
         return (result.status, result.projectedUsage / ctx.limit)
     }
 
+    /// How long until the limit at the current pace, or nil when there's no pace to project from.
+    func runway(now: Date = Date()) -> TimeInterval? {
+        guard let pace = pace(now: now), let ctx = paceContext else { return nil }
+        return max(0, 1 - used / ctx.limit) * ctx.period / pace.projectedFraction
+    }
+
     private func levelState(used: Double, limit: Double) -> MeterState {
         let percentUsed = (min(max(used / limit, 0), 1) * 100).rounded()
         if percentUsed >= 90 { return .level(.critical) }
