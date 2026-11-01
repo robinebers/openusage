@@ -28,6 +28,15 @@ enum AppLog {
             case .debug: .debug
             }
         }
+
+        var setting: LogLevelSetting {
+            switch self {
+            case .error: .error
+            case .warn: .warn
+            case .notice, .info: .info
+            case .debug: .debug
+            }
+        }
     }
 
     private static let loggerLock = NSLock()
@@ -40,11 +49,7 @@ enum AppLog {
     static func error(_ tag: String, _ message: @autoclosure () -> String) { emit(.error, tag, message) }
     static func warn(_ tag: String, _ message: @autoclosure () -> String) { emit(.warn, tag, message) }
     static func info(_ tag: String, _ message: @autoclosure () -> String) { emit(.info, tag, message) }
-    static func debug(_ tag: String, _ message: @autoclosure () -> String) {
-        #if DEBUG
-        emit(.debug, tag, message)
-        #endif
-    }
+    static func debug(_ tag: String, _ message: @autoclosure () -> String) { emit(.debug, tag, message) }
 
     static func error(_ tag: LogTag, _ message: @autoclosure () -> String) { error(tag.rawValue, message()) }
     static func warn(_ tag: LogTag, _ message: @autoclosure () -> String) { warn(tag.rawValue, message()) }
@@ -53,13 +58,10 @@ enum AppLog {
     /// notice is written to disk. For the lines read after the fact to check what the app did, such as
     /// each refresh pass's start and end.
     static func notice(_ tag: LogTag, _ message: @autoclosure () -> String) { emit(.notice, tag.rawValue, message) }
-    static func debug(_ tag: LogTag, _ message: @autoclosure () -> String) {
-        #if DEBUG
-        emit(.debug, tag.rawValue, message)
-        #endif
-    }
+    static func debug(_ tag: LogTag, _ message: @autoclosure () -> String) { emit(.debug, tag.rawValue, message) }
 
     private static func emit(_ level: Level, _ tag: String, _ message: () -> String) {
+        guard LogLevelSetting.current.includes(level.setting) else { return }
         let redacted = LogRedaction.redactLogMessage(message())
         logger(for: tag).log(level: level.osType, "[\(tag, privacy: .public)] \(redacted, privacy: .public)")
     }

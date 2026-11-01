@@ -11,6 +11,7 @@ struct SettingsScreen: View {
     @AppStorage(PaceMilestone.underTenPercent.settingKey) private var underTenPercent = false
     @AppStorage(PaceMilestone.underThirtyPercent.settingKey) private var underThirtyPercent = false
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
+    @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
     @State private var notificationsDenied = false
@@ -162,6 +163,13 @@ struct SettingsScreen: View {
                     SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
                 }
             }
+        }
+        Section {
+            picker("Log Level", selection: $logLevel, options: LogLevelSetting.allCases.map { ($0, $0.label) })
+        } header: {
+            Text("Debug")
+        } footer: {
+            SettingsNote("How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.")
         }
     }
 

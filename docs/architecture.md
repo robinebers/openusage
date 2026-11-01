@@ -134,5 +134,6 @@ kind-scoped (`WidgetDescriptor.kindScopedKey`), so events name providers, never 
 
 ## Logging
 
-`AppLog` writes to unified logging only, subsystem `OpenUsage`, one category per `LogTag`. Every
+`AppLog` writes to unified logging only, subsystem `OpenUsage`, one category per `LogTag`. It drops a
+line below the `LogLevelSetting` the user picks in Settings before building its message. Every
 message passes `LogRedaction` first. See [Debugging](debugging.md).
