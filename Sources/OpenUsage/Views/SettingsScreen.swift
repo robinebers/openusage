@@ -30,6 +30,7 @@ struct SettingsScreen: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
         .scrollIndicators(.never)
         .contentMargins(.horizontal, PanelMetrics.margin - Self.formRowInset, for: .scrollContent)
         .contentMargins(.top, DashboardContentView.barGap - Self.formRowInset, for: .scrollContent)

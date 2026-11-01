@@ -158,13 +158,9 @@ private struct AccountTitle: View {
                 renaming.begin(provider.id)
             } label: {
                 Text(provider.accountName)
+                    .hoverHighlight(isHovered)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(.quaternary)
-                            .opacity(isHovered ? 1 : 0)
-                    }
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

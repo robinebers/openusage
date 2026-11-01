@@ -71,14 +71,7 @@ struct DashboardLiveRow: View {
         return Button(action: hover.openDetails) { figure }
             .buttonStyle(.plain)
             .accessibilityHint("Show details")
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.quaternary)
-                    .padding(.horizontal, -6)
-                    .padding(.vertical, -2)
-                    .opacity(lit ? 1 : 0)
-            }
-            .animation(.easeOut(duration: 0.12), value: lit)
+            .hoverHighlight(lit)
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 if case .active = phase { hover.inlineHover(true) } else { hover.inlineHover(false) }
