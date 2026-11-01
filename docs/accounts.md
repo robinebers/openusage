@@ -69,3 +69,5 @@ lacks, leaves it out of the list and keeps it saved, with its sign-in, for a ver
 
 When a sign-in expires, open the account's page and click **Sign In Again**. The account keeps its name,
 its place, and its settings; only the sign-in changes, once the new one can read usage.
+Once it works, the sign-in closes and the panel opens on your Default Tab. If it fails, the sign-in
+stays open with the error, and cancelling it leaves you on the account's page.

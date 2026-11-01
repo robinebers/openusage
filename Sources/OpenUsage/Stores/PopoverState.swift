@@ -93,6 +93,11 @@ final class PopoverState {
         }
     }
 
+    func showDashboard(on tab: DashboardTab) {
+        dashboardTab = tab
+        withAnimation(Motion.modeSwitch) { screen = .dashboard }
+    }
+
     func show(dashboardTab: DashboardTab) {
         self.dashboardTab = dashboardTab
         popoverShown = true
