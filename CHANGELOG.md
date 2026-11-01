@@ -86,6 +86,9 @@ shows only what each provider's API reports for the accounts you sign in to.
   Resting the pointer on a range shows what ChatGPT reported for it.
 - Grok: a new sign-in no longer asks for `profile` or `api:access`, so its token can't run Grok
   models. Add the account again to drop them from an existing sign-in.
+- Accounts: connect a CLIProxyAPI server with its address and management key, and its Claude,
+  ChatGPT, Antigravity, Devin, and Grok logins show as accounts, kept in step with the server. A login
+  you also signed in directly shows twice; the hub's copy carries the CLIProxyAPI mark.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update

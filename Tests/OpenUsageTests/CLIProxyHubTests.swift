@@ -54,8 +54,8 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertThrowsError(try HubLogin.listing(from: Data("<html>".utf8)))
     }
 
-    func testAddAccountOffersNoHubWhileTheHubIsOff() {
-        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider))
+    func testAddAccountOffersTheHubLast() {
+        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider) + [.cliproxyHub])
     }
 
     func testTheHubAddressIsCleanedFromWhatTheUserPastes() {

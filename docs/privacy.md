@@ -8,7 +8,9 @@ provider API calls those accounts need.
 ## Credentials stored on this Mac
 
 OAuth tokens and API keys live in the app's own Keychain service (`com.robinebers.openusage.accounts`),
-one item per account. Removing an account deletes its item. Account names, the layout, settings, and
+one item per account. Removing an account deletes its item. A [CLIProxyAPI hub](cliproxyapi.md)'s
+management key lives in a separate service (`com.robinebers.openusage.cliproxy-hubs`) and is deleted with
+the hub; its accounts hold no token, because the hub adds its own to each request. Account names, the layout, settings, and
 the last fetched usage live in the app's own preferences. That usage includes the range totals and
 top models shown in the dashboard. Provider responses are never written to
 disk. A few that the app reads once an hour, such as plan details, stay in memory until a later read

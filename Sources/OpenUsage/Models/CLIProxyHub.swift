@@ -6,9 +6,9 @@ import Foundation
 struct CLIProxyHub: Codable, Identifiable, Hashable, Sendable {
     /// The bundled mark (`ProviderIcons/cliproxyapi.svg`) on the hub's row and on its accounts' badge.
     static let markID = "cliproxyapi"
-    /// Off until the feature is finished: Add Account offers no hub, and a stored hub or an account's hub
-    /// link reads no key and sends nothing, so a hub written into preferences can't send a credential anywhere.
-    static let isEnabled = false
+    /// The hub's off switch: while false, Add Account offers no hub, and a stored hub or an account's hub
+    /// link reads no key and sends nothing.
+    static let isEnabled = true
     static let offMessage = "CLIProxyAPI hubs are turned off in this version of OpenUsage."
 
     let id: UUID
