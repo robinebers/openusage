@@ -8,6 +8,7 @@ enum ProviderCatalog {
     static func make(
         accounts: [Account],
         vault: any CredentialVault,
+        hubKeys: any HubKeyVault = KeychainHubKeyVault(),
         http: any HTTPClient = URLSessionHTTPClient(),
         hubGate: CLIProxyHubGate = CLIProxyHubGate(),
         hubsEnabled: Bool = CLIProxyHub.isEnabled,
@@ -20,7 +21,7 @@ enum ProviderCatalog {
                 let client: any HTTPClient = switch account.hub {
                 case nil: http
                 case let link? where hubsEnabled:
-                    HubTunnel(link: link, kind: account.kind, vault: vault, client: CLIProxyHubClient(http: http, gate: hubGate))
+                    HubTunnel(link: link, kind: account.kind, keys: hubKeys, client: CLIProxyHubClient(http: http, gate: hubGate))
                 case _?: HubOff()
                 }
                 return AccountProviderRuntime(account: account, vault: vault, http: client, claudeSessions: claudeSessions)

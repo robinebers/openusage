@@ -15,14 +15,18 @@ struct HubConnectStep: View {
         )
         Form {
             Section {
-                TextField("URL", text: $flow.hubURL, prompt: Text("http://192.168.1.20:8317"))
+                TextField("URL", text: $flow.hubURL, prompt: Text("https://hub.example.com"))
                     .onSubmit { flow.connect() }
                 SecureField("Management Key", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.connect() }
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("The hub needs remote management turned on. Use https, an IP address, or a .local name.")
+                    Text("The hub needs remote management turned on. OpenUsage uses https unless you type http://, which works only for this Mac or your local network.")
                         .foregroundStyle(.secondary)
+                    if flow.hubURL.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http://") {
+                        Label("Over http, the management key crosses your network unencrypted.", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(Theme.notice)
+                    }
                     if let errorMessage = flow.errorMessage {
                         ErrorText(errorMessage)
                     }

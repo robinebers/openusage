@@ -35,7 +35,8 @@ final class AppContainer {
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
-            accounts: accounts.accounts, vault: accounts.credentialVault, http: http, hubGate: hubGate, claudeSessions: claudeSessions
+            accounts: accounts.accounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys, http: http, hubGate: hubGate,
+            claudeSessions: claudeSessions
         )
         let registry = WidgetRegistry.from(providers)
         let layout = LayoutStore(registry: registry, defaults: defaults)
@@ -169,6 +170,7 @@ final class AppContainer {
         providers = ProviderCatalog.make(
             accounts: accounts.accounts,
             vault: accounts.credentialVault,
+            hubKeys: accounts.hubKeys,
             http: http,
             hubGate: hubGate,
             claudeSessions: claudeSessions,

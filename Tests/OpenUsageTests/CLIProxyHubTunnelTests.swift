@@ -90,10 +90,10 @@ final class CLIProxyHubTunnelTests: XCTestCase {
             try await sync.replaceKey("still-wrong", for: hub.id)
             XCTFail("a refused key is not saved")
         } catch {
-            XCTAssertEqual(try store.credential(for: hub.id), .apiKey("wrong-key"))
+            XCTAssertEqual(try store.hubKeys.load(hub.id)?.key, "wrong-key")
         }
         try await sync.replaceKey("right-key", for: hub.id)
-        XCTAssertEqual(try store.credential(for: hub.id), .apiKey("right-key"))
+        XCTAssertEqual(try store.hubKeys.load(hub.id)?.key, "right-key")
         XCTAssertEqual(store.accounts(onHub: hub.id).count, 6, "the same logins, unchanged")
         let resumed = await runtimes[0].refresh()
         XCTAssertNil(resumed.failure, "calls resume once the key is replaced")
@@ -200,18 +200,38 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let account = store.accounts[0]
 
         store.rename(account.id, to: "Team")
-        let renamed = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, hubsEnabled: true, reusing: runtimes)
+        let renamed = ProviderCatalog.make(
+            accounts: store.accounts, vault: store.credentialVault, hubKeys: store.hubKeys, http: http, hubGate: gate, hubsEnabled: true, reusing: runtimes
+        )
         XCTAssertTrue(renamed[0] === runtimes[0])
         XCTAssertNotNil(renamed[0].provider.hubHost)
 
-        store.mirror([Self.login("a", "claude", index: "moved")], from: hub.id)
-        let relinked = ProviderCatalog.make(accounts: store.accounts, vault: store.credentialVault, http: http, hubGate: gate, hubsEnabled: true, reusing: renamed)
+        try store.mirror([Self.login("a", "claude", index: "moved")], from: hub.id)
+        let relinked = ProviderCatalog.make(
+            accounts: store.accounts, vault: store.credentialVault, hubKeys: store.hubKeys, http: http, hubGate: gate, hubsEnabled: true, reusing: renamed
+        )
         XCTAssertFalse(relinked[0] === renamed[0], "the tunnel carries the login's auth index")
+    }
+
+    func testAChatGPTWorkspaceSwitchedOnTheHubIsSentWithTheNextRead() async throws {
+        let http = Self.hub { _, _ in (200, #"{"rate_limit":{}}"#, [:]) }
+        let (runtimes, store, hub) = try makeRuntimes(http: http, logins: [Self.login("b", "codex", workspace: "acct-old")])
+        let account = store.accounts[0]
+
+        try store.mirror([Self.login("b", "codex", workspace: "acct-new")], from: hub.id)
+        let next = ProviderCatalog.make(
+            accounts: store.accounts, vault: store.credentialVault, hubKeys: store.hubKeys, http: http, hubGate: gate, hubsEnabled: true, reusing: runtimes
+        )
+        _ = await next[0].refresh()
+
+        XCTAssertEqual(store.accounts.map(\.id), [account.id], "the same account, not a new one")
+        let call = try XCTUnwrap(try http.requests.map(Self.apiCall).last { $0.url == CodexUsageClient.usageURL.absoluteString })
+        XCTAssertEqual(call.header["ChatGPT-Account-Id"], "acct-new")
     }
 
     func testConnectingSavesNothingUntilTheHubAcceptsTheKey() async throws {
         let http = Self.hub(key: "right-key") { _, _ in (200, "{}", [:]) }
-        let store = AccountStore(defaults: isolatedDefaults(), vault: RecordingVault())
+        let store = AccountStore(defaults: isolatedDefaults(), vault: RecordingVault(), hubKeys: InMemoryHubKeyVault())
         let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
 
         do {
@@ -225,7 +245,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(hub.url, Self.hubURL)
         XCTAssertEqual(store.accounts(onHub: hub.id).count, 4, "the disabled login gets no account")
         XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 1), "the Kimi login is counted, not shown")
-        XCTAssertEqual(try store.credential(for: hub.id), .apiKey("right-key"))
+        XCTAssertEqual(try store.hubKeys.load(hub.id), HubKey(key: "right-key", url: Self.hubURL))
 
         let listings = http.requests.count
         await sync.syncDue()
@@ -242,18 +262,18 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         http: any HTTPClient, logins: [HubLogin], key: String = "mgmt-key"
     ) throws -> ([AccountProviderRuntime], AccountStore, CLIProxyHub) {
         let vault = RecordingVault()
-        let store = AccountStore(defaults: isolatedDefaults(), vault: vault)
+        let store = AccountStore(defaults: isolatedDefaults(), vault: vault, hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: Self.hubURL)
         try store.addHub(hub, key: key)
-        store.mirror(logins, from: hub.id)
-        let runtimes = ProviderCatalog.make(accounts: store.accounts, vault: vault, http: http, hubGate: gate, hubsEnabled: true)
+        try store.mirror(logins, from: hub.id)
+        let runtimes = ProviderCatalog.make(accounts: store.accounts, vault: vault, hubKeys: store.hubKeys, http: http, hubGate: gate, hubsEnabled: true)
         return (runtimes, store, hub)
     }
 
-    private static func login(_ id: String, _ provider: String, index: String? = nil, disabled: Bool = false) -> HubLogin {
+    private static func login(_ id: String, _ provider: String, index: String? = nil, disabled: Bool = false, workspace: String? = nil) -> HubLogin {
         HubLogin(
             id: id, authIndex: index ?? "index-\(id)", provider: provider, label: "\(id)@example.com", isOAuth: true,
-            isDisabled: disabled, chatGPTAccountID: provider == "codex" ? "acct-\(id)" : nil
+            isDisabled: disabled, chatGPTAccountID: provider == "codex" ? workspace ?? "acct-\(id)" : nil
         )
     }
 
