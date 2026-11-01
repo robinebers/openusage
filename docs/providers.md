@@ -32,10 +32,10 @@ here.
 | ChatGPT | `openid profile email offline_access` | Plain OpenID Connect: the email names the account and `offline_access` is the refresh token. The usage endpoint reads the account id from the token itself. |
 | Cursor | none (Cursor's own sign-in, no scopes) | Cursor's login returns a dashboard session; there is no scope to narrow. |
 | Antigravity | `cloud-platform`, `userinfo.email` | Cloud Code's quota API is a Google Cloud API and takes `cloud-platform`; the email names the account. Every Cloud Code client, Gemini CLI included, asks for `cloud-platform`; none is known to work without it. The Antigravity app also asks for `userinfo.profile`, `cclog`, and `experimentsandconfigs`; the card never uses them. |
-| Copilot | `read:user` | The scope Copilot's own sign-in asks for, and the one known to read `/copilot_internal/user`. It reads your GitHub profile and nothing else; whether the quota read works with no scope at all is unverified. |
+| Copilot | `read:user` (ignored by GitHub) | The scope Copilot's own sign-in asks for. Copilot's sign-in is a GitHub App, and GitHub ignores the scopes a GitHub App asks for, so the token can reach whatever GitHub grants its Copilot app, within what your GitHub account can do. That is more than your profile, and OpenUsage cannot narrow it. OpenUsage uses the token only to read your login from `/user` at sign-in and your quota from `/copilot_internal/user`. |
 | Copilot organization | none requested; you create the token | A fine-grained personal access token with Organization permissions → Administration → Read-only, from an organization owner or billing manager. OpenUsage uses it only to read the organization's AI-credit usage, once per refresh. |
 | Devin | `openid profile email` | What Windsurf's editor plugins send. OpenUsage trades the pasted token for the account's API key, the same key those plugins use, and Windsurf offers no narrower key. OpenUsage sends the key only to Windsurf's `GetUserStatus`, once per refresh. |
-| Grok | `openid profile email offline_access grok-cli:access api:access` | The set the Grok CLI itself requests. The settings and billing reads go through the Grok CLI proxy, which every known client reaches with this set; xAI publishes no narrower set for this client, so the card asks for the same. |
+| Grok | `openid email offline_access grok-cli:access` | `grok-cli:access` lets the token read the Grok CLI proxy, where the settings and billing reads go, and the email names the account. The Grok CLI also asks for `profile` and `api:access`, which lets its token run Grok models through `api.x.ai`; the card uses neither, so it doesn't ask for them. |
 
 A narrower grant applies the next time you add an account. An account you added before keeps its
 token and keeps working; remove it and add it again if you want the smaller grant now. Claude is the
@@ -168,9 +168,11 @@ Paste an API key from the [OpenCode console](https://opencode.ai/console). The c
 
 ## OpenRouter
 
-Paste a **Management** key from
+Paste a **read-only Management** key with an expiry date from
 [openrouter.ai/settings/management-keys](https://openrouter.ai/settings/management-keys) to see the
-whole account. The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
+whole account. OpenUsage only reads, and a full Management key can create, change, and delete every
+API key on the account.
+The card reads `/api/v1/credits` for **Credits** (what you spent of the credits you
 bought) and **Balance**. Today, This Week, and This Month add up the spend of every standard API key in
 your default workspace, disabled and expired keys included, from `/api/v1/keys`. Keys in other
 workspaces don't count. A Management key scoped to one workspace can't read the account's credits, so

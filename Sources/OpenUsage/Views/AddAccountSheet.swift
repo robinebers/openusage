@@ -255,7 +255,9 @@ private struct APIKeyStep: View {
         SheetHeader(
             provider: provider,
             title: "Add \(provider.displayName)",
-            message: "Enter an API key from your \(provider.displayName) account. It’s stored in your Keychain.",
+            message: provider == .openrouter
+                ? "Create a read-only Management key with an expiry date in your OpenRouter account. It’s stored in your Keychain."
+                : "Enter an API key from your \(provider.displayName) account. It’s stored in your Keychain.",
             link: Link("Get Your API Key", destination: keyPage)
         )
         Form {

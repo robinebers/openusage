@@ -75,6 +75,9 @@ shows only what each provider's API reports for the accounts you sign in to.
 - ChatGPT: Today, Yesterday, and Last 30 Days show the credits charged and the tokens counted on UTC
   days, a Turns row counts the last 30 days' turns, and Credit Limit shows a workspace's spending limit.
   Resting the pointer on a range shows what ChatGPT reported for it.
+- Grok: a new sign-in no longer asks for `profile` or `api:access`, so its token can't run Grok
+  models. Add the account again to drop them from an existing sign-in.
+- OpenRouter: the add-account sheet and docs ask for a read-only Management key with an expiry date.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
