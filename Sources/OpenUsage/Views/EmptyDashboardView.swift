@@ -2,7 +2,16 @@ import AppKit
 import SwiftUI
 
 struct EmptyDashboardView: View {
+    var defaults: UserDefaults = .standard
     let addAccount: () -> Void
+
+    /// 0.7.x found accounts on its own, so an install it ran on opens here with nothing signed in. Every
+    /// 0.7.x release stamps `openusage.settings.schemaVersion` at launch, and this build never writes it.
+    var subtitle: String {
+        defaults.object(forKey: "openusage.settings.schemaVersion") != nil
+            ? "OpenUsage no longer reads other apps' sign-ins. Add your accounts again."
+            : "Sign in to see your usage limits."
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,7 +26,7 @@ struct EmptyDashboardView: View {
             Text("Add an Account")
                 .font(.system(size: 19, weight: .semibold))
                 .padding(.bottom, 7)
-            Text("Sign in to see your usage limits.")
+            Text(subtitle)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

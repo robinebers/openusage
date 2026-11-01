@@ -24,6 +24,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 ### Changed
 - Z.ai: a key Z.ai refuses reads as rejected, not as an invalid response, so the 0.7.x key import
   stops checking it on every launch.
+- Dashboard: after an update from 0.7.x, the empty dashboard says OpenUsage no longer reads other apps'
+  sign-ins and asks you to add your accounts again.
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
