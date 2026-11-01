@@ -9,7 +9,7 @@ struct DashboardView: View {
     @State private var reorderLift: ReorderLift?
     @State private var animatedHeight: CGFloat = 0
     @State private var didEstablishHeight = false
-    @State private var measuredIdeal: [PopoverScreen: CGFloat] = [:]
+    @State private var measuredIdeal = MeasuredPanelHeights()
     @State private var isOpening = false
     @State private var slideProgress: CGFloat = 1
     @State private var animatedSlideID = 0
@@ -125,7 +125,7 @@ struct DashboardView: View {
             }
             // A screen mounted by the slide can measure before its bars are inset (macOS 15 does), so the
             // slide's co-target may be short: follow the corrected height mid-slide, not after it.
-            .onChange(of: measuredIdeal[popover.screen]) { _, _ in
+            .onChange(of: measuredIdeal[popover.screen, popover.dashboardTab]) { _, _ in
                 guard let target = heightTarget(for: popover.screen) else { return }
                 if !didEstablishHeight {
                     didEstablishHeight = true
@@ -261,7 +261,7 @@ struct DashboardView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
             } action: { _, height in
-                if includeChrome, height > 0 { measuredIdeal[screen] = height }
+                if includeChrome, height > 0 { measuredIdeal[screen, popover.dashboardTab] = height }
             }
             .panelBar(edge: .top) {
                 if includeChrome {
@@ -280,7 +280,7 @@ struct DashboardView: View {
     }
 
     private func heightTarget(for screen: PopoverScreen) -> CGFloat? {
-        measuredIdeal[screen].map { MenuBarPopover.clampHeight?($0) ?? $0 }
+        measuredIdeal[screen, popover.dashboardTab].map { MenuBarPopover.clampHeight?($0) ?? $0 }
     }
 
     @ViewBuilder

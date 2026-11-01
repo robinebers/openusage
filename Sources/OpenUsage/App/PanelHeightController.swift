@@ -1,5 +1,21 @@
 import AppKit
 
+/// The height each screen last measured. The dashboard's tabs differ, so each keeps its own, or the
+/// panel would reopen on Priority at All Usage's height.
+struct MeasuredPanelHeights: Equatable {
+    private struct Key: Hashable {
+        let screen: PopoverScreen
+        let tab: DashboardTab?
+    }
+
+    private var heights: [Key: CGFloat] = [:]
+
+    subscript(screen: PopoverScreen, tab: DashboardTab) -> CGFloat? {
+        get { heights[Key(screen: screen, tab: screen == .dashboard ? tab : nil)] }
+        set { heights[Key(screen: screen, tab: screen == .dashboard ? tab : nil)] = newValue }
+    }
+}
+
 @MainActor
 final class PanelHeightController {
     static let defaultHeight: CGFloat = 800
