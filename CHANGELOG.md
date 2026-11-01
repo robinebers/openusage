@@ -11,7 +11,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
   and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
 - iCloud sync of usage history (daily tokens and spend).
-- The log file and the Log Level setting. The app logs through unified logging only
+- The log file. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
 - The Pi provider, which has no account sign-in.
@@ -37,6 +37,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   Display → Priority Icons, sets how many, from App Icon Only to Up to 5. It starts at Up to 3.
 - Notifications: Cutting It Close now fires when a limit drops under 30% left, not when its pace nears
   the limit. A switch you turned on in 0.7.x stays on.
+- Settings: **Log Level** is back under Advanced → Debug and keeps the level you chose in 0.7.x. It
+  starts at Info and sets how much the app writes to the macOS log; Debug works in released builds too.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not

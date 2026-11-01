@@ -61,6 +61,12 @@ window. Click it to open All Usage. The next time you open the panel yourself it
 |---|---|---|
 | Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. A link left by another copy of OpenUsage (an earlier version, or a build in another folder) is replaced on Install. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
 
+## Debug
+
+| Setting | Control | What it changes |
+|---|---|---|
+| Log Level | Error, Warning, Info, Debug | How much detail OpenUsage writes to the macOS log. Starts at Info. Choose Debug while you reproduce a problem. See [Debugging](debugging.md). |
+
 ## Updates
 
 This section appears in the released build only; the dev build has no update feed.
