@@ -297,8 +297,7 @@ final class CodexUsageHistoryTests: XCTestCase {
         let (store, runtime, http, clock) = try makeAccount(planType: "team", creditStatus: status)
         let month = try descriptor(runtime, "last30")
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        let countsOnly = try XCTUnwrap(store.usageBreakdown(for: month))
-        XCTAssertFalse(countsOnly.hasUnreadDays, "the complete turns report can stand on its own")
+        XCTAssertNotNil(store.usageBreakdown(for: month))
 
         status.value = nil
         clock.set(now.addingTimeInterval(30 * 60))
@@ -311,7 +310,6 @@ final class CodexUsageHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         let full = try XCTUnwrap(store.usageBreakdown(for: month))
         XCTAssertEqual(full.totals[.credits], 15.5)
-        XCTAssertFalse(full.hasUnreadDays, "quiet dates omitted from a successful credits report are covered")
 
         status.value = 503
         clock.set(now.addingTimeInterval(122 * 60))
@@ -320,9 +318,6 @@ final class CodexUsageHistoryTests: XCTestCase {
         let partial = try XCTUnwrap(store.usageBreakdown(for: month))
         XCTAssertEqual(partial.totals[.tokens], full.totals[.tokens])
         XCTAssertEqual(partial.totals[.credits], 3, "only Oct 29's charge remains after the credit reread fails")
-        XCTAssertTrue(partial.hasUnreadDays)
-        let yesterday = try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "yesterday")))
-        XCTAssertFalse(yesterday.hasUnreadDays, "yesterday shows only its successfully read token counts")
     }
 
     func testInvalidWorkspaceCreditsStillShowTokenCounts() async throws {

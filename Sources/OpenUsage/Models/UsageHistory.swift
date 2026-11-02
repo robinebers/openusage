@@ -160,20 +160,11 @@ struct UsageHistory: Hashable, Sendable {
     }
 
     private func days(in window: UsageWindow) -> [UsageDay] {
-        guard let offsets = window.dayOffsets ?? daysSoFar(in: window) else { return [] }
-        return Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
-    }
-
-    private func daysSoFar(in window: UsageWindow) -> ClosedRange<Int>? {
-        let period: Calendar.Component
-        switch window {
-        case .thisWeek: period = .weekOfYear
-        case .thisMonth: period = .month
-        default: return nil
+        if let offsets = window.dayOffsets {
+            return Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
         }
-        guard let start = calendar.dateInterval(of: period, for: asOf)?.start,
-              let count = calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: asOf)).day else { return nil }
-        return 0...count
+        guard let interval = calendar.dateInterval(of: window == .thisWeek ? .weekOfYear : .month, for: asOf) else { return [] }
+        return days.filter { interval.contains($0.key) }.map(\.value)
     }
 }
 
@@ -233,7 +224,6 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
     private let reportingTimeZone: TimeZone
     let totals: UsageTotals
     private let unreadDays: Int
-    var hasUnreadDays: Bool { unreadDays > 0 }
     /// Only the names and figures shown in the popover are kept with the snapshot.
     private let rankings: [ModelFigure: [Model]]
     /// What the models report, in order of preference. Credits or turns supply a share when neither

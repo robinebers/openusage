@@ -98,8 +98,8 @@ enum OpenRouterUsageMapper {
         }
         guard totals[.spend] != nil, let prompt = totals[.inputTokens], let completion = totals[.outputTokens] else { return nil }
         totals.values[.tokens] = prompt + completion
-        totals.values[.inputTokens] = max(0, prompt - (totals[.cacheReadTokens] ?? 0))
-        totals.values[.outputTokens] = max(0, completion - (totals[.reasoningTokens] ?? 0))
+        totals.values[.inputTokens] = prompt - (totals[.cacheReadTokens] ?? 0)
+        totals.values[.outputTokens] = completion - (totals[.reasoningTokens] ?? 0)
         return totals
     }
 
