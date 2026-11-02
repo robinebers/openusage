@@ -77,12 +77,12 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         """#
         let day = try XCTUnwrap(OpenRouterUsageMapper.activityDays(body(rows))?[try XCTUnwrap(date("2026-10-28T00:00:00Z"))])
 
-        XCTAssertEqual(day.totals.values, [.spend: 1.5, .requests: 3, .tokens: 20, .inputTokens: 14, .outputTokens: 6, .cacheReadTokens: 2, .reasoningTokens: 0, .byokSpend: 0],
+        XCTAssertEqual(day.totals.values, [.spend: 1.5, .tokens: 20, .inputTokens: 12, .outputTokens: 6, .cacheReadTokens: 2, .reasoningTokens: 0, .byokSpend: 0],
                        "a measure one row leaves out still counts from the rows that have it")
         XCTAssertEqual(day.byModel?["a"]?[.tokens], 20)
         for text in [
             #"{"data":{"date":"2026-10-28"}}"#,
-            #"{"data":[{"date":"2026-10-28","model":"a","usage":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
+            #"{"data":[{"date":"2026-10-28","model":"a","usage":1,"prompt_tokens":10}]}"#,
             #"{"data":[{"date":"2026-10-28","model":"a","usage":-1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
             #"{"data":[{"date":"yesterday","model":"a","usage":1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#
         ] {

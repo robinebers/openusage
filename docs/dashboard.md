@@ -120,10 +120,9 @@ After relaunch, the total opens with its last saved breakdown. If only the total
 the panel shows it with the account's refresh status. The details update in place when they arrive.
 When a saved breakdown is from an earlier reporting day, its preview and copied image show the date.
 
-A range shows the total the provider reported for it. Otherwise it adds up the days that supplied
-each figure. A quiet day can have no entry. When a day could not be read, the other days still count
-and the details note the gap. For example, Last 30 Days can show the older days while Today is
-unavailable.
+A range adds up the days that supplied each figure; a figure the provider reported for the whole range
+wins. A quiet day or a day that could not be read adds nothing. For example, Last 30 Days can show the
+older days while Today is unavailable.
 
 The details show charges, tokens and the top five models, with the remaining named models grouped
 under **Other**. A bar shows the token split when the parts add up to the total. **Top Models** ranks
@@ -137,7 +136,7 @@ whichever of Cost or Tokens is showing, without the switch.
 
 **No Usage** means the range was read, the provider counted activity such as requests or tokens, and
 every reported figure was zero. If the provider reported only spend, a free request is possible, so the detail
-shows the amount under **Totals Only**, even when it is `$0`. A **No Usage** range has nothing to copy.
+shows the amount, even when it is `$0`. A **No Usage** range has nothing to copy.
 
 ## Rename
 

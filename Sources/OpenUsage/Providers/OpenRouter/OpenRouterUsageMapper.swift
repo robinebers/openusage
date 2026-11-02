@@ -22,7 +22,7 @@ enum OpenRouterUsageMapper {
 
     /// A UTC day with no activity row.
     static let quietDay = UsageDay(
-        totals: .zero([.spend, .byokSpend, .requests, .tokens, .inputTokens, .cacheReadTokens, .outputTokens, .reasoningTokens]),
+        totals: .zero([.spend, .byokSpend, .tokens, .inputTokens, .cacheReadTokens, .outputTokens, .reasoningTokens]),
         byModel: [:]
     )
 
@@ -83,10 +83,11 @@ enum OpenRouterUsageMapper {
         })
     }
 
-    /// Prompt tokens include cached ones and completion tokens include reasoning, so tokens are the two summed.
+    /// Prompt tokens include cached ones and completion tokens include reasoning, so tokens are the two summed
+    /// and Input and Output leave out what Cache Read and Reasoning already count.
     private static func activityTotals(_ row: [String: Any]) -> UsageTotals? {
         let fields: [(UsageMeasure, String)] = [
-            (.spend, "usage"), (.byokSpend, "byok_usage_inference"), (.requests, "requests"), (.inputTokens, "prompt_tokens"),
+            (.spend, "usage"), (.byokSpend, "byok_usage_inference"), (.inputTokens, "prompt_tokens"),
             (.cacheReadTokens, "cached_tokens"), (.outputTokens, "completion_tokens"), (.reasoningTokens, "reasoning_tokens")
         ]
         var totals = UsageTotals()
@@ -95,9 +96,10 @@ enum OpenRouterUsageMapper {
             guard let number = ProviderParse.number(value), number >= 0 else { return nil }
             totals.values[measure] = number
         }
-        guard totals[.spend] != nil, totals[.requests] != nil,
-              let prompt = totals[.inputTokens], let completion = totals[.outputTokens] else { return nil }
+        guard totals[.spend] != nil, let prompt = totals[.inputTokens], let completion = totals[.outputTokens] else { return nil }
         totals.values[.tokens] = prompt + completion
+        totals.values[.inputTokens] = prompt - (totals[.cacheReadTokens] ?? 0)
+        totals.values[.outputTokens] = completion - (totals[.reasoningTokens] ?? 0)
         return totals
     }
 
