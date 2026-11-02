@@ -15,84 +15,68 @@ struct PopoverScrollView<Content: View>: View {
 }
 
 extension View {
-    /// Sets `top` and `bottom` over a scrolling page of the panel. Content scrolled under a bar blurs
-    /// into frosted glass behind it, as under a window's title bar, and nothing is drawn behind a bar
-    /// while nothing is under it. From macOS 26 this stands in for the system's scroll edge effect.
+    /// Sets `top` and `bottom` over a scrolling page of the panel. Content scrolls cleanly under the
+    /// top bar, which hides it. Content under the bottom bar blurs behind it: from macOS 26 with the
+    /// system's soft scroll edge effect, before it with frosted glass. Nothing is drawn behind the bottom
+    /// bar while nothing is under it.
     func panelBars(@ViewBuilder top: () -> some View, @ViewBuilder bottom: () -> some View) -> some View {
         modifier(PanelBars(top: top(), bottom: bottom()))
     }
 }
 
 private struct PanelBars<Top: View, Bottom: View>: ViewModifier {
+    /// How far content must be under the bottom bar to frost it fully.
+    private static var fullFrost: CGFloat { 12 }
+
     let top: Top
     let bottom: Bottom
-    @State private var scrolledUnder = ScrolledUnder()
+    @State private var underBottom: CGFloat = 0
 
     func body(content: Content) -> some View {
         let barred = content
-            .onScrollGeometryChange(for: ScrolledUnder.self, of: ScrolledUnder.init) { _, under in
-                scrolledUnder = under
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                let below = geometry.contentSize.height + geometry.contentInsets.bottom
+                    - geometry.containerSize.height - geometry.contentOffset.y
+                return min(max(below / Self.fullFrost, 0), 1)
+            } action: { _, under in
+                underBottom = under
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                top.background {
-                    BarFrost(edge: .top, opacity: scrolledUnder.top)
-                        .padding(.bottom, -BarFrost.reach)
-                }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                bottom.background {
-                    BarFrost(edge: .bottom, opacity: scrolledUnder.bottom)
-                        .padding(.top, -BarFrost.reach)
-                }
+                top.background(Theme.panelBody)
             }
         if #available(macOS 26, *) {
-            barred.scrollEdgeEffectHidden(true, for: .vertical)
-        } else {
             barred
+                .safeAreaBar(edge: .bottom, spacing: 0) { bottom }
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
+                .scrollEdgeEffectHidden(true, for: underBottom > 0 ? .top : .vertical)
+        } else {
+            barred.safeAreaInset(edge: .bottom, spacing: 0) {
+                bottom.background {
+                    FooterFrost(opacity: underBottom)
+                        .padding(.top, -FooterFrost.reach)
+                }
+            }
         }
     }
 }
 
-/// How much content is under each bar, from 0 for none to 1 for enough to frost the bar fully.
-private struct ScrolledUnder: Equatable {
-    private static let fullFrost: CGFloat = 12
-
-    var top: CGFloat = 0
-    var bottom: CGFloat = 0
-
-    init() {}
-
-    init(_ geometry: ScrollGeometry) {
-        let above = geometry.contentOffset.y + geometry.contentInsets.top
-        let below = geometry.contentSize.height + geometry.contentInsets.bottom
-            - geometry.containerSize.height - geometry.contentOffset.y
-        top = min(max(above / Self.fullFrost, 0), 1)
-        bottom = min(max(below / Self.fullFrost, 0), 1)
-    }
-}
-
-/// The frosted glass behind a bar: an in-window blur of what is under it, in the material whose tint
-/// comes closest to the panel's, washed halfway back to the panel's color so the tint barely shows. It
-/// is full from the panel's edge to just short of the bar's inner edge and fades out a little past it.
-private struct BarFrost: NSViewRepresentable {
-    /// How far the frost reaches past the bar into the page.
+/// The frosted glass behind the bottom bar before macOS 26: an in-window blur of what is under it, in
+/// the material whose tint comes closest to the panel's, washed halfway back to the panel's color so the
+/// tint barely shows. It is full from the panel's edge to just short of the bar's top and fades out a
+/// little above it.
+private struct FooterFrost: NSViewRepresentable {
+    /// How far the frost reaches above the bar into the page.
     static let reach: CGFloat = 10
 
-    let edge: VerticalEdge
     let opacity: CGFloat
 
     func makeNSView(context: Context) -> FrostView { FrostView() }
 
     func updateNSView(_ view: FrostView, context: Context) {
-        view.edge = edge
         view.alphaValue = opacity
     }
 
     final class FrostView: NSView {
-        var edge = VerticalEdge.top {
-            didSet { needsLayout = true }
-        }
-
         private let blur = NSVisualEffectView()
         private let wash = CALayer()
         private let fade = CAGradientLayer()
@@ -107,6 +91,8 @@ private struct BarFrost: NSViewRepresentable {
             wash.zPosition = 1
             layer?.addSublayer(wash)
             fade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            fade.startPoint = CGPoint(x: 0.5, y: 0)
+            fade.endPoint = CGPoint(x: 0.5, y: 1)
             layer?.mask = fade
         }
 
@@ -130,9 +116,7 @@ private struct BarFrost: NSViewRepresentable {
             effectiveAppearance.performAsCurrentDrawingAppearance {
                 wash.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.5).cgColor
             }
-            fade.startPoint = CGPoint(x: 0.5, y: edge == .top ? 1 : 0)
-            fade.endPoint = CGPoint(x: 0.5, y: edge == .top ? 0 : 1)
-            let fadeLength = BarFrost.reach + 4
+            let fadeLength = FooterFrost.reach + 4
             fade.locations = [0, NSNumber(value: Double(max(bounds.height - fadeLength, 0) / max(bounds.height, 1))), 1]
             CATransaction.commit()
         }

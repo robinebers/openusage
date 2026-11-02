@@ -5,9 +5,10 @@ import XCTest
 
 @MainActor
 final class PanelScrollEdgeTests: QuietWindowTestCase {
-    /// The panel's pages and Settings' form frost a bar with an in-window blur once content scrolls under
-    /// it, and draw nothing behind the bar while nothing is under it.
-    func testABarFrostsOnlyWhileContentIsUnderIt() async throws {
+    /// On the panel's pages and Settings' form, content scrolled under the top bar is hidden behind the
+    /// panel, with no blur. Before macOS 26, content under the bottom bar frosts it with an in-window blur,
+    /// and the bottom bar is clear once nothing is under it. (From macOS 26 the system draws that edge.)
+    func testTheTopBarHidesContentAndTheBottomBarFrostsOverIt() async throws {
         let barHeight: CGFloat = 30
         let pages: [(String, AnyView)] = [
             ("page", AnyView(PopoverScrollView { Self.content })),
@@ -23,14 +24,23 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
             let edges = [host.bounds.minY, host.bounds.maxY - barHeight]
             let topBar = NSRect(x: 0, y: host.isFlipped ? edges[0] : edges[1], width: host.bounds.width, height: barHeight)
             let bottomBar = NSRect(x: 0, y: host.isFlipped ? edges[1] : edges[0], width: host.bounds.width, height: barHeight)
-            XCTAssertFalse(frosts(topBar, in: host), "\(name): the top bar frosts with nothing under it")
-            XCTAssertTrue(frosts(bottomBar, in: host), "\(name): the bottom bar stays clear over content")
+            let frostsBelow = { () -> Bool? in
+                if #available(macOS 26, *) { return nil }
+                return self.frosts(bottomBar, in: host)
+            }
+            XCTAssertNotEqual(frostsBelow(), false, "\(name): the bottom bar stays clear over content")
 
             let scroller = try XCTUnwrap(scrollViews(in: host).first)
             scroller.contentView.scroll(to: NSPoint(x: 0, y: scroller.contentView.bounds.minY + 100))
             scroller.reflectScrolledClipView(scroller.contentView)
             try await Task.sleep(for: .milliseconds(100))
-            XCTAssertTrue(frosts(topBar, in: host), "\(name): the top bar stays clear over content")
+            XCTAssertFalse(frosts(topBar, in: host), "\(name): the top bar frosts")
+            XCTAssertFalse(try showsContent(in: topBar, of: host), "\(name): content shows through the top bar")
+
+            scroller.contentView.scroll(to: NSPoint(x: 0, y: 10_000))
+            scroller.reflectScrolledClipView(scroller.contentView)
+            try await Task.sleep(for: .milliseconds(100))
+            XCTAssertNotEqual(frostsBelow(), true, "\(name): the bottom bar frosts with nothing under it")
         }
     }
 
@@ -46,6 +56,18 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
             }
             return !blur.isHiddenOrHasHiddenAncestor && opacity > 0.99 && blur.blendingMode == .withinWindow
                 && blur.convert(blur.bounds, to: host).contains(bar)
+        }
+    }
+
+    /// Whether the black content shows anywhere down the middle of `bar`.
+    private func showsContent(in bar: NSRect, of host: NSView) throws -> Bool {
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsWide) / host.bounds.width
+        return stride(from: bar.minY, to: bar.maxY, by: 1).contains { y in
+            let row = host.isFlipped ? y : host.bounds.maxY - y - 1
+            let color = rep.colorAt(x: Int(bar.midX * scale), y: Int(row * scale))!.usingColorSpace(.deviceRGB)!
+            return color.brightnessComponent < 0.5
         }
     }
 
