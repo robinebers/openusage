@@ -102,7 +102,7 @@ The card reads the history one local day at a time, at most 4 days at once and f
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. Last 30 Days sums the days read so far, even if today or yesterday could not be read.
-A failed day stays out of the sum, and the range details note the gap. If Cursor rate-limits a
+A failed day stays out of the sum. If Cursor rate-limits a
 history read, retries wait for its Retry-After or an hour when it gives no time.
 
 
