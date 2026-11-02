@@ -177,20 +177,18 @@ included, from `/api/v1/keys`. Keys in other workspaces don't count. A Managemen
 workspace can't read the account's credits, so its card has no Balance, and its Today, This Week, and
 This Month add up that workspace's keys.
 
-Each range shows the credit spend, plus the tokens when OpenRouter reports them. The keys endpoint
-reports no tokens, so Today, This Week, and This Month show the spend alone. A Management key also
-reads `/api/v1/activity`, which covers the 30 UTC days before today: **Yesterday** and **Prior 30
-Days** show the spend and the tokens (prompt plus completion). The card reads all 30 days after a
+Each range shows the credit spend. A Management key also reads `/api/v1/activity`, which covers the
+30 UTC days before today, for **Yesterday** and **Prior 30 Days**. The card reads all 30 days after a
 launch, yesterday again once an hour, and a new UTC day right after midnight.
 If the activity read fails, Prior 30 Days can still show older days already read. The spend totals
 from the keys endpoint remain available.
 
 Rest the pointer on a Today, Yesterday, This Week, This Month, or Prior 30 Days figure to see what
 OpenRouter reported for that range: the credit spend, and what the keys spent through your own provider
-keys (BYOK) when that is above zero, which is never added to the credit spend. For Yesterday and Prior
-30 Days it adds the prompt, cached, completion, and reasoning tokens, and the top
-five models, the rest as Other. Prompt tokens include the cached ones, and
-completion tokens include the reasoning ones.
+keys (BYOK) when that is above zero, which is never added to the credit spend. With a Management key it
+adds the tokens (prompt plus completion) split into input, cache read, output, and reasoning, and the
+top five models, the rest as Other, from the range's days in the activity. This Week and This Month
+count the activity days from the start of the UTC week or month to yesterday, and today has none yet.
 
 A standard API key shows its own spend from `/api/v1/key`: Today, This Week, This Month, **Key Limit**
 when the key has a credit limit, **Budget** when a guardrail or workspace budget applies to it, and

@@ -83,7 +83,8 @@ enum OpenRouterUsageMapper {
         })
     }
 
-    /// Prompt tokens include cached ones and completion tokens include reasoning, so tokens are the two summed.
+    /// Prompt tokens include cached ones and completion tokens include reasoning, so tokens are the two summed
+    /// and Input and Output leave out what Cache Read and Reasoning already count.
     private static func activityTotals(_ row: [String: Any]) -> UsageTotals? {
         let fields: [(UsageMeasure, String)] = [
             (.spend, "usage"), (.byokSpend, "byok_usage_inference"), (.inputTokens, "prompt_tokens"),
@@ -97,6 +98,8 @@ enum OpenRouterUsageMapper {
         }
         guard totals[.spend] != nil, let prompt = totals[.inputTokens], let completion = totals[.outputTokens] else { return nil }
         totals.values[.tokens] = prompt + completion
+        totals.values[.inputTokens] = max(0, prompt - (totals[.cacheReadTokens] ?? 0))
+        totals.values[.outputTokens] = max(0, completion - (totals[.reasoningTokens] ?? 0))
         return totals
     }
 

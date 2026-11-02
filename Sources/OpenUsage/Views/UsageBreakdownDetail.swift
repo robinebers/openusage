@@ -117,31 +117,9 @@ struct UsageBreakdownContent: View {
         }
     }
 
-    private var totalsOnly: some View {
-        HStack(spacing: 12) {
-            QuietRings(icon: provider.icon, side: 44, animates: animates)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Totals Only")
-                    .font(.system(size: 12, weight: .medium))
-                Text("\(provider.displayName) hasn't reported a complete breakdown for this range.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
     private var details: some View {
         VStack(alignment: .leading, spacing: 14) {
             UsageSummary(title: breakdown.archivedTitle() ?? breakdown.window.title, figures: breakdown.figures)
-            if breakdown.hasUnreadDays {
-                Text("Some figures use only the days loaded so far.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else if breakdown.isTotalsOnly {
-                totalsOnly
-            }
             if !breakdown.tokenParts.isEmpty {
                 TokenMix(parts: breakdown.tokenParts, fillsTotal: breakdown.tokenPartsFillTotal)
             }

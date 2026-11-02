@@ -66,7 +66,7 @@ enum UsageWindow: Codable, Hashable, Sendable {
     case lastDays(Int)
     /// The days before today.
     case priorDays(Int)
-    /// Windows only a provider's own totals cover; weeks start on Monday.
+    /// The calendar's week or month so far; the source's calendar sets where a week starts.
     case thisWeek
     case thisMonth
 
@@ -103,7 +103,7 @@ enum UsageWindow: Codable, Hashable, Sendable {
         }
     }
 
-    /// Nil for a window only the provider's own totals cover.
+    /// Nil for a window whose length depends on the calendar.
     var dayOffsets: ClosedRange<Int>? {
         switch self {
         case .today: 0...0
@@ -123,7 +123,7 @@ struct UsageHistory: Hashable, Sendable {
     var days: [Date: UsageDay] = [:]
     /// A supplementary report can fail on dates the primary history read successfully.
     var unreadDatesByMeasure: [UsageMeasure: Set<Date>] = [:]
-    /// A window's totals as the provider reported them, which win over a sum of days.
+    /// A window's totals as the provider reported them; each measure they report wins over the sum of days.
     var reported: [UsageWindow: UsageTotals] = [:]
 
     /// The starts of the days `offsets` back from the day holding `now`.
@@ -132,12 +132,13 @@ struct UsageHistory: Hashable, Sendable {
         return offsets.compactMap { calendar.date(byAdding: .day, value: -$0, to: today).map(calendar.startOfDay) }
     }
 
-    /// The sum of the window's days that have been read; nil when none has.
+    /// The sum of the window's days that have been read, under what the provider reported for the window;
+    /// nil when neither exists.
     func totals(over window: UsageWindow) -> UsageTotals? {
-        if let reported = reported[window] { return reported }
         let days = days(in: window)
-        guard let first = days.first else { return nil }
-        return days.dropFirst().reduce(first.totals) { $0.adding($1.totals) }
+        let summed = days.first.map { first in days.dropFirst().reduce(first.totals) { $0.adding($1.totals) } }
+        guard let reported = reported[window] else { return summed }
+        return UsageTotals(values: reported.values.merging(summed?.values ?? [:]) { reported, _ in reported })
     }
 
     /// What the window's days report by model, added up.
@@ -159,8 +160,20 @@ struct UsageHistory: Hashable, Sendable {
     }
 
     private func days(in window: UsageWindow) -> [UsageDay] {
-        guard let offsets = window.dayOffsets else { return [] }
+        guard let offsets = window.dayOffsets ?? daysSoFar(in: window) else { return [] }
         return Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
+    }
+
+    private func daysSoFar(in window: UsageWindow) -> ClosedRange<Int>? {
+        let period: Calendar.Component
+        switch window {
+        case .thisWeek: period = .weekOfYear
+        case .thisMonth: period = .month
+        default: return nil
+        }
+        guard let start = calendar.dateInterval(of: period, for: asOf)?.start,
+              let count = calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: asOf)).day else { return nil }
+        return 0...count
     }
 }
 
@@ -298,9 +311,6 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         unreadDays == 0 && [UsageMeasure.tokens, .requests, .turns, .usageEvents].contains { totals[$0] != nil }
             && totals.values.values.allSatisfy { $0 == 0 }
     }
-
-    /// The window has a total, but nothing to break it down by.
-    var isTotalsOnly: Bool { !isEmpty && tokenParts.isEmpty && modelFigures.isEmpty }
 
     /// What the window charged, then its tokens and any spend on the user's own keys. A window that
     /// reports neither dollars nor tokens falls back to the first thing it does report.
