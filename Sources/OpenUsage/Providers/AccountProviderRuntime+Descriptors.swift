@@ -139,12 +139,11 @@ extension AccountProviderRuntime {
             [
                 .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
                     .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
-                .history(key: "today", provider: provider, .window(.today, .spend, then: .byokSpend)),
+                .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
-                .history(key: "week", provider: provider, .window(.thisWeek, .spend, then: .byokSpend)),
-                .history(key: "month", provider: provider, .window(.thisMonth, .spend, then: .byokSpend)),
+                .history(key: "week", provider: provider, .window(.thisWeek, .spend, then: .tokens)),
+                .history(key: "month", provider: provider, .window(.thisMonth, .spend, then: .tokens)),
                 .history(key: "prior30", provider: provider, .window(.priorDays(30), .spend, then: .tokens)),
-                .history(key: "requests", provider: provider, .measure("Requests", .requests, over: .priorDays(30))),
                 .boundedDollars(key: "keyLimit", provider: provider, title: "Key Limit", limit: 100)
                     .exportingLimit("keyLimit", unit: "usd"),
                 .boundedDollars(key: "budget", provider: provider, title: "Budget", limit: 100),

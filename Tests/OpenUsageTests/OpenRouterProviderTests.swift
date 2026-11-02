@@ -79,7 +79,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
         let snapshot = try await runtime.refresh().get()
 
-        XCTAssertEqual(shownRows(snapshot, runtime), ["balance", "today", "yesterday", "week", "month", "prior30", "requests"])
+        XCTAssertEqual(shownRows(snapshot, runtime), ["balance", "today", "yesterday", "week", "month", "prior30"])
         XCTAssertEqual(dollars(snapshot, "Today"), 26.5)
         XCTAssertEqual(dollars(snapshot, "This Week"), 54)
         XCTAssertEqual(dollars(snapshot, "This Month"), 112)
@@ -106,7 +106,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
         let snapshot = try await runtime.refresh().get()
 
-        XCTAssertEqual(shownRows(snapshot, runtime), ["today", "yesterday", "week", "month", "prior30", "requests"])
+        XCTAssertEqual(shownRows(snapshot, runtime), ["today", "yesterday", "week", "month", "prior30"])
         XCTAssertEqual(dollars(snapshot, "Today"), 26.5)
         XCTAssertEqual(dollars(snapshot, "This Week"), 54)
         XCTAssertEqual(dollars(snapshot, "This Month"), 112)
@@ -123,9 +123,8 @@ final class OpenRouterProviderTests: XCTestCase {
         let snapshot = try await runtime.refresh().get()
 
         XCTAssertEqual(shownRows(snapshot, runtime), ["today", "week", "month", "keyLimit", "budget", "freeRequests"])
-        XCTAssertEqual(snapshot.line(label: "Today"), .values(label: "Today", values: [
-            MetricValue(number: 1.5, kind: .dollars), MetricValue(number: 17.38, kind: .dollars, label: "BYOK")
-        ]))
+        XCTAssertEqual(snapshot.line(label: "Today"), .values(label: "Today", values: [MetricValue(number: 1.5, kind: .dollars)]))
+        XCTAssertEqual(snapshot.usageBreakdowns?["today"]?.figures, ["$1.50", "$17.38 BYOK"])
         XCTAssertEqual(dollars(snapshot, "This Week"), 4)
         XCTAssertEqual(dollars(snapshot, "This Month"), 12)
         XCTAssertEqual(snapshot.line(label: "Key Limit"), .progress(
@@ -147,7 +146,7 @@ final class OpenRouterProviderTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: Account(kind: .openrouter, label: "Work"), vault: InMemoryCredentialVault())
 
         XCTAssertEqual(runtime.widgetDescriptors.map(\.title), [
-            "Balance", "Today", "Yesterday", "This Week", "This Month", "Prior 30 Days", "Requests",
+            "Balance", "Today", "Yesterday", "This Week", "This Month", "Prior 30 Days",
             "Key Limit", "Budget", "Free Requests"
         ])
     }
