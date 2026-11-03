@@ -68,33 +68,27 @@ private struct ShareCardFrame<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             content
                 .padding(ShareCardView.inset)
-            ShareCardFooter()
+            watermarkFooter
         }
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
         .environment(\.drawsLevelsAsShapes, true)
         .environment(\.colorScheme, appearance)
     }
-}
 
-/// The tinted band that signs every share image.
-struct ShareCardFooter: View {
-    static let tagline = "Your AI Limits at a Glance"
-    static let height: CGFloat = 40
-
-    var body: some View {
+    private var watermarkFooter: some View {
         HStack(spacing: 6) {
             Image(nsImage: ProviderMarks.image(for: "openusage", side: 16, inset: 0))
                 .renderingMode(.template)
             Text("OpenUsage")
                 .font(.system(size: 13, weight: .semibold))
             Spacer(minLength: 8)
-            Text(Self.tagline)
+            Text("Your AI Limits at a Glance")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, ShareCardView.inset)
-        .frame(maxWidth: .infinity, minHeight: Self.height)
+        .frame(maxWidth: .infinity, minHeight: 40)
         .background(Theme.cardFill)
         .overlay(alignment: .top) { Rectangle().fill(.separator).frame(height: 0.5) }
     }
