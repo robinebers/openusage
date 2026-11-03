@@ -84,8 +84,9 @@ See [Updates](updates.md).
 0.7.x found your accounts on its own, so you add them again on the Accounts screen. The exception is an
 OpenRouter or Z.ai key you typed into 0.7.x, which it saved in `~/.config/openusage/openrouter.json` or
 `~/.config/openusage/zai.json`. On the first launch after the update, OpenUsage adds each saved key as
-an account when that provider has no account yet and a usage read accepts the key. It does this once,
-so an account you remove later doesn't come back. If the provider rejects the key, it doesn't try again.
+an account when that provider has no account yet, 0.7.x had it on, and a usage read accepts the key. A
+provider you turned off in 0.7.x stays off: its key isn't read or sent. It does this once, so an
+account you remove later doesn't come back. If the provider rejects the key, it doesn't try again.
 If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
 doesn't save the key, it tries again on the next launch.
 
