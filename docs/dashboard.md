@@ -42,8 +42,9 @@ running low or used up stay visible.
 One provider after another, each a header above a card. The header is the provider's name and logo,
 and every account's name and plan sit inside the card above its rows. With several accounts, each
 keeps a name you can drag. The card holds every metric that has data and that you have not hidden, in
-the order you set. Time ranges and Extra Usage spend always show: when the provider reports nothing for
-one, it reads 0.
+the order you set. Time ranges always show: when the provider reports nothing for one, it reads 0.
+Balances show even at `$0 left`. Extra Usage shows while the provider has it on, even at `$0`, and
+hides while it is off.
 
 ## Hiding, pinning, and ordering metrics
 
