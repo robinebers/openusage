@@ -3,8 +3,9 @@
 How each provider signs in and what its card shows. Every value comes from the provider's own API,
 except ChatGPT's credit value, an estimate at 4¢ a credit.
 OpenUsage computes no spend from logs and applies no model pricing; a metric the provider does not
-report stays hidden. Time ranges (Today, Yesterday, This Week, and the like) and the Extra Usage rows of
-Claude, Cursor, and Copilot always show, at 0 when the provider reports nothing for them.
+report stays hidden. Time ranges (Today, Yesterday, This Week, and the like) always show, at 0 when the
+provider reports nothing for them. Balances show even at `$0 left`. Extra Usage shows while the
+provider has it on, even at `$0`, and hides while the provider reports it off.
 
 | Provider | Sign-in | Card shows |
 |---|---|---|
@@ -54,7 +55,7 @@ one instead of returning to the app. The card reads `/api/oauth/usage` for the s
 Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
 plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, so its card has no
 Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
-account sets none. With extra usage off, it reads `$0 spent`.
+account sets none. With extra usage off (`is_enabled` false), the row hides.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Click the count to see
 when each expires. Choose **Use**, then **Reset** to spend one.
@@ -65,7 +66,8 @@ Sign in through OpenAI in your browser. The account shows as ChatGPT; its provid
 takes it, is `codex`. When the app cannot listen on port 1455 for the browser's
 return, it offers a device code instead. The card reads `/backend-api/wham/usage` for the session and weekly windows, the Spark
 windows, and extra-usage credits, and the plan (Plus, Pro, Team, Business). The Extra Usage row shows
-the dollar value of the credits you have, an estimate at 4¢ a credit, and hides when you have none. Rate-limit reset credits work like Claude's
+the dollar value of the credits you have, an estimate at 4¢ a credit, even at `$0`. It hides while
+ChatGPT reports credits off (`has_credits` false). Rate-limit reset credits work like Claude's
 Limit Resets row. Credit Limit shows the credits a workspace lets the member spend and when that resets;
 it shows only when the workspace sets one.
 
@@ -103,8 +105,9 @@ The card reads the history one local day at a time, at most 4 days at once and f
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. Last 30 Days sums the days read so far, even if today or yesterday could not be read.
-A failed day adds nothing, and a range with no day read reads $0. Extra Usage reads `$0 spent` when
-on-demand usage is off. If Cursor rate-limits a
+A failed day adds nothing, and a range with no day read reads $0. Extra Usage hides when on-demand
+usage is off, which Cursor reports as no spend limit or a $0 one. Credits reads `$0 left` when Cursor
+reports no credits. If Cursor rate-limits a
 history read, retries wait for its Retry-After or an hour when it gives no time.
 
 
@@ -119,8 +122,8 @@ If the project lookup failed, try refreshing again.
 ## Copilot
 
 Sign in with a GitHub device code. The card reads `/copilot_internal/user` for premium credits,
-extra-usage spend, and the chat and completion counts, and the plan. Extra Usage reads 0 when the
-plan doesn't allow it.
+extra-usage spend, and the chat and completion counts, and the plan. Extra Usage hides when the plan
+doesn't allow it (`overage_permitted` false).
 
 To see an organization's billing, add it as its own account: choose Copilot, then **Organization
 Billing**, and enter the organization and a token from an owner or billing manager. The card reads
@@ -133,7 +136,9 @@ has not yet been tried against a real organization token.
 Sign in on windsurf.com in your browser, then paste the token the page shows. Its instructions name
 VS Code, but the token works the same here. OpenUsage trades the token for the account's API key with
 Windsurf's `RegisterUser` and reads `GetUserStatus` on every refresh for the daily and weekly quotas,
-the extra-usage balance, and the plan. A plan that hides its daily quota shows it in the Weekly row when
+the extra-usage balance, and the plan. Extra Usage shows the balance whenever Windsurf reports one,
+even `$0 left`. Windsurf reports no on or off flag and leaves out a zero balance, so a balance it
+leaves out hides. A plan that hides its daily quota shows it in the Weekly row when
 the plan has no weekly quota. An account with neither quota nor a balance has nothing to show, and the
 card says so.
 
@@ -141,14 +146,16 @@ card says so.
 ## Grok
 
 Sign in with an xAI device code. The card reads the Grok settings and billing endpoints for the weekly
-shared pool, pay-as-you-go extra usage, and the plan. A team account has no personal quota to read.
+shared pool, pay-as-you-go extra usage, and the plan. Extra Usage shows the pay-as-you-go cap, and
+hides when xAI reports no cap or a $0 one. A team account has no personal quota to read.
 Its card shows the plan and says so, with no rows.
 
 ## Ollama
 
 Paste an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys). The card reads the
 balance API for the session, weekly, and monthly windows that your plan has, plus purchased credits,
-and the plan. A new account is named after the email ollama.com reports for the key, or "Ollama
+and the plan. Every plan can buy credits, so Extra Usage shows the purchased balance whenever Ollama
+reports it, even `$0 left`. A new account is named after the email ollama.com reports for the key, or "Ollama
 Account" if it reports none. The card's right-click menu adds an **API Keys** link to
 [ollama.com/settings/keys](https://ollama.com/settings/keys).
 

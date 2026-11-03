@@ -25,8 +25,10 @@ shows only what each provider's API reports for the accounts you sign in to.
 
 ### Changed
 - Dashboard: Today, Yesterday, and every other time range always show, at 0 when the provider reports
-  nothing for them. Claude, Cursor, and Copilot show Extra Usage at 0 when it's off. An account's page
-  still hides any of them with its switch.
+  nothing for them. An account's page still hides any of them with its switch.
+- Dashboard: balances always show, even at $0, including Cursor Credits when Cursor reports none. Extra
+  Usage shows only while the provider has it on, even at $0, and hides while it is off: Claude,
+  ChatGPT, Cursor, Copilot, and Grok, whose "Disabled" row is gone.
 - Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
   bottom bar only while something is under it. The account name in an account page's header fades its
   hover highlight in.

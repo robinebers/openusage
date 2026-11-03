@@ -63,12 +63,14 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
     }
 
     @MainActor
-    func testDashboardHidesZeroExtraUsageWhileKeepingTheReportedBalance() throws {
+    func testExtraUsageCreditsHideWhileCreditsAreOffAndShowAtZeroWhileOn() throws {
         let account = Account(kind: .codex, label: "ChatGPT")
         let provider = AccountProviderRuntime.provider(for: account)
         let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "credits" })
-        for (credits, balance) in [(#"{ "balance": 0 }"#, 0), (#"{ "has_credits": false }"#, 0),
-                                   (#"{ "balance": 0.5 }"#, 0), (#"{ "balance": 1 }"#, 1)] {
+        let cases: [(String, Double?)] = [(#"{ "has_credits": false, "balance": "0" }"#, nil), (#"{ "has_credits": false }"#, nil),
+                                          (#"{ "has_credits": true, "balance": "0" }"#, 0), (#"{ "balance": 0 }"#, 0),
+                                          (#"{ "has_credits": true, "balance": "1" }"#, 1)]
+        for (credits, balance) in cases {
             let body = Data(#"{ "credits": \#(credits) }"#.utf8)
             let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
             let usage = try CodexUsageMapper.mapUsageResponse(response)
@@ -80,8 +82,8 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
             let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: defaults)
             let accounts = store.accounts(in: [ProviderMetrics(provider: provider, metrics: [descriptor])])
 
-            XCTAssertEqual(descriptor.balance(in: store.data(for: descriptor))?.number, Double(balance), credits)
-            XCTAssertEqual(accounts.first?.lines.map(\.descriptor.key), balance == 0 ? [] : ["credits"], credits)
+            XCTAssertEqual(descriptor.balance(in: store.data(for: descriptor))?.number, balance, credits)
+            XCTAssertEqual(accounts.first?.lines.map(\.descriptor.key), balance == nil ? [] : ["credits"], credits)
         }
     }
 

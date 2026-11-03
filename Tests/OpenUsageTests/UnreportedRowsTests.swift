@@ -1,7 +1,7 @@
 import XCTest
 @testable import OpenUsage
 
-/// A time range or Extra Usage the provider reports nothing for reads zero, so only its switch hides it.
+/// A time range the provider reports nothing for reads zero, so only its switch hides it.
 @MainActor
 final class UnreportedRowsTests: XCTestCase {
     private func refreshed(_ kind: ProviderKind, lines: [MetricLine] = []) async -> (WidgetDataStore, StubRuntime) {
@@ -32,28 +32,6 @@ final class UnreportedRowsTests: XCTestCase {
             "openrouter.today": "$0", "openrouter.yesterday": "$0", "openrouter.week": "$0",
             "openrouter.month": "$0", "openrouter.prior30": "$0",
         ])
-    }
-
-    func testClaudeExtraUsageTurnedOffReadsZeroSpentWithNoBar() async throws {
-        let body = #"{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"#
-            + #""extra_usage":{"is_enabled":false,"monthly_limit":null,"used_credits":null}}"#
-        let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8)))
-        let (store, runtime) = await refreshed(.claude, lines: lines)
-        let extra = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "extra" })
-
-        let data = store.data(for: extra)
-        XCTAssertNil(data.limit, "no bar")
-        XCTAssertEqual(data.unboundedDetail, "$0 spent")
-        let shown = store.accounts(in: [ProviderMetrics(provider: runtime.provider, metrics: [extra])]).flatMap(\.lines)
-        XCTAssertEqual(shown.map(\.descriptor.key), ["extra"])
-    }
-
-    func testCursorAndCopilotExtraUsageReadZeroWhenNotReported() async throws {
-        for (kind, expected) in [(ProviderKind.cursor, "$0 spent"), (.copilot, "0")] {
-            let (store, runtime) = await refreshed(kind)
-            let extra = try XCTUnwrap(runtime.widgetDescriptors.first { $0.title == "Extra Usage" })
-            XCTAssertEqual(store.data(for: extra).unboundedDetail, expected, "\(kind)")
-        }
     }
 
     func testAnEmptyRangeIsListedOnTheAccountPageShownUntilSwitchedOffAndCanBePinned() async throws {
