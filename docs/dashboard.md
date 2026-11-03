@@ -31,10 +31,10 @@ Spend totals, day totals, and Limit Resets counts never appear here.
 Click an amount to flip it between used and left, and a time to flip it between a countdown and the exact
 time, the same switches as All Usage. Times tick every 30 seconds.
 
-**All Clear** means every account has a current reading and none of its limits is running low. It sits
-under the Running Out header, and used-up limits still appear below it. **Waiting for Usage** means a
-first reading is pending. If every account has reported and none has a limit to monitor, **No Reported
-Limits** links to All Usage.
+**All Clear** means every account has a current reading and none of its limits is running low. It is
+one row under the Running Out header, whatever else Priority shows, and used-up limits still appear
+below it. **Waiting for Usage** means a first reading is pending. If every account has reported and
+none has a limit to monitor, **No Reported Limits** links to All Usage.
 
 When a refresh fails, values go stale, or a provider sends a notice, a **Needs Attention** row names the
 account. **Fix** opens its page, which gives the reason and the way to fix it. Last-known limits that are

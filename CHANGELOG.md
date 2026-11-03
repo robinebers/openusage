@@ -51,7 +51,7 @@ shows only what each provider's API reports for the accounts you sign in to.
   section at the top of Priority. While a pinned metric is running out, it shows under **Running Out**
   instead, never in both.
 - Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
-  **Running Out** keeps its header when it shows only All Clear.
+  **All Clear** is always one row under the **Running Out** header.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
   Display → Priority Icons at the top of the tab, sets how many, from App Icon Only to Up to 5. It starts
   at Up to 3.
