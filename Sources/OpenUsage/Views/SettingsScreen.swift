@@ -86,6 +86,14 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var displayTab: some View {
         @Bindable var dataStore = dataStore
+        Section {
+            PriorityIconsPreview()
+            picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
+        } header: {
+            Text("Priority Icons")
+        } footer: {
+            SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
+        }
         Section("Appearance") {
             picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })
                 .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
@@ -94,14 +102,6 @@ struct SettingsScreen: View {
         Section("Usage") {
             picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
             picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
-        }
-        Section {
-            PriorityIconsPreview()
-            picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
-        } header: {
-            Text("Priority Icons")
-        } footer: {
-            SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
         }
     }
 

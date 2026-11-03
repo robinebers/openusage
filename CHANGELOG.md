@@ -48,11 +48,13 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Dashboard: two tabs, **Priority** for the limits running out or used up, most urgent first, and
   **All Usage** for every account. The panel opens on the **Default Tab** in Settings, Priority at first.
 - Priority: pin a metric with the pin beside its switch on its account's page, and it gets a **Pinned**
-  section at the top of Priority, whatever its reading.
+  section at the top of Priority. While a pinned metric is running out, it shows under **Running Out**
+  instead, never in both.
 - Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
   **Running Out** keeps its header when it shows only All Clear.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
-  Display → Priority Icons, sets how many, from App Icon Only to Up to 5. It starts at Up to 3.
+  Display → Priority Icons at the top of the tab, sets how many, from App Icon Only to Up to 5. It starts
+  at Up to 3.
 - Menu bar: when an update is available, the app icon shows at the far right with a dot, after the
   limits and any `+7` count, whatever **Show In Menu Bar** is set to.
 - Notifications: Cutting It Close now fires when a limit drops under 30% left, not when its pace nears

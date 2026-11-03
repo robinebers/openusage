@@ -219,6 +219,34 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertFalse(PriorityBoard.make(accounts: [account(work, healthy)], now: now).hasRows)
     }
 
+    func testAPinnedMetricRunningOutIsListedOnlyUnderRunningOutUntilItIsNot() {
+        let pins: Set<String> = ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"]
+        func pinnedBoard(sessionUsed: Double) -> PriorityBoard {
+            PriorityBoard.make(accounts: [account(personal,
+                                                  paced("Session", used: sessionUsed, left: hour),
+                                                  paced("Weekly", used: 20, left: day),
+                                                  paced("Monthly", used: 100, left: day))],
+                               pinned: pins, now: now)
+        }
+
+        let runningOut = pinnedBoard(sessionUsed: 95)
+        XCTAssertEqual(ids(runningOut.attention), ["claude@1.Session"])
+        XCTAssertEqual(runningOut.attention.map(\.isPinned), [true], "its menu offers Unpin")
+        XCTAssertEqual(runningOut.pinned.map(\.id), ["claude@1.Weekly", "claude@1.Monthly"], "a used-up pin stays under Pinned")
+        XCTAssertTrue(runningOut.usedUp.isEmpty)
+        XCTAssertFalse(runningOut.showsClearRow)
+
+        let recovered = pinnedBoard(sessionUsed: 20)
+        XCTAssertTrue(recovered.attention.isEmpty)
+        XCTAssertEqual(recovered.pinned.map(\.id), ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"],
+                       "back under Pinned in dashboard order")
+
+        let allRunningOut = PriorityBoard.make(accounts: [account(personal, paced("Session", used: 95, left: hour))],
+                                               pinned: ["claude@1.Session"], now: now)
+        XCTAssertTrue(allRunningOut.pinned.isEmpty, "no Pinned section while every pin is running out")
+        XCTAssertEqual(ids(allRunningOut.attention), ["claude@1.Session"])
+    }
+
     func testABalanceWithAnythingLeftIsNotListed() throws {
         let cents = try realLine(.cursor, "credits", values: [MetricValue(number: 0.01, kind: .dollars)])
         let credits = try realLine(.codex, "credits", values: [MetricValue(number: 0.04, kind: .dollars), MetricValue(number: 1, kind: .count, label: "credits")])

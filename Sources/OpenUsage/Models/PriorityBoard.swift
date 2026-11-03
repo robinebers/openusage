@@ -51,6 +51,8 @@ struct PriorityItem: Identifiable {
     let provider: Provider
     let line: DashboardLine
     let reason: Reason
+    /// The user pinned it. Only an item that is running out is listed while pinned, under Running Out instead of Pinned.
+    let isPinned: Bool
 
     var id: String { line.id }
     var data: WidgetData { line.data }
@@ -93,7 +95,8 @@ struct PriorityBoard {
         var id: String { provider.id }
     }
 
-    /// In dashboard order. A pinned metric is never listed again under Running Out or Used Up.
+    /// In dashboard order. A pinned metric that is running out is listed only under Running Out, and comes
+    /// back here once it isn't. A used-up one stays here and is never listed again under Used Up.
     let pinned: [PinnedMetric]
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
@@ -117,7 +120,9 @@ struct PriorityBoard {
     ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
-            PriorityItem.Reason(line, now: now).map { PriorityItem(provider: provider, line: line, reason: $0) }
+            PriorityItem.Reason(line, now: now).map {
+                PriorityItem(provider: provider, line: line, reason: $0, isPinned: pinnedIDs.contains(line.id))
+            }
         }
         let ranked = items.enumerated().sorted { lhs, rhs in
             let (left, right) = (lhs.element.reason.rank, rhs.element.reason.rank)
@@ -144,13 +149,14 @@ struct PriorityBoard {
         } else {
             .noReportedLimits
         }
-        let listed = ranked.filter { !pinnedIDs.contains($0.id) }
+        let attention = ranked.filter { !$0.reason.isUsedUp }
+        let runningOut = Set(attention.map(\.id))
         return PriorityBoard(
-            pinned: lines.filter { pinnedIDs.contains($0.1.id) }.map { provider, line in
+            pinned: lines.filter { pinnedIDs.contains($0.1.id) && !runningOut.contains($0.1.id) }.map { provider, line in
                 PinnedMetric(provider: provider, line: line, severity: PriorityItem.Reason(line, now: now)?.severity ?? .normal)
             },
-            attention: listed.filter { !$0.reason.isUsedUp },
-            usedUp: listed.filter(\.reason.isUsedUp),
+            attention: attention,
+            usedUp: ranked.filter { $0.reason.isUsedUp && !$0.isPinned },
             notices: notices, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
