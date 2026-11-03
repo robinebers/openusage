@@ -25,7 +25,11 @@ final class AccountStore {
         credentialVault = vault
         self.makeID = makeID
         let stored = Self.load(from: defaults)
-        accounts = stored.accounts
+        accounts = stored.accounts.map { account in
+            var named = account
+            named.label = Self.name(account.label, for: account.kind)
+            return named
+        }
         unreadableEntries = stored.unreadableEntries
         hubs = defaults.data(forKey: Self.hubsStorageKey).flatMap { data in
             do {
@@ -35,6 +39,18 @@ final class AccountStore {
                 return nil
             }
         } ?? []
+        let renamed = zip(stored.accounts, accounts).filter { $0.label != $1.label }
+        if !renamed.isEmpty {
+            AppLog.info(LogTag.auth("accounts"), "named \(renamed.map(\.1.cardID).joined(separator: ", ")), which had no name the dashboard shows")
+            persist()
+        }
+    }
+
+    /// The dashboard leaves out a name that only repeats the provider's, so a blank name or the provider's
+    /// own becomes the provider's default account name.
+    static func name(_ label: String, for kind: ProviderKind) -> String {
+        let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || name.caseInsensitiveCompare(kind.displayName) == .orderedSame ? kind.defaultAccountLabel : name
     }
 
     static func load(from defaults: UserDefaults) -> (accounts: [Account], unreadableEntries: [Any]) {
@@ -74,7 +90,7 @@ final class AccountStore {
 
     func rename(_ id: UUID, to label: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        accounts[index].label = label
+        accounts[index].label = Self.name(label, for: accounts[index].kind)
         persist()
         didChange?()
     }
@@ -202,7 +218,7 @@ final class AccountStore {
     /// the dashboard, so an id whose card id is taken is drawn again.
     private func newAccount(kind: ProviderKind, label: String, organization: String? = nil, hub: HubLink? = nil) -> Account {
         while true {
-            let account = Account(id: makeID(), kind: kind, label: label, organization: organization, hub: hub)
+            let account = Account(id: makeID(), kind: kind, label: Self.name(label, for: kind), organization: organization, hub: hub)
             if self.account(cardID: account.cardID) == nil { return account }
         }
     }

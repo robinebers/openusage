@@ -36,6 +36,9 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// What an account is called when its sign-in names nothing else.
+    var defaultAccountLabel: String { "\(displayName) Account" }
+
     var links: [ProviderLink] {
         switch self {
         case .claude: [.init(label: "Status Page", url: URL(string: "https://status.claude.com/")!),

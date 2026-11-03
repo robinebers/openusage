@@ -92,17 +92,6 @@ enum UsageWindow: Codable, Hashable, Sendable {
         }
     }
 
-    var noUsageTitle: String {
-        switch self {
-        case .today: "No Usage Today"
-        case .yesterday: "No Usage Yesterday"
-        case .lastDays(let count): "No Usage in \(count) Days"
-        case .priorDays(let count): "No Usage in Prior \(count) Days"
-        case .thisWeek: "No Usage This Week"
-        case .thisMonth: "No Usage This Month"
-        }
-    }
-
     /// Nil for a window whose length depends on the calendar.
     var dayOffsets: ClosedRange<Int>? {
         switch self {
@@ -296,10 +285,9 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         return ranked.prefix(Self.shownModels) + [Model(name: "Other", dollars: sum(\.dollars), tokens: sum(\.tokens), share: sum(\.share))]
     }
 
-    /// Unread days can still have activity, and zero spend alone cannot rule out free requests.
+    /// Every figure is zero, so there is nothing to show beyond a zero total. Unread days can still have activity.
     var isEmpty: Bool {
-        unreadDays == 0 && [UsageMeasure.tokens, .requests, .turns, .usageEvents].contains { totals[$0] != nil }
-            && totals.values.values.allSatisfy { $0 == 0 }
+        unreadDays == 0 && totals.values.values.allSatisfy { $0 == 0 }
     }
 
     /// What the window charged, then its tokens and any spend on the user's own keys. A window that

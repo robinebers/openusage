@@ -145,8 +145,8 @@ Its card shows the plan and says so, with no rows.
 
 Paste an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys). The card reads the
 balance API for the session, weekly, and monthly windows that your plan has, plus purchased credits,
-and the plan. A new account is named after the email ollama.com reports for the key, or "Ollama" if
-it reports none. The card's right-click menu adds an **API Keys** link to
+and the plan. A new account is named after the email ollama.com reports for the key, or "Ollama
+Account" if it reports none. The card's right-click menu adds an **API Keys** link to
 [ollama.com/settings/keys](https://ollama.com/settings/keys).
 
 Today, Yesterday, and Last 30 Days show what Ollama's `/api/usage` reports for each UTC day: the usage

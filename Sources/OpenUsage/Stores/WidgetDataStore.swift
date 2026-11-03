@@ -292,7 +292,7 @@ final class WidgetDataStore {
             return result
         case .values(_, let values, let expiriesAt):
             var data = descriptor.sample
-            data.values = values
+            data.values = descriptor.historyRow?.figures(in: values) ?? values
             data.limit = nil
             data.expiriesAt = expiriesAt
             data.hasData = !data.values.isEmpty

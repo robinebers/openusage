@@ -20,16 +20,28 @@ enum HistoryRow: Hashable, Sendable {
         }
     }
 
+    private var measures: [UsageMeasure] {
+        switch self {
+        case .window(_, let first, let then): [first, then].compactMap { $0 }
+        case .measure(_, let measure, _): [measure]
+        }
+    }
+
+    private func value(_ measure: UsageMeasure, _ number: Double) -> MetricValue {
+        guard case .measure(_, _, let window) = self else { return measure.metricValue(number) }
+        return MetricValue(number: number, kind: measure.metricValue(number).kind, label: window.phrase)
+    }
+
     /// Nil when none of the row's figures was reported.
     func line(label: String, in history: UsageHistory) -> MetricLine? {
         guard let totals = history.totals(over: window) else { return nil }
-        let values: [MetricValue] = switch self {
-        case .window(_, let first, let then):
-            [first, then].compactMap { $0 }.compactMap { measure in totals[measure].map(measure.metricValue) }
-        case .measure(_, let measure, let window):
-            totals[measure].map { [MetricValue(number: $0, kind: measure.metricValue($0).kind, label: window.phrase)] } ?? []
-        }
+        let values = measures.compactMap { measure in totals[measure].map { value(measure, $0) } }
         return values.isEmpty ? nil : .values(label: label, values: values)
+    }
+
+    /// The row's own figures out of a saved line, which an earlier build may have written with others, such as BYOK.
+    func figures(in values: [MetricValue]) -> [MetricValue] {
+        values.filter { saved in measures.contains { value($0, saved.number) == saved } }
     }
 
     /// The window rows' hover detail; a measure row has none.

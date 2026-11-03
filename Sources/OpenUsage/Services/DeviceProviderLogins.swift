@@ -130,11 +130,11 @@ struct APIKeyLogin: ProviderLogin {
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
         }
-        guard kind == .ollama else { return (kind.displayName, .apiKey(key)) }
+        guard kind == .ollama else { return (kind.defaultAccountLabel, .apiKey(key)) }
         let accountBody = await MainActor.run { runtime.planBodyRead.value }
         guard let email = accountBody.flatMap(OllamaUsageMapper.email(from:)) else {
-            AppLog.warn(LogTag.auth("ollama"), "account read reported no email, naming the account Ollama")
-            return (kind.displayName, .apiKey(key))
+            AppLog.warn(LogTag.auth("ollama"), "account read reported no email, naming the account \(kind.defaultAccountLabel)")
+            return (kind.defaultAccountLabel, .apiKey(key))
         }
         return (email, .apiKey(key))
     }
