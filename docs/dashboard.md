@@ -14,9 +14,9 @@ Priority shows only what needs you, most urgent first.
 that has data, whatever its reading, in your dashboard order: account by account, then each account's
 metric order. A pinned metric appears only here, never again under Running Out or Used Up.
 
-**Running Out** lists every limit with 30% or less left, whose bar is orange or red. Time never decides
-what's listed, only the order: what would run out soonest at your current pace comes first, then limits
-with no pace to go by, least left first.
+**Running Out** always has its header, even when it holds only All Clear. It lists every limit with 30%
+or less left, whose bar is orange or red. Time never decides what's listed, only the order: what would
+run out soonest at your current pace comes first, then limits with no pace to go by, least left first.
 
 Limits that tie keep your dashboard order. Each row shows the limit's level around the provider's mark, filling under Used or Left like its bar, the
 limit, the account, the amount, and the time until it resets.
@@ -29,9 +29,10 @@ Spend totals, day totals, and Limit Resets counts never appear here.
 Click an amount to flip it between used and left, and a time to flip it between a countdown and the exact
 time, the same switches as All Usage. Times tick every 30 seconds.
 
-**All Clear** means every account has a current reading and none of its limits is running low. Used-up
-limits still appear below it. **Waiting for Usage** means a first reading is pending. If every account
-has reported and none has a limit to monitor, **No Reported Limits** links to All Usage.
+**All Clear** means every account has a current reading and none of its limits is running low. It sits
+under the Running Out header, and used-up limits still appear below it. **Waiting for Usage** means a
+first reading is pending. If every account has reported and none has a limit to monitor, **No Reported
+Limits** links to All Usage.
 
 When a refresh fails, values go stale, or a provider sends a notice, a **Needs Attention** row names the
 account. **Fix** opens its page, which gives the reason and the way to fix it. Last-known limits that are
@@ -49,8 +50,9 @@ hides while it is off.
 ## Hiding, pinning, and ordering metrics
 
 An account's page in **Accounts** lists all of its metrics, in its order. Turn a metric's switch off to
-hide it everywhere: All Usage, Priority, the menu bar, and notifications. Click the pin beside the switch
-to list the metric under Pinned at the top of Priority; a hidden metric can't be pinned, and hiding a
+hide it everywhere: All Usage, Priority, the menu bar, and notifications. Click the pin beside the switch,
+or right-click the metric on All Usage or Priority and choose **Pin**, to list the metric under Pinned at
+the top of Priority; **Unpin** takes it off again. A hidden metric can't be pinned, and hiding a
 pinned metric unpins it. Drag a metric by its handle to change where it sits within the account. These
 choices are saved and survive a restart; removing an account removes its pins. A new account
 shows every metric, in the provider's order. If you hide every metric of every account, the dashboard
@@ -104,8 +106,9 @@ menu starts with the reason too.
   such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. If the account
   shows a warning or stale icon, the menu starts with the reason. A Copilot organization account also
-  has **Organization Billing**, which opens the organization's billing page on GitHub. Right-clicking a
-  metric opens its account's menu.
+  has **Organization Billing**, which opens the organization's billing page on GitHub.
+- A metric: **Pin** or **Unpin**, then its account's menu.
+- A row on Priority: **Pin**, or **Unpin** on a Pinned row.
 
 ## Reordering
 

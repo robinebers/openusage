@@ -7,11 +7,13 @@ enum DashboardCommand: Equatable {
     case rename(String)
     case editAccount(String)
     case shareScreenshot([String])
+    case setPinned(String, Bool)
 }
 
 struct DashboardMenuItem: Equatable {
     let title: String
     var command: DashboardCommand?
+    var systemImage: String?
 }
 
 enum DashboardMenus {
@@ -28,6 +30,12 @@ enum DashboardMenus {
 
     private static func links(_ provider: Provider) -> [DashboardMenuItem] {
         provider.links.map { DashboardMenuItem(title: $0.label, command: .open($0.url)) }
+    }
+
+    static func pin(_ metricID: String, pinned: Bool) -> DashboardMenuItem {
+        pinned
+            ? DashboardMenuItem(title: "Unpin", command: .setPinned(metricID, false), systemImage: "pin.slash")
+            : DashboardMenuItem(title: "Pin", command: .setPinned(metricID, true), systemImage: "pin")
     }
 
     static func account(_ account: DashboardAccount, status: String?) -> Sections {
@@ -53,8 +61,14 @@ struct DashboardMenu: View {
             if index > 0 { Divider() }
             ForEach(sections[index].indices, id: \.self) { item in
                 let entry = sections[index][item]
-                Button(entry.title) {
+                Button {
                     if let command = entry.command { perform(command) }
+                } label: {
+                    if let systemImage = entry.systemImage {
+                        Label(entry.title, systemImage: systemImage)
+                    } else {
+                        Text(entry.title)
+                    }
                 }
                 .disabled(entry.command == nil)
             }

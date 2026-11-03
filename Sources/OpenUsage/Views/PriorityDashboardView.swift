@@ -13,7 +13,8 @@ struct PriorityDashboardView: View {
                 onToggleMeterStyle: { dataStore.meterStyle.toggle() },
                 onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
                 onShowAllUsage: { popover.dashboardTab = .allUsage },
-                onFixAccount: { popover.openAccounts($0) }
+                onFixAccount: { popover.openAccounts($0) },
+                onSetPinned: { layout.setMetric($0, pinned: $1) }
             )
         }
     }
@@ -27,6 +28,7 @@ struct PriorityBoardList: View {
     var onToggleResetDisplay: (() -> Void)?
     var onShowAllUsage: (() -> Void)?
     var onFixAccount: ((String) -> Void)?
+    var onSetPinned: ((String, Bool) -> Void)?
 
     private static let green = Color(nsColor: .systemGreen)
     private static let gaugeSide: CGFloat = 32
@@ -53,14 +55,13 @@ struct PriorityBoardList: View {
         case .unavailable:
             accountNotices
         case .allClear:
-            allClear
+            VStack(alignment: .leading, spacing: 0) {
+                sectionLabel("Running Out")
+                allClear
+            }
         case .listed:
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
-                if !board.attention.isEmpty {
-                    attentionSection
-                } else if board.showsClearRow {
-                    clearRow
-                }
+                if !board.attention.isEmpty || board.showsClearRow { attentionSection }
                 if !board.usedUp.isEmpty { usedUpSection }
                 if !board.notices.isEmpty { accountNotices }
             }
@@ -126,6 +127,8 @@ struct PriorityBoardList: View {
             ForEach(board.pinned) { pin in
                 limitRow(pin.provider, pin.data, severity: pin.severity)
                     .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
+                    .contextMenu { pinMenu(pin.id, pinned: true) }
             }
         }
     }
@@ -133,9 +136,12 @@ struct PriorityBoardList: View {
     private var attentionSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Running Out")
+            if board.attention.isEmpty { clearRow }
             ForEach(board.attention) { item in
                 limitRow(item.provider, item.data, severity: item.reason.severity)
                     .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
+                    .contextMenu { pinMenu(item.id, pinned: false) }
             }
         }
     }
@@ -146,9 +152,18 @@ struct PriorityBoardList: View {
             ForEach(board.usedUp) { item in
                 usedUpRow(item)
                     .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
+                    .contextMenu { pinMenu(item.id, pinned: false) }
             }
         }
         .opacity(0.5)
+    }
+
+    @ViewBuilder
+    private func pinMenu(_ metricID: String, pinned: Bool) -> some View {
+        if let onSetPinned {
+            DashboardMenu(sections: [[DashboardMenus.pin(metricID, pinned: pinned)]]) { _ in onSetPinned(metricID, !pinned) }
+        }
     }
 
     private func sectionLabel(_ title: String) -> some View {

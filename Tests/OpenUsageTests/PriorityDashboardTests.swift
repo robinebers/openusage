@@ -102,6 +102,60 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         }
     }
 
+    /// Running Out keeps its header when all it holds is All Clear, with or without Pinned and Used Up around it.
+    func testRunningOutHasItsHeaderAboveAllClear() throws {
+        let provider = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
+        func line(_ title: String, used: Double) -> DashboardLine {
+            let data = WidgetData(title: title, kind: .percent, used: used, limit: 100)
+            return DashboardLine(descriptor: WidgetDescriptor(provider: provider, key: title, metricLabel: title, sample: data), data: data)
+        }
+        let session = line("Session", used: 10)
+        func render(_ board: PriorityBoard) throws -> (rep: NSBitmapImageRep, scale: CGFloat) {
+            let list = PriorityBoardList(board: board, now: Date())
+                .frame(width: PanelMetrics.width - 2 * PanelMetrics.margin)
+                .background(Color.white)
+                .environment(\.colorScheme, .light)
+            let (_, host) = show(list, in: .borderless)
+            let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: rep)
+            return (rep, CGFloat(rep.pixelsWide) / host.bounds.width)
+        }
+        /// Whether anything is drawn in the left column, x 4 to 120 pt, between `top` and `bottom`.
+        func inked(_ shot: (rep: NSBitmapImageRep, scale: CGFloat), from top: CGFloat, to bottom: CGFloat) -> Bool {
+            stride(from: max(0, top), to: bottom, by: 1).contains { y in
+                stride(from: CGFloat(4), to: 120, by: 1).contains { x in
+                    let color = shot.rep.colorAt(x: Int(x * shot.scale), y: Int(y * shot.scale))!.usingColorSpace(.deviceRGB)!
+                    return color.brightnessComponent < 0.85
+                }
+            }
+        }
+        /// The top of All Clear's green check in the left column.
+        func checkTop(_ shot: (rep: NSBitmapImageRep, scale: CGFloat)) throws -> CGFloat {
+            let rows = 0..<shot.rep.pixelsHigh
+            let top = try XCTUnwrap(rows.first { y in
+                (Int(4 * shot.scale)..<Int(40 * shot.scale)).contains { x in
+                    let color = shot.rep.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!
+                    return color.greenComponent - max(color.redComponent, color.blueComponent) > 0.3
+                }
+            }, "no All Clear row")
+            return CGFloat(top) / shot.scale
+        }
+
+        let alone = PriorityBoard.make(accounts: [DashboardAccount(provider: provider, lines: [session])], now: Date())
+        XCTAssertEqual(alone.summary, .allClear)
+        XCTAssertTrue(inked(try render(alone), from: 0, to: 14), "no header above the lone All Clear")
+
+        let used = line("Weekly", used: 100)
+        let between = PriorityBoard.make(accounts: [DashboardAccount(provider: provider, lines: [session, used])],
+                                         pinned: [session.id], now: Date())
+        XCTAssertTrue(between.showsClearRow)
+        XCTAssertEqual(between.pinned.map(\.id), [session.id])
+        XCTAssertEqual(between.usedUp.map(\.id), [used.id])
+        let shot = try render(between)
+        let check = try checkTop(shot)
+        XCTAssertTrue(inked(shot, from: check - 32, to: check - 20), "no header between Pinned and All Clear")
+    }
+
     private func firstButton(in view: NSView) -> NSButton? {
         if let button = view as? NSButton { return button }
         for child in view.subviews {
