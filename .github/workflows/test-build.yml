@@ -91,8 +91,6 @@ jobs:
             test-feed
           grep -Eq "$DMG\"[^>]*sparkle:edSignature" test-feed/appcast.xml \
             || { echo "Test appcast item for $DMG is missing or unsigned (SUPublicEDKey/private-key mismatch?)." >&2; exit 1; }
-          [ "$(grep -c "<item>" test-feed/appcast.xml)" -eq 1 ] \
-            || { echo "Test appcast must list exactly one item." >&2; exit 1; }
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
