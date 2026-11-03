@@ -10,10 +10,10 @@ items, auth files, logs, databases, or environment variables. It shows only the 
 values that the provider's own API reports, except ChatGPT's credits, which also show their dollar
 value at 4¢ a credit.
 
-<!-- assets/screenshot.jpg needs a new capture of the account-based dashboard before release. -->
-<p align="center">
-  <img src="assets/screenshot.jpg" alt="OpenUsage menu bar panel showing Claude and ChatGPT usage limits" width="900">
-</p>
+| | Light | Dark |
+| --- | --- | --- |
+| **Priority** | <img src="assets/priority-light.jpg" alt="OpenUsage Priority tab in light mode, with pinned limits, limits running out, and a used-up limit" width="400"> | <img src="assets/priority-dark.jpg" alt="OpenUsage Priority tab in dark mode, with pinned limits, limits running out, and a used-up limit" width="400"> |
+| **All Usage** | <img src="assets/all-usage-light.jpg" alt="OpenUsage All Usage tab in light mode, with Claude, ChatGPT, and Cursor usage" width="400"> | <img src="assets/all-usage-dark.jpg" alt="OpenUsage All Usage tab in dark mode, with Claude, ChatGPT, and Cursor usage" width="400"> |
 
 ## Installation
 
