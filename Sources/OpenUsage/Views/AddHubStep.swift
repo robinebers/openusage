@@ -20,15 +20,12 @@ struct HubConnectStep: View {
                 SecureField("Management Key", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.connect() }
             } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("The hub needs remote management turned on. OpenUsage uses https unless you type http://, which works only for this Mac or your local network.")
-                        .foregroundStyle(.secondary)
-                    if flow.hubURL.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http://") {
-                        Label("Over http, the management key crosses your network unencrypted.", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(Theme.notice)
-                    }
+                Group {
                     if let errorMessage = flow.errorMessage {
                         ErrorText(errorMessage)
+                    } else {
+                        Text("The hub needs remote management turned on. OpenUsage uses https unless you type http://, which works only for this Mac, your local network, or Tailscale.")
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .font(.footnote)

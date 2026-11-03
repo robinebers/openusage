@@ -343,9 +343,7 @@ final class PriorityBoardTests: XCTestCase {
         store.snapshots[provider.id]?.lines = [.values(label: "Org Spend", values: [MetricValue(number: 25, kind: .dollars)])]
         XCTAssertEqual(summary(), .noReportedLimits)
         clock.set(now.addingTimeInterval(RefreshSetting.stalenessThreshold + 1))
-        let stale = store.priorityBoard(in: [group], now: clock.now)
-        XCTAssertEqual(stale.summary, .unavailable)
-        XCTAssertTrue(try XCTUnwrap(stale.notices.first).message.contains("Last updated"))
+        XCTAssertEqual(summary(), .noReportedLimits, "old values still waiting for their next read are not a problem")
     }
 
     func testFailedRefreshIsVisibleBesideOtherAlertsAndSharesWithoutAccountDetails() async throws {
@@ -371,5 +369,55 @@ final class PriorityBoardTests: XCTestCase {
         let notice = try XCTUnwrap(shared.notices.first)
         XCTAssertFalse(notice.provider.fullName.contains(email))
         XCTAssertFalse(notice.message.contains(email))
+    }
+
+    func testEachAccountWithoutAReadingWaitsInItsOwnRowBesideWhatHasReported() {
+        let firstLaunch = board(account(personal), account(chatGPT))
+        XCTAssertEqual(firstLaunch.waiting.map(\.id), [personal.id, chatGPT.id])
+        XCTAssertEqual(firstLaunch.summary, .waitingForUsage)
+        XCTAssertFalse(firstLaunch.showsClearRow)
+
+        let mixed = board(account(personal, unpaced("Warning", used: 80)), account(chatGPT))
+        XCTAssertEqual(ids(mixed.attention), ["claude@1.Warning"])
+        XCTAssertEqual(mixed.waiting.map(\.id), [chatGPT.id], "a pending account still shows while another is running out")
+        let quiet = board(account(personal, unpaced("Quiet", used: 10)), account(chatGPT))
+        XCTAssertEqual(quiet.waiting.map(\.id), [chatGPT.id])
+        XCTAssertFalse(quiet.showsClearRow, "All Clear can't speak for an account that hasn't reported")
+
+        let reported = board(account(personal, unpaced("Warning", used: 80)), account(chatGPT, unpaced("Quiet", used: 10)))
+        XCTAssertTrue(reported.waiting.isEmpty)
+        XCTAssertEqual(reported.summary, .listed)
+    }
+
+    func testAnAccountIsASkeletonOnBothTabsUntilItsFirstReadingAndAFailureIsNot() async {
+        let session = WidgetDescriptor.percent(key: "session", provider: personal, title: "Session")
+        let weekly = WidgetDescriptor.percent(key: "weekly", provider: personal, title: "Weekly")
+        let codex = WidgetDescriptor.percent(key: "weekly", provider: chatGPT, title: "Weekly")
+        let broken = WidgetDescriptor.percent(key: "weekly", provider: work, title: "Weekly")
+        let failure = RefreshFailure(message: "Replace the token.", kind: .refused)
+        let runtime = StubRuntime(provider: work, descriptors: [broken], failure: failure)
+        let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { self.now })
+        let groups = [
+            ProviderMetrics(provider: personal, metrics: [session, weekly]),
+            ProviderMetrics(provider: chatGPT, metrics: [codex]),
+            ProviderMetrics(provider: work, metrics: [broken]),
+        ]
+        _ = await store.refresh(providerID: work.id, force: true)
+        func skeletons() -> [[String]] { store.accounts(in: groups).map(\.waitingMetricIDs) }
+
+        let firstLaunch = store.priorityBoard(in: groups, now: now)
+        XCTAssertEqual(firstLaunch.waiting.map(\.id), [personal.id, chatGPT.id])
+        XCTAssertEqual(firstLaunch.notices.map(\.provider.id), [work.id])
+        XCTAssertEqual(skeletons(), [[session.id, weekly.id], [], [codex.id]], "Work shares Claude's card, ahead of ChatGPT")
+
+        store.snapshots[personal.id] = ProviderSnapshot(provider: personal, plan: nil, lines: [.percent("Weekly", 80)], refreshedAt: now)
+        let mixed = store.priorityBoard(in: groups, now: now)
+        XCTAssertEqual(mixed.attention.map(\.id), [weekly.id])
+        XCTAssertEqual(mixed.waiting.map(\.id), [chatGPT.id])
+        XCTAssertEqual(skeletons(), [[], [], [codex.id]])
+
+        store.snapshots[chatGPT.id] = ProviderSnapshot(provider: chatGPT, plan: nil, lines: [.percent("Weekly", 10)], refreshedAt: now)
+        XCTAssertTrue(store.priorityBoard(in: groups, now: now).waiting.isEmpty)
+        XCTAssertEqual(skeletons(), [[], [], []])
     }
 }

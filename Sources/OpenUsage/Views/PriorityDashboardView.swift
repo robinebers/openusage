@@ -37,6 +37,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: PanelMetrics.margin) {
             if !board.pinned.isEmpty { pinnedSection }
             summary
+            if !board.waiting.isEmpty { waitingSection }
         }
     }
 
@@ -44,7 +45,7 @@ struct PriorityBoardList: View {
     private var summary: some View {
         switch board.summary {
         case .waitingForUsage:
-            waitingRow
+            EmptyView()
         case .noReportedLimits:
             VStack(spacing: 4) {
                 Text("No Reported Limits")
@@ -265,12 +266,32 @@ struct PriorityBoardList: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var waitingRow: some View {
-        Text("Waiting for Usage")
-            .font(.system(size: 13))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
+    /// One row per account still waiting, shaped like the rows that replace it. The gauge is a plain disc,
+    /// since nothing says yet which limit will show there.
+    private var waitingSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(board.waiting) { provider in
+                HStack(spacing: 10) {
+                    Circle()
+                        .frame(width: Self.gaugeSide, height: Self.gaugeSide)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Capsule().frame(width: 84, height: 9)
+                        Capsule().frame(width: 56, height: 7)
+                    }
+                    Spacer(minLength: 0)
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Capsule().frame(width: 48, height: 9)
+                        Capsule().frame(width: 32, height: 7)
+                    }
+                }
+                .skeleton()
+                .frame(height: 46)
+                .padding(.horizontal, 4)
+                .accessibilityElement()
+                .accessibilityLabel("Waiting for Usage")
+                .accessibilityValue(provider.fullName)
+            }
+        }
     }
 }
 

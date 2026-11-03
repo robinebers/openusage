@@ -75,7 +75,7 @@ final class CLIProxyHubHardeningTests: XCTestCase {
         } catch {
             XCTAssertEqual(
                 error.localizedDescription,
-                "OpenUsage sends a management key over http only to this Mac or the local network. Connect to hub.example.com:8317 with https."
+                "Use https for hub.example.com:8317. OpenUsage uses http only for a hub on this Mac, your local network, or Tailscale."
             )
         }
         XCTAssertTrue(http.requests.isEmpty)
@@ -89,10 +89,51 @@ final class CLIProxyHubHardeningTests: XCTestCase {
 
         let allowed = ["http://127.0.0.1:8317", "http://localhost:8317", "http://10.0.0.5", "http://172.20.1.1", "http://169.254.1.1",
                        "http://mini.local:8317", "http://[::1]:8317", "https://hub.example.com"]
-        let refused = ["http://hub.example.com", "http://mini.tail1234.ts.net:8317", "http://10.0.0.1.attacker.example", "http://172.32.0.1",
+        let refused = ["http://hub.example.com", "http://10.0.0.1.attacker.example", "http://172.32.0.1",
                        "http://8.8.8.8", "ftp://mini.local"]
         for url in allowed { XCTAssertTrue(CLIProxyHub.allowsKey(at: URL(string: url)!), url) }
         for url in refused { XCTAssertFalse(CLIProxyHub.allowsKey(at: URL(string: url)!), url) }
+    }
+
+    func testTailscaleHostsGetTheKeyOverHttp() {
+        let allowed = ["http://mini.tail2a0317.ts.net:8317", "http://MINI.TAIL2A0317.TS.NET", "http://100.64.0.0", "http://100.100.20.5:8317",
+                       "http://100.127.255.255", "http://[fd7a:115c:a1e0::1]:8317", "http://[fd7a:115c:a1e0:ab12::5]"]
+        let refused = ["http://100.63.255.255", "http://100.128.0.0", "http://ts.net", "http://evilts.net", "http://mini.ts.net.attacker.example",
+                       "http://[2001:db8::1]:8317", "http://100.64.0.1.attacker.example"]
+        for url in allowed { XCTAssertTrue(CLIProxyHub.allowsKey(at: URL(string: url)!), url) }
+        for url in refused { XCTAssertFalse(CLIProxyHub.allowsKey(at: URL(string: url)!), url) }
+    }
+
+    func testAnHttpsHubThatAnswersOnlyOverHttpSaysToUseHttp() async throws {
+        let http = RoutingHTTPClient { request in
+            guard request.url.scheme == "http" else { throw URLError(.secureConnectionFailed) }
+            let status = request.url.host() == "10.0.0.9" ? 400 : 200
+            return HTTPResponse(statusCode: status, headers: [:], body: Data("CLIProxyAPI Server".utf8))
+        }
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
+
+        for (input, message) in [
+            ("https://10.0.0.9:8317", "Can’t reach the CLIProxyAPI hub at 10.0.0.9:8317."),
+            ("mini.tail2a0317.ts.net:8317", "This hub doesn’t use https. Try http://mini.tail2a0317.ts.net:8317."),
+            ("https://192.168.1.20:8317", "This hub doesn’t use https. Try http://192.168.1.20:8317."),
+            ("https://hub.example.com:8317", "Can’t reach the CLIProxyAPI hub at hub.example.com:8317."),
+        ] {
+            do {
+                try await sync.connect(url: input, key: "mgmt-key")
+                XCTFail("\(input) connected")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, message)
+            }
+        }
+
+        let checks = http.requests.filter { $0.url.scheme == "http" }
+        XCTAssertEqual(
+            checks.map(\.url.absoluteString), ["http://10.0.0.9:8317", "http://mini.tail2a0317.ts.net:8317", "http://192.168.1.20:8317"],
+            "a public host gets no http request"
+        )
+        XCTAssertTrue(checks.allSatisfy { $0.headers.isEmpty }, "the http check carries no key")
+        XCTAssertTrue(store.hubs.isEmpty)
     }
 
     func testAListingThatLacksLoginsKeepsTheirAccountsUntilTheNextListingAgrees() throws {

@@ -42,7 +42,13 @@ final class CLIProxyHubSync {
             throw ProviderError.unavailable("The hub at \(CLIProxyHub.host(of: url)) is already connected.")
         }
         let hub = CLIProxyHub(url: url)
-        let logins = try await client.logins(hubID: hub.id, url: url, key: key)
+        let logins: [HubLogin]
+        do {
+            logins = try await client.logins(hubID: hub.id, url: url, key: key)
+        } catch ProviderError.unreachable(let message) {
+            guard let plain = await client.plainHTTPAddress(of: url) else { throw ProviderError.unreachable(message) }
+            throw ProviderError.unavailable("This hub doesn’t use https. Try \(plain.absoluteString).")
+        }
         try Task.checkCancellation()
         guard !accounts.hubs.contains(where: { $0.url == url }) else { return }
         try accounts.addHub(hub, key: key)

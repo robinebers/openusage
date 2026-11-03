@@ -59,6 +59,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   instead, never in both.
 - Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
   **All Clear** is always one row under the **Running Out** header.
+- Dashboard: an account that hasn't reported yet shows grey placeholder rows on Priority and All Usage
+  instead of **Waiting for Usage**, even while other accounts have reported.
+- Priority: an account lists under **Needs Attention** only once a refresh fails, not while it loads
+  on launch.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
   Display → Priority Icons at the top of the tab, sets how many, from App Icon Only to Up to 5. It starts
   at Up to 3.
@@ -126,6 +130,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: each CLIProxyAPI hub is one row under your accounts. Its page lists the accounts it mirrors
   and holds Replace Management Key… and Remove Hub…. You can connect more than one hub. On hub and
   account pages, the replace-key and remove actions sit together in one card.
+- CLIProxyAPI: a hub on Tailscale connects over http, the Connect sheet shows one message at a time,
+  and it says when a hub doesn't use https.
 - Panel: it is exactly as tall as its content, with no empty space under a short list, and its top edge
   no longer jumps while it resizes. On macOS 15 it grows with the slide back from Accounts, not after it.
 - Accounts: accounts keep one order on every screen, grouped by provider, and an account keeps its place

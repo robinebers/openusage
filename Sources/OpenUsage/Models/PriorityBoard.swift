@@ -101,6 +101,8 @@ struct PriorityBoard {
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
     let notices: [AccountNotice]
+    /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest.
+    let waiting: [Provider]
     let summary: Summary
     /// Every account reported and nothing, pinned or not, is running out.
     let showsClearRow: Bool
@@ -129,15 +131,16 @@ struct PriorityBoard {
             return (left.tier, left.closeness, lhs.offset) < (right.tier, right.closeness, rhs.offset)
         }.map(\.element)
 
-        var awaitingUsage = accounts.isEmpty
+        var waiting: [Provider] = []
         var notices: [AccountNotice] = []
         for account in accounts {
             switch status(account) {
-            case .waiting: awaitingUsage = true
+            case .waiting: waiting.append(account.provider)
             case .unavailable(let message): notices.append(AccountNotice(provider: account.provider, message: message))
             case .current: break
             }
         }
+        let awaitingUsage = accounts.isEmpty || !waiting.isEmpty
         let summary: Summary = if !ranked.isEmpty {
             .listed
         } else if !notices.isEmpty {
@@ -157,7 +160,7 @@ struct PriorityBoard {
             },
             attention: attention,
             usedUp: ranked.filter { $0.reason.isUsedUp && !$0.isPinned },
-            notices: notices, summary: summary,
+            notices: notices, waiting: waiting, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
     }

@@ -1,6 +1,7 @@
 import AppKit
 import Observation
 import SwiftUI
+import Vision
 import XCTest
 @testable import OpenUsage
 
@@ -63,6 +64,34 @@ final class AddAccountSheetTests: QuietWindowTestCase {
             let field = try XCTUnwrap(textFields(in: host).first { $0.stringValue == "pasted-secret" }, "\(provider): no field shows the pasted value")
             XCTAssertEqual(field is NSSecureTextField, masked, "\(provider): the pasted value is \(masked ? "shown in plain text" : "masked")")
         }
+    }
+
+    func testTheHubSheetShowsTheHintOrTheErrorButNeverBoth() async throws {
+        let hint = "The hub needs remote management turned on. OpenUsage uses https unless you type http://, which works only for this Mac, your local network, or Tailscale."
+        let error = "Use https for hub.example.com. OpenUsage uses http only for a hub on this Mac, your local network, or Tailscale."
+        let flow = AddAccountFlow(
+            store: AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault()), connectHub: { _, _ in throw ProviderError.unavailable(error) }
+        )
+        flow.chooseHub()
+        flow.hubURL = "http://hub.example.com"
+        flow.apiKey = "mgmt-key"
+        let host = show(AddAccountSheet(flow: flow), in: .titled, appearance: .darkAqua, size: CGSize(width: 420, height: 560)).host
+        let messages = { try ["needs remote management", "unencrypted", "Use https for"].filter(self.readText(in: host).contains) }
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try messages(), ["needs remote management"], "an http address shows only the hint")
+        flow.connect()
+        try await waitUntil { flow.errorMessage != nil }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try messages(), ["Use https for"], "the error replaces the hint")
+    }
+
+    private func readText(in host: NSView) throws -> String {
+        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: rep)
+        let request = VNRecognizeTextRequest()
+        try VNImageRequestHandler(cgImage: XCTUnwrap(rep.cgImage)).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
     }
 
     private func textFields(in view: NSView) -> [NSTextField] {
