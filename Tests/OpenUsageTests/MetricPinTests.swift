@@ -64,6 +64,11 @@ final class MetricPinTests: QuietWindowTestCase {
                        "the saved account order, then each account's metric order")
         XCTAssertEqual(board.attention.map(\.id), ["cursor.usage"])
         XCTAssertEqual(board.usedUp.map(\.id), ["codex.session"])
+
+        XCTAssertTrue(layout.setMetric("cursor.usage", pinned: true))
+        let allPinned = data.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date())
+        XCTAssertTrue(allPinned.attention.isEmpty)
+        XCTAssertFalse(allPinned.showsClearRow, "a pinned limit that is running out still keeps All Clear away")
     }
 
     func testRemovingAnAccountRemovesItsPins() async throws {

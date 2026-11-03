@@ -12,8 +12,7 @@ Priority shows only what needs you, most urgent first.
 
 **Pinned** comes first when you have pinned a metric on its account's page. It lists every pinned metric
 that has data, whatever its reading, in your dashboard order: account by account, then each account's
-metric order. A pinned metric appears only here, never again under Running Out or Used Up. Its row looks
-like a Running Out row.
+metric order. A pinned metric appears only here, never again under Running Out or Used Up.
 
 **Running Out** lists every limit with 30% or less left, whose bar is orange or red. Time never decides
 what's listed, only the order: what would run out soonest at your current pace comes first, then limits

@@ -97,7 +97,8 @@ struct PriorityBoard {
     let usedUp: [PriorityItem]
     let notices: [AccountNotice]
     let summary: Summary
-    let hasCompleteUsage: Bool
+    /// Every account reported and nothing, pinned or not, is running out.
+    let showsClearRow: Bool
 
     /// Multiple running-low limits can change places as their windows age, even without a new reading.
     func requiresRankingClock(at now: Date) -> Bool {
@@ -146,7 +147,8 @@ struct PriorityBoard {
             pinned: lines.filter { pinnedIDs.contains($0.1.id) }.map { PinnedMetric(provider: $0.0, line: $0.1) },
             attention: listed.filter { !$0.reason.isUsedUp },
             usedUp: listed.filter(\.reason.isUsedUp),
-            notices: notices, summary: summary, hasCompleteUsage: !awaitingUsage && notices.isEmpty
+            notices: notices, summary: summary,
+            showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
     }
 }

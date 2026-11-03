@@ -58,7 +58,7 @@ struct PriorityBoardList: View {
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if !board.attention.isEmpty {
                     attentionSection
-                } else if board.hasCompleteUsage, board.pinned.allSatisfy({ $0.data.severity == .normal }) {
+                } else if board.showsClearRow {
                     clearRow
                 }
                 if !board.usedUp.isEmpty { usedUpSection }

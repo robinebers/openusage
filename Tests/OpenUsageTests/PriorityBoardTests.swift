@@ -321,7 +321,7 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(live.summary, .listed)
         XCTAssertEqual(live.attention.map(\.id), [other.id])
         XCTAssertEqual(live.notices.map(\.message), [failure.message])
-        XCTAssertFalse(live.hasCompleteUsage)
+        XCTAssertFalse(live.showsClearRow)
         let shared = store.priorityBoard(in: groups, now: now, hidingEmails: true)
         let notice = try XCTUnwrap(shared.notices.first)
         XCTAssertFalse(notice.provider.fullName.contains(email))
