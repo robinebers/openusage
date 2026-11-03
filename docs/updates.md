@@ -11,7 +11,8 @@ they install, so you always get a genuine, unmodified build.
   window popping up behind your other apps. Click **Install Update** to open the update window (release
   notes, download, install) front and center. The banner's close button snoozes it; it comes back the
   next time the app finds the update.
-- **Manual check.** Open **Settings → Updates** and click **Check for Updates…** at any time.
+- **Manual check.** Choose **Check for Updates…** from the dashboard's **⋯** menu, or click it in
+  **Settings → Updates**, at any time.
   For both manual checks and banner installs, OpenUsage brings itself to the foreground before opening
   Sparkle so the update window doesn't get buried behind another app. Because OpenUsage normally lives
   only in the menu bar, it briefly shows a Dock icon for the update session, then hides again.

@@ -99,6 +99,7 @@ shows only what each provider's API reports for the accounts you sign in to.
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
+- **Check for Updates…** in the dashboard's **⋯** menu, between Settings and Report an Issue…, as in 0.7.x.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
 - Notifications, keyboard shortcuts, Launch at Login, Theme, and Time Format.

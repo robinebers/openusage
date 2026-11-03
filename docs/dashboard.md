@@ -164,8 +164,9 @@ check. See [Updates](updates.md).
 
 The bottom of the panel. On the left: a live **Next update in …** countdown you can click (or press
 **⌘R**) to refresh now, once there's an account to refresh. On the right: on Priority, when it lists
-anything, a button that copies the tab as a PNG with emails hidden, then the **⋯** menu with **Accounts**, **Settings**, **Report an Issue…**, **About OpenUsage**, and
-**Quit OpenUsage**.
+anything, a button that copies the tab as a PNG with emails hidden, then the **⋯** menu with **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
+**About OpenUsage**, and **Quit OpenUsage**. **Check for Updates…** is greyed out while a check is
+running and in the dev build, which has no update feed.
 
 ## Keyboard
 
