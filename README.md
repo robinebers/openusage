@@ -108,6 +108,8 @@ Push a `v*` tag on `main` to build, sign, notarize, and publish a release:
 The pipeline is [release.yml](.github/workflows/release.yml), and the steps are in the
 `release-swift` skill.
 
+### Release setup (one-time)
+
 The workflow needs these repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret                       | What it is                                                            |
