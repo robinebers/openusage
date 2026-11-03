@@ -29,6 +29,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Dashboard: balances always show, even at $0, including Cursor Credits when Cursor reports none. Extra
   Usage shows only while the provider has it on, even at $0, and hides while it is off: Claude,
   ChatGPT, Cursor, Copilot, and Grok, whose "Disabled" row is gone.
+- Share: every share image ends with a tinted OpenUsage footer reading "Your AI Limits at a Glance",
+  in place of the "Monitor Your AI Subscriptions with OpenUsage" line.
 - Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
   bottom bar only while something is under it. The account name in an account page's header fades its
   hover highlight in.

@@ -65,24 +65,37 @@ private struct ShareCardFrame<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             content
-            watermarkFooter
+                .padding(ShareCardView.inset)
+            ShareCardFooter()
         }
-        .padding(ShareCardView.inset)
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
         .environment(\.drawsLevelsAsShapes, true)
         .environment(\.colorScheme, appearance)
     }
+}
 
-    private var watermarkFooter: some View {
+/// The tinted band that signs every share image.
+struct ShareCardFooter: View {
+    static let tagline = "Your AI Limits at a Glance"
+    static let height: CGFloat = 40
+
+    var body: some View {
         HStack(spacing: 6) {
-            ProviderIcon(id: "openusage", side: 14, inset: 0)
-            Text("Monitor Your AI Subscriptions with OpenUsage")
-                .font(.system(size: 12))
+            Image(nsImage: ProviderMarks.image(for: "openusage", side: 16, inset: 0))
+                .renderingMode(.template)
+            Text("OpenUsage")
+                .font(.system(size: 13, weight: .semibold))
+            Spacer(minLength: 8)
+            Text(Self.tagline)
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, ShareCardView.inset)
+        .frame(maxWidth: .infinity, minHeight: Self.height)
+        .background(Theme.cardFill)
+        .overlay(alignment: .top) { Rectangle().fill(.separator).frame(height: 0.5) }
     }
 }

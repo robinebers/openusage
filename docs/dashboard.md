@@ -163,8 +163,8 @@ right-click the provider and choose **Share Screenshot**, to copy a PNG of its h
 every account, to the clipboard. On an account inside a card of several, **Share Screenshot** copies
 that account alone under the provider's header. The copy button shows a checkmark for a moment on
 success, and the footer shows **Copied to clipboard**. The
-image shows the header and card at rest, follows your light or dark appearance, and carries a small
-OpenUsage mark at the bottom. It uses the account's name when you have set one and leaves an email
+image shows the header and card at rest, follows your light or dark appearance, and ends with an
+OpenUsage footer reading **Your AI Limits at a Glance**. It uses the account's name when you have set one and leaves an email
 out.
 
 ## Update banner
