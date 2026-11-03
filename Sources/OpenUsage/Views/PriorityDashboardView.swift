@@ -141,7 +141,7 @@ struct PriorityBoardList: View {
                 limitRow(item.provider, item.data, severity: item.reason.severity)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(item.id, pinned: false) }
+                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
             }
         }
     }

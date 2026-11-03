@@ -12,6 +12,13 @@ relaunch.
 | Default Tab | Priority, All Usage | The tab the panel opens to, no matter which tab it was closed on. |
 | Global Shortcut | recorder | A keyboard shortcut that opens and closes the panel from any app. Click the field and press the keys. |
 
+## Priority Icons
+
+| Setting | Control | What it changes |
+|---|---|---|
+| Preview | | Shows sample icons at the number you pick, smaller so any number fits. |
+| Show In Menu Bar | App Icon Only, Up to 1, Up to 2, Up to 3, Up to 4, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
+
 ## Appearance
 
 | Setting | Control | What it changes |
@@ -25,13 +32,6 @@ relaunch.
 |---|---|---|
 | Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
 | Reset Times | Countdown, Exact Time | Whether resets read `Resets 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
-
-## Priority Icons
-
-| Setting | Control | What it changes |
-|---|---|---|
-| Preview | | Shows sample icons at the number you pick, smaller so any number fits. |
-| Show In Menu Bar | App Icon Only, Up to 1, Up to 2, Up to 3, Up to 4, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
 
 ## Notifications
 

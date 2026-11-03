@@ -45,8 +45,8 @@ final class MetricPinTests: QuietWindowTestCase {
         let layout = LayoutStore(registry: .mock, defaults: defaults)
         let data = WidgetDataStore.forTesting([], registry: .mock, defaults: defaults)
         let lines: [String: [MetricLine]] = [
-            "claude": [.percent("Session", 95), .percent("Weekly", 100)],
-            "codex": [.percent("Session", 100), .percent("Weekly", 80)],
+            "claude": [.percent("Session", 40), .percent("Weekly", 100)],
+            "codex": [.percent("Session", 100), .percent("Weekly", 50)],
             "cursor": [.percent("Usage", 98)],
         ]
         for provider in MockData.providers {
@@ -67,8 +67,9 @@ final class MetricPinTests: QuietWindowTestCase {
 
         XCTAssertTrue(layout.setMetric("cursor.usage", pinned: true))
         let allPinned = data.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date())
-        XCTAssertTrue(allPinned.attention.isEmpty)
-        XCTAssertFalse(allPinned.showsClearRow, "a pinned limit that is running out still keeps All Clear away")
+        XCTAssertEqual(allPinned.attention.map(\.id), ["cursor.usage"], "a pinned limit that is running out is listed under Running Out")
+        XCTAssertEqual(allPinned.pinned.map(\.id), ["codex.weekly", "claude.weekly", "claude.session"], "and only there")
+        XCTAssertFalse(allPinned.showsClearRow)
     }
 
     func testRemovingAnAccountRemovesItsPins() async throws {

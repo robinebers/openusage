@@ -11,8 +11,10 @@ When you have no accounts, both tabs show **Add Account**, which opens the provi
 Priority shows only what needs you, most urgent first.
 
 **Pinned** comes first when you have pinned a metric on its account's page. It lists every pinned metric
-that has data, whatever its reading, in your dashboard order: account by account, then each account's
-metric order. A pinned metric appears only here, never again under Running Out or Used Up.
+that has data in your dashboard order: account by account, then each account's metric order. A pinned
+metric that's running out is listed under Running Out instead, and comes back to Pinned once it isn't.
+A used-up pinned metric stays under Pinned and isn't listed again under Used Up. While every pinned
+metric is running out, there's no Pinned section.
 
 **Running Out** always has its header, even when it holds only All Clear. It lists every limit with 30%
 or less left, whose bar is orange or red. Time never decides what's listed, only the order: what would
@@ -108,7 +110,7 @@ menu starts with the reason too.
   shows a warning or stale icon, the menu starts with the reason. A Copilot organization account also
   has **Organization Billing**, which opens the organization's billing page on GitHub.
 - A metric: **Pin** or **Unpin**, then its account's menu.
-- A row on Priority: **Pin**, or **Unpin** on a Pinned row.
+- A row on Priority: **Pin**, or **Unpin** on a pinned metric, under Pinned or Running Out.
 
 ## Reordering
 
