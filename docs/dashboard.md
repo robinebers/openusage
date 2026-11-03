@@ -10,6 +10,11 @@ When you have no accounts, both tabs show **Add Account**, which opens the provi
 
 Priority shows only what needs you, most urgent first.
 
+**Pinned** comes first when you have pinned a metric on its account's page. It lists every pinned metric
+that has data, whatever its reading, in your dashboard order: account by account, then each account's
+metric order. A pinned metric appears only here, never again under Running Out or Used Up. Its row looks
+like a Running Out row.
+
 **Running Out** lists every limit with 30% or less left, whose bar is orange or red. Time never decides
 what's listed, only the order: what would run out soonest at your current pace comes first, then limits
 with no pace to go by, least left first.
@@ -40,11 +45,13 @@ and every account's name and plan sit inside the card above its rows. A single a
 the provider shows just its plan. With several accounts, each keeps a name you can drag. The card
 holds every metric that has data and that you have not hidden, in the order you set.
 
-## Hiding and ordering metrics
+## Hiding, pinning, and ordering metrics
 
 An account's page in **Accounts** lists all of its metrics, in its order. Turn a metric's switch off to
-hide it everywhere: All Usage, Priority, the menu bar, and notifications. Drag a metric by its handle to
-change where it sits within the account. Both choices are saved and survive a restart. A new account
+hide it everywhere: All Usage, Priority, the menu bar, and notifications. Click the pin beside the switch
+to list the metric under Pinned at the top of Priority; a hidden metric can't be pinned, and hiding a
+pinned metric unpins it. Drag a metric by its handle to change where it sits within the account. These
+choices are saved and survive a restart; removing an account removes its pins. A new account
 shows every metric, in the provider's order. If you hide every metric of every account, the dashboard
 says so and points you to Accounts.
 

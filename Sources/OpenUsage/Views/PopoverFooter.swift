@@ -51,7 +51,7 @@ struct PopoverFooter: View {
     }
 
     private var liveBoard: PriorityBoard {
-        dataStore.priorityBoard(in: layout.displayGroups, now: Date(), hidingEmails: true)
+        dataStore.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date(), hidingEmails: true)
     }
 
     /// Copies the Priority tab as a picture. It reads the live board when clicked.

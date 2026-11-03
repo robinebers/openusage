@@ -73,6 +73,10 @@ struct AccountDetailView: View {
                 get: { layout.isMetricShown(metric.id) },
                 set: { layout.setMetric(metric.id, shown: $0) }
             ),
+            isPinned: Binding(
+                get: { layout.isMetricPinned(metric.id) },
+                set: { layout.setMetric(metric.id, pinned: $0) }
+            ),
             grip: { ReorderGrip().highPriorityGesture(metricDragGesture(for: metric)) }
         )
         .opacity(activeMetricID == metric.id ? 0 : 1)
@@ -90,7 +94,11 @@ struct AccountDetailView: View {
                 ReorderLift.make(
                     id: metric.id,
                     preview: AnyView(
-                        AccountMetricRow(title: metric.title, isShown: .constant(layout.isMetricShown(metric.id))) { ReorderGrip() }
+                        AccountMetricRow(
+                            title: metric.title,
+                            isShown: .constant(layout.isMetricShown(metric.id)),
+                            isPinned: .constant(layout.isMetricPinned(metric.id))
+                        ) { ReorderGrip() }
                             .liftedRowSurface()
                     ),
                     value: value,
@@ -179,6 +187,7 @@ struct AccountDetailView: View {
 struct AccountMetricRow<Grip: View>: View {
     let title: String
     @Binding var isShown: Bool
+    @Binding var isPinned: Bool
     @ViewBuilder var grip: Grip
 
     var body: some View {
@@ -186,6 +195,16 @@ struct AccountMetricRow<Grip: View>: View {
             grip
             Text(title)
             Spacer(minLength: 8)
+            Button { isPinned.toggle() } label: {
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isPinned ? .secondary : .tertiary)
+                    .frame(width: 16, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isShown)
+            .accessibilityLabel(isPinned ? "Unpin \(title)" : "Pin \(title)")
             Toggle(title, isOn: $isShown)
                 .labelsHidden()
                 .toggleStyle(.switch)
