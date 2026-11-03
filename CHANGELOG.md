@@ -47,6 +47,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   **All Usage** for every account. The panel opens on the **Default Tab** in Settings, Priority at first.
 - Priority: pin a metric with the pin beside its switch on its account's page, and it gets a **Pinned**
   section at the top of Priority, whatever its reading.
+- Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
+  **Running Out** keeps its header when it shows only All Clear.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
   Display → Priority Icons, sets how many, from App Icon Only to Up to 5. It starts at Up to 3.
 - Menu bar: when an update is available, the app icon shows at the far right with a dot, after the

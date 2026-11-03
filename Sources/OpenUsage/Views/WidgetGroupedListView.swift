@@ -92,6 +92,13 @@ struct WidgetGroupedListView: View {
             )
             .opacity(activeMetricID == line.id ? 0 : 1)
             .highPriorityGesture(metricDragGesture(for: line, accountID: account.id))
+            .contentShape(Rectangle())
+            .contextMenu {
+                DashboardMenu(
+                    sections: DashboardMenus.metric(line.id, pinned: layout.isMetricPinned(line.id), of: account, status: status.notice ?? status.staleness),
+                    perform: perform
+                )
+            }
             .reorderFrame(id: line.id, in: .named(reorderSpaceName))
         }
     }
@@ -110,6 +117,8 @@ struct WidgetGroupedListView: View {
             popover.openAccounts(accountID)
         case .shareScreenshot(let accountIDs):
             shareScreenshot(accountIDs)
+        case .setPinned(let metricID, let pinned):
+            layout.setMetric(metricID, pinned: pinned)
         }
     }
 
