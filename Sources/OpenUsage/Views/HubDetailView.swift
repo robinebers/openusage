@@ -12,13 +12,14 @@ struct HubDetailView: View {
     var body: some View {
         if let hub = container.accounts.hubs.first(where: { $0.id == hubID }) {
             let status = container.hubs.status(of: hubID)
+            let unsupported = if case .synced(let unsupported) = status { unsupported } else { 0 }
             let mirrored = Set(container.accounts.accounts(onHub: hubID).map(\.cardID))
             let providers = layout.orderedProviders().filter { mirrored.contains($0.id) }
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
                 if case .failed(let message) = status {
                     ProblemCard(message: message)
                 }
-                if !providers.isEmpty || status.unsupported > 0 {
+                if !providers.isEmpty || unsupported > 0 {
                     VStack(alignment: .leading, spacing: 6) {
                         if !providers.isEmpty {
                             VStack(spacing: 0) {
@@ -30,8 +31,8 @@ struct HubDetailView: View {
                             }
                             .cardSurface()
                         }
-                        if status.unsupported > 0 {
-                            Text("\(CLIProxyHub.count(status.unsupported, "login")) OpenUsage doesn’t support yet")
+                        if unsupported > 0 {
+                            Text("\(CLIProxyHub.count(unsupported, "login")) OpenUsage doesn’t support yet")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 12)
