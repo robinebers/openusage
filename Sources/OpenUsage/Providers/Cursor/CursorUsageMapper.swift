@@ -142,7 +142,9 @@ enum CursorUsageMapper {
                     label: "On-demand",
                     used: ProviderParse.centsToDollars(spent),
                     limit: ProviderParse.centsToDollars(limit),
-                    format: .dollars
+                    format: .dollars,
+                    resetsAt: cycle.resetsAt,
+                    periodDurationMs: cycle.periodDurationMs
                 ))
             } else if spent > 0 {
                 lines.append(.values(
@@ -213,7 +215,7 @@ enum CursorUsageMapper {
         let combinedTotalCents = (hasValidGrantData ? grantTotalCents : 0) + stripeBalanceCents
         let remainingCents = max(0, combinedTotalCents - (hasValidGrantData ? grantUsedCents : 0))
 
-        guard combinedTotalCents > 0 else { return }
+        guard creditGrants != nil || combinedTotalCents > 0 else { return }
         lines.append(.values(
             label: "Credits",
             values: [MetricValue(number: ProviderParse.centsToDollars(remainingCents), kind: .dollars)]

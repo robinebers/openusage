@@ -9,6 +9,12 @@ struct WidgetRegistry: Sendable {
     private let descriptorsByProvider: [String: [WidgetDescriptor]]
 
     init(providers: [Provider], descriptors: [WidgetDescriptor]) {
+        let accountCounts = Dictionary(grouping: providers, by: \.kind).mapValues(\.count)
+        let providers = providers.map { provider in
+            var provider = provider
+            provider.badge = accountCounts[provider.kind, default: 0] > 1 ? AccountInitials.tag(for: provider.accountName) : nil
+            return provider
+        }
         self.providers = providers
         self.descriptors = descriptors
         self.descriptorsByID = Dictionary(

@@ -67,6 +67,7 @@ final class ProviderDeepLinkTests: XCTestCase {
         popover.screen = .settings
         popover.openWidgetAccount("codex@active", hasVisibleMetrics: true)
         XCTAssertEqual(popover.screen, .dashboard)
+        XCTAssertEqual(popover.dashboardTab, .allUsage)
         XCTAssertEqual(popover.dashboardFocusProviderID, "codex@active")
         let firstRequest = popover.dashboardFocusRequestID
 
@@ -85,6 +86,23 @@ final class ProviderDeepLinkTests: XCTestCase {
         popover.openWidgetAccount(nil, hasVisibleMetrics: false)
         XCTAssertEqual(popover.screen, .dashboard)
         XCTAssertNil(popover.customizeProviderID)
+        XCTAssertNil(popover.dashboardFocusProviderID)
+    }
+
+    @MainActor
+    func testWidgetTabSelectionKeepsTheSavedDefaultForTheNextOrdinaryOpen() {
+        let defaults = isolatedDefaults()
+        defaults.set(DashboardTab.priority.rawValue, forKey: DashboardTab.defaultKey)
+        let popover = PopoverState()
+        popover.show(dashboardTab: .preferred(in: defaults))
+
+        popover.openWidgetAccount("codex@active", hasVisibleMetrics: true)
+
+        XCTAssertEqual(popover.dashboardTab, .allUsage)
+        XCTAssertEqual(DashboardTab.preferred(in: defaults), .priority)
+        popover.reset()
+        popover.show(dashboardTab: .preferred(in: defaults))
+        XCTAssertEqual(popover.dashboardTab, .priority)
         XCTAssertNil(popover.dashboardFocusProviderID)
     }
 

@@ -24,7 +24,7 @@ extension ResetClaimOutcome {
             "Resets can't be used right now." + (until.flatMap { Formatters.whenLabel(at: $0, mode: .relative, now: now) }
                 .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? "")
         case .failed(.signInExpired):
-            "Your sign-in expired. Remove the account and add it again."
+            "Your sign-in expired. Sign in again from the account's page."
         case .failed(.notPermitted):
             "This sign-in can't use resets. Use the reset in Claude Code instead."
         case .failed(.connection):

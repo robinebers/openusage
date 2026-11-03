@@ -16,6 +16,16 @@ struct LimitResourceDescriptor: Hashable, Sendable {
     let kind: Kind
     let unit: String
     let source: Source
+
+    /// The figure of a values line this resource reads.
+    func value(in values: [MetricValue]) -> MetricValue? {
+        switch source {
+        case .progress:
+            nil
+        case .value(let kind, let label), .progressOrValue(let kind, let label):
+            values.first { $0.kind == kind && (label == nil || $0.label == label) }
+        }
+    }
 }
 
 extension WidgetDescriptor {

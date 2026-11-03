@@ -9,12 +9,12 @@ import XCTest
 /// store.
 @MainActor
 final class AppNotificationsTests: XCTestCase {
-    func testIsRunningUnderTestsIsTrueInTheHarness() {
-        XCTAssertTrue(AppNotifications.isRunningUnderTests)
-    }
-
-    func testPostReturnsFalseUnderTests() async {
-        let delivered = await AppNotifications.shared.post(idPrefix: "claude.session.healthyToClose", title: "Cutting It Close", subtitle: "Claude Session", body: "x")
+    func testPostSkipsAuthorizationAndDeliveryUnderTests() async {
+        let notifications = AppNotifications(authorizationStatus: {
+            XCTFail("Posting under XCTest must skip the system permission check")
+            return .denied
+        })
+        let delivered = await notifications.post(idPrefix: "claude.session.healthyToClose", title: "Cutting It Close", subtitle: "Claude Session", body: "x")
         XCTAssertFalse(delivered)
     }
 

@@ -42,12 +42,15 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         XCTAssertNil(try keyLimit(#""limit":null,"limit_remaining":null,"limit_reset":null"#))
     }
 
-    func testCreditsShowAMeterOnceCreditsWereBoughtAndBalanceAlways() throws {
+    /// `total_credits` is every credit ever bought, not a limit, so the credits show as a balance and never as a meter.
+    func testCreditsShowOnlyTheBalance() throws {
         XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(OpenRouterFixtures.credits)), [
-            .progress(label: "Credits", used: 22.25, limit: 100, format: .dollars),
             .values(label: "Balance", values: [MetricValue(number: 77.75, kind: .dollars)])
         ])
         XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":0,"total_usage":0}}"#)), [
+            .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
+        ])
+        XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":10,"total_usage":12.5}}"#)), [
             .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
         ])
         XCTAssertThrowsError(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":100}}"#)))
@@ -74,12 +77,12 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         """#
         let day = try XCTUnwrap(OpenRouterUsageMapper.activityDays(body(rows))?[try XCTUnwrap(date("2026-10-28T00:00:00Z"))])
 
-        XCTAssertEqual(day.totals.values, [.spend: 1.5, .requests: 3, .tokens: 20, .inputTokens: 14, .outputTokens: 6],
-                       "a measure one row leaves out is not reported for the day")
+        XCTAssertEqual(day.totals.values, [.spend: 1.5, .tokens: 20, .inputTokens: 12, .outputTokens: 6, .cacheReadTokens: 2, .reasoningTokens: 0, .byokSpend: 0],
+                       "a measure one row leaves out still counts from the rows that have it")
         XCTAssertEqual(day.byModel?["a"]?[.tokens], 20)
         for text in [
             #"{"data":{"date":"2026-10-28"}}"#,
-            #"{"data":[{"date":"2026-10-28","model":"a","usage":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
+            #"{"data":[{"date":"2026-10-28","model":"a","usage":1,"prompt_tokens":10}]}"#,
             #"{"data":[{"date":"2026-10-28","model":"a","usage":-1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
             #"{"data":[{"date":"yesterday","model":"a","usage":1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#
         ] {

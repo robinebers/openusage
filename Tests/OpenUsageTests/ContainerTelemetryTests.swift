@@ -26,5 +26,8 @@ final class ContainerTelemetryTests: XCTestCase {
         XCTAssertEqual(active.count, 1)
         XCTAssertEqual(active[0]["install_id"] as? String, recorder.installID)
         XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude"])
+        let metricIDs = try XCTUnwrap(active[0]["enabled_metric_ids"] as? [String])
+        XCTAssertTrue(metricIDs.contains("claude.session"))
+        XCTAssertTrue(metricIDs.allSatisfy { $0.hasPrefix("claude.") }, "metric IDs must not identify an account")
     }
 }

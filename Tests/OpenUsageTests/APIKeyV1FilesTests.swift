@@ -13,7 +13,7 @@ final class APIKeyV1FilesTests: XCTestCase {
         await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
 
         XCTAssertEqual(store.accounts.map(\.kind), [.openrouter, .zai])
-        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter", "Z.ai"])
+        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter Account", "Z.ai Account"])
         XCTAssertEqual(try store.accounts.map { try vault.load($0.id) }, [.apiKey("sk-or-saved"), .apiKey("zai-saved")])
         XCTAssertEqual(try String(contentsOf: home.appending(path: ".config/openusage/openrouter.json"), encoding: .utf8), #"{"apiKey":"sk-or-saved"}"#)
         XCTAssertEqual(try String(contentsOf: home.appending(path: ".config/openusage/zai.json"), encoding: .utf8), #"{"apiKey":"zai-saved"}"#)
@@ -43,6 +43,21 @@ final class APIKeyV1FilesTests: XCTestCase {
 
         XCTAssertTrue(store.accounts.isEmpty)
         XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer sk-or-revoked"], "a rejected key is checked once")
+    }
+
+    func testSkipsAZaiKeyZaiRefusesInsideAnOKResponse() async throws {
+        let home = try makeHome(zai: #"{"apiKey":"zai-expired"}"#)
+        let (store, _) = makeStore()
+        let defaults = isolatedDefaults()
+        let http = RoutingHTTPClient { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"code":401,"msg":"token expired or incorrect","success":false}"#.utf8))
+        }
+
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+
+        XCTAssertTrue(store.accounts.isEmpty)
+        XCTAssertEqual(http.requests.filter { $0.url == ZAIUsageClient.quotaURL }.count, 1, "a refused key is checked once")
     }
 
     func testAKeyCheckThatCouldNotReachTheProviderIsTriedAgainOnTheNextLaunch() async throws {

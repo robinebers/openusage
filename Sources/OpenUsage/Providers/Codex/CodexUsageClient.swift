@@ -44,8 +44,7 @@ struct CodexUsageClient: Sendable {
         ))
     }
 
-    /// One of the daily usage reports the Codex client's Analytics view reads, such as
-    /// `usage/credit-usage-events`, at `path` under `wham/`.
+    /// One of the daily usage reports the Codex client's Analytics view reads, at `path` under `wham/`.
     func fetchReport(_ path: String, query: [URLQueryItem], accessToken: String, accountID: String?) async throws -> HTTPResponse {
         var url = Self.reportsURL.appending(path: path)
         if !query.isEmpty { url.append(queryItems: query) }

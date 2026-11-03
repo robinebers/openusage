@@ -103,7 +103,7 @@ final class CursorMetricsTests: XCTestCase {
         let runtime = AccountProviderRuntime(account: account, vault: InMemoryCredentialVault())
         XCTAssertEqual(runtime.widgetDescriptors.map(\.sample.title), [
             "Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Requests", "Credits",
-            "Today", "Yesterday", "Last 30 Days", "Usage Events"
+            "Today", "Yesterday", "Last 30 Days"
         ])
     }
 
@@ -111,13 +111,16 @@ final class CursorMetricsTests: XCTestCase {
         let (plan, data, paths) = try await refresh(usage: Self.individualUsage, planName: "Ultra")
 
         XCTAssertEqual(plan, "Ultra")
-        XCTAssertEqual(Set(data.keys), ["Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Credits"])
+        XCTAssertEqual(Set(data.keys), ["Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Credits",
+                                        "Today", "Yesterday", "Last 30 Days"])
         XCTAssertEqual(data["Total Usage"]?.used, 25)
         XCTAssertEqual(data["Cursor Models"]?.used, 20)
         XCTAssertEqual(data["Other Models"]?.used, 40)
         XCTAssertEqual(data["Extra Usage"]?.kind, .dollars)
         XCTAssertEqual(data["Extra Usage"]?.used, 120)
         XCTAssertEqual(data["Extra Usage"]?.limit, 500)
+        XCTAssertNotNil(data["Extra Usage"]?.resetsAt)
+        XCTAssertEqual(data["Extra Usage"]?.resetsAt, data["Total Usage"]?.resetsAt, "Extra Usage resets with the billing cycle")
         XCTAssertEqual(data["Grok Bot"]?.used, 30)
         XCTAssertEqual(data["Grok Bot"]?.resetsAt, OpenUsageISO8601.date(from: "2026-10-27T00:00:00Z"))
         XCTAssertNil(data["Credits"]?.limit)
@@ -134,7 +137,8 @@ final class CursorMetricsTests: XCTestCase {
             )
 
             XCTAssertEqual(plan, "Enterprise", "GetPlanInfo says \(planName)")
-            XCTAssertEqual(Set(data.keys), ["Total Usage", "Requests", "Extra Usage", "Grok Bot"], planName)
+            XCTAssertEqual(Set(data.keys), ["Total Usage", "Requests", "Extra Usage", "Grok Bot", "Today", "Yesterday", "Last 30 Days"],
+                           planName)
             XCTAssertEqual(data["Requests"]?.kind, .count)
             XCTAssertEqual(data["Requests"]?.used, 120)
             XCTAssertEqual(data["Requests"]?.limit, 500)

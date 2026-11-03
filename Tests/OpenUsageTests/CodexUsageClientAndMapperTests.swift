@@ -62,6 +62,31 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         XCTAssertEqual(mapped.lines.map(\.label), ["Rate Limit Resets", "Credits"])
     }
 
+    @MainActor
+    func testExtraUsageCreditsHideWhileCreditsAreOffAndShowAtZeroWhileOn() throws {
+        let account = Account(kind: .codex, label: "ChatGPT")
+        let provider = AccountProviderRuntime.provider(for: account)
+        let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "credits" })
+        let cases: [(String, Double?)] = [(#"{ "has_credits": false, "balance": "0" }"#, nil), (#"{ "has_credits": false }"#, nil),
+                                          (#"{ "has_credits": true, "balance": "0" }"#, 0), (#"{ "balance": 0 }"#, 0),
+                                          (#"{ "has_credits": true, "balance": "1" }"#, 1)]
+        for (credits, balance) in cases {
+            let body = Data(#"{ "credits": \#(credits) }"#.utf8)
+            let response = HTTPResponse(statusCode: 200, headers: [:], body: body)
+            let usage = try CodexUsageMapper.mapUsageResponse(response)
+            let snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines)
+            let defaults = isolatedDefaults()
+            let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+            cache.save([provider.id: snapshot])
+            let runtime = StubRuntime(provider: provider, descriptors: [descriptor], snapshot: snapshot)
+            let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: defaults)
+            let accounts = store.accounts(in: [ProviderMetrics(provider: provider, metrics: [descriptor])])
+
+            XCTAssertEqual(descriptor.balance(in: store.data(for: descriptor))?.number, balance, credits)
+            XCTAssertEqual(accounts.first?.lines.map(\.descriptor.key), balance == nil ? [] : ["credits"], credits)
+        }
+    }
+
     func testShowsZeroRateLimitResets() throws {
         let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 0 } }"#.utf8)
         let mapped = try CodexUsageMapper.mapUsageResponse(

@@ -3,7 +3,6 @@ import Foundation
 struct TelemetryConfigSnapshot: Sendable {
     let enabledProviders: [String]
     let enabledMetricIDs: [String]
-    let pinnedMetricIDs: [String]
 }
 
 struct ProviderDailyCounter: Codable, Sendable, Equatable {
@@ -122,8 +121,7 @@ final class TelemetryRecorder {
             "app_version": AppInfo.version,
             "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
             "enabled_providers": config.enabledProviders,
-            "enabled_metric_ids": config.enabledMetricIDs,
-            "pinned_metric_ids": config.pinnedMetricIDs
+            "enabled_metric_ids": config.enabledMetricIDs
         ])
         sink.flush()
     }

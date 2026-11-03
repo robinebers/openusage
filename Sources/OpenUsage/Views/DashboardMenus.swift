@@ -7,14 +7,13 @@ enum DashboardCommand: Equatable {
     case rename(String)
     case editAccount(String)
     case shareScreenshot([String])
-    case showHiddenMetrics(String)
-    case toggleStar(String)
-    case hide(String)
+    case setPinned(String, Bool)
 }
 
 struct DashboardMenuItem: Equatable {
     let title: String
     var command: DashboardCommand?
+    var systemImage: String?
 }
 
 enum DashboardMenus {
@@ -33,11 +32,13 @@ enum DashboardMenus {
         provider.links.map { DashboardMenuItem(title: $0.label, command: .open($0.url)) }
     }
 
-    static func account(
-        _ account: DashboardAccount,
-        status: String?,
-        hasHiddenMetrics: Bool
-    ) -> Sections {
+    static func pin(_ metricID: String, pinned: Bool) -> DashboardMenuItem {
+        pinned
+            ? DashboardMenuItem(title: "Unpin", command: .setPinned(metricID, false), systemImage: "pin.slash")
+            : DashboardMenuItem(title: "Pin", command: .setPinned(metricID, true), systemImage: "pin")
+    }
+
+    static func account(_ account: DashboardAccount, status: String?) -> Sections {
         [
             status.map { [DashboardMenuItem(title: $0)] } ?? [],
             [
@@ -47,15 +48,7 @@ enum DashboardMenus {
             ],
             [DashboardMenuItem(title: "Share Screenshot", command: .shareScreenshot([account.id]))],
             account.provider.organizationBillingPage.map { [DashboardMenuItem(title: "Organization Billing", command: .open($0))] } ?? [],
-            hasHiddenMetrics ? [DashboardMenuItem(title: "Show Hidden Metrics", command: .showHiddenMetrics(account.id))] : [],
         ].filter { !$0.isEmpty }
-    }
-
-    static func metric(_ descriptor: WidgetDescriptor, isStarred: Bool) -> Sections {
-        [[
-            DashboardMenuItem(title: isStarred ? "Unstar" : "Star for Menu Bar", command: .toggleStar(descriptor.id)),
-            DashboardMenuItem(title: "Hide", command: .hide(descriptor.id)),
-        ]]
     }
 }
 
@@ -68,8 +61,14 @@ struct DashboardMenu: View {
             if index > 0 { Divider() }
             ForEach(sections[index].indices, id: \.self) { item in
                 let entry = sections[index][item]
-                Button(entry.title) {
+                Button {
                     if let command = entry.command { perform(command) }
+                } label: {
+                    if let systemImage = entry.systemImage {
+                        Label(entry.title, systemImage: systemImage)
+                    } else {
+                        Text(entry.title)
+                    }
                 }
                 .disabled(entry.command == nil)
             }

@@ -4,16 +4,15 @@ import Foundation
 final class AccountProviderRuntime: ProviderRuntime {
     private(set) var account: Account
     private(set) var provider: Provider
-    let vault: any CredentialVault
+    private(set) var vault: any CredentialVault
     let http: any HTTPClient
     let now: () -> Date
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var cursorMembershipRead = SecondaryRead<String>()
-    var usageLedger = UsageLedger()
-    /// The history behind the last snapshot's history rows.
-    private(set) var usageHistory: UsageHistory?
+    let usageLedger = UsageLedger()
+    let codexCreditsLedger = UsageLedger()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
@@ -23,6 +22,10 @@ final class AccountProviderRuntime: ProviderRuntime {
     /// Tokens a renewal granted that the Keychain refused to save. The provider may already have spent
     /// the refresh token they replace, so they stand in for the stored credential until they are saved.
     private var unsavedRenewal: OAuthTokens?
+    private var renewalsStopped = false
+    /// Set while a new sign-in is proving itself, so nothing else's answer can stand in for its own.
+    var isCheckingNewSignIn = false
+    private var credentialWrite: Task<Void, Error>?
     /// A token endpoint that rate-limited an early renewal is not asked again for an early one before this.
     private var earlyRenewalNotBefore = Date.distantPast
     /// One Keychain read at a time: a read that blocks, on a prompt nobody answers, holds a thread until
@@ -57,6 +60,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         codexResetCreditsRead.forget()
         cursorMembershipRead.forget()
         usageLedger.forgetLastRead()
+        codexCreditsLedger.forgetLastRead()
         claude.forcedReadsPending = true
     }
 
@@ -97,17 +101,10 @@ final class AccountProviderRuntime: ProviderRuntime {
 
     func refresh() async -> Result<ProviderSnapshot, RefreshFailure> {
         do {
-            let usage = try await refresh(try await loadCredential())
-            usageHistory = usage.history
-            let lines = usage.lines + HistoryRow.lines(for: widgetDescriptors, in: usage.history)
-            return .success(ProviderSnapshot(provider: provider, plan: usage.plan, lines: lines, notice: usage.notice))
+            return .success(try await readSnapshot(using: loadCredential()))
         } catch {
             return .failure(RefreshFailure(error: error))
         }
-    }
-
-    func usageBreakdown(for descriptor: WidgetDescriptor) -> UsageBreakdown? {
-        usageHistory.flatMap { descriptor.historyRow?.breakdown(in: $0) }
     }
 
     func loadCredential() async throws -> AccountCredential {
@@ -221,10 +218,20 @@ final class AccountProviderRuntime: ProviderRuntime {
         let accountID = tokens.extras["chatgpt_account_id"]
         let resetCredits = await codexResetCredits(after: response, accessToken: tokens.accessToken, accountID: accountID)
         var usage = try CodexUsageMapper.mapUsageResponse(response, resetCredits: resetCredits, now: now())
-        usage.history = await refreshHistory(using: CodexHistorySource(
+        let countsSource = CodexHistorySource(
             client: CodexUsageClient(http: http), accessToken: tokens.accessToken, chatGPTAccountID: accountID,
-            cardID: account.cardID, plan: .init(planType: ProviderParse.jsonObject(response.body)?["plan_type"] as? String)
-        ))
+            cardID: account.cardID, report: .counts
+        )
+        let planType = ProviderParse.jsonObject(response.body)?["plan_type"] as? String
+        if let report = CodexHistorySource.Report.workspaceCredits(for: planType) {
+            var creditsSource = countsSource
+            creditsSource.report = report
+            async let counted = refreshHistory(using: countsSource)
+            let credits = await refreshHistory(using: creditsSource, ledger: codexCreditsLedger)
+            usage.history = await counted.map { CodexUsageReports.combining($0, with: credits) }
+        } else {
+            usage.history = await refreshHistory(using: countsSource)
+        }
         return usage
     }
 
@@ -344,8 +351,16 @@ final class AccountProviderRuntime: ProviderRuntime {
         return response.body
     }
 
+    /// Writes run one at a time, so `stopRenewals` can wait out whichever is underway.
     func replaceCredential(_ credential: AccountCredential) async throws {
-        try await loadOffMainActor { [vault, account] in try vault.update(credential, for: account.id) }
+        guard !renewalsStopped else { return }
+        let previous = credentialWrite
+        let write = Task { [vault, account] in
+            _ = await previous?.result
+            try await loadOffMainActor { try vault.update(credential, for: account.id) }
+        }
+        credentialWrite = write
+        try await write.value
         credentialWrites += 1
         if case .oauth(let saved) = credential, saved.accessToken == unsavedRenewal?.accessToken { unsavedRenewal = nil }
     }
@@ -359,6 +374,25 @@ final class AccountProviderRuntime: ProviderRuntime {
         earlyRenewalNotBefore = now().addingTimeInterval(retryAfter)
     }
 
+    /// Lets a renewal or write that's underway finish, and saves nothing after it, so neither can overwrite
+    /// the sign-in replacing this runtime. `resumeRenewals` undoes it if the replacement doesn't go through.
+    func stopRenewals() async {
+        renewalsStopped = true
+        renewal?.cancel()
+        _ = try? await renewal?.value
+        _ = await credentialWrite?.result
+    }
+
+    /// Moves a runtime that proved a new sign-in onto the store that now holds it.
+    func adopt(_ vault: any CredentialVault) {
+        self.vault = vault
+        isCheckingNewSignIn = false
+    }
+
+    func resumeRenewals() {
+        renewalsStopped = false
+    }
+
     func saveRenewal(_ tokens: OAuthTokens) async {
         unsavedRenewal = tokens
         do {
@@ -368,7 +402,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         }
     }
 
-    func validate(_ credential: AccountCredential) async throws {
-        _ = try await refresh(credential)
+    @discardableResult
+    func readSnapshot(using credential: AccountCredential) async throws -> ProviderSnapshot {
+        let usage = try await refresh(credential)
+        var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
+        HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
+        return snapshot
     }
 }

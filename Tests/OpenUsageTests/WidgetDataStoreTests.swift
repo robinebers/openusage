@@ -211,9 +211,8 @@ final class WidgetDataStoreTests: XCTestCase {
         store.meterStyle = .remaining
         let remaining = store.data(for: descriptor)
         XCTAssertFalse(remaining.isBounded)
-        XCTAssertEqual(remaining.unboundedDetail, "$40 · 1K credits")
-        XCTAssertEqual(remaining.menuBarValue, "$40")
-        XCTAssertEqual(remaining.dashboardRow().mark, .value("$40 · 1K credits"))
+        XCTAssertEqual(remaining.unboundedDetail, "$40")
+        XCTAssertEqual(remaining.dashboardRow().mark, .value("$40"))
 
         store.meterStyle = .used
         let used = store.data(for: descriptor)
@@ -221,14 +220,13 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(used.dashboardRow(), remaining.dashboardRow())
     }
 
-    func testRateLimitResetsTileShowsCountInTrayAndPopover() async {
+    func testRateLimitResetsShowsAvailableCountInDashboard() async {
         let provider = Provider(id: "codex", kind: .codex)
         let descriptor = WidgetDescriptor.values(
             key: "rateLimitResets",
             provider: provider,
             title: "Rate Limit Resets",
-            metricLabel: "Rate Limit Resets",
-            traySuffix: "resets"
+            metricLabel: "Rate Limit Resets"
         )
         let runtime = StubRuntime(
             provider: provider,
@@ -248,7 +246,7 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertTrue(data.hasData)
         XCTAssertFalse(data.isBounded)
         XCTAssertEqual(data.unboundedDetail, "1 available")
-        XCTAssertEqual(data.menuBarValue, "1 resets")
+        XCTAssertEqual(data.dashboardRow().mark, .value("1 available"))
     }
 
     func testZeroRateLimitResetsStillFlagsResetPopoverForEmptyState() async {
@@ -258,7 +256,6 @@ final class WidgetDataStoreTests: XCTestCase {
             provider: provider,
             title: "Rate Limit Resets",
             metricLabel: "Rate Limit Resets",
-            traySuffix: "resets",
             showsResetExpiries: true
         )
         let runtime = StubRuntime(
@@ -343,12 +340,10 @@ final class WidgetDataStoreTests: XCTestCase {
         let remaining = store.data(for: descriptor)
         XCTAssertFalse(remaining.isBounded)
         XCTAssertEqual(remaining.unboundedDetail, "$7.9K left")
-        XCTAssertEqual(remaining.menuBarValue, "$7.9K")
 
         store.meterStyle = .used
         let used = store.data(for: descriptor)
         XCTAssertEqual(used.unboundedDetail, remaining.unboundedDetail)
-        XCTAssertEqual(used.menuBarValue, remaining.menuBarValue)
     }
 
     func testClaudesUncappedExtraUsageReadsCompactDollarsSpent() async throws {
@@ -366,7 +361,6 @@ final class WidgetDataStoreTests: XCTestCase {
 
         let data = store.data(for: descriptor)
         XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
-        XCTAssertEqual(data.menuBarValue, "$1.2K")
     }
 
     func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {
@@ -391,80 +385,10 @@ final class WidgetDataStoreTests: XCTestCase {
     func testCreditValuesFloorAndClampBalance() {
         var data = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
         data.values = CodexUsageMapper.creditValues(remaining: 821.6)
-        XCTAssertEqual(data.unboundedDetail, "$32.84 · 821 credits")
+        XCTAssertEqual(data.unboundedDetail, "$32.84")
         data.values = CodexUsageMapper.creditValues(remaining: -5)
-        XCTAssertEqual(data.unboundedDetail, "$0 · 0 credits")
+        XCTAssertEqual(data.unboundedDetail, "$0")
     }
-
-    func testUsesFreshCachedSnapshotInsteadOfRefreshingProvider() async {
-        let provider = Provider(id: "test", kind: .codex)
-        let descriptor = WidgetDescriptor(
-            provider: provider,
-            key: "session",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
-        )
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let cache = ProviderSnapshotCache(userDefaults: isolatedDefaults(), storageKey: "snapshots")
-        cache.save([provider.id: ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
-            refreshedAt: now.addingTimeInterval(-60)
-        )])
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Session", used: 80, limit: 100, format: .percent)],
-                refreshedAt: now
-            )
-        )
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults(), now: { now })
-
-        await store.refreshAll()
-
-        XCTAssertEqual(runtime.refreshCount, 0)
-        XCTAssertEqual(store.data(for: descriptor).valueText, "80%")
-    }
-
-    func testExpiredCacheRefreshesAndReplacesSnapshot() async {
-        let provider = Provider(id: "test", kind: .codex)
-        let descriptor = WidgetDescriptor(
-            provider: provider,
-            key: "session",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
-        )
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let defaults = isolatedDefaults()
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
-        cache.save([provider.id: ProviderSnapshot(
-            providerID: provider.id,
-            displayName: provider.displayName,
-            lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
-            refreshedAt: now.addingTimeInterval(-601)
-        )])
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(label: "Session", used: 80, limit: 100, format: .percent)],
-                refreshedAt: now
-            )
-        )
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: isolatedDefaults(), now: { now })
-
-        await store.refreshAll()
-
-        XCTAssertEqual(runtime.refreshCount, 1)
-        XCTAssertEqual(store.data(for: descriptor).valueText, "20%")
-    }
-
 
     private func makeRuntime(_ id: String) -> (Provider, StubRuntime) {
         let provider = Provider(id: id, kind: .codex)

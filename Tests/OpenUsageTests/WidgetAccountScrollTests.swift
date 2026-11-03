@@ -10,10 +10,25 @@ final class WidgetAccountScrollTests: QuietWindowTestCase {
     }
 
     func testWidgetClickRevealsAnOffscreenSecondAccount() async throws {
+        try await assertWidgetClickRevealsAccount()
+    }
+
+    func testWidgetClickLeavesPriorityAndRevealsAnOffscreenAccount() async throws {
+        try await assertWidgetClickRevealsAccount(startingTab: .priority)
+    }
+
+    func testWidgetClickLeavesSettingsAndRevealsAnOffscreenAccount() async throws {
+        try await assertWidgetClickRevealsAccount(startingTab: .priority, startingScreen: .settings)
+    }
+
+    private func assertWidgetClickRevealsAccount(
+        startingTab: DashboardTab = .allUsage, startingScreen: PopoverScreen = .dashboard
+    ) async throws {
         let defaults = isolatedDefaults()
         let container = AppContainer.forTesting(
             accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults
         )
+        container.popover.dashboardTab = .allUsage
         let first = Provider(id: "codex@first", kind: .codex, accountLabel: "First")
         let second = Provider(id: "codex@second", kind: .codex, accountLabel: "Second")
         let descriptors = [first, second].flatMap { provider in
@@ -49,10 +64,19 @@ final class WidgetAccountScrollTests: QuietWindowTestCase {
         let initialOffset = scroll.contentView.bounds.minY
         XCTAssertGreaterThan(try XCTUnwrap(frames.byID[second.id]).minY, host.bounds.height)
 
+        if startingTab != .allUsage || startingScreen != .dashboard {
+            container.popover.dashboardTab = startingTab
+            container.popover.screen = startingScreen
+            try await settle(host)
+            XCTAssertNil(frames.byID[second.id], "the starting view must not contain the account scroll target")
+        }
+
         container.popover.openWidgetAccount(second.id, hasVisibleMetrics: true)
         try await settle(host)
 
-        XCTAssertGreaterThan(scroll.contentView.bounds.minY, initialOffset + 1, "the widget click did not scroll")
+        XCTAssertEqual(container.popover.dashboardTab, .allUsage)
+        let revealedScroll = try XCTUnwrap(scrollView(in: host))
+        XCTAssertGreaterThan(revealedScroll.contentView.bounds.minY, initialOffset + 1, "the widget click did not scroll")
         let revealed = try XCTUnwrap(frames.byID[second.id])
         XCTAssertGreaterThanOrEqual(revealed.minY, 0)
         XCTAssertLessThan(revealed.maxY, host.bounds.height, "the selected account stayed below the viewport")

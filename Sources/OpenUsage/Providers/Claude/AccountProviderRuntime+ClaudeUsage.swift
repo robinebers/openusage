@@ -20,7 +20,9 @@ extension AccountProviderRuntime {
         if let wait = session.wait(at: now()) { throw ProviderError.rateLimited(retryAfter: wait) }
         let client = ClaudeUsageClient(httpClient: http)
         let (tokens, response) = try await authorizedRead(credential, grant: ClaudeLogin.refresh) { tokens in
-            try await session.usage(at: now()) { try await client.fetchUsage(accessToken: tokens.accessToken) }
+            let request: @MainActor () async throws -> HTTPResponse = { try await client.fetchUsage(accessToken: tokens.accessToken) }
+            // Cards on one login share a request to save its budget, but a new sign-in must prove itself.
+            return try await isCheckingNewSignIn ? session.send(at: now(), request) : session.usage(at: now(), request)
         }
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         if forced {

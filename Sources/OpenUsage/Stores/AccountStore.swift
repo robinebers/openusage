@@ -25,7 +25,11 @@ final class AccountStore {
         credentialVault = vault
         self.makeID = makeID
         let stored = Self.load(from: defaults)
-        accounts = stored.accounts
+        accounts = stored.accounts.map { account in
+            var named = account
+            named.label = Self.name(account.label, for: account.kind)
+            return named
+        }
         unreadableEntries = stored.unreadableEntries
         hubs = defaults.data(forKey: Self.hubsStorageKey).flatMap { data in
             do {
@@ -35,6 +39,18 @@ final class AccountStore {
                 return nil
             }
         } ?? []
+        let renamed = zip(stored.accounts, accounts).filter { $0.label != $1.label }
+        if !renamed.isEmpty {
+            AppLog.info(LogTag.auth("accounts"), "named \(renamed.map(\.1.cardID).joined(separator: ", ")), which had no name the dashboard shows")
+            persist()
+        }
+    }
+
+    /// The dashboard leaves out a name that only repeats the provider's, so a blank name or the provider's
+    /// own becomes the provider's default account name.
+    static func name(_ label: String, for kind: ProviderKind) -> String {
+        let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || name.caseInsensitiveCompare(kind.displayName) == .orderedSame ? "\(kind.displayName) Account" : name
     }
 
     static func load(from defaults: UserDefaults) -> (accounts: [Account], unreadableEntries: [Any]) {
@@ -74,7 +90,7 @@ final class AccountStore {
 
     func rename(_ id: UUID, to label: String) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
-        accounts[index].label = label
+        accounts[index].label = Self.name(label, for: accounts[index].kind)
         persist()
         didChange?()
     }
@@ -96,7 +112,8 @@ final class AccountStore {
     /// check that the account is still added and the write. It saves rather than updates: a pasted key
     /// is the whole credential, so it also restores an account whose Keychain item has gone missing.
     func replaceCredential(_ credential: AccountCredential, for id: UUID) throws {
-        guard accounts.contains(where: { $0.id == id }) else { return }
+        guard let account = accounts.first(where: { $0.id == id }) else { return }
+        try checkForDuplicate(credential, kind: account.kind, organization: account.organization, excluding: id)
         try credentialVault.save(credential, for: id)
     }
 
@@ -104,16 +121,24 @@ final class AccountStore {
         try credentialVault.load(id)
     }
 
-    /// The added account a new sign-in would duplicate: an organization account by its organization,
-    /// in any case, and every other account by its credential's identity. An account mirrored from a hub
-    /// never counts, so a login signed in both directly and on a hub shows twice.
-    func account(kind: ProviderKind, organization: String?, signedInAs credential: AccountCredential) -> Account? {
-        if let organization {
-            return accounts.first { $0.kind == kind && $0.organization?.caseInsensitiveCompare(organization) == .orderedSame }
-        }
-        guard let identity = credential.identity else { return nil }
-        return accounts.first { account in
-            account.kind == kind && account.hub == nil && (try? credentialVault.load(account.id))??.identity == identity
+    /// Matches a direct sign-in by organization or credential identity. A missing Keychain item
+    /// cannot match, but an unreadable one cannot establish that the sign-in is distinct.
+    func checkForDuplicate(_ credential: AccountCredential, kind: ProviderKind, organization: String?, excluding id: UUID? = nil) throws {
+        let identity = credential.identity
+        for account in accounts where account.kind == kind && account.hub == nil && account.id != id {
+            if let organization {
+                guard account.organization?.caseInsensitiveCompare(organization) == .orderedSame else { continue }
+            } else {
+                guard account.organization == nil else { continue }
+                guard let identity else { return }
+                do {
+                    guard try credentialVault.load(account.id)?.identity == identity else { continue }
+                } catch {
+                    AppLog.error(.auth, "\(account.cardID) could not check its Keychain item for a duplicate sign-in: \(error.localizedDescription)")
+                    throw ProviderError.unavailable("OpenUsage couldn't check the saved sign-in for \(account.label). Check Keychain access and try again.")
+                }
+            }
+            throw ProviderError.unavailable("This account is already added as \(account.label).")
         }
     }
 
@@ -193,7 +218,7 @@ final class AccountStore {
     /// the dashboard, so an id whose card id is taken is drawn again.
     private func newAccount(kind: ProviderKind, label: String, organization: String? = nil, hub: HubLink? = nil) -> Account {
         while true {
-            let account = Account(id: makeID(), kind: kind, label: label, organization: organization, hub: hub)
+            let account = Account(id: makeID(), kind: kind, label: Self.name(label, for: kind), organization: organization, hub: hub)
             if self.account(cardID: account.cardID) == nil { return account }
         }
     }

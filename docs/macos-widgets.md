@@ -14,9 +14,10 @@ The widget follows that account's shown metrics and saved order in OpenUsage. Sm
 to two metrics, medium up to four, and large up to eight.
 A widget without a saved selection uses the first account in your saved order.
 
-Clicking a widget opens the popover at that account. When all its metrics are hidden, the click opens
-its Accounts detail so you can show them again. A widget without shared data, or whose account was
-removed from OpenUsage, opens the dashboard for recovery.
+Clicking a widget opens that account in the popover's **All Usage** tab, including when the popover
+was showing Priority. This does not change your default tab. When all its metrics are hidden, the
+click opens its Accounts detail so you can show them again. A widget without shared data, or whose
+account was removed from OpenUsage, opens the dashboard for recovery.
 
 ## Updates and stale data
 

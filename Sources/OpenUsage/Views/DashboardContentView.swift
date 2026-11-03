@@ -10,6 +10,9 @@ struct DashboardContentView: View {
 
     @Environment(UpdaterController.self) private var updater
 
+    /// Half the space on each side of the content: it and the bar beside it each hold this much.
+    static let barGap: CGFloat = 7
+
     var body: some View {
         PopoverScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -23,10 +26,25 @@ struct DashboardContentView: View {
                 widgetContent
             }
             .animation(Motion.spring, value: updater.availableUpdateVersion)
-            .padding(PanelMetrics.margin)
+            .padding(.horizontal, PanelMetrics.margin)
+            .padding(.vertical, Self.barGap)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .scrollPosition($scrollPosition)
+        .onChange(of: popover.dashboardTab) { scrollPosition.scrollTo(edge: .top) }
+        // Wait for this scroll view's content to mount and the tab-change reset to finish before
+        // applying the account destination. A request can arrive while Priority or Settings is open.
+        .task(id: popover.dashboardFocusRequestID) { @MainActor in consumeWidgetFocus() }
+    }
+
+    private func consumeWidgetFocus() {
+        guard popover.screen == .dashboard,
+              popover.dashboardTab == .allUsage,
+              let id = popover.dashboardFocusProviderID,
+              layout.displayGroups.contains(where: { $0.provider.id == id }) else { return }
+        let requestID = popover.dashboardFocusRequestID
+        scrollPosition.scrollTo(id: id, anchor: .top)
+        popover.acknowledgeDashboardFocus(requestID: requestID)
     }
 
     @ViewBuilder
@@ -40,10 +58,15 @@ struct DashboardContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 22)
         } else {
-            WidgetGroupedListView(
-                reorderSpaceName: reorderSpaceName,
-                reorderLift: $reorderLift
-            )
+            switch popover.dashboardTab {
+            case .priority:
+                PriorityDashboardView()
+            case .allUsage:
+                WidgetGroupedListView(
+                    reorderSpaceName: reorderSpaceName,
+                    reorderLift: $reorderLift
+                )
+            }
         }
     }
 }

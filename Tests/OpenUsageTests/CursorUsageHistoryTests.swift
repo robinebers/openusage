@@ -41,8 +41,11 @@ final class CursorUsageEventsParserTests: XCTestCase {
         XCTAssertEqual(page.events.map(\.model), ["claude-4.6-opus-high-thinking", "composer-2", "gpt-5", "gpt-5",
                                                    "composer-2", "composer-2", "composer-2"])
 
-        let day = CursorUsageEvents.day(page.events)
-        XCTAssertEqual(day.totals[.tokens], 136_193, "an event without tokenUsage counts as zero tokens")
+        var events = page.events
+        events[0].model = nil
+        let day = CursorUsageEvents.day(events)
+        XCTAssertEqual(day.byModel?["composer-2"]?[.tokens], 3_514, "an unnamed event preserves the named model totals")
+        XCTAssertEqual(day.totals[.tokens], 136_193, "the total includes the event with no model name")
         XCTAssertEqual(day.totals[.usageEvents], 7)
         XCTAssertEqual(CursorUsageEvents.day([]).totals, .zero(CursorUsageEvents.measures), "a quiet day is zeros, not a gap")
     }
@@ -160,13 +163,13 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(spend(store, runtime), ["Today": 1.25, "Yesterday": 1.25, "Last 30 Days": 37.5])
     }
 
-    func testAFailedRereadHidesTheRowsInsteadOfAnOldValueAndNeverBreaksTheCard() async throws {
+    func testAFailedRereadDropsUnreadDaysButKeepsEarlierDaysInTheRange() async throws {
         let events = TestSwitch<Int?>(500)
         let (store, runtime, _) = try makeAccount(events: events)
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), [:], "nothing read yet, so no row claims a value")
+        XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 0], "nothing read yet, so every range reads $0")
         let totalUsage = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "usage" })
         XCTAssertEqual(store.data(for: totalUsage).used, 25)
 
@@ -176,7 +179,8 @@ final class CursorUsageHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), [:], "today and yesterday went unread, so no row shows an old value")
+        XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 35],
+                       "28 complete days at $1.25 after today and yesterday failed")
     }
 
     /// Each rate-limited request takes 15 seconds, so the wait has to start when the 429 arrives.
@@ -195,7 +199,7 @@ final class CursorUsageHistoryTests: XCTestCase {
             clock.set(answered.addingTimeInterval(wait - 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
             XCTAssertEqual(eventRequests(http).count, firstSweep, "no history read before the wait ends")
-            XCTAssertEqual(spend(store, runtime), [:])
+            XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 0])
 
             clock.set(answered.addingTimeInterval(wait + 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
@@ -204,7 +208,7 @@ final class CursorUsageHistoryTests: XCTestCase {
         }
     }
 
-    func testTheRowsAddTheTokensCursorReportedAndTheUsageEventsRowCountsEveryEvent() async throws {
+    func testTheRowsAddTheTokensCursorReported() async throws {
         let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
@@ -217,30 +221,29 @@ final class CursorUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows, [
             "today": "$1.25 · 3.3K tokens",
             "yesterday": "$1.25 · 3.3K tokens",
-            "last30": "$37.50 · 99.1K tokens",
-            "usageEvents": "60 in 30 days"
+            "last30": "$37.50 · 99.1K tokens"
         ])
     }
 
-    func testEachWindowRowHasABreakdownOfWhatCursorReportedAndTheUsageEventsRowHasNone() async throws {
+    func testEachWindowRowHasABreakdownOfWhatCursorReported() async throws {
         let (store, runtime, _) = try makeAccount(events: TestSwitch(nil))
         let descriptor = { (key: String) in try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key }) }
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("today")), "nothing read yet")
+        XCTAssertNil(store.usageBreakdown(for: try descriptor("today")), "nothing read yet")
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        let today = try XCTUnwrap(runtime.usageBreakdown(for: try descriptor("today")))
+        let today = try XCTUnwrap(store.usageBreakdown(for: try descriptor("today")))
         XCTAssertEqual(today.window, .today)
         XCTAssertEqual(today.totals.values, [
             .spend: 1.25, .usageEvents: 2, .tokens: 3_303,
             .inputTokens: 3_003, .cacheReadTokens: 0, .cacheWriteTokens: 0, .outputTokens: 300
         ])
-        XCTAssertEqual(today.models.map(\.name), ["composer-2", "claude-4.6-opus"])
-        XCTAssertEqual(today.models.map(\.number), [3_100, 203])
-        XCTAssertEqual(today.modelMeasure, .tokens)
-        XCTAssertEqual(runtime.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
-        XCTAssertNotNil(runtime.usageBreakdown(for: try descriptor("yesterday")))
-        XCTAssertNil(runtime.usageBreakdown(for: try descriptor("usageEvents")))
+        XCTAssertEqual(today.models.map(\.name), ["claude-4.6-opus", "composer-2"])
+        XCTAssertEqual(today.models.map(\.dollars), [1.25, 0])
+        XCTAssertEqual(today.models.map(\.tokens), [203, 3_100])
+        XCTAssertEqual(today.modelFigures, [.cost, .tokens])
+        XCTAssertEqual(store.usageBreakdown(for: try descriptor("last30"))?.totals[.usageEvents], 60)
+        XCTAssertNotNil(store.usageBreakdown(for: try descriptor("yesterday")))
     }
 }
 final class CursorHistorySourceTests: XCTestCase {
@@ -290,9 +293,15 @@ final class CursorHistorySourceTests: XCTestCase {
         XCTAssertEqual(days[span[1]]?.totals[.spend] ?? 0, 2.255, accuracy: 1e-9)
         let history = UsageHistory(calendar: calendar, asOf: now, days: days)
         let cursor = AccountProviderRuntime(account: Account(kind: .cursor, label: "Cursor"), vault: InMemoryCredentialVault())
-        XCTAssertEqual(HistoryRow.lines(for: cursor.widgetDescriptors, in: history).map(\.label), ["Today", "Yesterday"])
+        var snapshot = ProviderSnapshot(provider: cursor.provider, plan: nil, lines: [])
+        HistoryRow.append(to: &snapshot, for: cursor.widgetDescriptors, in: history)
+        XCTAssertEqual(snapshot.lines.map(\.label), ["Today", "Yesterday", "Last 30 Days"])
+        let totals = snapshot.usageBreakdowns?["last30"]?.totals
+        XCTAssertEqual(totals?[.spend] ?? 0, 65.395, accuracy: 1e-9, "only the 29 complete days at $2.255 count")
+        XCTAssertEqual(totals?[.usageEvents], 87, "the two events on the incomplete day are never added")
     }
 
+    @MainActor
     func testTheTimeBudgetKeepsTheDaysThatFinished() async {
         let span = span
         let today = Int(span[0].timeIntervalSince1970 * 1000)
@@ -303,7 +312,7 @@ final class CursorHistorySourceTests: XCTestCase {
         }
         var source = source(http)
         source.budget = 0.5
-        var ledger = UsageLedger()
+        let ledger = UsageLedger()
         ledger.record([span[9]: UsageDay(totals: UsageTotals(values: [.spend: 0.03]))], due: [span[9]], span: span)
 
         let due = ledger.due(span)
@@ -326,12 +335,13 @@ final class CursorHistorySourceTests: XCTestCase {
         XCTAssertEqual(body["endDate"] as? String, "1788749999999", "a 23-hour day ends at Sep 7 00:00, not 01:00")
     }
 
+    @MainActor
     func testADayLastReadWhileItWasTodayIsReadAgainAfterAGapOfDays() {
         let friday = span
         let monday = UsageHistory.dayStarts(0..<30, now: now.addingTimeInterval(3 * 86_400), calendar: calendar)
         let partial = UsageDay(totals: UsageTotals(values: [.spend: 1]))
         let full = UsageDay(totals: UsageTotals(values: [.spend: 4]))
-        var ledger = UsageLedger()
+        let ledger = UsageLedger()
         ledger.record([friday[0]: partial, friday[1]: full], due: ledger.due(friday), span: friday)
 
         let due = ledger.due(monday)

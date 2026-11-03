@@ -1,11 +1,28 @@
 import AppKit
 
+/// The height each screen last measured. The dashboard's tabs differ, so each keeps its own, or the
+/// panel would reopen on Priority at All Usage's height.
+struct MeasuredPanelHeights: Equatable {
+    private struct Key: Hashable {
+        let screen: PopoverScreen
+        let tab: DashboardTab?
+    }
+
+    private var heights: [Key: CGFloat] = [:]
+
+    subscript(screen: PopoverScreen, tab: DashboardTab) -> CGFloat? {
+        get { heights[Key(screen: screen, tab: screen == .dashboard ? tab : nil)] }
+        set { heights[Key(screen: screen, tab: screen == .dashboard ? tab : nil)] = newValue }
+    }
+}
+
 @MainActor
 final class PanelHeightController {
     static let defaultHeight: CGFloat = 800
 
     private let panel: MenuBarPanel
     private let currentScreen: () -> PopoverScreen
+    private let currentTab: () -> DashboardTab
     private let defaults: UserDefaults
 
     private var anchorScreen: NSScreen?
@@ -18,11 +35,13 @@ final class PanelHeightController {
     init(
         panel: MenuBarPanel,
         defaults: UserDefaults = .standard,
-        currentScreen: @escaping () -> PopoverScreen
+        currentScreen: @escaping () -> PopoverScreen,
+        currentTab: @escaping () -> DashboardTab = { .priority }
     ) {
         self.panel = panel
         self.defaults = defaults
         self.currentScreen = currentScreen
+        self.currentTab = currentTab
     }
 
     func installBridge() {
@@ -48,7 +67,7 @@ final class PanelHeightController {
         })
     }
 
-    func prepareForOpening(below buttonRect: NSRect) {
+    func prepareForOpening(below buttonRect: NSRect, tab: DashboardTab = .priority) {
         morphSettleTask?.cancel()
         isMorphing = false
         PanelHeightBridge.invalidate()
@@ -62,7 +81,7 @@ final class PanelHeightController {
         )
         anchorTopLeft = topLeft
 
-        let remembered = loadHeight(for: currentScreen()) ?? Self.defaultHeight
+        let remembered = loadHeight(for: currentScreen(), tab: tab) ?? Self.defaultHeight
         let height = clampedHeight(remembered)
         panel.setFrame(
             PanelGeometry.frame(topLeft: topLeft, width: PanelMetrics.width, height: height),
@@ -73,7 +92,7 @@ final class PanelHeightController {
 
     func saveBeforeClosing() {
         guard panel.isVisible else { return }
-        saveHeight(panel.frame.height, for: currentScreen())
+        saveHeight(panel.frame.height, for: currentScreen(), tab: currentTab())
     }
 
     func finishClosing() {
@@ -113,7 +132,7 @@ final class PanelHeightController {
             guard !Task.isCancelled, let self, self.panel.isVisible else { return }
             self.isMorphing = false
             self.panel.invalidateShadow()
-            self.saveHeight(self.panel.frame.height, for: self.currentScreen())
+            self.saveHeight(self.panel.frame.height, for: self.currentScreen(), tab: self.currentTab())
         }
     }
 
@@ -128,18 +147,19 @@ final class PanelHeightController {
         return PanelGeometry.maximumHeight(topLeft: anchorTopLeft, visibleFrame: visibleFrame)
     }
 
-    private func loadHeight(for screen: PopoverScreen) -> CGFloat? {
-        let value = defaults.double(forKey: Self.heightKey(for: screen))
+    private func loadHeight(for screen: PopoverScreen, tab: DashboardTab) -> CGFloat? {
+        let value = defaults.double(forKey: Self.heightKey(for: screen, tab: tab))
         return value > 0 ? CGFloat(value) : nil
     }
 
-    private func saveHeight(_ height: CGFloat, for screen: PopoverScreen) {
-        defaults.set(Double(height), forKey: Self.heightKey(for: screen))
+    private func saveHeight(_ height: CGFloat, for screen: PopoverScreen, tab: DashboardTab) {
+        defaults.set(Double(height), forKey: Self.heightKey(for: screen, tab: tab))
     }
 
-    private static func heightKey(for screen: PopoverScreen) -> String {
+    /// Each tab has its own, or opening on Priority would start at All Usage's height and shrink.
+    private static func heightKey(for screen: PopoverScreen, tab: DashboardTab) -> String {
         switch screen {
-        case .dashboard: "openusage.panel.height.dashboard"
+        case .dashboard: tab == .priority ? "openusage.panel.height.dashboard" : "openusage.panel.height.dashboard.allUsage"
         case .accounts: "openusage.panel.height.accounts"
         case .settings: "openusage.panel.height.settings"
         }

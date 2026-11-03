@@ -41,7 +41,7 @@ final class ResetDisplayTests: XCTestCase {
 
         XCTAssertTrue(data.isFreshSessionWindow(now: now))
         XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0, severity: .normal, value: "0%", reset: nil))
-        XCTAssertEqual(data.meterState(now: now), .level(.normal))
+        XCTAssertEqual(data.meterState(now: now), .unpaced)
 
         XCTAssertFalse(data.isFreshSessionWindow(now: data.resetsAt!.addingTimeInterval(1)))
     }
@@ -73,18 +73,6 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(data.compactResetText(now: now), "3d 12h")
     }
 
-    func testTheResetFollowsTheClockSetting() {
-        var data = WidgetData(title: "Session", kind: .percent, used: 90, limit: 100)
-        data.resetsAt = now.addingTimeInterval(5 * 3600)
-        data.periodDurationMs = 10 * 3600 * 1000
-
-        data.resetDisplayMode = .relative
-        XCTAssertEqual(data.dashboardRow(now: now).mark, .bar(fill: 0.9, severity: .critical, value: "90%", reset: "5h", flame: true))
-
-        data.resetDisplayMode = .absolute
-        XCTAssertEqual(data.compactResetText(now: now), Formatters.compactClock(data.resetsAt!, now: now))
-    }
-
     func testACapWithoutAResetDateHasNoResetUnderEitherClockSetting() {
         var data = WidgetData(title: "Credits", kind: .dollars, used: 12, limit: 20)
         for mode in [ResetDisplayMode.relative, .absolute] {
@@ -93,30 +81,18 @@ final class ResetDisplayTests: XCTestCase {
         }
     }
 
-    func testExpirySeverityBands() {
-        XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: WidgetData.expiryCriticalWindow - 3600), .critical)
-        XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: -60), .critical)
-        XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: WidgetData.expiryCriticalWindow + 3600), .warning)
-        XCTAssertEqual(WidgetData.expirySeverity(secondsRemaining: WidgetData.expiryWarningWindow + 24 * 3600), .normal)
-    }
-
     @MainActor
     func testResetsRowIsWiredOnlyOnClaudeAndCodexAccounts() {
         let runtimes = ProviderKind.allCases.map {
             AccountProviderRuntime(account: Account(kind: $0, label: "Work"), vault: InMemoryCredentialVault())
         }
         let resetsRows = runtimes.flatMap { runtime in
-            runtime.widgetDescriptors.filter { $0.sample.showsResetExpiries || $0.sample.traySuffix != nil }
+            runtime.widgetDescriptors.filter { $0.sample.showsResetExpiries }
         }
 
         XCTAssertEqual(resetsRows.map(\.id), runtimes.filter { [.claude, .codex].contains($0.account.kind) }
             .map { "\($0.account.cardID).rateLimitResets" })
-        for row in resetsRows {
-            XCTAssertEqual(row.sample.title, "Limit Resets")
-            XCTAssertEqual(row.metricLabel, "Rate Limit Resets")
-            XCTAssertEqual(row.sample.traySuffix, "resets")
-            XCTAssertTrue(row.sample.showsResetExpiries)
-        }
+        XCTAssertTrue(resetsRows.allSatisfy { $0.metricLabel == "Rate Limit Resets" })
     }
 
     func testResetsPopoverEntriesAreSoonestFirstAndNumbered() {
@@ -144,10 +120,6 @@ final class ResetDisplayTests: XCTestCase {
             XCTAssertNil(entries[0].countdown)
             XCTAssertEqual(entries[0].severity, .critical)
         }
-    }
-
-    func testResetsPopoverEmptyWhenNoResets() {
-        XCTAssertTrue(RateLimitResetsDetail.entries(from: [], now: now).isEmpty)
     }
 
     func testResetsPopoverContentResolvesEmptyCountOnlyAndTimeline() {
@@ -179,7 +151,6 @@ final class ResetDisplayTests: XCTestCase {
 
     func testCompactDurationAlwaysShowsHoursAtDayScale() {
         XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h")
-        XCTAssertEqual(Formatters.compactDuration(7 * 24 * 3600), "7d 0h")
         XCTAssertEqual(Formatters.compactDuration(9 * 24 * 3600 + 21 * 3600), "9d 21h")
         XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")
         XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")

@@ -18,7 +18,8 @@ enum MetricFormatter {
             }
             switch style {
             case .tray:
-                return "$" + value.formatted(.number.precision(.fractionLength(0)).locale(locale))
+                let digits = value != 0 && abs(value) < 1 ? 2 : 0
+                return "$" + value.formatted(.number.precision(.fractionLength(digits)).locale(locale))
             case .row:
                 let whole = (value * 100).rounded().truncatingRemainder(dividingBy: 100) == 0
                 return value.formatted(.currency(code: "USD").precision(.fractionLength(whole ? 0 : 2)).locale(locale))

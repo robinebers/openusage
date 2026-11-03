@@ -155,7 +155,7 @@ final class CLIProxyHubTests: XCTestCase {
         try vault.update(.oauth(OAuthTokens(accessToken: "$TOKEN$", extras: [OAuthTokens.identityKey: "acct/org"])), for: mirrored.id)
 
         let direct = AccountCredential.oauth(OAuthTokens(accessToken: "real", extras: [OAuthTokens.identityKey: "acct/org"]))
-        XCTAssertNil(store.account(kind: .claude, organization: nil, signedInAs: direct), "the same login signed in directly shows twice")
+        XCTAssertNoThrow(try store.checkForDuplicate(direct, kind: .claude, organization: nil), "the same login signed in directly shows twice")
     }
 
     private var defaults: UserDefaults!

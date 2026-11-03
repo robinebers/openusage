@@ -1,7 +1,7 @@
 import Foundation
 
 /// One quantity a provider reports for a span. Never estimated, never priced.
-enum UsageMeasure: Hashable, Sendable, CaseIterable {
+enum UsageMeasure: String, CaseIterable, Codable, CodingKeyRepresentable, Sendable {
     case spend
     /// Spend on the user's own provider keys; never added to `spend`.
     case byokSpend
@@ -17,23 +17,11 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
     case outputTokens
     case reasoningTokens
 
-    var title: String {
-        switch self {
-        case .spend: "Charged"
-        case .byokSpend: "BYOK"
-        case .usageValue: "Usage Value"
-        case .credits: "Credits"
-        case .usageEvents: "Usage Events"
-        case .requests: "Requests"
-        case .turns: "Turns"
-        case .tokens: "Tokens"
-        case .inputTokens: "Input Tokens"
-        case .cacheReadTokens: "Cache Read Tokens"
-        case .cacheWriteTokens: "Cache Write Tokens"
-        case .outputTokens: "Output Tokens"
-        case .reasoningTokens: "Reasoning Tokens"
-        }
-    }
+    /// The kinds of token a provider may split its total into, with their short names.
+    static let tokenParts: [(measure: UsageMeasure, title: String)] = [
+        (.inputTokens, "Input"), (.cacheReadTokens, "Cache Read"), (.cacheWriteTokens, "Cache Write"),
+        (.outputTokens, "Output"), (.reasoningTokens, "Reasoning"),
+    ]
 
     func metricValue(_ number: Double) -> MetricValue {
         switch self {
@@ -50,7 +38,7 @@ enum UsageMeasure: Hashable, Sendable, CaseIterable {
 }
 
 /// The measures a provider reported for one span. A missing measure was not reported, which is never zero.
-struct UsageTotals: Hashable, Sendable {
+struct UsageTotals: Codable, Hashable, Sendable {
     var values: [UsageMeasure: Double] = [:]
 
     static func zero(_ measures: [UsageMeasure]) -> UsageTotals {
@@ -59,28 +47,26 @@ struct UsageTotals: Hashable, Sendable {
 
     subscript(_ measure: UsageMeasure) -> Double? { values[measure] }
 
-    /// Keeps a measure only when both report it, so a sum is never an undercount.
+    /// Sums what either reports, so a day missing a measure doesn't cost the range the rest of it.
     func adding(_ other: UsageTotals) -> UsageTotals {
-        UsageTotals(values: values.reduce(into: [:]) { sum, entry in
-            if let addend = other.values[entry.key] { sum[entry.key] = entry.value + addend }
-        })
+        UsageTotals(values: values.merging(other.values, uniquingKeysWith: +))
     }
 }
 
 struct UsageDay: Hashable, Sendable {
     var totals: UsageTotals
-    /// Nil unless the provider named the model of every event of the day.
+    /// What the provider reported by model for the day; nil when it named none.
     var byModel: [String: UsageTotals]?
 }
 
-enum UsageWindow: Hashable, Sendable {
+enum UsageWindow: Codable, Hashable, Sendable {
     case today
     case yesterday
     /// Today and the days before it.
     case lastDays(Int)
     /// The days before today.
     case priorDays(Int)
-    /// Windows only a provider's own totals cover; weeks start on Monday.
+    /// The calendar's week or month so far; the source's calendar sets where a week starts.
     case thisWeek
     case thisMonth
 
@@ -106,18 +92,7 @@ enum UsageWindow: Hashable, Sendable {
         }
     }
 
-    /// Which days the window covers: the user's own, or UTC days for a provider that reports those.
-    func clockNote(in calendar: Calendar) -> String {
-        let clock = calendar.timeZone == TimeZone(identifier: "UTC") ? "UTC" : "your local"
-        return switch self {
-        case .today, .yesterday: "\(clock) day"
-        case .lastDays, .priorDays: "\(clock) days"
-        case .thisWeek: "\(clock) week from Monday"
-        case .thisMonth: "\(clock) month"
-        }
-    }
-
-    /// Nil for a window only the provider's own totals cover.
+    /// Nil for a window whose length depends on the calendar.
     var dayOffsets: ClosedRange<Int>? {
         switch self {
         case .today: 0...0
@@ -135,7 +110,9 @@ struct UsageHistory: Hashable, Sendable {
     let asOf: Date
     /// Keyed by day start; a day that is absent was not read.
     var days: [Date: UsageDay] = [:]
-    /// A window's totals as the provider reported them, which win over a sum of days.
+    /// A supplementary report can fail on dates the primary history read successfully.
+    var unreadDatesByMeasure: [UsageMeasure: Set<Date>] = [:]
+    /// A window's totals as the provider reported them; each measure they report wins over the sum of days.
     var reported: [UsageWindow: UsageTotals] = [:]
 
     /// The starts of the days `offsets` back from the day holding `now`.
@@ -144,68 +121,202 @@ struct UsageHistory: Hashable, Sendable {
         return offsets.compactMap { calendar.date(byAdding: .day, value: -$0, to: today).map(calendar.startOfDay) }
     }
 
-    /// Nil when any day of the window is unread.
+    /// The sum of the window's days that have been read, under what the provider reported for the window;
+    /// nil when neither exists.
     func totals(over window: UsageWindow) -> UsageTotals? {
-        if let reported = reported[window] { return reported }
-        guard let days = days(in: window), let first = days.first else { return nil }
-        return days.dropFirst().reduce(first.totals) { $0.adding($1.totals) }
+        let days = days(in: window)
+        let summed = days.first.map { first in days.dropFirst().reduce(first.totals) { $0.adding($1.totals) } }
+        guard let reported = reported[window] else { return summed }
+        return UsageTotals(values: reported.values.merging(summed?.values ?? [:]) { reported, _ in reported })
     }
 
-    /// Nil unless every day of the window was read and split by model.
-    func models(over window: UsageWindow) -> [String: UsageTotals]? {
-        guard let days = days(in: window) else { return nil }
+    /// What the window's days report by model, added up.
+    func models(over window: UsageWindow) -> [String: UsageTotals] {
         var models: [String: UsageTotals] = [:]
-        for day in days {
-            guard let byModel = day.byModel else { return nil }
-            for (name, totals) in byModel {
+        for day in days(in: window) {
+            for (name, totals) in day.byModel ?? [:] {
                 models[name] = models[name].map { $0.adding(totals) } ?? totals
             }
         }
         return models
     }
 
-    private func days(in window: UsageWindow) -> [UsageDay]? {
-        guard let offsets = window.dayOffsets else { return nil }
-        let read = Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
-        return read.count == offsets.count ? read : nil
+    /// Sources record a successfully read date even when the provider had no activity to report.
+    func unreadDays(in window: UsageWindow, including measure: UsageMeasure?) -> Int {
+        guard reported[window] == nil, let offsets = window.dayOffsets else { return 0 }
+        let extra = measure.flatMap { unreadDatesByMeasure[$0] } ?? []
+        return Self.dayStarts(offsets, now: asOf, calendar: calendar).count { days[$0] == nil || extra.contains($0) }
+    }
+
+    private func days(in window: UsageWindow) -> [UsageDay] {
+        if let offsets = window.dayOffsets {
+            return Self.dayStarts(offsets, now: asOf, calendar: calendar).compactMap { days[$0] }
+        }
+        guard let interval = calendar.dateInterval(of: window == .thisWeek ? .weekOfYear : .month, for: asOf) else { return [] }
+        return days.filter { interval.contains($0.key) }.map(\.value)
     }
 }
 
-/// What a window's hover detail shows: every measure the provider reported for it, and its top models.
-struct UsageBreakdown: Hashable, Sendable {
-    struct Model: Hashable, Sendable {
+/// What Top Models shows and ranks by.
+enum ModelFigure: String, CaseIterable, Codable, CodingKeyRepresentable, Sendable {
+    case cost
+    case tokens
+    /// A model's part of the range's credits or turns, for a provider with no dollars or tokens by model.
+    case share
+
+    static let key = "usageBreakdownModelFigure"
+
+    var label: String {
+        switch self {
+        case .cost: "Cost"
+        case .tokens: "Tokens"
+        case .share: "Share"
+        }
+    }
+
+    func text(_ number: Double) -> String {
+        switch self {
+        case .cost: MetricFormatter.number(number, kind: .dollars, style: .row)
+        case .tokens: MetricFormatter.number(number, kind: .count, style: .row)
+        case .share: number.formatted(.percent.precision(.fractionLength(0)).locale(Locale(identifier: "en_US")))
+        }
+    }
+}
+
+/// What a window's hover detail shows: what it charged, its tokens by kind, and its top models.
+struct UsageBreakdown: Codable, Hashable, Sendable {
+    struct Model: Codable, Hashable, Sendable {
         let name: String
+        let dollars: Double?
+        let tokens: Double?
+        let share: Double?
+
+        func number(_ figure: ModelFigure) -> Double? {
+            switch figure {
+            case .cost: dollars
+            case .tokens: tokens
+            case .share: share
+            }
+        }
+    }
+
+    struct TokenPart: Hashable, Sendable {
+        let title: String
         let number: Double
-        let share: Double
     }
 
     static let shownModels = 5
+    private static let dollarMeasures: [UsageMeasure] = [.spend, .usageValue]
 
     let window: UsageWindow
-    let clockNote: String
+    private let reportingDay: Date
+    private let reportingTimeZone: TimeZone
     let totals: UsageTotals
-    /// Credits, else tokens, usage events, or requests, whichever every model reported.
-    let modelMeasure: UsageMeasure
-    /// The top models by `modelMeasure`, the rest as Other; empty unless every day was split by model.
-    let models: [Model]
+    private let unreadDays: Int
+    /// Only the names and figures shown in the popover are kept with the snapshot.
+    private let rankings: [ModelFigure: [Model]]
+    /// What the models report, in order of preference. Credits or turns supply a share when neither
+    /// dollars nor tokens were reported by model.
+    var modelFigures: [ModelFigure] { ModelFigure.allCases.filter { rankings[$0] != nil } }
 
-    init?(_ window: UsageWindow, in history: UsageHistory) {
-        guard let totals = history.totals(over: window) else { return nil }
-        let models = history.models(over: window) ?? [:]
-        let measure = [UsageMeasure.credits, .tokens, .usageEvents, .requests].first { measure in
-            models.values.allSatisfy { $0[measure] != nil }
-        } ?? .tokens
-        let ranked = models.compactMap { name, totals in totals[measure].map { (name: name, number: $0) } }
-            .sorted { $0.number != $1.number ? $0.number > $1.number : $0.name < $1.name }
-        let whole = ranked.reduce(0) { $0 + $1.number }
-        var shown = Array(ranked.prefix(Self.shownModels))
-        if ranked.count > Self.shownModels {
-            shown.append((name: "Other", number: ranked.dropFirst(Self.shownModels).reduce(0) { $0 + $1.number }))
+    init(_ window: UsageWindow, in history: UsageHistory) {
+        let totals = history.totals(over: window) ?? UsageTotals()
+        let models = history.models(over: window)
+        func isReported(_ measure: UsageMeasure) -> Bool {
+            models.values.contains { ($0[measure] ?? 0) > 0 }
         }
+        let dollars = Self.dollarMeasures.first(where: isReported)
+        let hasTokens = isReported(.tokens)
+        let share = [UsageMeasure.credits, .turns].first { (totals[$0] ?? 0) > 0 && isReported($0) }
+
         self.window = window
-        clockNote = window.clockNote(in: history.calendar)
+        reportingDay = history.calendar.startOfDay(for: history.asOf)
+        reportingTimeZone = history.calendar.timeZone
         self.totals = totals
-        modelMeasure = measure
-        self.models = shown.map { Model(name: $0.name, number: $0.number, share: whole > 0 ? $0.number / whole : 0) }
+        let everyModel = models.map { name, model in
+            let fraction = share.flatMap { measure -> Double? in
+                guard let amount = model[measure], let total = totals[measure] else { return nil }
+                let contribution = amount / total
+                return contribution.isFinite ? contribution : nil
+            }
+            return Model(
+                name: name,
+                dollars: dollars.flatMap { model[$0] },
+                tokens: hasTokens ? model[.tokens] : nil,
+                share: fraction
+            )
+        }
+        let figures: [ModelFigure] = (dollars == nil ? [] : [.cost]) + (hasTokens ? [.tokens] : [])
+        let available: [ModelFigure] = figures.isEmpty && share != nil ? [.share] : figures
+        unreadDays = history.unreadDays(in: window, including: figures.isEmpty ? share : nil)
+        rankings = Dictionary(uniqueKeysWithValues: available.map { ($0, Self.rank(everyModel, by: $0)) })
+    }
+
+    /// Relative window names expire at midnight on the source's clock.
+    func archivedTitle(at now: Date = Date()) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = reportingTimeZone
+        guard !calendar.isDate(reportingDay, inSameDayAs: now),
+              let end = calendar.date(byAdding: .day, value: -(window.dayOffsets?.lowerBound ?? 0), to: reportingDay)
+        else { return nil }
+        let date = end.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: reportingTimeZone))
+        switch window {
+        case .today, .yesterday: return date
+        case .lastDays(let count), .priorDays(let count): return "\(count) Days Ending \(date)"
+        case .thisWeek: return "Week Through \(date)"
+        case .thisMonth: return "Month Through \(date)"
+        }
+    }
+
+    func models(by figure: ModelFigure) -> [Model] { rankings[figure] ?? [] }
+
+    /// The top models by `figure`, the rest as Other.
+    private static func rank(_ models: [Model], by figure: ModelFigure) -> [Model] {
+        let ranked = models.filter { $0.number(figure) != nil }.sorted {
+            let (left, right) = ($0.number(figure) ?? 0, $1.number(figure) ?? 0)
+            return left != right ? left > right : $0.name < $1.name
+        }
+        let rest = ranked.dropFirst(Self.shownModels)
+        guard !rest.isEmpty else { return ranked }
+        func sum(_ number: (Model) -> Double?) -> Double? {
+            let values = rest.compactMap(number)
+            return values.isEmpty ? nil : values.reduce(0, +)
+        }
+        return ranked.prefix(Self.shownModels) + [Model(name: "Other", dollars: sum(\.dollars), tokens: sum(\.tokens), share: sum(\.share))]
+    }
+
+    /// Every figure is zero, so there is nothing to show beyond a zero total. Unread days can still have
+    /// activity, unless nothing at all was reported for the range.
+    var isEmpty: Bool {
+        (unreadDays == 0 || totals.values.isEmpty) && totals.values.values.allSatisfy { $0 == 0 }
+    }
+
+    /// What the window charged, then its tokens and any spend on the user's own keys. A window that
+    /// reports neither dollars nor tokens falls back to the first thing it does report.
+    var figures: [String] {
+        let charged = Self.dollarMeasures.first { totals[$0] != nil }
+        let shown = [charged, .tokens, .byokSpend].compactMap(\.self).filter { measure in
+            guard let number = totals[measure] else { return false }
+            return measure != .byokSpend || number > 0
+        }
+        let measures = shown.isEmpty ? Array(UsageMeasure.allCases.filter { totals[$0] != nil }.prefix(1)) : shown
+        return measures.compactMap { measure in
+            totals[measure].map { MetricFormatter.string(for: measure.metricValue($0), style: .row) }
+        }
+    }
+
+    /// The kinds of token that have any, largest first.
+    var tokenParts: [TokenPart] {
+        UsageMeasure.tokenParts
+            .compactMap { part in totals[part.measure].map { TokenPart(title: part.title, number: $0) } }
+            .filter { $0.number > 0 }
+            .sorted { $0.number > $1.number }
+    }
+
+    /// Some providers count cached tokens inside input, so only parts that add up to the total can be
+    /// drawn as shares of it.
+    var tokenPartsFillTotal: Bool {
+        guard let total = totals[.tokens], total > 0 else { return false }
+        return abs(tokenParts.reduce(0) { $0 + $1.number } - total) < 1
     }
 }

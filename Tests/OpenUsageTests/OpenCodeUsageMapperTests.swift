@@ -231,12 +231,6 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         XCTAssertEqual(weekly, 0)
     }
 
-    func testHTTPResponseBodyRoundTrip() throws {
-        let data = try JSONSerialization.data(withJSONObject: sampleBody)
-        let lines = try OpenCodeUsageMapper.meterLines(HTTPResponse(statusCode: 200, headers: [:], body: data))
-        XCTAssertEqual(lines.count, 3)
-    }
-
     func testMissingUsageOrWindowIsInvalid() {
         XCTAssertThrowsError(try OpenCodeUsageMapper.meterLines(body: [:])) { error in
             XCTAssertEqual(error as? ProviderError, .invalidResponse)

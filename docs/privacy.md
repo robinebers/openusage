@@ -9,7 +9,8 @@ provider API calls those accounts need.
 
 OAuth tokens and API keys live in the app's own Keychain service (`com.robinebers.openusage.accounts`),
 one item per account. Removing an account deletes its item. Account names, the layout, settings, and
-the last fetched usage live in the app's own preferences. Provider responses are never written to
+the last fetched usage live in the app's own preferences. That usage includes the range totals and
+top models shown in the dashboard. Provider responses are never written to
 disk. A few that the app reads once an hour, such as plan details, stay in memory until a later read
 replaces them or the app quits. Nothing is synced to iCloud. The
 [`openusage` command](cli.md) reads that last fetched usage and nothing else: no Keychain item, no
@@ -39,8 +40,7 @@ the choice they already stored.
 ### What is always shared
 
 - Once per local day, an **app use** ping: that the app was active today, the app and macOS version,
-  which providers you have accounts for, which metrics are shown, and which are starred in the menu
-  bar. Metric ids name the provider and the metric (`claude.session`), never the account. A random
+  which providers you have accounts for and which metrics they have. Metric ids name the provider and the metric (`claude.session`), never the account. A random
   install id, not tied to you or any account, lets the team count daily active users.
 - **Crash reports**: if OpenUsage crashes, it saves a report and sends it the next time it starts. The
   report holds the stack trace of OpenUsage's own code and the app and macOS version. It holds no

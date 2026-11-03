@@ -8,7 +8,6 @@ final class TelemetryRecorderTests: XCTestCase {
     private let snapshot = TelemetryConfigSnapshot(
         enabledProviders: ["claude", "codex"],
         enabledMetricIDs: ["claude.session", "codex.weekly"],
-        pinnedMetricIDs: ["claude.session"]
     )
 
     func testRollOverEmitsCompleteDailyCounts() {
@@ -57,7 +56,7 @@ final class TelemetryRecorderTests: XCTestCase {
             XCTAssertEqual(active.count, 1)
             XCTAssertEqual(active[0]["install_id"] as? String, recorder.installID)
             XCTAssertEqual(active[0]["enabled_providers"] as? [String], ["claude", "codex"])
-            XCTAssertEqual(active[0]["pinned_metric_ids"] as? [String], ["claude.session"])
+            XCTAssertNil(active[0]["pinned_metric_ids"])
             XCTAssertNil(active[0]["expanded_metric_ids"])
             XCTAssertNil(active[0]["menu_bar_style"])
 
@@ -98,10 +97,6 @@ final class TelemetryRecorderTests: XCTestCase {
         recorder.record(providerID: "claude", result: .failed, manual: false)
         recorder.tick()
 
-        XCTAssertTrue(
-            sink.events(named: "provider_refresh_daily").isEmpty,
-            "provider rollups must not emit while analytics are off"
-        )
         XCTAssertEqual(
             sink.events.map(\.name).filter { $0 != "app_daily_active" },
             [],
@@ -120,11 +115,6 @@ final class TelemetryRecorderTests: XCTestCase {
         XCTAssertEqual(sink.events(named: "app_daily_active").count, 1)
         XCTAssertTrue(sink.events(named: "provider_refresh_daily").isEmpty)
         XCTAssertFalse(recorder.isEnabled)
-    }
-
-    func testKindScopedKeysNameProvidersNotAccounts() {
-        let descriptor = WidgetDescriptor.percent(key: "session", provider: Provider(id: "claude@1a2b3c4d", kind: .claude), title: "Session")
-        XCTAssertEqual(descriptor.kindScopedKey, "claude.session")
     }
 
     func testInstallIDIsStableAcrossRecorders() {

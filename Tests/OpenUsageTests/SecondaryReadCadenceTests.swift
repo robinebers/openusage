@@ -12,11 +12,11 @@ final class SecondaryReadCadenceTests: XCTestCase {
         }
         XCTAssertEqual(counts.perHour[CodexUsageClient.usageURL.path], 12)
         XCTAssertEqual(counts.perHour[CodexUsageClient.resetCreditsURL.path], 1)
-        let history = ["/backend-api/wham/analytics/daily-workspace-usage-counts", "/backend-api/wham/usage/credit-usage-events"]
-        XCTAssertEqual(history.map { counts.perHour[$0] }, [1, 1], "the usage history is read once an hour")
-        XCTAssertEqual(counts.total, 15)
+        let history = "/backend-api/wham/analytics/daily-workspace-usage-counts"
+        XCTAssertEqual(counts.perHour[history], 1, "the usage history is read once an hour")
+        XCTAssertEqual(counts.total, 14)
         XCTAssertEqual(counts.nextHour[CodexUsageClient.resetCreditsURL.path], 1, "read again once the hour is up")
-        XCTAssertEqual(history.map { counts.nextHour[$0] }, [1, 1])
+        XCTAssertEqual(counts.nextHour[history], 1)
     }
 
     func testTheLiveResetCountWinsOverTheHourlyListAndKeepsItsExpiriesOnlyWhileTheyAgree() async throws {

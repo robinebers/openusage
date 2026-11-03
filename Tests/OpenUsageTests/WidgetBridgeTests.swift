@@ -66,7 +66,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
         let fixture = Fixture(defaults: isolatedDefaults())
         fixture.dataStore.snapshots[fixture.provider.id] = fixture.snapshot
         XCTAssertTrue(fixture.layout.reorderMetric(dragged: fixture.session.id, target: fixture.balance.id, in: fixture.provider.id))
-        fixture.layout.setMetricEnabled(fixture.resets.id, false)
+        fixture.layout.setMetric(fixture.resets.id, shown: false)
 
         let provider = try XCTUnwrap(fixture.exporter.makeDocument(generatedAt: fixture.now).providers.first)
 
@@ -79,6 +79,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
         let session = try XCTUnwrap(provider.metrics.last)
         XCTAssertEqual(session.headline, "60% left")
         XCTAssertEqual(session.progressFraction, 0.6)
+        XCTAssertEqual(session.severity, .normal)
         XCTAssertEqual(session.resetAt, fixture.now.addingTimeInterval(3_600))
         XCTAssertNil(session.detail)
     }
@@ -135,7 +136,7 @@ final class WidgetBridgeExporterTests: XCTestCase {
             fixture.runtime.widgetDescriptors.map(\.id)
         )
 
-        for descriptor in fixture.runtime.widgetDescriptors { fixture.layout.setMetricEnabled(descriptor.id, false) }
+        for descriptor in fixture.runtime.widgetDescriptors { fixture.layout.setMetric(descriptor.id, shown: false) }
 
         let hidden = try XCTUnwrap(fixture.exporter.makeDocument().providers.first)
         XCTAssertEqual(hidden.id, fixture.provider.id)
@@ -173,7 +174,7 @@ final class WidgetBridgeCoordinatorTests: XCTestCase {
             now: { fixture.now }, reload: {}
         )
         coordinator.start()
-        fixture.layout.setMetricEnabled(fixture.session.id, false)
+        fixture.layout.setMetric(fixture.session.id, shown: false)
         XCTAssertTrue(store.documents.last?.providers.first?.metrics.contains { $0.id == fixture.session.id } == true)
 
         coordinator.exportIfChanged()

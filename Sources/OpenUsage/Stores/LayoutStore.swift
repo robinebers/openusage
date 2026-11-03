@@ -6,11 +6,8 @@ import Observation
 final class LayoutStore {
     var state = LayoutState()
 
-    var pinnedMetricIDs: Set<String> { state.pinnedMetricIDs }
-
     static let maxUndoDepth = 40
     private var undoSnapshots: [LayoutState] = []
-    private var isApplyingUndo = false
 
     private(set) var registry: WidgetRegistry
     private let defaults: UserDefaults
@@ -38,18 +35,16 @@ final class LayoutStore {
             persistence.save(saved)
         }
 
-        let hidden = saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil }
         state = LayoutState(
-            hiddenMetricIDs: hidden,
+            hiddenMetricIDs: saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil },
+            priorityPinIDs: saved.priorityPinIDs.filter { registry.descriptor(id: $0) != nil },
             providerOrder: saved.providerOrder,
             metricOrderByProvider: saved.metricOrderByProvider.filter { registry.provider(id: $0.key) != nil },
-            pinnedMetricIDs: saved.pinnedMetricIDs.filter { registry.descriptor(id: $0) != nil && !hidden.contains($0) },
             seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil }
         )
     }
 
-    /// The only account of its provider takes that provider's 0.7.x layout. Any other account starts
-    /// with its default stars.
+    /// The only account of its provider takes that provider's 0.7.x hidden metrics and order.
     private func seed(_ provider: Provider, into saved: inout LayoutState) {
         saved.seededProviderIDs.insert(provider.id)
         let metrics = registry.descriptors(for: provider.id)
@@ -58,13 +53,8 @@ final class LayoutStore {
             .compactMap { registry.provider(id: $0) }
         guard !others.contains(where: { $0.kind == provider.kind }),
               let carried = LayoutV1Keys(defaults: defaults).carriedOver(to: provider, metrics: metrics, among: others)
-        else {
-            let stars = metrics.filter { $0.isPinnedByDefault && !saved.hiddenMetricIDs.contains($0.id) }
-            saved.pinnedMetricIDs.formUnion(stars.map(\.id))
-            return
-        }
+        else { return }
         saved.hiddenMetricIDs.formUnion(carried.hidden)
-        saved.pinnedMetricIDs.formUnion(carried.stars)
         if let order = carried.metricOrder { saved.metricOrderByProvider[provider.id] = order }
         if let index = carried.providerIndex {
             var providers = others.map(\.id)
@@ -74,95 +64,51 @@ final class LayoutStore {
         AppLog.notice(.config, "layout: \(provider.id) takes its provider's 0.7.x layout")
     }
 
-    func setMetricEnabled(_ descriptorID: String, _ enabled: Bool) {
+    func isMetricShown(_ descriptorID: String) -> Bool {
+        !state.hiddenMetricIDs.contains(descriptorID)
+    }
+
+    @discardableResult
+    func setMetric(_ descriptorID: String, shown: Bool) -> Bool {
         recordingUndoStep {
-            if enabled { show(descriptorID) } else { hide(descriptorID) }
+            guard registry.descriptor(id: descriptorID) != nil else { return false }
+            if shown { return state.hiddenMetricIDs.remove(descriptorID) != nil }
+            state.priorityPinIDs.remove(descriptorID)
+            return state.hiddenMetricIDs.insert(descriptorID).inserted
         }
     }
 
-    func showMetrics(_ descriptorIDs: [String]) {
+    func isMetricPinned(_ descriptorID: String) -> Bool {
+        state.priorityPinIDs.contains(descriptorID)
+    }
+
+    /// Only a shown metric can be pinned.
+    @discardableResult
+    func setMetric(_ descriptorID: String, pinned: Bool) -> Bool {
         recordingUndoStep {
-            for id in descriptorIDs { show(id) }
+            guard registry.descriptor(id: descriptorID) != nil else { return false }
+            if !pinned { return state.priorityPinIDs.remove(descriptorID) != nil }
+            return isMetricShown(descriptorID) && state.priorityPinIDs.insert(descriptorID).inserted
         }
     }
 
     var canUndo: Bool { !undoSnapshots.isEmpty }
 
-    func recordingUndoStep<T>(_ body: () -> T) -> T {
-        guard !isApplyingUndo else { return body() }
+    func recordingUndoStep(_ reorder: () -> Bool) -> Bool {
         let before = state
-        isApplyingUndo = true
-        defer { isApplyingUndo = false }
-        let result = body()
-        if state != before {
-            undoSnapshots.append(before)
-            if undoSnapshots.count > Self.maxUndoDepth { undoSnapshots.removeFirst() }
-        }
-        return result
+        guard reorder() else { return false }
+        undoSnapshots.append(before)
+        if undoSnapshots.count > Self.maxUndoDepth { undoSnapshots.removeFirst() }
+        persistence.save(state)
+        return true
     }
 
     @discardableResult
     func undo() -> Bool {
         guard let snapshot = undoSnapshots.popLast() else { return false }
         state = snapshot
-        persist()
-        return true
-    }
-
-    static let maxPinsPerProvider = 2
-
-    func isPinned(_ descriptorID: String) -> Bool { state.pinnedMetricIDs.contains(descriptorID) }
-
-    func pinnedCount(forProvider providerID: String) -> Int {
-        state.pinnedMetricIDs.count { registry.descriptor(id: $0)?.providerID == providerID }
-    }
-
-    func canPin(_ descriptorID: String) -> Bool {
-        if state.pinnedMetricIDs.contains(descriptorID) { return true }
-        guard let descriptor = registry.descriptor(id: descriptorID) else { return false }
-        if pinnedCount(forProvider: descriptor.providerID) >= Self.maxPinsPerProvider { return false }
-        return true
-    }
-
-    func pinDenialReason(_ descriptorID: String) -> String? {
-        guard !canPin(descriptorID) else { return nil }
-        if let providerID = registry.descriptor(id: descriptorID)?.providerID,
-           pinnedCount(forProvider: providerID) >= Self.maxPinsPerProvider {
-            return "Up to \(Self.maxPinsPerProvider) stars per provider"
-        }
-        return nil
-    }
-
-    func setPinned(_ pinned: Bool, for descriptorID: String) {
-        recordingUndoStep {
-            if pinned {
-                guard canPin(descriptorID), registry.descriptor(id: descriptorID) != nil else { return }
-                guard state.pinnedMetricIDs.insert(descriptorID).inserted else { return }
-                state.hiddenMetricIDs.remove(descriptorID)
-            } else {
-                guard state.pinnedMetricIDs.remove(descriptorID) != nil else { return }
-            }
-            persist()
-        }
-    }
-
-    func togglePin(_ descriptorID: String) {
-        setPinned(!isPinned(descriptorID), for: descriptorID)
-    }
-
-    func show(_ descriptorID: String) {
-        guard state.hiddenMetricIDs.remove(descriptorID) != nil else { return }
-        persist()
-    }
-
-    func hide(_ descriptorID: String) {
-        guard registry.descriptor(id: descriptorID) != nil, state.hiddenMetricIDs.insert(descriptorID).inserted else { return }
-        state.pinnedMetricIDs.remove(descriptorID)
-        persist()
-    }
-
-    func persist() {
         persistence.save(state)
+        return true
     }
 
     func metricOrder(for providerID: String) -> [String] {

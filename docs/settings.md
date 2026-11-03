@@ -1,14 +1,23 @@
 # Settings
 
-Open Settings from the panel's **Options** menu or press **⌘,**. Every setting applies at once and
-survives relaunch.
+Open Settings from the panel's **⋯** menu or press **⌘,**. General, Display, Alerts, and Advanced sit
+under the title, and the chevron at the top left goes back. Every setting applies at once and survives
+relaunch.
 
 ## General
 
 | Setting | Control | What it changes |
 |---|---|---|
 | Launch at Login | switch | Registers OpenUsage as a login item, so it starts when you sign in to your Mac. |
+| Default Tab | Priority, All Usage | The tab the panel opens to, no matter which tab it was closed on. |
 | Global Shortcut | recorder | A keyboard shortcut that opens and closes the panel from any app. Click the field and press the keys. |
+
+## Priority Icons
+
+| Setting | Control | What it changes |
+|---|---|---|
+| Preview | | Shows sample icons at the number you pick, smaller so any number fits. |
+| Show In Menu Bar | App Icon Only, Up to 1, Up to 2, Up to 3, Up to 4, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
 
 ## Appearance
 
@@ -21,8 +30,8 @@ survives relaunch.
 
 | Setting | Control | What it changes |
 |---|---|---|
-| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any bar row's value in the dashboard flips it too. |
-| Reset Times | Countdown, Exact time | Whether reset labels read `Resets in 3h 25m` or `Resets today at 6:38 PM`. A click on any reset in the dashboard flips it too. |
+| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
+| Reset Times | Countdown, Exact Time | Whether resets read `Resets 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
 
 ## Notifications
 
@@ -32,11 +41,12 @@ links to System Settings.
 
 | Setting | What it sends |
 |---|---|
-| Almost Out | The first time a metric with a limit drops under 10% left in its period. |
-| Cutting It Close | When a metric's pace worsens from on course to close to the limit. |
-| Will Run Out | When a metric's pace worsens from close to the limit to running out. |
+| Almost Out | When a limit drops under 10%, as it turns red. |
+| Cutting It Close | When a limit drops under 30%, as it turns orange. |
+| Will Run Out | When a limit may run out before its reset. |
 
-Each notification names the trigger, the provider, and the metric, and fires once per metric per reset window.
+Each notification names the trigger, the provider, and the metric, and fires once per metric per reset
+window. Click it to open All Usage. The next time you open the panel yourself it uses your Default Tab.
 
 ## Privacy
 
@@ -51,9 +61,15 @@ Each notification names the trigger, the provider, and the metric, and fires onc
 |---|---|---|
 | Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. A link left by another copy of OpenUsage (an earlier version, or a build in another folder) is replaced on Install. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
 
+## Debug
+
+| Setting | Control | What it changes |
+|---|---|---|
+| Log Level | Error, Warning, Info, Debug | How much detail OpenUsage writes to the macOS log. Starts at Info. Choose Debug while you reproduce a problem. See [Debugging](debugging.md). |
+
 ## Updates
 
-This section appears in the released build only; the dev build has no update feed.
+The dev build has no update feed, so it shows this section with every control disabled.
 
 | Setting | Control | What it changes |
 |---|---|---|
@@ -73,17 +89,17 @@ so an account you remove later doesn't come back. If the provider rejects the ke
 If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
 doesn't save the key, it tries again on the next launch.
 
-When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x layout:
+When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x
+hidden metrics and order:
 
-- **Stars.** It keeps the provider's 0.7.x stars on its metrics, or gets the default stars if none of
-  those stars is on a metric it has.
-- **Hidden metrics.** A metric that 0.7.x had and you turned off stays hidden. An account never starts
-  with every metric hidden.
+- **Hidden metrics.** A metric 0.7.x showed neither on the dashboard nor in the menu bar starts hidden.
+  Metrics that 0.7.x did not have start shown.
+
 - **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
-- **Provider order.** The provider goes to its place in the provider order you saved in 0.7.x.
+- **Provider order.** Each provider takes the place of its first enabled account in the saved 0.7.x order.
 
-When 0.7.x had several accounts of a provider on, the one it showed first gives the layout. Any other
-account of that provider starts with the default stars, as on a new install.
+When 0.7.x had several accounts of a provider on, the one it showed first gives the hidden metrics and
+order. Stars don't carry over: the menu bar picks its own limits.
 
 OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
 back to 0.7.x, it finds its stars and order as you left them.

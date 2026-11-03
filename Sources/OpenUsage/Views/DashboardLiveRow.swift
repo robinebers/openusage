@@ -4,10 +4,13 @@ struct DashboardLiveRow: View {
     let line: DashboardLine
     var resetClaim: ResetClaimService?
     var breakdown: UsageBreakdown?
+    var accountStatus = AccountStatus()
+    var snapshotDate: Date?
     var onToggleMeterStyle: (() -> Void)?
     var onToggleResetDisplay: (() -> Void)?
 
     @Environment(\.reduceAnimations) private var reduceAnimations
+    @Environment(\.colorScheme) private var colorScheme
     @State private var hover = HoverPopoverState()
 
     var body: some View {
@@ -37,12 +40,15 @@ struct DashboardLiveRow: View {
 
     private var figure: (AnyView) -> AnyView {
         if line.data.showsResetExpiries { return { AnyView(hoverTrigger($0) { resetsDetail }) } }
-        if let breakdown {
+        if case let .window(window, _, _) = line.descriptor.historyRow {
             return {
                 AnyView(hoverTrigger($0) {
                     UsageBreakdownDetail(
-                        breakdown: breakdown,
-                        providerName: line.descriptor.providerKind.displayName,
+                        content: breakdown.map(UsageBreakdownDetail.Content.reported)
+                            ?? .saved(window, figures: line.data.unboundedFigures, status: accountStatus, date: snapshotDate),
+                        provider: provider,
+                        animates: !reduceAnimations,
+                        onCopy: copy,
                         onHoverChange: { inside in hover.detailHover(inside) }
                     )
                 })
@@ -51,17 +57,21 @@ struct DashboardLiveRow: View {
         return { $0 }
     }
 
+    private var provider: Provider {
+        Provider(id: line.descriptor.providerID, kind: line.descriptor.providerKind)
+    }
+
+    private func copy(_ breakdown: UsageBreakdown, showing figure: ModelFigure) -> Bool {
+        let card = UsageBreakdownShareCard(provider: provider, breakdown: breakdown, figure: figure, appearance: colorScheme)
+        return ShareCardRenderer.copy(card, named: line.descriptor.id)
+    }
+
     private func hoverTrigger<Detail: View>(_ figure: AnyView, @ViewBuilder detail: @escaping () -> Detail) -> some View {
         let lit = hover.overInline || hover.isPresented
-        return figure
-            .background {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(.quaternary)
-                    .padding(.horizontal, -6)
-                    .padding(.vertical, -2)
-                    .opacity(lit ? 1 : 0)
-            }
-            .animation(.easeOut(duration: 0.12), value: lit)
+        return Button(action: hover.openDetails) { figure }
+            .buttonStyle(.plain)
+            .accessibilityHint("Show details")
+            .hoverHighlight(lit)
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 if case .active = phase { hover.inlineHover(true) } else { hover.inlineHover(false) }
@@ -82,6 +92,7 @@ struct DashboardLiveRow: View {
         RateLimitResetsDetail(
             count: line.data.resetCreditCount,
             expiries: line.data.expiriesAt,
+            showsActions: hover.openedExplicitly,
             onHoverChange: { inside in hover.detailHover(inside) },
             onPinChange: { pinned in hover.setPinned(pinned) },
             claim: resetClaim.flatMap { service in

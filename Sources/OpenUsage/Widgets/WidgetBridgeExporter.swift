@@ -36,7 +36,7 @@ struct WidgetBridgeExporter {
 
     /// Export and click routing share the account's shown metrics, even before its first refresh.
     static func enabledMetricDescriptors(for providerID: String, layout: LayoutStore) -> [WidgetDescriptor] {
-        layout.orderedSupportedMetrics(for: providerID).filter { layout.isMetricEnabled($0.id) }
+        layout.orderedSupportedMetrics(for: providerID).filter { layout.isMetricShown($0.id) }
     }
 
     private func makeMetric(_ descriptor: WidgetDescriptor, generatedAt: Date) -> WidgetMetricRecord {
@@ -52,7 +52,7 @@ struct WidgetBridgeExporter {
             ? "\(data.valueText) \(data.displayMode.label.lowercased())"
             : data.unboundedDetail
         let severity = data.isBounded
-            ? data.meterState(now: generatedAt).severity
+            ? data.severity
             : data.expirySeverity(now: generatedAt)
         return WidgetMetricRecord(
             id: descriptor.id,

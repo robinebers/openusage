@@ -10,29 +10,12 @@ struct AccountsView: View {
     var body: some View {
         PopoverScrollView {
             content
-                .padding(PanelMetrics.margin)
+                .padding(.horizontal, PanelMetrics.margin)
+                .padding(.top, DashboardContentView.barGap)
+                .padding(.bottom, popover.customizeProviderID == nil ? 0 : PanelMetrics.margin)
                 .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
-        .overlay(alignment: .bottom) {
-            if popover.accountsNotice.value != nil {
-                customizationNoticePill
-                    .padding(.bottom, 12)
-            }
-        }
-        .animation(Motion.spring, value: popover.accountsNotice.value?.message)
-        .animation(Motion.spring, value: popover.accountsNotice.trigger)
-    }
-
-    private var customizationNoticePill: some View {
-        let isNotice = popover.accountsNotice.value?.tone == .notice
-        return TransientPill(
-            systemImage: isNotice ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
-            text: popover.accountsNotice.value?.message ?? "",
-            tint: isNotice ? Theme.notice : Theme.positive,
-            trigger: popover.accountsNotice.trigger,
-            showsShadow: false
-        )
     }
 
     private var content: some View {
@@ -51,7 +34,7 @@ struct AccountsView: View {
                 reorderLift: $reorderLift,
                 frameStore: frameStore
             )
-            .transition(.move(edge: .trailing))
+                .transition(.move(edge: .trailing))
         } else {
             AccountListView(
                 reorderSpaceName: reorderSpaceName,

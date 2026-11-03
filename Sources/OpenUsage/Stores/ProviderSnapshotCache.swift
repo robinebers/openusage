@@ -8,7 +8,7 @@ struct ProviderSnapshotCache {
     private let userDefaults: UserDefaults
     private let storageKey: String
 
-    init(userDefaults: UserDefaults = .standard, storageKey: String = "openusage.providerSnapshots.v11") {
+    init(userDefaults: UserDefaults = .standard, storageKey: String = "openusage.providerSnapshots.v12") {
         self.userDefaults = userDefaults
         self.storageKey = storageKey
     }

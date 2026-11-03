@@ -4,6 +4,7 @@ struct AccountDetailView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
+    @Environment(WidgetDataStore.self) private var dataStore
     let providerID: String
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
@@ -14,21 +15,33 @@ struct AccountDetailView: View {
     @State private var removalError: String?
 
     var body: some View {
-        if let group = layout.customizeDetail(for: providerID) {
+        if let provider = layout.provider(id: providerID) {
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
-                VStack(spacing: 0) {
-                    ForEach(group.metrics, id: \.id) { metric in
-                        metricRow(metric)
-                    }
-                }
-                .cardSurface()
-                if let host = group.provider.hubHost {
+                if let host = provider.hubHost {
+                    metricsCard
                     managedRow(host)
                 } else {
+                    if let problem = dataStore.problem(for: providerID) {
+                        Label {
+                            Text(problem)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Theme.notice)
+                        }
+                        .font(.system(size: 13))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .cardSurface()
+                        if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
+                            signInAgainRow
+                        }
+                    }
+                    metricsCard
                     if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
                         ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
                     }
-                    removeAccountRow(group.provider)
+                    removeAccountRow(provider)
                     if let removalError {
                         ErrorText(removalError)
                     }
@@ -38,6 +51,63 @@ struct AccountDetailView: View {
         } else {
             EmptyView()
         }
+    }
+
+    @ViewBuilder
+    private var metricsCard: some View {
+        let metrics = layout.orderedSupportedMetrics(for: providerID)
+        if !metrics.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(metrics, id: \.id) { metric in
+                    metricRow(metric)
+                }
+            }
+            .cardSurface()
+        }
+    }
+
+    private func metricRow(_ metric: WidgetDescriptor) -> some View {
+        AccountMetricRow(
+            title: metric.title,
+            isShown: Binding(
+                get: { layout.isMetricShown(metric.id) },
+                set: { layout.setMetric(metric.id, shown: $0) }
+            ),
+            isPinned: Binding(
+                get: { layout.isMetricPinned(metric.id) },
+                set: { layout.setMetric(metric.id, pinned: $0) }
+            ),
+            grip: { ReorderGrip().highPriorityGesture(metricDragGesture(for: metric)) }
+        )
+        .opacity(activeMetricID == metric.id ? 0 : 1)
+        .reorderFrame(id: metric.id, in: .named(reorderSpaceName))
+    }
+
+    private func metricDragGesture(for metric: WidgetDescriptor) -> some Gesture {
+        reorderDragGesture(
+            id: metric.id,
+            coordinateSpaceName: reorderSpaceName,
+            frameStore: frameStore,
+            active: $activeMetricID,
+            lift: $reorderLift,
+            makeLift: { value in
+                ReorderLift.make(
+                    id: metric.id,
+                    preview: AnyView(
+                        AccountMetricRow(
+                            title: metric.title,
+                            isShown: .constant(layout.isMetricShown(metric.id)),
+                            isPinned: .constant(layout.isMetricPinned(metric.id))
+                        ) { ReorderGrip() }
+                            .liftedRowSurface()
+                    ),
+                    value: value,
+                    frames: frameStore.frames
+                )
+            },
+            orderedIDs: { layout.orderedSupportedMetrics(for: providerID).map(\.id) },
+            reorder: { layout.reorderMetric(dragged: metric.id, target: $0, in: providerID) }
+        )
     }
 
     private static func replacedField(_ account: Account) -> String? {
@@ -60,6 +130,22 @@ struct AccountDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, PanelMetrics.controlRowPadding)
+        .cardSurface()
+    }
+
+    private var signInAgainRow: some View {
+        Button {
+            popover.signingInAgainProviderID = providerID
+            popover.isAddingAccount = true
+        } label: {
+            Text("Sign In Again…")
+                .foregroundStyle(.tint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, PanelMetrics.controlRowPadding)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .cardSurface()
     }
 
@@ -96,51 +182,36 @@ struct AccountDetailView: View {
             withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         }
     }
+}
 
-    private func metricRow(_ metric: WidgetDescriptor) -> some View {
-        CustomizeMetricRow(
-            title: metric.title,
-            grip: { ReorderGrip().highPriorityGesture(metricDragGesture(for: metric)) },
-            trailing: {
-                StarButton(metric: metric)
-                Toggle("", isOn: Binding(
-                    get: { layout.isMetricEnabled(metric.id) },
-                    set: { layout.setMetricEnabled(metric.id, $0) }
-                ))
+struct AccountMetricRow<Grip: View>: View {
+    let title: String
+    @Binding var isShown: Bool
+    @Binding var isPinned: Bool
+    @ViewBuilder var grip: Grip
+
+    var body: some View {
+        HStack(spacing: 10) {
+            grip
+            Text(title)
+            Spacer(minLength: 8)
+            Button { isPinned.toggle() } label: {
+                Image(systemName: isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isPinned ? .secondary : .tertiary)
+                    .frame(width: 16, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!isShown)
+            .accessibilityLabel(isPinned ? "Unpin \(title)" : "Pin \(title)")
+            Toggle(title, isOn: $isShown)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
-            }
-        )
-        .contentShape(Rectangle())
-        .opacity(activeMetricID == metric.id ? 0 : 1)
-        .reorderFrame(id: metric.id, in: .named(reorderSpaceName))
-    }
-
-    private func metricDragGesture(for metric: WidgetDescriptor) -> some Gesture {
-        reorderDragGesture(
-            id: metric.id,
-            coordinateSpaceName: reorderSpaceName,
-            frameStore: frameStore,
-            active: $activeMetricID,
-            lift: $reorderLift,
-            makeLift: { value in
-                ReorderLift.make(
-                    id: metric.id,
-                    preview: AnyView(
-                        CustomizeMetricRow(title: metric.title, grip: { ReorderGrip() }) {
-                            CustomizeStarPlaceholder()
-                            CustomizeSwitchPlaceholder()
-                        }
-                        .liftedRowSurface()
-                    ),
-                    value: value,
-                    frames: frameStore.frames
-                )
-            },
-            orderedIDs: { layout.orderedSupportedMetrics(for: providerID).map(\.id) },
-            reorder: { layout.reorderMetric(dragged: metric.id, target: $0, in: providerID) }
-        )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, PanelMetrics.controlRowPadding)
     }
 }
 
@@ -225,34 +296,5 @@ struct ReplaceKeyRow: View {
         isEditing = false
         key = ""
         errorMessage = nil
-    }
-}
-
-private struct StarButton: View {
-    let metric: WidgetDescriptor
-    @Environment(LayoutStore.self) private var layout
-    @Environment(PopoverState.self) private var popover
-    @State private var shakeTrigger = 0
-
-    var body: some View {
-        let pinned = layout.isPinned(metric.id)
-        Button {
-            if layout.canPin(metric.id) {
-                layout.togglePin(metric.id)
-                popover.accountsNotice.present(CustomizationNoticeContent(message: pinned ? "Removed from menu bar" : "Starred for menu bar", tone: .positive))
-            } else {
-                shakeTrigger += 1
-                popover.accountsNotice.present(CustomizationNoticeContent(message: layout.pinDenialReason(metric.id) ?? "Up to 2 stars per provider", tone: .notice))
-            }
-        } label: {
-            Image(systemName: pinned ? "star.fill" : "star")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 18, height: 18)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
-        .denyShake(trigger: shakeTrigger)
-        .animation(Motion.spring, value: pinned)
     }
 }

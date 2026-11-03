@@ -30,7 +30,7 @@ struct OpenRouterUsageClient: Sendable {
 
     /// Disabled and expired keys count too: what they spent before they stopped is still this period's spend.
     func listedKeysSpend(apiKey: String) async throws -> [UsageWindow: UsageTotals] {
-        var total = OpenRouterUsageMapper.noSpend
+        var total: [UsageWindow: UsageTotals] = [:]
         for page in 0..<Self.maxKeysPages {
             let url = "\(Self.keysURL)?include_disabled=true&include_expired=true&offset=\(page * Self.keysPageSize)"
             let keys = try OpenRouterUsageMapper.keysPage(try await get(url, apiKey: apiKey))

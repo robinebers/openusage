@@ -22,8 +22,8 @@ final class UpdaterController: NSObject, SPUUpdaterDelegate, SPUStandardUserDriv
     private var controller: SPUStandardUpdaterController?
     private var canCheckObservation: AnyCancellable?
 
-    private(set) var isActive = false
-    private(set) var canCheckForUpdates = false
+    var isActive = false
+    var canCheckForUpdates = false
     var availableUpdateVersion: String?
 
     var betaChannelEnabled: Bool {

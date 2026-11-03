@@ -36,7 +36,7 @@ struct CopilotLogin: ProviderLogin {
 struct GrokLogin: ProviderLogin {
     static let clientID = "b1a00492-073a-47ea-816f-4c329264a828"
     static let tokenURL = URL(string: "https://auth.x.ai/oauth2/token")!
-    static let scopes = "openid profile email offline_access grok-cli:access api:access"
+    static let scopes = "openid email offline_access grok-cli:access"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
@@ -126,7 +126,7 @@ struct APIKeyLogin: ProviderLogin {
         let account = Account(kind: kind, label: kind.displayName)
         let runtime = await AccountProviderRuntime(account: account, vault: KeychainCredentialVault(), http: http)
         do {
-            try await runtime.validate(.apiKey(key))
+            try await runtime.readSnapshot(using: .apiKey(key))
         } catch ProviderError.keyRejected(let message) {
             throw ProviderError.unavailable(message)
         }

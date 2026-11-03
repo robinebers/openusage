@@ -108,8 +108,11 @@ the account's right-click menu.
 | Grok | `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
-| OpenRouter | `credits`, `balance`, `keyLimit` |
+| OpenRouter | `balance`, `keyLimit` |
 | Z.ai | `session`, `weekly`, `webSearches` |
+
+When ChatGPT reports an empty credit balance, `resources.credits.available` is `0`. If ChatGPT
+doesn't report a balance, the `credits` resource is absent.
 
 Antigravity's `argonWeekly` is the separate Gemini 4 Argon weekly quota and is omitted when the account has none.
 Charts, colours, subtitles, badges, layout state, and spend periods (OpenRouter's today, week, and

@@ -3,6 +3,41 @@ import XCTest
 
 @MainActor
 final class AccountStoreTests: XCTestCase {
+    func testAnAddedOrRenamedAccountAlwaysHasANameTheDashboardShows() {
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault())
+        let blank = store.add(kind: .openrouter, label: "  ", credential: .apiKey("first"))
+        let bare = store.add(kind: .zai, label: "z.ai", credential: .apiKey("second"))
+
+        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter Account", "Z.ai Account"])
+
+        store.rename(blank.id, to: "Work")
+        store.rename(bare.id, to: "")
+        XCTAssertEqual(store.accounts.map(\.label), ["Work", "Z.ai Account"])
+        store.rename(blank.id, to: "OpenRouter")
+        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter Account", "Z.ai Account"])
+        XCTAssertEqual(
+            store.accounts.map { Provider(id: $0.cardID, kind: $0.kind, accountLabel: $0.label).labelBesideName },
+            ["OpenRouter Account", "Z.ai Account"]
+        )
+    }
+
+    func testAStoredAccountWithoutANameTheDashboardShowsIsNamedOnLoad() throws {
+        let defaults = isolatedDefaults()
+        let stored = [
+            Account(kind: .openrouter, label: "", addedAt: Date(timeIntervalSince1970: 1)),
+            Account(kind: .openrouter, label: "OpenRouter", addedAt: Date(timeIntervalSince1970: 2)),
+            Account(kind: .claude, label: "Work", addedAt: Date(timeIntervalSince1970: 3))
+        ]
+        defaults.set(try JSONEncoder().encode(stored), forKey: AccountStore.storageKey)
+
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+
+        XCTAssertEqual(store.accounts.map(\.id), stored.map(\.id))
+        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter Account", "OpenRouter Account", "Work"])
+        let saved = try JSONDecoder().decode([Account].self, from: XCTUnwrap(defaults.data(forKey: AccountStore.storageKey)))
+        XCTAssertEqual(saved.map(\.label), ["OpenRouter Account", "OpenRouter Account", "Work"], "the names are saved")
+    }
+
     func testAccountsOfSameKindPersistWithDistinctCardIDs() throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
@@ -50,17 +85,6 @@ final class AccountStoreTests: XCTestCase {
 
         XCTAssertTrue(store.accounts.isEmpty)
         XCTAssertNil(try vault.load(account.id))
-    }
-
-    func testRenamePersists() {
-        let defaults = isolatedDefaults()
-        let vault = InMemoryCredentialVault()
-        let store = AccountStore(defaults: defaults, vault: vault)
-        let account = store.add(kind: .codex, label: "Old", credential: .oauth(OAuthTokens(accessToken: "access")))
-
-        store.rename(account.id, to: "New")
-
-        XCTAssertEqual(AccountStore(defaults: defaults, vault: vault).accounts.first?.label, "New")
     }
 
     func testAnEntryThisBuildCannotReadStaysStoredThroughAddRenameAndRemove() throws {

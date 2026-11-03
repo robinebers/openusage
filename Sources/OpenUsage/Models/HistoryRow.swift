@@ -20,7 +20,7 @@ enum HistoryRow: Hashable, Sendable {
         }
     }
 
-    /// Nil when none of the row's figures was reported for every day it covers.
+    /// Nil when none of the row's figures was reported.
     func line(label: String, in history: UsageHistory) -> MetricLine? {
         guard let totals = history.totals(over: window) else { return nil }
         let values: [MetricValue] = switch self {
@@ -38,11 +38,15 @@ enum HistoryRow: Hashable, Sendable {
         return UsageBreakdown(window, in: history)
     }
 
-    static func lines(for descriptors: [WidgetDescriptor], in history: UsageHistory?) -> [MetricLine] {
-        guard let history else { return [] }
-        return descriptors.compactMap { descriptor in
-            descriptor.historyRow?.line(label: descriptor.metricLabel, in: history)
+    static func append(to snapshot: inout ProviderSnapshot, for descriptors: [WidgetDescriptor], in history: UsageHistory?) {
+        guard let history else { return }
+        var breakdowns: [String: UsageBreakdown] = [:]
+        for descriptor in descriptors {
+            guard let row = descriptor.historyRow else { continue }
+            if let line = row.line(label: descriptor.metricLabel, in: history) { snapshot.lines.append(line) }
+            breakdowns[descriptor.key] = row.breakdown(in: history)
         }
+        snapshot.usageBreakdowns = breakdowns.isEmpty ? nil : breakdowns
     }
 
     /// How many days back from today the descriptors' rows reach, so a source reads exactly those.
@@ -55,6 +59,9 @@ extension WidgetDescriptor {
     static func history(key: String, provider: Provider, _ row: HistoryRow) -> WidgetDescriptor {
         var descriptor = values(key: key, provider: provider, title: row.title)
         descriptor.historyRow = row
+        if case .window(_, let first, let then) = row {
+            descriptor.unreportedValues = [first, then].compactMap(\.self).map { $0.metricValue(0) }
+        }
         return descriptor
     }
 }

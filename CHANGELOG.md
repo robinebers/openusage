@@ -11,22 +11,56 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
   and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
 - iCloud sync of usage history (daily tokens and spend).
-- The log file and the Log Level setting. The app logs through unified logging only
+- The log file. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
 - The local HTTP API.
 - The Pi provider, which has no account sign-in.
-- The welcome screen, provider enable/disable switches, and the On Demand metric tier. Metrics are on
-  or off per account, and starred metrics show in the menu bar.
+- The welcome screen, provider enable/disable switches, and the On Demand metric tier.
+- Menu-bar stars. The menu bar picks its own limits.
 - The Density setting and Reset All Customization.
+- OpenRouter's Credits bar, which measured spend against every credit ever bought, not a limit.
+  Balance still shows what's left.
 - The Icon Style, Increase Transparency, Always Show Pacing, and Reduce Animations settings.
   Animations follow macOS's Reduce Motion setting.
 
 ### Changed
+- Dashboard: Today, Yesterday, and every other time range always show, at 0 when the provider reports
+  nothing for them. An account's page still hides any of them with its switch.
+- Dashboard: balances always show, even at $0, including Cursor Credits when Cursor reports none. Extra
+  Usage shows only while the provider has it on, even at $0, and hides while it is off: Claude,
+  ChatGPT, Cursor, Copilot, and Grok, whose "Disabled" row is gone.
+- Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
+  bottom bar only while something is under it. The account name in an account page's header fades its
+  hover highlight in.
+- Z.ai: a key Z.ai refuses reads as rejected, not as an invalid response, so the 0.7.x key import
+  stops checking it on every launch.
+- Dashboard: after an update from 0.7.x, the empty dashboard welcomes you back, says OpenUsage no longer
+  reads your local accounts automatically, and asks you to add back the ones to track.
 - Accounts: add several accounts per provider, rename them, and remove them from the app.
 - Accounts: replace an API-key account's key from its page. A key, added or replaced, is saved only
   once a usage read accepts it.
+- Accounts: an account's page lists its metrics, each with a switch that hides it everywhere and a
+  handle that drags it into order.
+- Accounts: once **Sign In Again** works, the sign-in closes and the panel opens on your Default Tab.
+- Accounts: **Sign In Again** shows on an account's page only while Priority lists it under Needs Attention.
 - Dashboard: cards per provider with a section per account. Drag to reorder and press ⌘Z to undo;
-  right-click menus hold hide, star, share screenshot, and quick links.
+  right-click menus hold refresh, share screenshot, and quick links.
+- Dashboard: two tabs, **Priority** for the limits running out or used up, most urgent first, and
+  **All Usage** for every account. The panel opens on the **Default Tab** in Settings, Priority at first.
+- Priority: pin a metric with the pin beside its switch on its account's page, and it gets a **Pinned**
+  section at the top of Priority. While a pinned metric is running out, it shows under **Running Out**
+  instead, never in both.
+- Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
+  **All Clear** is always one row under the **Running Out** header.
+- Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
+  Display → Priority Icons at the top of the tab, sets how many, from App Icon Only to Up to 5. It starts
+  at Up to 3.
+- Menu bar: when an update is available, the app icon shows at the far right with a dot, after the
+  limits and any `+7` count, whatever **Show In Menu Bar** is set to.
+- Notifications: Cutting It Close now fires when a limit drops under 30% left, not when its pace nears
+  the limit. A switch you turned on in 0.7.x stays on.
+- Settings: **Log Level** is back under Advanced → Debug and keeps the level you chose in 0.7.x. It
+  starts at Info and sets how much the app writes to the macOS log; Debug works in released builds too.
 - Severity colours are blue, orange, and red.
 - Codex accounts are shown as ChatGPT. The provider id the command line takes stays `codex`.
 - Breaking from 0.7.x: the `openusage` JSON keys `providers` by account id (`codex@1a2b3c4d`), not
@@ -50,44 +84,51 @@ shows only what each provider's API reports for the accounts you sign in to.
   an expired sign-in. The refresh is tried again later, and a token that still works stays in use.
 - Sign-ins: a renewed sign-in the Keychain refuses to save stays in use and is saved on the next
   refresh, so the account no longer has to be added again.
-- OpenRouter: a Management key shows Credits, Balance, and what the standard keys in your default
+- OpenRouter: a Management key shows Balance and what the standard keys in your default
   workspace spent today, this week, and this month. A standard key shows its own spend and Key Limit.
 - OpenRouter: a Management key scoped to one workspace can be added. It shows that workspace's spend,
-  without Credits or Balance, which OpenRouter keeps from workspace keys.
-- OpenRouter: Today, This Week, and This Month add BYOK spend. A Management key adds Yesterday, Prior
-  30 Days, and Requests from OpenRouter's activity, and resting the pointer on a range shows its
-  requests, tokens, and top models. A standard key adds Budget and Free Requests. Today is a new default
-  menu-bar star.
-- Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
-  account shows its provider's name once, not `OpenRouter · OpenRouter`.
+  without Balance, which OpenRouter keeps from workspace keys.
+- OpenRouter: a Management key adds Yesterday and Prior 30 Days from OpenRouter's activity. Resting
+  the pointer on a range shows its BYOK spend, tokens, and top models. A standard key adds Budget and
+  Free Requests.
+- OpenRouter: Today, This Week, and This Month no longer show the BYOK an earlier build saved. BYOK
+  shows only when resting the pointer on a range.
+- Accounts: a new Cursor account is named after its email, not "Cursor Account".
+- Accounts: every account has a name the card shows. A blank name, or one that only repeats the
+  provider's, becomes `<Provider> Account`, such as `OpenRouter Account`, for existing accounts too.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
-- Cursor: the default menu-bar stars are Total Usage and Today. A 0.7.x layout with saved stars keeps
-  them.
 - Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
 - Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
   counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
   it: the charge, usage events, each kind of token, and the top models.
+- Dashboard: resting the pointer on a range with nothing but a zero total says `<Provider> didn't report
+  any data for this range.`, for every provider.
 - Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
   for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
   range shows what Ollama reported for it: requests, each kind of token, and the top models.
 - ChatGPT: Today, Yesterday, and Last 30 Days show the credits charged and the tokens counted on UTC
   days, a Turns row counts the last 30 days' turns, and Credit Limit shows a workspace's spending limit.
   Resting the pointer on a range shows what ChatGPT reported for it.
+- Grok: a new sign-in no longer asks for `profile` or `api:access`, so its token can't run Grok
+  models. Add the account again to drop them from an existing sign-in.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
+- **Check for Updates…** in the dashboard's **⋯** menu, between Settings and Report an Issue…, as in 0.7.x.
+  The dev build shows it and the Settings Updates section disabled instead of hiding them.
 - Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
   are always sent; they are not optional.
-- Notifications, menu-bar stars, keyboard shortcuts, Launch at Login, Theme, and Time Format.
+- Notifications, keyboard shortcuts, Launch at Login, Theme, and Time Format.
 - The Almost Out, Cutting It Close, and Will Run Out switches in Settings, named after the alerts they
   send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
-- Your 0.7.x stars, hidden metrics, metric order, and provider order, on the first account you add for
-  each provider. 0.7.x's saved layout stays on disk unchanged, so a downgrade finds it as it was.
+- Your 0.7.x hidden metrics, metric order, and provider order, on the first account you add for each
+  provider. Stars don't carry over. 0.7.x's saved layout stays on disk unchanged, so a downgrade
+  finds it as it was.
 - The OpenRouter and Z.ai keys you typed into 0.7.x, added once as accounts on the first launch when
   the provider has no account yet and the key still passes a usage read. The key files stay unchanged.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the

@@ -213,15 +213,10 @@ enum CodexUsageMapper {
     }
 
     private static func readCreditsRemaining(response: HTTPResponse, body: [String: Any]) -> Double? {
-        if let credits = body["credits"] as? [String: Any] {
-            if let balance = ProviderParse.number(credits["balance"]) {
-                return balance
-            }
-            if credits["has_credits"] as? Bool == false {
-                return 0
-            }
-        }
-        return ProviderParse.number(response.header("x-codex-credits-balance"))
+        let credits = body["credits"] as? [String: Any]
+        let hasCredits = ProviderParse.bool(credits?["has_credits"]) ?? ProviderParse.bool(response.header("x-codex-credits-has-credits"))
+        guard hasCredits != false else { return nil }
+        return ProviderParse.number(credits?["balance"]) ?? ProviderParse.number(response.header("x-codex-credits-balance"))
     }
 
     static func formatCodexPlan(_ value: Any?) -> String? {

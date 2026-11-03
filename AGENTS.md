@@ -62,10 +62,9 @@ Provider sign-in and usage code lives under `Sources/OpenUsage/Providers/<Name>/
 account-scoped refresh. Provider API failures should surface as friendly account-specific errors
 without logging credentials or response bodies. See `docs/adding-a-provider.md`.
 
-**Metric placement defaults:** every metric starts shown. When adding or changing a metric, confirm its
-two defaults with the owner before choosing — never pick silently:
-1. starred into the menu bar (`.pinnedByDefault()` on its descriptor in `widgetDescriptors`),
-2. order (within an account, the `widgetDescriptors` declaration order).
+**Metric order default:** every metric with data shows. When adding or changing a metric, confirm its
+order (within an account, the `widgetDescriptors` declaration order) with the owner before choosing —
+never pick silently.
 
 ## Running / Testing Changes
 
@@ -77,9 +76,10 @@ script/test_quiet.sh [--filter <Suite>]
 
 `script/test_quiet.sh` is the only way to run the tests on a Mac someone is using: the suite hosts real
 windows, and the script runs it niced, keeps it from taking the keyboard or the screen, and fails the
-run if a test process ever came to the front. The rename-focus tests need a key window, so they skip
-unless `OPENUSAGE_FOCUS_TESTS=1`; run them with `swift test --filter InlineRenameFocusTests` on a Mac
-nobody is typing on after every change to a header or to renaming, or they rot unseen.
+run if a test process ever came to the front. The rename-focus tests need a key window and the Options
+menu test shows a real menu, so they skip unless `OPENUSAGE_FOCUS_TESTS=1`; run them with
+`swift test --filter 'InlineRenameFocusTests|UpdateControlsTests'` on a Mac nobody is typing on after
+every change to a header, to renaming, or to the Options menu, or they rot unseen.
 
 There is no hot reload. The app is a long-lived menu-bar process, so **every code change requires a
 full rebuild and restart of the running app** to take effect. The development bundle identifier is

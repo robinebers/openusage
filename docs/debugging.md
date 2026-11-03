@@ -51,8 +51,11 @@ every pass after the fact:
 log show --last 2h --predicate 'subsystem == "OpenUsage" AND category == "refresh"'
 ```
 
-Console.app shows the same lines; filter by subsystem. Debug-level lines exist in debug builds only
-(`CONFIG=debug ./script/build_and_run.sh`) and need `--debug` instead of `--info`.
+Console.app shows the same lines; filter by subsystem.
+
+**Settings → Advanced → Log Level** sets how much is written, in every build. Info, the default, writes
+everything but debug lines. Debug adds them, and reading them needs `--debug` instead of `--info`.
+Warning keeps warnings and errors, and Error keeps errors only.
 
 The HTTP transport logs one line per exchange: method, host and path, status, and duration. It never
 logs a URL's query, a header, or a response body. Every message also passes `LogRedaction` before it

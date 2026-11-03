@@ -34,19 +34,32 @@ final class AddAccountFlow {
     private let openURL: (URL) -> Void
     private let login: (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin
     private let connectHub: @MainActor (String, String) async throws -> Void
+    private let replaceCredential: @MainActor (AccountCredential, String) async throws -> Void
+    private let accountSignedInAgain: Account?
     private var task: Task<Void, Never>?
     private var codeInput: AsyncStream<String>.Continuation?
+
+    var isSigningInAgain: Bool { accountSignedInAgain != nil }
 
     init(
         store: AccountStore,
         openURL: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) },
         login: @escaping (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:),
-        connectHub: @escaping @MainActor (String, String) async throws -> Void = { _, _ in }
+        connectHub: @escaping @MainActor (String, String) async throws -> Void = { _, _ in },
+        replaceCredential: @escaping @MainActor (AccountCredential, String) async throws -> Void = { _, _ in },
+        signingInAgainTo account: Account? = nil
     ) {
         self.store = store
         self.openURL = openURL
         self.login = login
         self.connectHub = connectHub
+        self.replaceCredential = replaceCredential
+        accountSignedInAgain = account
+        if let account {
+            selection = .provider(account.kind)
+            provider = account.kind
+            method = account.authMethod
+        }
     }
 
     var canAddKey: Bool {
@@ -91,6 +104,12 @@ final class AddAccountFlow {
                 fail(error.localizedDescription)
             }
         }
+    }
+
+    /// Starts once the sheet shows: creating a flow must not open a browser.
+    func startSigningInAgain() {
+        guard isSigningInAgain, prompt == nil, !isWorking else { return }
+        signIn()
     }
 
     func signIn() {
@@ -160,7 +179,13 @@ final class AddAccountFlow {
                     pastedCode: input
                 )
                 guard !Task.isCancelled else { return }
-                save(result, for: kind, organization: organization)
+                if let accountSignedInAgain {
+                    try await replaceCredential(result.credential, accountSignedInAgain.cardID)
+                    guard !Task.isCancelled else { return }
+                    finish()
+                } else {
+                    try save(result, for: kind, organization: organization)
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 fail(error.localizedDescription)
@@ -177,10 +202,8 @@ final class AddAccountFlow {
         }
     }
 
-    private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) {
-        if let existing = store.account(kind: kind, organization: organization, signedInAs: result.credential) {
-            return fail("This account is already added as \(existing.label).")
-        }
+    private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) throws {
+        try store.checkForDuplicate(result.credential, kind: kind, organization: organization)
         let name = accountName.trimmed
         let account = store.add(
             kind: kind, label: name.isEmpty ? result.label : name, organization: organization, credential: result.credential
@@ -188,6 +211,10 @@ final class AddAccountFlow {
         guard store.accounts.contains(where: { $0.id == account.id }) else {
             return fail(store.lastError ?? "The account could not be saved.")
         }
+        finish()
+    }
+
+    private func finish() {
         codeInput?.finish()
         codeInput = nil
         isWorking = false

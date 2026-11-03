@@ -147,7 +147,7 @@ final class CursorTokenRefreshTests: XCTestCase {
 
         XCTAssertEqual(harness.refreshRequests.count, 1)
         guard let text = snapshot.failure?.message else { return XCTFail("Expected an error snapshot") }
-        XCTAssertEqual(text, "Cursor sign-in expired. Remove the account and add it again.")
+        XCTAssertEqual(text, "Cursor sign-in expired. Sign in again to keep reading usage.")
         XCTAssertEqual(harness.stored?.accessToken, Self.oldToken)
     }
 

@@ -66,9 +66,7 @@ enum CursorUsageEvents {
         func sum(_ events: [CursorUsageEvent]) -> UsageTotals {
             events.reduce(.zero(measures)) { $0.adding($1.totals) }
         }
-        let byModel = events.allSatisfy { $0.model != nil }
-            ? Dictionary(grouping: events) { $0.model ?? "" }.mapValues(sum)
-            : nil
-        return UsageDay(totals: sum(events), byModel: byModel)
+        let named = events.filter { $0.model != nil }
+        return UsageDay(totals: sum(events), byModel: Dictionary(grouping: named) { $0.model ?? "" }.mapValues(sum))
     }
 }

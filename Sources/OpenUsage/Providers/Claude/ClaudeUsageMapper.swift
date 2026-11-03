@@ -105,14 +105,9 @@ enum ClaudeUsageMapper {
     }
 
     private static func appendExtraUsage(_ value: Any?, to lines: inout [MetricLine]) {
-        guard let object = value as? [String: Any],
-              object["is_enabled"] as? Bool == true,
-              let usedCents = ProviderParse.number(object["used_credits"])
-        else {
-            return
-        }
+        guard let object = value as? [String: Any], object["is_enabled"] as? Bool == true else { return }
 
-        let used = ProviderParse.centsToDollars(usedCents)
+        let used = ProviderParse.centsToDollars(ProviderParse.number(object["used_credits"]) ?? 0)
         if let limitCents = ProviderParse.number(object["monthly_limit"]), limitCents > 0 {
             lines.append(.progress(
                 label: "Extra usage spent",
@@ -120,7 +115,7 @@ enum ClaudeUsageMapper {
                 limit: ProviderParse.centsToDollars(limitCents),
                 format: .dollars
             ))
-        } else if used > 0 {
+        } else {
             lines.append(.values(label: "Extra usage spent", values: [MetricValue(number: used, kind: .dollars)]))
         }
     }

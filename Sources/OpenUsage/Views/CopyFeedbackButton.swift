@@ -3,9 +3,9 @@ import SwiftUI
 struct CopyFeedbackButton: View {
     let accessibilityLabel: String
     var isRevealed = true
+    @Binding var copied: Bool
     let action: () -> Bool
 
-    @State private var copied = false
     @State private var resetTask: Task<Void, Never>?
     @Environment(\.reduceAnimations) private var reduceAnimations
 
@@ -23,7 +23,7 @@ struct CopyFeedbackButton: View {
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copied ? Color.green : Color.secondary)
+                .foregroundStyle(copied ? Theme.positive : AnyShapeStyle(.secondary))
                 .symbolEffect(.bounce, value: reduceAnimations ? false : copied)
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
