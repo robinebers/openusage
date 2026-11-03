@@ -75,7 +75,8 @@ and a workspace's credit limit.
   the other format, and on the warning or clock after an account's name to read why it is there.
   A usage range shows the provider's total or sums the days it reported, and reads 0 when it reported
   none. Open its breakdown to see model usage and whether any days are missing, including after
-  reopening the app.
+  reopening the app. A balance shows even at $0. Extra Usage shows while the provider has it on, even
+  at $0, and hides while it is off.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
 - **Metrics per account.** An account's page in Accounts has a switch per metric to hide it everywhere,
   a pin to list it under Pinned at the top of Priority, and a handle to drag its metrics into order.

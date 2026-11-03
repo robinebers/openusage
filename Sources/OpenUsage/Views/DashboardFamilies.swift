@@ -29,13 +29,10 @@ struct DashboardLine: Identifiable {
     let data: WidgetData
     var id: String { descriptor.id }
 
-    // Empty prepaid ChatGPT credits and spent reset grants remain available to CLI clients.
+    // Spent reset grants remain available to CLI clients.
     var isVisible: Bool {
         guard data.hasData else { return false }
         if data.showsResetExpiries { return data.resetCreditCount > 0 }
-        if descriptor.providerKind == .codex, descriptor.key == "credits" {
-            return descriptor.balance(in: data)?.number != 0
-        }
         return true
     }
 }

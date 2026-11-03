@@ -215,7 +215,7 @@ enum CursorUsageMapper {
         let combinedTotalCents = (hasValidGrantData ? grantTotalCents : 0) + stripeBalanceCents
         let remainingCents = max(0, combinedTotalCents - (hasValidGrantData ? grantUsedCents : 0))
 
-        guard combinedTotalCents > 0 else { return }
+        guard creditGrants != nil || combinedTotalCents > 0 else { return }
         lines.append(.values(
             label: "Credits",
             values: [MetricValue(number: ProviderParse.centsToDollars(remainingCents), kind: .dollars)]

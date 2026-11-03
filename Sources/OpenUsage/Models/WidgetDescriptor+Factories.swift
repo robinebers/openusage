@@ -73,13 +73,6 @@ extension WidgetDescriptor {
              sample: WidgetData(title: title, kind: .count, used: 0, limit: nil))
     }
 
-    /// The row shows `values` when the provider reports nothing for it, instead of hiding.
-    func showingWhenUnreported(_ values: [MetricValue]) -> WidgetDescriptor {
-        var descriptor = self
-        descriptor.unreportedValues = values
-        return descriptor
-    }
-
     private static func make(
         key: String,
         provider: Provider,
