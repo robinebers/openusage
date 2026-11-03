@@ -10,7 +10,7 @@ The script stops the dev build if it is running, builds the package, stages `dis
 embeds Sparkle, signs the bundle with your Apple Development identity (ad hoc when none is installed),
 launches it, and confirms the process is up. The dev bundle id is `com.robinebers.openusage.dev`, so
 it keeps its own settings and Keychain items and runs beside an installed OpenUsage. It has no update
-feed, so the Updates section does not show.
+feed, so the Updates section does not show, and it leaves alone the OpenRouter and Z.ai keys 0.7.x saved.
 
 Every dev build shares one single-instance lock, so a copy launched while a dev build from another
 folder runs hands off to that copy and quits. `run` and `verify` then fail and print the running
