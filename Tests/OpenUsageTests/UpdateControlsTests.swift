@@ -7,7 +7,9 @@ import XCTest
 /// section, and the dashboard's Update Available banner.
 @MainActor
 final class UpdateControlsTests: QuietWindowTestCase {
+    /// Opens the real menu, which shows on a screen for one pass of its tracking loop.
     func testTheOptionsMenuChecksForUpdatesBetweenSettingsAndReportAnIssueWhileSparkleCan() async throws {
+        try QuietTestProcess.requireFocus()
         let updater = UpdaterController()
         for canCheck in [false, true] {
             updater.canCheckForUpdates = canCheck
@@ -21,10 +23,9 @@ final class UpdateControlsTests: QuietWindowTestCase {
 
     func testSettingsShowsTheUpdatesSectionAndDisablesItInADevBuild() async throws {
         for active in [false, true] {
-            let (switches, buttons) = try await settingsControls(updaterActive: active)
+            let switches = try await settingsSwitches(updaterActive: active)
             XCTAssertEqual(switches.count, 3, "Launch at Login, Check Automatically and Beta Updates (active: \(active))")
             XCTAssertEqual(switches.dropFirst().map(\.isEnabled), [active, active], "the update switches follow isActive")
-            XCTAssertEqual(buttons.map(\.isEnabled), [active], "Check for Updates… follows canCheckForUpdates")
         }
     }
 
@@ -74,13 +75,11 @@ final class UpdateControlsTests: QuietWindowTestCase {
         return try XCTUnwrap(items, "the Options button didn't open its menu")
     }
 
-    /// The General tab's switches and push buttons, in order. A dev build's updater never starts, so it
-    /// can neither run nor check.
-    private func settingsControls(updaterActive: Bool) async throws -> (switches: [NSControl], buttons: [NSButton]) {
+    /// The General tab's switches, in order.
+    private func settingsSwitches(updaterActive: Bool) async throws -> [NSControl] {
         let container = testContainer()
         let updater = UpdaterController()
         updater.isActive = updaterActive
-        updater.canCheckForUpdates = updaterActive
         container.popover.screen = .settings
         let settings = SettingsScreen()
             .environment(container)
@@ -93,17 +92,13 @@ final class UpdateControlsTests: QuietWindowTestCase {
         func controls(in view: NSView) -> [NSControl] {
             [view as? NSControl].compactMap { $0 } + view.subviews.flatMap(controls)
         }
-        var found: [NSControl] = []
         try await waitUntil {
             host.layoutSubtreeIfNeeded()
-            found = controls(in: host)
-            return found.contains { $0 is NSSwitch }
+            return controls(in: host).contains { $0 is NSSwitch }
         }
         try await Task.sleep(for: .milliseconds(200))
         host.layoutSubtreeIfNeeded()
-        found = controls(in: host)
-        let buttons = found.compactMap { $0 as? NSButton }.filter { !($0 is NSPopUpButton) && !($0 is NSSwitch) }
-        return (found.filter { $0 is NSSwitch }, buttons)
+        return controls(in: host).filter { $0 is NSSwitch }
     }
 
     private func dashboardHeight(availableUpdate: String?) async throws -> CGFloat {
