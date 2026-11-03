@@ -66,6 +66,8 @@ struct PriorityItem: Identifiable {
 struct PinnedMetric: Identifiable {
     let provider: Provider
     let line: DashboardLine
+    /// Its color as Priority would list it, so an empty balance stays red.
+    let severity: WidgetData.MeterSeverity
 
     var id: String { line.id }
     var data: WidgetData { line.data }
@@ -144,13 +146,18 @@ struct PriorityBoard {
         }
         let listed = ranked.filter { !pinnedIDs.contains($0.id) }
         return PriorityBoard(
-            pinned: lines.filter { pinnedIDs.contains($0.1.id) }.map { PinnedMetric(provider: $0.0, line: $0.1) },
+            pinned: lines.filter { pinnedIDs.contains($0.1.id) }.map { provider, line in
+                PinnedMetric(provider: provider, line: line, severity: PriorityItem.Reason(line, now: now)?.severity ?? .normal)
+            },
             attention: listed.filter { !$0.reason.isUsedUp },
             usedUp: listed.filter(\.reason.isUsedUp),
             notices: notices, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
     }
+
+    /// Whether the tab lists anything, pinned or not, worth copying as a picture.
+    var hasRows: Bool { summary == .listed || !pinned.isEmpty }
 }
 
 extension WidgetDataStore {

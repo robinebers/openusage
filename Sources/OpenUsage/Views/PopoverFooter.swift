@@ -16,7 +16,7 @@ struct PopoverFooter: View {
                 HStack(alignment: .center, spacing: 8) {
                     if !layout.displayGroups.isEmpty { nextUpdateButton }
                     Spacer(minLength: 8)
-                    if popover.dashboardTab == .priority, liveBoard.summary == .listed { copyPriorityButton }
+                    if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
                     optionsMenu
                 }
                 .padding(.horizontal, 4)

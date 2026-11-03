@@ -124,7 +124,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Pinned")
             ForEach(board.pinned) { pin in
-                limitRow(pin.provider, pin.data)
+                limitRow(pin.provider, pin.data, severity: pin.severity)
                     .padding(.horizontal, 4)
             }
         }
@@ -134,7 +134,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Running Out")
             ForEach(board.attention) { item in
-                limitRow(item.provider, item.data)
+                limitRow(item.provider, item.data, severity: item.reason.severity)
                     .padding(.horizontal, 4)
             }
         }
@@ -171,9 +171,9 @@ struct PriorityBoardList: View {
         }
     }
 
-    private func limitRow(_ provider: Provider, _ data: WidgetData) -> some View {
+    private func limitRow(_ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity) -> some View {
         HStack(spacing: 10) {
-            PriorityGauge(fraction: data.fraction, severity: data.severity, icon: provider.icon)
+            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon)
             VStack(alignment: .leading, spacing: 1) {
                 Text(data.title)
                     .font(.system(size: 13, weight: .medium))
