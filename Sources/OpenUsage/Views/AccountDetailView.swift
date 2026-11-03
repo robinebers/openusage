@@ -22,26 +22,19 @@ struct AccountDetailView: View {
                     managedRow(host)
                 } else {
                     if let problem = dataStore.problem(for: providerID) {
-                        Label {
-                            Text(problem)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(Theme.notice)
-                        }
-                        .font(.system(size: 13))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .cardSurface()
+                        ProblemCard(message: problem)
                         if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
                             signInAgainRow
                         }
                     }
                     metricsCard
-                    if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
-                        ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
+                    VStack(spacing: 0) {
+                        if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
+                            ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
+                        }
+                        removeAccountRow(provider)
                     }
-                    removeAccountRow(provider)
+                    .cardSurface()
                     if let removalError {
                         ErrorText(removalError)
                     }
@@ -122,7 +115,7 @@ struct AccountDetailView: View {
     private func managedRow(_ host: String) -> some View {
         HStack(spacing: 8) {
             ProviderIcon(id: CLIProxyHub.markID, side: 16, inset: 0)
-            Text("Managed by CLIProxyAPI at \(host)")
+            Text("Managed by \(host)")
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -161,7 +154,6 @@ struct AccountDetailView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .cardSurface()
         .confirmationDialog(
             "Remove \(provider.fullName)?",
             isPresented: $isConfirmingRemoval,
@@ -181,6 +173,25 @@ struct AccountDetailView: View {
         } else {
             withAnimation(Motion.spring) { popover.customizeProviderID = nil }
         }
+    }
+}
+
+/// Why an account or a hub needs the user, at the top of its page.
+struct ProblemCard: View {
+    let message: String
+
+    var body: some View {
+        Label {
+            Text(message)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.notice)
+        }
+        .font(.system(size: 13))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .cardSurface()
     }
 }
 
@@ -226,10 +237,7 @@ struct ReplaceKeyRow: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        Group {
-            if isEditing { editor } else { replaceButton }
-        }
-        .cardSurface()
+        if isEditing { editor } else { replaceButton }
     }
 
     private var replaceButton: some View {

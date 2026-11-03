@@ -251,7 +251,9 @@ final class WidgetDataStore {
     }
 
     func families(in groups: [ProviderMetrics]) -> [DashboardFamily] {
-        DashboardFamily.make(groups: groups) { DashboardLine(descriptor: $0, data: data(for: $0)) }
+        DashboardFamily.make(groups: groups, isWaiting: { snapshots[$0.id] == nil && problem(for: $0.id) == nil }) {
+            DashboardLine(descriptor: $0, data: data(for: $0))
+        }
     }
 
     func plan(for providerID: String) -> String? {
@@ -259,8 +261,9 @@ final class WidgetDataStore {
     }
 
     /// Why an account needs the user: Priority lists it under Needs Attention, and its page says why and offers Sign In Again.
+    /// Old values count only once a refresh has failed. Until then they are waiting for their next read, as on launch.
     func problem(for providerID: String) -> String? {
-        notice(for: providerID) ?? stalenessHint(for: providerID)
+        notice(for: providerID) ?? (backoffs[providerID] == nil ? nil : stalenessHint(for: providerID))
     }
 
     func stalenessHint(for providerID: String) -> String? {

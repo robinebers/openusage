@@ -34,14 +34,38 @@ enum DashboardGrid {
     }
 }
 
-/// An account's rows, one under the next.
+/// An account's rows, one under the next, or a skeleton row per metric until its first reading.
 struct DashboardLineStack<Row: View>: View {
-    let lines: [DashboardLine]
+    let account: DashboardAccount
     @ViewBuilder let row: (DashboardLine) -> Row
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(lines) { row($0) }
+            ForEach(account.lines) { row($0) }
+            if !account.waitingMetricIDs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(account.waitingMetricIDs, id: \.self) { _ in SkeletonMetricRow() }
+                }
+                .accessibilityElement()
+                .accessibilityLabel("Waiting for Usage")
+            }
         }
+    }
+}
+
+/// A metric row's bar, figure, and reset as grey bars in their own columns.
+private struct SkeletonMetricRow: View {
+    var body: some View {
+        HStack(spacing: DashboardGrid.columnGap) {
+            Capsule().frame(width: 54, height: 8)
+                .frame(width: DashboardGrid.labelWidth, alignment: .leading)
+            Capsule().frame(height: DashboardGrid.levelHeight)
+            Capsule().frame(width: 30, height: 8)
+                .frame(width: DashboardGrid.valueWidth, alignment: .trailing)
+            Capsule().frame(width: 30, height: 7)
+                .frame(width: DashboardGrid.resetWidth, alignment: .trailing)
+        }
+        .skeleton()
+        .frame(height: DashboardGrid.rowHeight)
     }
 }

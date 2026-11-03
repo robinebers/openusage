@@ -33,11 +33,12 @@ time, the same switches as All Usage. Times tick every 30 seconds.
 
 **All Clear** means every account has a current reading and none of its limits is running low. It is
 one row under the Running Out header, whatever else Priority shows, and used-up limits still appear
-below it. **Waiting for Usage** means a first reading is pending. If every account has reported and
-none has a limit to monitor, **No Reported Limits** links to All Usage.
+below it. An account that hasn't reported its first reading is a grey placeholder row at the bottom
+of the tab until it does, and All Clear waits for it. If every account has reported and none has a
+limit to monitor, **No Reported Limits** links to All Usage.
 
-When a refresh fails, values go stale, or a provider sends a notice, a **Needs Attention** row names the
-account. **Fix** opens its page, which gives the reason and the way to fix it. Last-known limits that are
+When a refresh fails or a provider sends a notice, a **Needs Attention** row names the account. An
+account that is only loading, or whose values are only old, as on launch, is never listed there. **Fix** opens its page, which gives the reason and the way to fix it. Last-known limits that are
 running low or used up stay visible.
 
 ## All Usage
@@ -45,7 +46,8 @@ running low or used up stay visible.
 One provider after another, each a header above a card. The header is the provider's name and logo,
 and every account's name and plan sit inside the card above its rows. With several accounts, each
 keeps a name you can drag. The card holds every metric that has data and that you have not hidden, in
-the order you set. Time ranges always show: when the provider reports nothing for one, it reads 0.
+the order you set. Until an account's first reading, its card holds a grey placeholder row for each
+metric you have turned on. Time ranges always show: when the provider reports nothing for one, it reads 0.
 Balances show even at `$0 left`. Extra Usage shows while the provider has it on, even at `$0`, and
 hides while it is off.
 

@@ -71,7 +71,8 @@ An account that stops responding is given up on after two minutes. Its spinner s
 "Refresh timed out after 120s", and it is tried again on a later pass.
 
 Once an account's values are more than two refresh cycles old, a clock appears next to its name, and
-the account's right-click menu starts with their age. A successful refresh clears it. The
+the account's right-click menu starts with their age. A successful refresh clears it. Old values alone
+don't put the account under **Needs Attention**: that waits for a refresh that fails. The
 [`openusage` command](cli.md) marks the account `"stale": true` at the same moment.
 
 ## Expired sign-ins

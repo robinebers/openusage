@@ -81,7 +81,7 @@ struct WidgetGroupedListView: View {
     }
 
     private func rows(of account: DashboardAccount, status: AccountStatus) -> some View {
-        DashboardLineStack(lines: account.lines) { line in
+        DashboardLineStack(account: account) { line in
             DashboardLiveRow(
                 line: line,
                 resetClaim: container.resetClaim(for: account.id),

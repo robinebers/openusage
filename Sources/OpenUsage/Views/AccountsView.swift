@@ -12,7 +12,7 @@ struct AccountsView: View {
             content
                 .padding(.horizontal, PanelMetrics.margin)
                 .padding(.top, DashboardContentView.barGap)
-                .padding(.bottom, popover.customizeProviderID == nil ? 0 : PanelMetrics.margin)
+                .padding(.bottom, popover.customizeProviderID == nil && popover.customizeHubID == nil ? 0 : PanelMetrics.margin)
                 .frame(maxWidth: .infinity)
         }
         .onPreferenceChange(ReorderFramePreferenceKey.self) { frameStore.frames = $0 }
@@ -34,6 +34,9 @@ struct AccountsView: View {
                 reorderLift: $reorderLift,
                 frameStore: frameStore
             )
+                .transition(.move(edge: .trailing))
+        } else if let hubID = popover.customizeHubID {
+            HubDetailView(hubID: hubID)
                 .transition(.move(edge: .trailing))
         } else {
             AccountListView(

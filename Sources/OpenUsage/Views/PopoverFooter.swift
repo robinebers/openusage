@@ -21,7 +21,7 @@ struct PopoverFooter: View {
                     optionsMenu
                 }
                 .padding(.horizontal, 4)
-            } else if screen == .accounts, popover.customizeProviderID == nil {
+            } else if screen == .accounts, popover.customizeProviderID == nil, popover.customizeHubID == nil {
                 addAccountButton
             } else {
                 EmptyView()
