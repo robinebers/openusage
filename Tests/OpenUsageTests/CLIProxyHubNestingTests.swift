@@ -93,27 +93,32 @@ final class CLIProxyHubNestingTests: QuietWindowTestCase {
         container.popover.openAccounts(nil)
         let list = try await screenText(container)
         for text in ["Personal", "mac-mini.local:8317", "2 accounts", "hub.example.com", "1 account"] {
-            XCTAssertTrue(list.contains(text), "the list lacks \(text): \(list)")
+            XCTAssertTrue(ocrShows(in: list, text), "the list lacks \(text): \(list)")
         }
-        XCTAssertFalse(list.contains("mini0@example.com"), "a hub's account is listed only on its hub's page: \(list)")
-        XCTAssertFalse(list.contains("Remove Hub"), list)
+        XCTAssertFalse(ocrShows(in: list, "mini0@example.com"), "a hub's account is listed only on its hub's page: \(list)")
+        XCTAssertFalse(ocrShows(in: list, "Remove Hub"), list)
 
         container.popover.customizeHubID = mini.id
         let hubPage = try await screenText(container)
         for text in ["mini0@example.com", "mini1@example.com", "1 login OpenUsage doesn", "Replace Management Key", "Remove Hub"] {
-            XCTAssertTrue(hubPage.contains(text), "the hub's page lacks \(text): \(hubPage)")
+            XCTAssertTrue(ocrShows(in: hubPage, text), "the hub's page lacks \(text): \(hubPage)")
         }
-        XCTAssertFalse(hubPage.contains("Personal"), hubPage)
+        XCTAssertFalse(ocrShows(in: hubPage, "Personal"), hubPage)
 
         container.popover.customizeHubID = office.id
         let failed = try await screenText(container)
-        XCTAssertTrue(failed.contains("reach the CLIProxyAP"), "the failed hub's page says why: \(failed)")
-        XCTAssertTrue(failed.contains("office0@example.com"), "its accounts stay listed: \(failed)")
+        XCTAssertTrue(ocrShows(in: failed, "reach the CLIProxyAP"), "the failed hub's page says why: \(failed)")
+        XCTAssertTrue(ocrShows(in: failed, "office0@example.com"), "its accounts stay listed: \(failed)")
 
         container.popover.customizeHubID = mini.id
         container.popover.customizeProviderID = miniClaude
         let accountPage = try await screenText(container)
-        XCTAssertTrue(accountPage.contains("Managed by mac-mini.local:8317"), accountPage)
+        XCTAssertTrue(ocrShows(in: accountPage, "Managed by mac-mini.local:8317"), accountPage)
+    }
+
+    /// Vision sometimes drops the space between words, as in "1account".
+    private func ocrShows(in screen: String, _ text: String) -> Bool {
+        screen.replacingOccurrences(of: " ", with: "").contains(text.replacingOccurrences(of: " ", with: ""))
     }
 
     private func screenText(_ container: AppContainer) async throws -> String {
