@@ -95,7 +95,8 @@ struct WidgetGroupedListView: View {
             .contentShape(Rectangle())
             .contextMenu {
                 DashboardMenu(
-                    sections: DashboardMenus.metric(line.id, pinned: layout.isMetricPinned(line.id), of: account, status: status.notice ?? status.staleness),
+                    sections: [[DashboardMenus.pin(line.id, pinned: layout.isMetricPinned(line.id))]]
+                        + DashboardMenus.account(account, status: status.notice ?? status.staleness),
                     perform: perform
                 )
             }

@@ -38,11 +38,6 @@ enum DashboardMenus {
             : DashboardMenuItem(title: "Pin", command: .setPinned(metricID, true), systemImage: "pin")
     }
 
-    /// A metric's row: Pin or Unpin above its account's menu.
-    static func metric(_ metricID: String, pinned: Bool, of account: DashboardAccount, status: String?) -> Sections {
-        [[pin(metricID, pinned: pinned)]] + self.account(account, status: status)
-    }
-
     static func account(_ account: DashboardAccount, status: String?) -> Sections {
         [
             status.map { [DashboardMenuItem(title: $0)] } ?? [],

@@ -61,14 +61,7 @@ struct PriorityBoardList: View {
             }
         case .listed:
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
-                if !board.attention.isEmpty {
-                    attentionSection
-                } else if board.showsClearRow {
-                    VStack(alignment: .leading, spacing: 0) {
-                        sectionLabel("Running Out")
-                        clearRow
-                    }
-                }
+                if !board.attention.isEmpty || board.showsClearRow { attentionSection }
                 if !board.usedUp.isEmpty { usedUpSection }
                 if !board.notices.isEmpty { accountNotices }
             }
@@ -143,6 +136,7 @@ struct PriorityBoardList: View {
     private var attentionSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Running Out")
+            if board.attention.isEmpty { clearRow }
             ForEach(board.attention) { item in
                 limitRow(item.provider, item.data, severity: item.reason.severity)
                     .padding(.horizontal, 4)
@@ -165,7 +159,6 @@ struct PriorityBoardList: View {
         .opacity(0.5)
     }
 
-    /// Pinned rows are pinned; a row anywhere else on the board is not.
     @ViewBuilder
     private func pinMenu(_ metricID: String, pinned: Bool) -> some View {
         if let onSetPinned {
