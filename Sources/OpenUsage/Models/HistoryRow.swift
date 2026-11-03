@@ -42,8 +42,8 @@ enum HistoryRow: Hashable, Sendable {
         guard let history else { return }
         var breakdowns: [String: UsageBreakdown] = [:]
         for descriptor in descriptors {
-            guard let row = descriptor.historyRow, let line = row.line(label: descriptor.metricLabel, in: history) else { continue }
-            snapshot.lines.append(line)
+            guard let row = descriptor.historyRow else { continue }
+            if let line = row.line(label: descriptor.metricLabel, in: history) { snapshot.lines.append(line) }
             breakdowns[descriptor.key] = row.breakdown(in: history)
         }
         snapshot.usageBreakdowns = breakdowns.isEmpty ? nil : breakdowns
@@ -59,6 +59,9 @@ extension WidgetDescriptor {
     static func history(key: String, provider: Provider, _ row: HistoryRow) -> WidgetDescriptor {
         var descriptor = values(key: key, provider: provider, title: row.title)
         descriptor.historyRow = row
+        if case .window(_, let first, let then) = row {
+            descriptor.unreportedValues = [first, then].compactMap(\.self).map { $0.metricValue(0) }
+        }
         return descriptor
     }
 }

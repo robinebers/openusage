@@ -219,8 +219,8 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
     /// dollars nor tokens were reported by model.
     var modelFigures: [ModelFigure] { ModelFigure.allCases.filter { rankings[$0] != nil } }
 
-    init?(_ window: UsageWindow, in history: UsageHistory) {
-        guard let totals = history.totals(over: window) else { return nil }
+    init(_ window: UsageWindow, in history: UsageHistory) {
+        let totals = history.totals(over: window) ?? UsageTotals()
         let models = history.models(over: window)
         func isReported(_ measure: UsageMeasure) -> Bool {
             models.values.contains { ($0[measure] ?? 0) > 0 }
@@ -285,9 +285,10 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         return ranked.prefix(Self.shownModels) + [Model(name: "Other", dollars: sum(\.dollars), tokens: sum(\.tokens), share: sum(\.share))]
     }
 
-    /// Every figure is zero, so there is nothing to show beyond a zero total. Unread days can still have activity.
+    /// Every figure is zero, so there is nothing to show beyond a zero total. Unread days can still have
+    /// activity, unless nothing at all was reported for the range.
     var isEmpty: Bool {
-        unreadDays == 0 && totals.values.values.allSatisfy { $0 == 0 }
+        (unreadDays == 0 || totals.values.isEmpty) && totals.values.values.allSatisfy { $0 == 0 }
     }
 
     /// What the window charged, then its tokens and any spend on the user's own keys. A window that
