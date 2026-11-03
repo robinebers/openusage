@@ -2,13 +2,8 @@
 
 Track your AI coding subscriptions from the macOS menu bar.
 
-OpenUsage shows how much of each AI plan you have used: session and weekly limits, credits, and
-balances, in one panel. The menu bar shows the limits closest to running out, on its own.
-
-You add each account in the app. OpenUsage reads nothing that belongs to other tools: no Keychain
-items, auth files, logs, databases, or environment variables. It shows only the limits and dollar
-values that the provider's own API reports, except ChatGPT's credits, which also show their dollar
-value at 4¢ a credit.
+OpenUsage shows how much of each AI plan you've used: session and weekly limits, credits, and
+balances, all in one panel. The limits closest to running out sit right in the menu bar.
 
 | | Light | Dark |
 | --- | --- | --- |
@@ -17,138 +12,103 @@ value at 4¢ a credit.
 
 ## Installation
 
-**Homebrew:**
+- **Homebrew:**
 
-```sh
-brew install --cask openusage
-```
+  ```sh
+  brew install --cask openusage
+  ```
 
-**Direct download:** download the latest universal DMG from the
-[releases page](https://github.com/robinebers/openusage/releases/latest), open it, and drag OpenUsage
-to your Applications folder.
+- **Direct download:** grab the latest universal DMG from the
+  [releases page](https://github.com/robinebers/openusage/releases/latest), open it, and drag
+  OpenUsage to your Applications folder.
 
-Either way, the app updates itself in place through signed, notarized
-[Sparkle](docs/updates.md) updates. Requires macOS 15 (Sequoia) or later.
+The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates. Requires macOS 15
+(Sequoia) or later, on Apple Silicon or Intel.
 
-## Accounts
+## Supported Providers
 
-Open **Accounts** from the panel's **⋯** menu (or press Return), click **Add New Account**, and click a
-provider to start its sign-in. Browser sign-in opens your browser; **Open Browser** opens it again and
-**Copy Link** lets you pick another browser. Device-code sign-in shows the code to enter. API-key
-sign-in links to the page where you create the key. You can add several accounts for the same provider.
-OpenUsage checks for duplicate sign-ins before saving an account or a replacement key. See
-[Accounts](docs/accounts.md) for renaming and removing accounts.
+- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage, rate-limit resets
+- **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
+- **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
+- **[Antigravity](docs/providers.md#antigravity)**: Gemini and Claude quotas
+- **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing
+- **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
+- **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
+- **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
+- **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
+- **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
+- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches
+- **[CLIProxyAPI hubs](docs/cliproxyapi.md)**: every Claude, ChatGPT, Antigravity, Devin, and Grok login on
+  a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server
 
-If your Claude, ChatGPT, Antigravity, Devin, or Grok logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
-server, connect it once with its address and management key, and every login on it shows as an
-account. OpenUsage keeps the list in step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
-
-Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
-app's own Keychain service.
-
-After an update from 0.7.x, the OpenRouter and Z.ai keys you typed into 0.7.x are added as accounts
-once, unless you turned that provider off in 0.7.x, and the first account you add for each provider
-takes that provider's 0.7.x hidden metrics and order. OpenUsage never changes 0.7.x's saved
-layout, so going back to 0.7.x finds its stars and order as you left them. See
+Add your accounts from the app's Accounts screen. OpenUsage never reads other tools' credentials,
+files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 [Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
-
-## Providers
-
-Claude, ChatGPT, Cursor, Antigravity, Copilot, Devin, Grok, Ollama, OpenCode, OpenRouter, and Z.ai.
-Claude, ChatGPT, Cursor, Antigravity, Copilot, and Grok sign in with OAuth. Devin signs in on
-Windsurf's site, which shows a token to paste into the app. Ollama, OpenCode, OpenRouter, and Z.ai use
-API keys. OpenRouter's balance, account-wide spend, and activity need a Management key. Cursor accounts also show
-what Cursor charged for on-demand usage and the tokens it reported today, yesterday, and in the last
-30 days, with a breakdown for each range. Ollama accounts show the same ranges on UTC days, with
-the usage value, tokens, and requests Ollama reports. ChatGPT accounts show the tokens by UTC day,
-and a workspace's credit limit.
-[Providers](docs/providers.md) lists what each one shows and what each sign-in grants.
 
 ## Features
 
-- **Menu bar.** The limits closest to running out show on their own, each named, up to the number you
-  set, with any others as a count like `+7`. When a provider has more than one account, its mark
-  carries the account name's initials. When an update is available, the app icon shows last, with a dot.
-- **Priority.** See which limits are running low or used up and which accounts need a refresh or a new
-  sign-in, under any metrics you pinned. Click an amount or a reset time to switch how it reads.
-- **All Usage.** A header per provider above a card, with each account's name and plan inside the
-  card. A limit is one line: its label, a level bar, its amount, and its reset. The bar is blue, orange
-  at 30% left, and red at 10% left. Click a value to flip
-  every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
-  to read where your pace lands at the reset, on a value to read its other side, on a reset to read
-  the other format, and on the warning or clock after an account's name to read why it is there.
-  A usage range shows the provider's total or sums the days it reported, and reads 0 when it reported
-  none. Open its breakdown to see model usage and whether any days are missing, including after
-  reopening the app. A balance shows even at $0. Extra Usage shows while the provider has it on, even
-  at $0, and hides while it is off.
-  Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
-- **Metrics per account.** An account's page in Accounts has a switch per metric to hide it everywhere,
-  a pin to list it under Pinned at the top of Priority, or under Running Out while it's running out,
-  and a handle to drag its metrics into order. Right-click a metric on the dashboard to pin or unpin it
-  there too.
-- **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
-  resets. Click the count or focus it and press Space to see when each expires and spend one.
-- **Share.** Rest the pointer on a provider's header and click the copy button at its right, or
-  right-click the provider and choose Share Screenshot, to copy a PNG of its header and card, with
-  every account, to the clipboard; from an account's right-click, that account alone. The picture uses
-  the account's name when you have set one and leaves an email out.
-- **Notifications.** Optional alerts when a limit falls under 30% or 10%, or may run out before its reset.
+- **Menu bar.** The limits closest to running out, at a glance.
+- **Priority.** What's running low, what's used up, and which accounts need you.
+- **All Usage.** Every account and limit in one place, with resets and your pace.
+- **Your layout.** Pin the metrics you care about, hide the rest, and drag everything into your order.
+- **Rate-limit resets.** See and spend Claude and ChatGPT resets.
+- **Share.** Copy a picture of your usage to the clipboard.
+- **Notifications.** A heads-up before a limit runs out.
 - **Global shortcut.** Toggle the panel from anywhere.
-- **[Command line](docs/cli.md).** Install the `openusage` command from Settings; it prints the usage
-  the app last fetched as JSON, for scripts and agents.
-- **[Automatic updates](docs/updates.md).** Signed, notarized in-app updates, with an optional beta
-  channel.
-- **[Proxy](docs/proxy.md).** Send provider requests through a SOCKS5, HTTP, or HTTPS proxy set in
-  `~/.openusage/config.json`.
+- **[Command line](docs/cli.md).** Your usage as JSON, for scripts and agents.
+- **[Automatic updates](docs/updates.md).** Signed, notarized updates, with an optional beta channel.
+- **[Proxy support](docs/proxy.md).** Route provider requests through a SOCKS5, HTTP, or HTTPS proxy.
 
 ## Documentation
 
-Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md),
-[accounts](docs/accounts.md), [CLIProxyAPI hubs](docs/cliproxyapi.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
-the [command line](docs/cli.md), [refreshing](docs/refreshing.md), [providers](docs/providers.md),
-[updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
+How everything works, in [docs/](docs/README.md):
 
-For working on the code, see [architecture](docs/architecture.md),
-[adding a provider](docs/adding-a-provider.md), and [debugging](docs/debugging.md).
+- [Dashboard](docs/dashboard.md)
+- [Accounts](docs/accounts.md) and [CLIProxyAPI hubs](docs/cliproxyapi.md)
+- [Providers](docs/providers.md)
+- [Menu bar](docs/menu-bar.md)
+- [Settings](docs/settings.md)
+- [Refreshing](docs/refreshing.md)
+- [Command line](docs/cli.md)
+- [Updates](docs/updates.md)
+- [Proxy](docs/proxy.md)
+- [Privacy](docs/privacy.md)
 
-## Requirements
+## License
 
-- macOS 15 (Sequoia) or later
-- Universal binary, for Apple Silicon and Intel Macs
+[MIT](LICENSE)
 
-## Building
+---
+
+<details>
+<summary><strong>Build from source</strong></summary>
 
 ```sh
 swift build                 # debug build
-script/test_quiet.sh        # run the test suite without it taking the keyboard or the screen
-./script/build_and_run.sh   # build and launch the dev app from dist/ (no install)
+script/test_quiet.sh        # run the tests without them taking the keyboard or the screen
+./script/build_and_run.sh   # build and launch the dev app from dist/
 ```
 
-`script/test_quiet.sh` takes `swift test` arguments such as `--filter`.
+`script/test_quiet.sh` takes `swift test` arguments such as `--filter`. The dev app has its own
+bundle identifier, so it runs beside an installed OpenUsage. See [debugging](docs/debugging.md).
 
-The dev app is staged as `dist/OpenUsage.app` with the bundle identifier
-`com.robinebers.openusage.dev`, so it runs beside an installed OpenUsage, never checks for updates, and
-never imports the OpenRouter and Z.ai keys 0.7.x saved.
+To learn the code, read the [architecture overview](docs/architecture.md),
+[adding a provider](docs/adding-a-provider.md), and [AGENTS.md](AGENTS.md).
 
-## Architecture
+</details>
 
-SwiftPM package, SwiftUI content hosted in an AppKit-owned `NSStatusItem` and a key-capable
-`NSPanel`, Swift 6 strict concurrency. `AccountStore` persists accounts, `CredentialVault` stores
-their credentials, `ProviderLogin` signs in, and one `AccountProviderRuntime` per account fetches
-usage and maps it to metric lines. See the [architecture overview](docs/architecture.md) and
-[AGENTS.md](AGENTS.md) for conventions.
+<details>
+<summary><strong>Releasing</strong></summary>
 
-## Releasing
+Push a `v*` tag on `main` to build, sign, notarize, and publish a release:
 
-Releases are automated: pushing a `v*` tag on `main` builds, signs, notarizes, and publishes a new
-version. A plain tag (`v0.8.0`) ships to everyone; a pre-release suffix (`v0.8.0-beta.1`) ships to
-the beta channel. The pipeline lives in
-[.github/workflows/release.yml](.github/workflows/release.yml), and the step-by-step is in the
+- A plain tag (`v0.8.0`) ships to everyone.
+- A pre-release tag (`v0.8.0-beta.1`) ships to the beta channel.
+
+The pipeline is [release.yml](.github/workflows/release.yml), and the steps are in the
 `release-swift` skill.
 
-### Release setup (one-time)
-
-The release workflow needs these repository secrets (Settings → Secrets and variables → Actions):
+The workflow needs these repository secrets (Settings → Secrets and variables → Actions):
 
 | Secret                       | What it is                                                            |
 | ---------------------------- | --------------------------------------------------------------------- |
@@ -162,32 +122,32 @@ The release workflow needs these repository secrets (Settings → Secrets and va
 | `POSTHOG_CLI_API_KEY`        | PostHog personal API key used to upload dSYMs for crash symbolication |
 | `POSTHOG_CLI_PROJECT_ID`     | numeric PostHog project ID the dSYMs upload to                        |
 
-Export the Developer ID Application cert (with its private key) from Keychain Access as a `.p12`,
-then `base64 -i DeveloperID.p12 | pbcopy`. App-specific passwords come from appleid.apple.com →
-Sign-In and Security → App-Specific Passwords. Generate the Sparkle EdDSA key pair once with Sparkle's
-`generate_keys` tool; the public and private values must be a matching pair or signing is silently
-skipped.
+- Export the Developer ID Application certificate, with its private key, from Keychain Access as a
+  `.p12`. Then run `base64 -i DeveloperID.p12 | pbcopy`.
+- Create the app-specific password at appleid.apple.com → Sign-In and Security → App-Specific
+  Passwords.
+- Generate the Sparkle key pair once with Sparkle's `generate_keys` tool. If the two keys don't match,
+  signing is silently skipped.
+- The `POSTHOG_CLI_*` secrets only upload dSYMs so crash reports symbolicate. Without
+  `POSTHOG_CLI_API_KEY`, the workflow skips the upload with a warning and the release still ships.
+  The key comes from PostHog → Settings → Personal API keys, and the project ID is the number in your
+  project URL.
+- Keep the repository public, because Sparkle fetches the DMG and appcast anonymously. After the first
+  release, confirm that Settings → Pages serves the `gh-pages` branch.
 
-The two `POSTHOG_CLI_*` secrets only upload debug symbols (dSYMs) so PostHog can symbolicate crash
-reports. `POSTHOG_CLI_API_KEY` is a PostHog personal API key (PostHog → Settings → Personal API keys)
-and `POSTHOG_CLI_PROJECT_ID` is the numeric ID from your project URL. The upload host is hardcoded in
-the workflow (`https://us.i.posthog.com`). These two do not block a release: if `POSTHOG_CLI_API_KEY`
-is unset the workflow skips the upload with a warning, and crash reports for that version show raw
-addresses instead of symbolicated stack traces.
+</details>
 
-The repository must be public (Sparkle fetches the DMG and appcast anonymously), and the appcast is
-served from GitHub Pages. Confirm Settings → Pages points at the `gh-pages` branch after the first
-release.
+<details>
+<summary><strong>Contributing</strong></summary>
 
-## Contributing
+Pull requests are issue-first:
 
-Issues are welcome. Pull requests are **strict and issue-first**: comment on an issue, wait for a
-maintainer to add the `approved` label and assign it to you, then reference it in your PR with
-`Fixes #123`. Automation closes external PRs without an approved issue assigned to their author, and
-warns when an accepted PR adds more than 1,000 lines. Read [CONTRIBUTING.md](CONTRIBUTING.md) before
-opening one. Report security issues privately per [SECURITY.md](SECURITY.md). The OpenUsage name and
-logo are covered by the [trademark policy](TRADEMARK.md).
+1. Comment on an issue.
+2. Wait for a maintainer to add the `approved` label and assign it to you.
+3. Open your PR with `Fixes #123`.
 
-## License
+Automation closes external PRs that skip this. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Report
+security issues privately per [SECURITY.md](SECURITY.md). The OpenUsage name and logo are covered by
+the [trademark policy](TRADEMARK.md).
 
-[MIT](LICENSE)
+</details>
