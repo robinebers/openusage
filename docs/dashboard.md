@@ -36,9 +36,9 @@ running low or used up stay visible.
 ## All Usage
 
 One provider after another, each a header above a card. The header is the provider's name and logo,
-and every account's name and plan sit inside the card above its rows. A single account named after
-the provider shows just its plan. With several accounts, each keeps a name you can drag. The card
-holds every metric that has data and that you have not hidden, in the order you set.
+and every account's name and plan sit inside the card above its rows. With several accounts, each
+keeps a name you can drag. The card holds every metric that has data and that you have not hidden, in
+the order you set.
 
 ## Hiding and ordering metrics
 
@@ -134,9 +134,9 @@ Named models can add up to less than 100% when attribution is partial.
 Click the copy button in the corner to copy a PNG of the details, with the provider's name and
 whichever of Cost or Tokens is showing, without the switch.
 
-**No Usage** means the range was read, the provider counted activity such as requests or tokens, and
-every reported figure was zero. If the provider reported only spend, a free request is possible, so the detail
-shows the amount, even when it is `$0`. A **No Usage** range has nothing to copy.
+When every figure the provider reported for a range is zero, such as a `$0` charge and nothing else,
+the details say "<Provider> didn't report any data for this range." for every provider. Such a range
+has nothing to copy.
 
 ## Rename
 

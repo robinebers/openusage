@@ -28,8 +28,7 @@ final class UsageBreakdownDetailTests: XCTestCase {
         XCTAssertTrue(zeros.isEmpty)
 
         let spendOnly = try breakdown([.spend: 0, .byokSpend: 0])
-        XCTAssertFalse(spendOnly.isEmpty, "a zero charge does not rule out free model requests")
-        XCTAssertEqual(spendOnly.figures, ["$0"])
+        XCTAssertTrue(spendOnly.isEmpty, "a zero charge and nothing else leaves nothing to show")
 
         let totals = try breakdown([.credits: 0, .tokens: 766_600_000])
         XCTAssertFalse(totals.isEmpty, "tokens without a charge are still usage")

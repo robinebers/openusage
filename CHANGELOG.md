@@ -78,8 +78,11 @@ shows only what each provider's API reports for the accounts you sign in to.
 - OpenRouter: a Management key adds Yesterday and Prior 30 Days from OpenRouter's activity. Resting
   the pointer on a range shows its BYOK spend, tokens, and top models. A standard key adds Budget and
   Free Requests.
-- Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
-  account shows its provider's name once, not `OpenRouter · OpenRouter`.
+- OpenRouter: Today, This Week, and This Month no longer show the BYOK an earlier build saved. BYOK
+  shows only when resting the pointer on a range.
+- Accounts: a new Cursor account is named after its email, not "Cursor Account".
+- Accounts: every account has a name the card shows. A blank name, or one that only repeats the
+  provider's, becomes `<Provider> Account`, such as `OpenRouter Account`, for existing accounts too.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
@@ -87,6 +90,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
   counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
   it: the charge, usage events, each kind of token, and the top models.
+- Dashboard: resting the pointer on a range with nothing but a zero total says `<Provider> didn't report
+  any data for this range.`, for every provider.
 - Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
   for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
   range shows what Ollama reported for it: requests, each kind of token, and the top models.

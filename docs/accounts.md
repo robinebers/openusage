@@ -20,7 +20,8 @@ Open it from the panel's **⋯** menu or press Return on the dashboard.
    - **Device code** (Copilot, Grok): the sheet shows a code. **Copy Code**, click **Open Browser**,
      and enter the code. The sheet closes when the provider confirms.
    - **API key** (Ollama, OpenCode, OpenRouter, Z.ai): create a key on the page the sheet links to,
-     paste it, and click **Add Account**. The key is added only once a usage read accepts it.
+     paste it, and click **Add Account**. The key is added only once a usage read accepts it. The
+     account is named after the provider, such as "OpenRouter Account".
    - **Organization Billing** (Copilot): enter the organization and a token from one of its owners or
      billing managers, and click **Add Account**. The account is named after the organization, and the
      same organization is not added twice.
@@ -40,7 +41,8 @@ A Claude account in two organizations counts as two accounts, and so does a Devi
 
 Click the name at the top of the account's page, double-click it on the dashboard, or choose
 **Rename** from its right-click menu. The field opens with the whole name selected. Return or a click
-elsewhere saves; Esc cancels.
+elsewhere saves; Esc cancels. An empty field keeps the old name, and a name that only repeats the
+provider's becomes "<Provider> Account", so every account has a name the card shows.
 
 ## Hide and order metrics
 

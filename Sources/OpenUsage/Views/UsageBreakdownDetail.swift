@@ -103,12 +103,10 @@ struct UsageBreakdownContent: View {
             VStack(spacing: 0) {
                 QuietRings(icon: provider.icon, side: 112, animates: animates)
                     .padding(.bottom, 12)
-                Text(breakdown.archivedTitle() == nil ? breakdown.window.noUsageTitle : "No Usage")
-                    .font(.system(size: 15, weight: .semibold))
-                    .padding(.bottom, 3)
-                Text("Nothing charged and no tokens counted.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                Text("\(provider.displayName) didn't report any data for this range.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 8)

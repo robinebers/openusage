@@ -74,6 +74,60 @@ final class OpenRouterProviderTests: XCTestCase {
         return values.first?.number
     }
 
+    /// A standard key and a Management key whose activity can't be read, each with nothing spent: Today,
+    /// This Week and This Month read $0 with nothing beside it, and the Today popup has nothing to show.
+    func testAKeyThatSpentNothingShowsZeroDollarsAndNoBYOK() async throws {
+        let standard = OpenRouterFixtures.standardKey
+            .replacingOccurrences(of: #""usage_daily":1.5,"usage_weekly":4,"usage_monthly":12"#, with: #""usage_daily":0,"usage_weekly":0,"usage_monthly":0"#)
+            .replacingOccurrences(of: "17.38", with: "0")
+        let handlers: [@Sendable (HTTPRequest) async throws -> HTTPResponse] = [
+            { request in
+                request.url.path() == "/api/v1/key"
+                    ? OpenRouterFixtures.response(200, standard)
+                    : OpenRouterFixtures.response(403, OpenRouterFixtures.forbidden)
+            },
+            { request in
+                switch request.url.path() {
+                case "/api/v1/keys": OpenRouterFixtures.response(200, OpenRouterFixtures.keysPage(1, daily: 0, weekly: 0, monthly: 0))
+                case "/api/v1/activity": OpenRouterFixtures.response(500)
+                default: OpenRouterFixtures.managementAccount(request)
+                }
+            }
+        ]
+        for handler in handlers {
+            let (runtime, _) = try runtime(handler)
+            let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { Self.now })
+
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
+
+            for key in ["today", "week", "month"] {
+                let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key })
+                XCTAssertEqual(store.data(for: descriptor).dashboardRow(now: Self.now).mark, .value("$0"), key)
+            }
+            let today = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "today" })
+            XCTAssertTrue(try XCTUnwrap(store.usageBreakdown(for: today)).isEmpty)
+        }
+    }
+
+    /// The build before rows went dollars-only saved BYOK beside them. This build never shows that snapshot,
+    /// even on a launch within the refresh interval, and reads OpenRouter instead.
+    func testASnapshotAnEarlierBuildSavedWithBYOKIsNotShown() async throws {
+        let (runtime, _) = try runtime(OpenRouterFixtures.managementAccount)
+        let defaults = isolatedDefaults()
+        let saved = ["Today", "This Week", "This Month"].map { label in
+            MetricLine.values(label: label, values: [MetricValue(number: 0, kind: .dollars), MetricValue(number: 0, kind: .dollars, label: "BYOK")])
+        }
+        ProviderSnapshotCache(userDefaults: defaults, storageKey: "openusage.providerSnapshots.v11")
+            .save([runtime.provider.id: ProviderSnapshot(provider: runtime.provider, plan: "Pay-as-you-go", lines: saved, refreshedAt: Self.now)])
+        let store = WidgetDataStore.forTesting([runtime], cache: ProviderSnapshotCache(userDefaults: defaults), defaults: defaults, now: { Self.now })
+
+        let outcome = await store.refresh(providerID: runtime.provider.id)
+
+        XCTAssertEqual(outcome, .refreshed)
+        let today = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "today" })
+        XCTAssertEqual(store.data(for: today).dashboardRow(now: Self.now).mark, .value("$26.50"))
+    }
+
     func testAManagementKeyShowsTheAccountsSpendSummedOverEveryPageOfKeys() async throws {
         let (runtime, http) = try runtime(OpenRouterFixtures.managementAccount)
 

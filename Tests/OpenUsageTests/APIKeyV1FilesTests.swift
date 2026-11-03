@@ -13,7 +13,7 @@ final class APIKeyV1FilesTests: XCTestCase {
         await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
 
         XCTAssertEqual(store.accounts.map(\.kind), [.openrouter, .zai])
-        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter", "Z.ai"])
+        XCTAssertEqual(store.accounts.map(\.label), ["OpenRouter Account", "Z.ai Account"])
         XCTAssertEqual(try store.accounts.map { try vault.load($0.id) }, [.apiKey("sk-or-saved"), .apiKey("zai-saved")])
         XCTAssertEqual(try String(contentsOf: home.appending(path: ".config/openusage/openrouter.json"), encoding: .utf8), #"{"apiKey":"sk-or-saved"}"#)
         XCTAssertEqual(try String(contentsOf: home.appending(path: ".config/openusage/zai.json"), encoding: .utf8), #"{"apiKey":"zai-saved"}"#)
