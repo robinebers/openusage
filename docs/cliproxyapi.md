@@ -1,107 +1,80 @@
 # CLIProxyAPI hubs
 
 [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) is a server that keeps sign-ins for
-several people or machines. Connect a hub once, and every Claude, ChatGPT, Antigravity, Devin, and
-Grok login on it shows in OpenUsage as an ordinary account. The hub owns the list of logins; OpenUsage
-mirrors it.
+several people or machines. Connect a hub, and its Claude, ChatGPT, Antigravity, Devin, and Grok
+logins show in OpenUsage as ordinary accounts.
+
+- The hub owns the list of logins. OpenUsage mirrors it.
+- You can connect more than one hub.
+- The hub must allow remote management (`allow-remote` in its config), unless it runs on this Mac.
 
 ## Connect a hub
 
-1. Click **+** at the top of the Accounts screen and click **CLIProxyAPI** at the bottom of the list.
-2. Enter the hub's address, such as `hub.example.com:8317`, `http://192.168.1.20:8317`, or
-   `http://mini.tail1234.ts.net:8317`, and its
-   management key. A pasted panel address (`…/management.html`) or API address (`…/v0/management`)
-   works too.
-3. Click **Connect**. OpenUsage reads the hub's login list once. If the address or the key is wrong,
-   the sheet says why and nothing is saved.
+1. Click **Add New Account** at the bottom of the Accounts screen, then **CLIProxyAPI**.
+2. Enter the hub's address, such as `hub.example.com:8317`, and its management key. A pasted panel
+   address (`…/management.html`) or API address (`…/v0/management`) works too.
+3. Click **Connect**. If the address or key is wrong, the sheet says why and nothing is saved.
 
-There is no list to pick from: every supported login on the hub appears at once, each at the bottom of
-its provider's accounts on the dashboard, named after its email.
+Every supported login on the hub appears at once, named after its email.
 
-You can connect more than one hub. Each hub has its own row, management key, and accounts.
-
-The hub must allow management from another machine (`allow-remote` in its config), unless it runs on
-this Mac.
-
-An address without `http://` or `https://` uses https. OpenUsage sends the management key over plain
-http only when you type `http://`, and only to this Mac, the local network, or Tailscale:
-
-- `localhost`, a private or link-local IP address, or a `.local` name.
-- A Tailscale MagicDNS name (`….ts.net`), or a Tailscale address in `100.64.0.0/10` or
-  `fd7a:115c:a1e0::/48`. Tailscale encrypts this traffic itself.
-
-For any other host, use https. If an https address to one of these hosts fails and the host answers
-over http, the sheet says the hub doesn't use https and gives the http address to try.
+An address without a scheme uses https. Plain `http://` works only for this Mac, the local network
+(`localhost`, private or link-local IPs, `.local` names), and Tailscale (`….ts.net`,
+`100.64.0.0/10`, `fd7a:115c:a1e0::/48`).
 
 ## Hub accounts
 
-A hub account has the same card, metrics, menu-bar stars, order, and reset buttons as an account you
-signed in directly. Its name carries the CLIProxyAPI mark on the dashboard, and its icon carries it on
-its page. In Accounts, hub accounts are listed on their hub's page, not in the list of accounts. Drag
-them on the dashboard to change their order.
+A hub account works like any other account and carries the CLIProxyAPI mark.
 
-The hub manages its logins, so a hub account's page has no **Remove Account…**; it says
-"Managed by <host>" instead, and **Back** returns to the hub's page. Renaming it, hiding metrics, and starring them work as for
-any account. A login that is also signed in directly shows twice, once with the mark.
+- It is listed on its hub's page in Accounts.
+- The hub manages it, so it has no **Remove Account…**.
+- A login that is also signed in directly shows twice.
 
 ## Staying in sync
 
-OpenUsage reads the hub's login list at launch, when the Accounts screen opens, and about once an
-hour. Then:
+OpenUsage reads the hub's login list at launch, when Accounts opens, and about once an hour.
 
 - A login added on the hub appears at the bottom of its provider's accounts.
-- A login removed on the hub disappears, with its stars, once two reads in a row miss it. A hub that
-  answers while it restarts, or with a short list, removes nothing.
-- A login disabled on the hub disappears, with its stars. Enabled again, it comes back as a new
-  account at the bottom.
-- A login renamed on the hub, or a ChatGPT login switched to another workspace, keeps its account,
-  name, and stars.
+- A login removed on the hub disappears once two reads in a row miss it.
+- A login disabled on the hub disappears. Enabled again, it comes back as a new account.
+- A renamed login, or a ChatGPT login on another workspace, keeps its account, name, and Priority
+  pins.
 
-If the Keychain refuses to save a login, the hub's page shows the error and the next read tries again.
-
-Logins for providers OpenUsage doesn't support yet are not shown. That includes Cursor: the hub's Cursor
-plugin holds a Cursor API key, and Cursor's usage reads need the session OpenUsage signs in with.
+Logins for unsupported providers don't show. That includes Cursor, because the hub holds a Cursor
+API key and Cursor's usage reads need OpenUsage's own sign-in.
 
 ## The hub in Accounts
 
-Connected hubs are listed under the accounts, one row each: the hub's address and how many accounts it
-mirrors. A warning sign means the last read failed. Click the row to open the hub's page, which shows:
+Each hub has a row under the accounts. A warning sign means the last read failed. The hub's page
+shows the last error, its accounts, and how many logins aren't supported yet.
 
-- The last read's error, if any.
-- The accounts the hub mirrors. Click one to open its page.
-- How many of the hub's logins OpenUsage doesn't support yet.
-
-- **Replace Management Key…** checks the new key with one read of the login list before saving it.
-  A refused key leaves the old key in place.
-- **Remove Hub…** asks first and names how many accounts go with the hub. It deletes those accounts
-  and the management key from this Mac. Nothing changes on the hub.
+- **Replace Management Key…** tests the new key before saving it. A refused key keeps the old one.
+- **Remove Hub…** deletes the hub's accounts and key from this Mac. Nothing changes on the hub.
 
 ## When something goes wrong
 
-| The card or row says | What happened | What to do |
-|---|---|---|
-| Can't reach the CLIProxyAPI hub at <host> | The hub is down or the address is wrong | Start the hub or check the address |
-| … rejected the management key | The hub's key changed | **Replace Management Key…** |
-| … blocked this Mac after too many wrong keys | The hub's 30-minute ban after five wrong keys | Wait, then replace the key |
-| … only allows management from its own machine | `allow-remote` is off | Turn it on in the hub's config |
-| … has its management API turned off | The hub has no management key, or the address isn't a hub | Set a key in its config, or fix the address |
-| … has no working sign-in for this login | The hub's own sign-in for this login expired | Sign the login in again on the hub |
-| This login is no longer on the CLIProxyAPI hub | The login was removed or renamed on the hub | Nothing: the next read updates the list |
-| … couldn't reach Claude / ChatGPT | The hub can't reach the provider | Check the hub's network |
-| Use https for <host> | The address is plain http to a host outside this Mac, the local network, and Tailscale | Connect with https |
-| This hub doesn't use https | The hub serves only plain http | Connect with the http address it gives |
-| The management key for the CLIProxyAPI hub at <host> is missing | The hub was saved by an earlier build, or its key was deleted | **Replace Management Key…**, or remove the hub |
-| … isn't the address its management key was saved for | The hub's address in the app's preferences changed | Remove the hub and connect it again |
+| The card or row says | Fix |
+|---|---|
+| Can't reach the CLIProxyAPI hub at <host> | Start the hub or check the address |
+| … rejected the management key | **Replace Management Key…** |
+| … blocked this Mac after too many wrong keys | Wait out the 30-minute ban, then replace the key |
+| … only allows management from its own machine | Turn on `allow-remote` in the hub's config |
+| … has its management API turned off | Set a management key in the hub's config, or fix the address |
+| … has no working sign-in for this login | Sign the login in again on the hub |
+| This login is no longer on the CLIProxyAPI hub | Nothing. The next read updates the list |
+| … couldn't reach Claude / ChatGPT | Check the hub's network |
+| Use https for <host> | Connect with https |
+| This hub doesn't use https | Connect with the http address it gives |
+| The management key for the CLIProxyAPI hub at <host> is missing | **Replace Management Key…**, or remove the hub |
+| … isn't the address its management key was saved for | Remove the hub and connect it again |
 
-After the hub rejects the key or bans this Mac, OpenUsage sends it nothing more until you replace the
-key, so a changed key never adds up to a ban. Until then, OpenUsage sends a hub one request at a
-time.
+After the hub rejects the key or bans this Mac, OpenUsage sends it nothing until you replace the
+key.
 
 ## What the management key can do
 
-The management key is the hub's admin key: it can read and change the hub's logins and settings.
-OpenUsage keeps it in a Keychain service of its own (`com.robinebers.openusage.cliproxy-hubs`),
-apart from account sign-ins, together with the address you connected the hub at. It sends the key only
-to that address, and only ever lists the hub's logins and sends usage reads (and reset claims you
-click) through the hub's `api-call`. The hub puts each login's own token into those requests, so no
-provider token ever reaches this Mac.
+The management key is the hub's admin key. It can read and change the hub's logins and settings.
+
+- OpenUsage keeps it in its own Keychain service, `com.robinebers.openusage.cliproxy-hubs`.
+- It sends the key only to the address you connected.
+- It only lists logins and sends usage reads and reset claims through the hub's `api-call`. The hub
+  adds each login's token, so no provider token reaches this Mac.

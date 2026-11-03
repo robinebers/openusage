@@ -1,106 +1,81 @@
 # Settings
 
-Open Settings from the panel's **⋯** menu or press **⌘,**. General, Display, Alerts, and Advanced sit
-under the title, and the chevron at the top left goes back. Every setting applies at once and survives
-relaunch.
+Open Settings from the panel's **⋯** menu or press **⌘,**. It has four tabs: General, Display,
+Alerts, and Advanced. Changes apply at once.
 
 ## General
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Launch at Login | switch | Registers OpenUsage as a login item, so it starts when you sign in to your Mac. |
-| Default Tab | Priority, All Usage | The tab the panel opens to, no matter which tab it was closed on. |
-| Global Shortcut | recorder | A keyboard shortcut that opens and closes the panel from any app. Click the field and press the keys. |
+- **Launch at Login.** Starts OpenUsage when you sign in to your Mac.
+- **Default Tab.** Priority or All Usage, the tab the panel opens to.
+- **Global Shortcut.** Opens and closes the panel from any app. Click the field and press the keys.
 
-## Priority Icons
+## Priority icons
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Preview | | Shows sample icons at the number you pick, smaller so any number fits. |
-| Show In Menu Bar | App Icon Only, Up to 1, Up to 2, Up to 3, Up to 4, Up to 5 | How many limits the menu bar strip shows, closest to running out first. Any others show as a count, like `+7`. Starts at Up to 3. See [Menu bar](menu-bar.md). |
+- **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
+  first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 
 ## Appearance
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Theme | System, Light, Dark | The panel's appearance. System follows macOS. |
-| Time Format | Auto, 12-hour, 24-hour | How exact times read. Auto follows your macOS locale. |
+- **Theme.** System, Light, or Dark.
+- **Time Format.** Auto (your macOS locale), 12-hour, or 24-hour.
 
 ## Usage display
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Show Usage As | Used, Left | Whether every bounded reading says `48% used` or `52% left`, on the dashboard and in the menu bar. A click on any limit's amount in the dashboard flips it too. |
-| Reset Times | Countdown, Exact Time | Whether resets read `Resets 3h 25m` or `Resets Wed 4 PM`. A click on any reset in the dashboard flips it too. |
+- **Show Usage As.** `48% used` or `52% left`, on the dashboard and in the menu bar.
+- **Reset Times.** `Resets 3h 25m` or `Resets Wed 4 PM`.
+
+Click a limit's amount or reset on the dashboard to flip either one.
 
 ## Notifications
 
-Three independent triggers, all off by default. Turning the first one on asks macOS for notification
-permission. While macOS has notifications off for OpenUsage, a footer under the switches says so and
-links to System Settings.
+All off by default. Turning the first one on asks macOS for permission.
 
-| Setting | What it sends |
-|---|---|
-| Almost Out | When a limit drops under 10%, as it turns red. |
-| Cutting It Close | When a limit drops under 30%, as it turns orange. |
-| Will Run Out | When a limit may run out before its reset. |
+- **Almost Out.** A limit drops under 10%.
+- **Cutting It Close.** A limit drops under 30%.
+- **Will Run Out.** A limit may run out before its reset.
 
-Each notification names the trigger, the provider, and the metric, and fires once per metric per reset
-window. Click it to open All Usage. The next time you open the panel yourself it uses your Default Tab.
+Each fires once per metric per reset window. Click one to open All Usage.
 
 ## Privacy
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Hide From Screen Share | switch | While your screen is shared or recorded, the menu bar shows the app icon instead of your usage. Off by default. See [Privacy](privacy.md). |
-| Help Make OpenUsage Better | switch | Whether the app sends the optional daily provider-refresh summaries described in [Privacy](privacy.md). The anonymous daily active ping and crash reports do not depend on this switch. |
+- **Hide From Screen Share.** Shows the app icon instead of your usage while your screen is
+  shared or recorded. Off by default.
+- **Help Make OpenUsage Better.** Sends optional daily provider-refresh summaries. The daily active
+  ping and crash reports don't depend on it.
 
-## Command Line
+See [Privacy](privacy.md).
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Terminal Helper | Install…, Uninstall | Links `/usr/local/bin/openusage` to the `openusage` command inside the app, after the macOS administrator prompt, or removes that link. A link left by another copy of OpenUsage (an earlier version, or a build in another folder) is replaced on Install. Reads **Unavailable** when something OpenUsage did not install already sits at that path. See [Command line](cli.md). |
+## Command line
+
+- **Terminal Helper.** **Install…** links `/usr/local/bin/openusage` to the app's `openusage`
+  command, after a macOS administrator prompt. **Uninstall** removes the link. It reads
+  **Unavailable** when something OpenUsage didn't install sits at that path. See
+  [Command line](cli.md).
 
 ## Debug
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Log Level | Error, Warning, Info, Debug | How much detail OpenUsage writes to the macOS log. Starts at Info. Choose Debug while you reproduce a problem. See [Debugging](debugging.md). |
+- **Log Level.** Error, Warning, Info (default), or Debug. Choose Debug while you reproduce a
+  problem. See [Debugging](debugging.md).
 
 ## Updates
 
-The dev build has no update feed, so it shows this section with every control disabled.
+- **Check Automatically.** Checks about once an hour and shows **Update Available** on the
+  dashboard.
+- **Beta Updates.** Includes pre-release builds.
+- **Check for Updates…** checks now.
 
-| Setting | Control | What it changes |
-|---|---|---|
-| Check Automatically | switch | Checks for a new version about once an hour and shows the **Update Available** banner on the dashboard when one is found. |
-| Beta Updates | switch | Adds pre-release builds to the checks. Turn it off to stay on your current version until the next stable release. |
-| Check for Updates… | button | Checks now and opens the update window. |
-
-See [Updates](updates.md).
+The dev build disables these. See [Updates](updates.md).
 
 ## Upgrading from 0.7.x
 
-0.7.x found your accounts on its own, so you add them again on the Accounts screen. The exception is an
-OpenRouter or Z.ai key you typed into 0.7.x, which it saved in `~/.config/openusage/openrouter.json` or
-`~/.config/openusage/zai.json`. On the first launch after the update, OpenUsage adds each saved key as
-an account when that provider has no account yet, 0.7.x had it on, and a usage read accepts the key. A
-provider you turned off in 0.7.x stays off: its key isn't read or sent. It does this once, so an
-account you remove later doesn't come back. If the provider rejects the key, it doesn't try again.
-If the usage read fails for any other reason, such as a Z.ai key with no active plan, or the Keychain
-doesn't save the key, it tries again on the next launch.
+0.7.x found your accounts on its own. Add them again on the Accounts screen.
 
-When you add the only account of a provider that was on in 0.7.x, it takes that provider's 0.7.x
-hidden metrics and order:
-
-- **Hidden metrics.** A metric 0.7.x showed neither on the dashboard nor in the menu bar starts hidden.
-  Metrics that 0.7.x did not have start shown.
-
-- **Metric order.** The metrics keep 0.7.x's order. Metrics that 0.7.x did not have go last.
-- **Provider order.** Each provider takes the place of its first enabled account in the saved 0.7.x order.
-
-When 0.7.x had several accounts of a provider on, the one it showed first gives the hidden metrics and
-order. Stars don't carry over: the menu bar picks its own limits.
-
-OpenUsage reads 0.7.x's layout and never changes it, and it deletes nothing that 0.7.x saved. If you go
-back to 0.7.x, it finds its stars and order as you left them.
+- **Saved keys.** On the first launch after the update, OpenUsage adds an OpenRouter or Z.ai key
+  that 0.7.x saved in `~/.config/openusage/openrouter.json` or `~/.config/openusage/zai.json`. It
+  does this only if the provider has no account yet, 0.7.x had it on, and a usage read accepts the
+  key. It never reads a key for a provider you turned off. A rejected key isn't tried again. Other
+  failures retry on the next launch. An account you remove later doesn't come back.
+- **Layout.** When you add the only account of a provider that was on in 0.7.x, it takes 0.7.x's
+  hidden metrics, metric order, and provider order. New metrics start shown and go last. Stars don't
+  carry over: the menu bar picks its own limits.
+- **Going back.** OpenUsage never changes or deletes what 0.7.x saved.
