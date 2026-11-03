@@ -2,12 +2,12 @@ import Foundation
 import XCTest
 @testable import OpenUsage
 
-/// While `CLIProxyHub.isEnabled` is off, a stored hub and an account's hub link do nothing: forged ones
-/// that reuse a direct account's id can't send its key anywhere.
+/// With hubs on, a forged hub record that reuses a direct account's id, and a forged hub link, send
+/// nothing from the real container: the account's key is never read as the hub's management key.
 @MainActor
-final class CLIProxyHubOffTests: XCTestCase {
-    func testAForgedHubAndHubLinkSendNothingWhileTheHubIsOff() async throws {
-        XCTAssertFalse(CLIProxyHub.isEnabled)
+final class CLIProxyHubForgedRecordTests: XCTestCase {
+    func testAForgedHubAndHubLinkSendNothingFromTheContainer() async throws {
+        XCTAssertTrue(CLIProxyHub.isEnabled)
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let direct = Account(kind: .openrouter, label: "Direct")
@@ -21,7 +21,8 @@ final class CLIProxyHubOffTests: XCTestCase {
         defaults.set(try JSONEncoder().encode([direct, linked]), forKey: AccountStore.storageKey)
         defaults.set(try JSONEncoder().encode([forgedHub]), forKey: AccountStore.hubsStorageKey)
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)) }
-        let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: vault), defaults: defaults, http: http)
+        let accounts = AccountStore(defaults: defaults, vault: vault, hubKeys: InMemoryHubKeyVault())
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
 
         container.startRefreshing()
         for _ in 0..<400 where !http.requests.contains(where: { $0.url.host() == "openrouter.ai" }) {

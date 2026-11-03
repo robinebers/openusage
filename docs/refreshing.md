@@ -10,6 +10,8 @@
 | **⌘R**, or clicking the footer's **Next update in …** | Every account, skipping the cache, the hourly reads and the wait after a failure, never a wait the provider asked for |
 | An account's **Refresh** menu item | Its accounts, the same way as ⌘R |
 | Claiming a rate-limit reset | That account, right after the result shows |
+| Launch, opening Accounts, and about hourly | Each [CLIProxyAPI hub](cliproxyapi.md#staying-in-sync)'s login list, which adds and removes its accounts |
+| Replacing a hub's management key | Every account from that hub |
 
 There is no setting for the interval. A wait a provider asked for (HTTP 429) holds for every trigger,
 ⌘R included. Accounts fetch in parallel, so a fast provider never waits for a slow one. Each account's

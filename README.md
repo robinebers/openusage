@@ -39,12 +39,16 @@ sign-in links to the page where you create the key. You can add several accounts
 OpenUsage checks for duplicate sign-ins before saving an account or a replacement key. See
 [Accounts](docs/accounts.md) for renaming and removing accounts.
 
+If your Claude, ChatGPT, Antigravity, Devin, or Grok logins live on a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)
+server, connect it once with its address and management key, and every login on it shows as an
+account. OpenUsage keeps the list in step with the hub. See [CLIProxyAPI hubs](docs/cliproxyapi.md).
+
 Account names and settings live in the app's own preferences. OAuth tokens and API keys live in the
 app's own Keychain service.
 
 After an update from 0.7.x, the OpenRouter and Z.ai keys you typed into 0.7.x are added as accounts
-once, and the first account you add for each provider takes that provider's 0.7.x
-hidden metrics and order. OpenUsage never changes 0.7.x's saved
+once, unless you turned that provider off in 0.7.x, and the first account you add for each provider
+takes that provider's 0.7.x hidden metrics and order. OpenUsage never changes 0.7.x's saved
 layout, so going back to 0.7.x finds its stars and order as you left them. See
 [Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
 
@@ -104,9 +108,9 @@ and a workspace's credit limit.
 ## Documentation
 
 Behaviour docs live in [docs/](docs/README.md): the [dashboard](docs/dashboard.md),
-[accounts](docs/accounts.md), the [menu bar](docs/menu-bar.md), [settings](docs/settings.md),
-the [macOS widgets](docs/macos-widgets.md), [command line](docs/cli.md), [refreshing](docs/refreshing.md),
-[providers](docs/providers.md),
+[accounts](docs/accounts.md), [CLIProxyAPI hubs](docs/cliproxyapi.md), the [menu bar](docs/menu-bar.md),
+[settings](docs/settings.md), the [macOS widgets](docs/macos-widgets.md), [command line](docs/cli.md),
+[refreshing](docs/refreshing.md), [providers](docs/providers.md),
 [updates](docs/updates.md), the [proxy](docs/proxy.md), and [privacy](docs/privacy.md).
 
 For working on the code, see [architecture](docs/architecture.md),

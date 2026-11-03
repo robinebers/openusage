@@ -197,6 +197,17 @@ cat >"$APP_CONTENTS/Info.plist" <<PLIST
       <key>CFBundleURLSchemes</key><array><string>$OPENUSAGE_URL_SCHEME</string></array>
     </dict>
   </array>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>ts.net</key>
+      <dict>
+        <key>NSIncludesSubdomains</key><true/>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
+      </dict>
+    </dict>
+  </dict>
 </dict>
 </plist>
 PLIST

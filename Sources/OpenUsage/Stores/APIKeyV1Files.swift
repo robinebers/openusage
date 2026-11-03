@@ -6,8 +6,9 @@ enum APIKeyV1Files {
     static let importedKey = "openusage.apiKeyFiles.v1.imported"
     static let developmentBundleIdentifier = "com.robinebers.openusage.dev"
 
-    /// Adds each saved key as an account of a provider that has none yet, once a usage read accepts it.
-    /// A provider is done once its key is saved or refused, so a key the user removes stays removed; a
+    /// Adds each saved key as an account of a provider that has none yet and that 0.7.x had on, once a usage
+    /// read accepts it. A provider is done once its key is saved, refused, or left off, so a key the user
+    /// removes stays removed and a provider the user turned off stays off; a
     /// check or Keychain write that fails for any other reason is tried again on the next launch. The
     /// development build leaves the keys alone, as it does the installed app's settings.
     @MainActor
@@ -22,7 +23,8 @@ enum APIKeyV1Files {
         for (kind, file) in [(ProviderKind.openrouter, "openrouter.json"), (.zai, "zai.json")] {
             let doneKey = "\(importedKey).\(kind.rawValue)"
             guard !defaults.bool(forKey: doneKey) else { continue }
-            if !accounts.accounts.contains(where: { $0.kind == kind }),
+            if !wasTurnedOff(kind, in: defaults),
+               !accounts.accounts.contains(where: { $0.kind == kind }),
                let key = key(at: home.appending(path: ".config/openusage/\(file)")) {
                 let runtime = AccountProviderRuntime(account: Account(kind: kind, label: kind.displayName), vault: accounts.credentialVault, http: http)
                 do {
@@ -44,6 +46,15 @@ enum APIKeyV1Files {
             }
             defaults.set(true, forKey: doneKey)
         }
+    }
+
+    /// 0.7.x saved the providers it had on, or, before that list existed, the ones the user turned off.
+    private static func wasTurnedOff(_ kind: ProviderKind, in defaults: UserDefaults) -> Bool {
+        let isKind = { (id: String) in id.prefix { $0 != "@" } == kind.rawValue }
+        if let enabled = defaults.stringArray(forKey: "openusage.enabledProviders.v1") {
+            return !enabled.contains(where: isKind)
+        }
+        return defaults.stringArray(forKey: "openusage.disabledProviders.v1")?.contains(where: isKind) ?? false
     }
 
     /// The key 0.7.x's key editor wrote, as `{"apiKey": "…"}`.

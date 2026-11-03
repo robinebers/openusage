@@ -164,6 +164,14 @@ extension WidgetDataStore {
     }
 }
 
+final class InMemoryHubKeyVault: HubKeyVault, @unchecked Sendable {
+    private let keys = OSAllocatedUnfairLock(initialState: [UUID: HubKey]())
+
+    func load(_ hubID: UUID) throws -> HubKey? { keys.withLock { $0[hubID] } }
+    func save(_ key: HubKey, for hubID: UUID) throws { keys.withLock { $0[hubID] = key } }
+    func delete(_ hubID: UUID) throws { keys.withLock { $0[hubID] = nil } }
+}
+
 final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
     private let lock = NSLock()
     private var credentials: [UUID: AccountCredential] = [:]

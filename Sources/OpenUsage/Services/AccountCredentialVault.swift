@@ -33,8 +33,30 @@ enum CredentialVaultError: LocalizedError {
 
 struct KeychainCredentialVault: CredentialVault {
     static let service = "com.robinebers.openusage.accounts"
+    private let items = KeychainItems(service: service)
 
     func load(_ id: UUID) throws -> AccountCredential? {
+        try items.load(id).map { try JSONDecoder().decode(AccountCredential.self, from: $0) }
+    }
+
+    func save(_ credential: AccountCredential, for id: UUID) throws {
+        try items.save(JSONEncoder().encode(credential), for: id)
+    }
+
+    func update(_ credential: AccountCredential, for id: UUID) throws {
+        try items.update(JSONEncoder().encode(credential), for: id)
+    }
+
+    func delete(_ id: UUID) throws {
+        try items.delete(id)
+    }
+}
+
+/// The generic-password items of one Keychain service, one per id.
+struct KeychainItems: Sendable {
+    let service: String
+
+    func load(_ id: UUID) throws -> Data? {
         var query = baseQuery(for: id)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -44,11 +66,10 @@ struct KeychainCredentialVault: CredentialVault {
         guard status == errSecSuccess, let data = item as? Data else {
             throw KeychainVaultError.status(status)
         }
-        return try JSONDecoder().decode(AccountCredential.self, from: data)
+        return data
     }
 
-    func save(_ credential: AccountCredential, for id: UUID) throws {
-        let data = try JSONEncoder().encode(credential)
+    func save(_ data: Data, for id: UUID) throws {
         let query = baseQuery(for: id)
         let attributes = [kSecValueData as String: data]
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
@@ -62,8 +83,8 @@ struct KeychainCredentialVault: CredentialVault {
         }
     }
 
-    func update(_ credential: AccountCredential, for id: UUID) throws {
-        let attributes = [kSecValueData as String: try JSONEncoder().encode(credential)]
+    func update(_ data: Data, for id: UUID) throws {
+        let attributes = [kSecValueData as String: data]
         let status = SecItemUpdate(baseQuery(for: id) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound { throw CredentialVaultError.missingCredential }
         guard status == errSecSuccess else { throw KeychainVaultError.status(status) }
@@ -79,7 +100,7 @@ struct KeychainCredentialVault: CredentialVault {
     private func baseQuery(for id: UUID) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: Self.service,
+            kSecAttrService as String: service,
             kSecAttrAccount as String: id.uuidString
         ]
     }
