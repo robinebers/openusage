@@ -16,13 +16,20 @@ final class AccountStore {
     @ObservationIgnored private var unreadableEntries: [Any]
     private let defaults: UserDefaults
     let credentialVault: any CredentialVault
+    let hubKeys: any HubKeyVault
     @ObservationIgnored private let makeID: () -> UUID
+    /// The hub accounts whose logins the last listing of their hub lacked.
+    @ObservationIgnored private var unlistedHubAccounts: Set<UUID> = []
 
     init(
-        defaults: UserDefaults = .standard, vault: any CredentialVault = KeychainCredentialVault(), makeID: @escaping () -> UUID = { UUID() }
+        defaults: UserDefaults = .standard,
+        vault: any CredentialVault = KeychainCredentialVault(),
+        hubKeys: any HubKeyVault = KeychainHubKeyVault(),
+        makeID: @escaping () -> UUID = { UUID() }
     ) {
         self.defaults = defaults
         credentialVault = vault
+        self.hubKeys = hubKeys
         self.makeID = makeID
         let stored = Self.load(from: defaults)
         accounts = stored.accounts.map { account in
@@ -150,16 +157,16 @@ final class AccountStore {
         accounts.filter { $0.hub?.hubID == hubID }
     }
 
-    /// Saves a newly connected hub and its management key. Its logins arrive with `mirror`.
+    /// Saves a newly connected hub and its management key, bound to the hub's address. Its logins arrive with `mirror`.
     func addHub(_ hub: CLIProxyHub, key: String) throws {
-        try credentialVault.save(.apiKey(key), for: hub.id)
+        try hubKeys.save(HubKey(key: key, url: hub.url), for: hub.id)
         hubs.append(hub)
         persistHubs()
     }
 
     func replaceHubKey(_ key: String, for hubID: UUID) throws {
-        guard hubs.contains(where: { $0.id == hubID }) else { return }
-        try credentialVault.save(.apiKey(key), for: hubID)
+        guard let hub = hubs.first(where: { $0.id == hubID }) else { return }
+        try hubKeys.save(HubKey(key: key, url: hub.url), for: hubID)
     }
 
     /// Removes a hub together with every account mirrored from it and its management key.
@@ -167,7 +174,7 @@ final class AccountStore {
         let mirrored = Set(accounts(onHub: hubID).map(\.id))
         do {
             for id in mirrored { try credentialVault.delete(id) }
-            try credentialVault.delete(hubID)
+            try hubKeys.delete(hubID)
         } catch {
             lastError = error.localizedDescription
             return AppLog.error(LogTag.auth("cliproxy"), "could not remove a hub's credentials: \(error.localizedDescription)")
@@ -180,38 +187,53 @@ final class AccountStore {
     }
 
     /// Makes the hub's mirrored accounts match its login list: a new login is added at the bottom of its
-    /// provider's accounts, a login gone from the hub or disabled on it is removed, and a renamed one is
-    /// relinked. The same listing applied twice changes nothing the second time.
-    func mirror(_ logins: [HubLogin], from hubID: UUID) {
+    /// provider's accounts, a login disabled on the hub is removed, a login gone from the hub is removed
+    /// once two listings in a row lack it, and a renamed one, or one switched to another ChatGPT workspace,
+    /// is relinked. The same listing applied twice changes nothing the second time. Throws when a Keychain
+    /// write fails, after applying the rest.
+    func mirror(_ logins: [HubLogin], from hubID: UUID) throws {
         guard let hub = hubs.first(where: { $0.id == hubID }) else { return }
-        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts)
+        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts, missingBefore: unlistedHubAccounts)
+        unlistedHubAccounts.subtract(accounts(onHub: hubID).map(\.id))
+        unlistedHubAccounts.formUnion(plan.missing)
         guard !plan.isEmpty else { return }
+        var failures: [any Error] = []
         var removed = Set<UUID>()
         for id in plan.removed {
             do {
                 try credentialVault.delete(id)
                 removed.insert(id)
             } catch {
-                AppLog.error(LogTag.auth("cliproxy"), "could not remove a login gone from \(hub.host): \(error.localizedDescription)")
+                failures.append(error)
             }
         }
         accounts.removeAll { removed.contains($0.id) }
+        unlistedHubAccounts.formUnion(Set(plan.removed).subtracting(removed))
         for index in accounts.indices {
-            if let link = plan.relinked[accounts[index].id] { accounts[index].hub = link }
-        }
-        for (kind, login) in plan.added {
-            let account = newAccount(kind: kind, label: login.label, hub: HubLink(hub: hub, login: login))
-            let extras = login.chatGPTAccountID.map { ["chatgpt_account_id": $0] } ?? [:]
+            guard let link = plan.relinked[accounts[index].id] else { continue }
             do {
-                try credentialVault.save(.oauth(OAuthTokens(accessToken: CLIProxyHubClient.tokenPlaceholder, extras: extras)), for: account.id)
+                if link.chatGPTAccountID != accounts[index].hub?.chatGPTAccountID { try credentialVault.save(link.credential, for: accounts[index].id) }
+                accounts[index].hub = link
+            } catch {
+                failures.append(error)
+            }
+        }
+        for (kind, label, link) in plan.added {
+            let account = newAccount(kind: kind, label: label, hub: link)
+            do {
+                try credentialVault.save(link.credential, for: account.id)
                 accounts.append(account)
             } catch {
-                AppLog.error(LogTag.auth("cliproxy"), "could not save a login from \(hub.host): \(error.localizedDescription)")
+                failures.append(error)
             }
         }
         AppLog.info(LogTag.auth("cliproxy"), "\(hub.host): \(plan.added.count) added, \(removed.count) removed, \(plan.relinked.count) relinked")
         persist()
         didChange?()
+        if let failure = failures.first {
+            AppLog.error(LogTag.auth("cliproxy"), "could not save \(failures.count) of \(hub.host)'s logins in the Keychain: \(failure.localizedDescription)")
+            throw ProviderError.unavailable("OpenUsage couldn’t save this hub’s logins in the Keychain. It tries again when Accounts opens.")
+        }
     }
 
     /// A card id keeps only the first 8 hex digits of the account's id, and two cards with one id crash

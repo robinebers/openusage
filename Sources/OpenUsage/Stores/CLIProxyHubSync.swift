@@ -34,7 +34,7 @@ final class CLIProxyHubSync {
     /// Connects a hub once its login list answers to the key, so a wrong URL or key saves nothing.
     func connect(url input: String, key: String) async throws {
         guard let url = CLIProxyHub.baseURL(from: input) else {
-            throw ProviderError.unavailable("Enter the hub’s address, like http://192.168.1.20:8317.")
+            throw ProviderError.unavailable("Enter the hub’s address, like https://hub.example.com or http://192.168.1.20:8317.")
         }
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw ProviderError.unavailable("Enter the hub’s management key.") }
@@ -89,9 +89,7 @@ final class CLIProxyHubSync {
         guard let hub = accounts.hubs.first(where: { $0.id == hubID }) else { return }
         syncedAt[hubID] = now()
         do {
-            guard case .apiKey(let key) = try accounts.credential(for: hubID) else {
-                throw ProviderError.unavailable("The management key for this hub is missing. Replace it.")
-            }
+            let key = try accounts.hubKeys.key(for: hubID, at: hub.url)
             record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hubID)
         } catch {
             guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
@@ -99,9 +97,16 @@ final class CLIProxyHubSync {
         }
     }
 
+    /// A failed Keychain write leaves the hub unread, so the next sync tries again.
     private func record(_ logins: [HubLogin], for hubID: UUID) {
         guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
-        accounts.mirror(logins, from: hubID)
+        do {
+            try accounts.mirror(logins, from: hubID)
+        } catch {
+            syncedAt[hubID] = nil
+            statuses[hubID] = .failed(error.localizedDescription)
+            return
+        }
         syncedAt[hubID] = now()
         statuses[hubID] = .synced(unsupported: logins.count { $0.kind == nil })
     }

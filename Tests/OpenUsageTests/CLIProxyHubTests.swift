@@ -46,18 +46,22 @@ final class CLIProxyHubTests: XCTestCase {
     func testAnAPIKeyEntryOrAnUncallableEntryIsNotMirrored() throws {
         let body = #"{"files":[{"id":"a","auth_index":"1","provider":"claude","account_type":"api_key"},{"id":"b","provider":"codex"},{"id":"c","auth_index":"3","provider":"codex"}]}"#
         let logins = try HubLogin.listing(from: Data(body.utf8))
-        XCTAssertEqual(logins.map(\.id), ["a", "c"], "an entry without an auth index can't be called")
-        XCTAssertEqual(logins.map(\.kind), [nil, .codex])
+        XCTAssertEqual(logins.map(\.kind), [nil, .codex, .codex])
+        XCTAssertNil(logins[1].authIndex)
+        let (store, _, hub) = try makeHub()
+        try store.mirror(logins, from: hub.id)
+        XCTAssertEqual(store.accounts.map(\.hub?.loginID), ["c"], "an entry without an auth index can't be called")
         XCTAssertThrowsError(try HubLogin.listing(from: Data("<html>".utf8)))
     }
 
-    func testAddAccountOffersNoHubWhileTheHubIsOff() {
-        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider))
+    func testAddAccountOffersTheHubLast() {
+        XCTAssertEqual(AddAccountChoice.all, ProviderKind.allCases.map(AddAccountChoice.provider) + [.cliproxyHub])
     }
 
     func testTheHubAddressIsCleanedFromWhatTheUserPastes() {
         let cases: [(String, String?)] = [
-            ("127.0.0.1:8317", "http://127.0.0.1:8317"),
+            ("127.0.0.1:8317", "https://127.0.0.1:8317"),
+            ("hub.example.com", "https://hub.example.com"),
             (" http://mini.local:8317/ ", "http://mini.local:8317"),
             ("http://192.168.1.20:8317/management.html#/usage", "http://192.168.1.20:8317"),
             ("https://hub.example.com/v0/management?x=1", "https://hub.example.com"),
@@ -73,7 +77,7 @@ final class CLIProxyHubTests: XCTestCase {
 
     func testConnectingMirrorsEverySupportedLoginAsAnOrdinaryAccount() throws {
         let (store, vault, hub) = try makeHub()
-        store.mirror(try HubLogin.listing(from: Data(Self.recordedListing.utf8)), from: hub.id)
+        try store.mirror(try HubLogin.listing(from: Data(Self.recordedListing.utf8)), from: hub.id)
 
         XCTAssertEqual(store.accounts.map(\.kind), [.claude, .claude, .claude, .codex])
         XCTAssertEqual(store.accounts.map(\.label).last, "codex-user@example.com")
@@ -85,20 +89,21 @@ final class CLIProxyHubTests: XCTestCase {
             .oauth(OAuthTokens(accessToken: "$TOKEN$", extras: ["chatgpt_account_id": "acct-dummy-0001"])),
             "the hub's token never reaches the Mac, and nothing is there to refresh"
         )
-        XCTAssertEqual(try vault.load(hub.id), .apiKey("mgmt-key"))
+        XCTAssertEqual(try store.hubKeys.load(hub.id), HubKey(key: "mgmt-key", url: hub.url))
+        XCTAssertNil(try vault.load(hub.id), "the management key isn't kept with the accounts' sign-ins")
     }
 
     func testMirroringTheSameListingTwiceChangesNothing() throws {
         let (store, vault, hub) = try makeHub()
         let logins = try HubLogin.listing(from: Data(Self.recordedListing.utf8))
-        store.mirror(logins, from: hub.id)
+        try store.mirror(logins, from: hub.id)
         let accounts = store.accounts
         let credentials = try accounts.map { try vault.load($0.id) }
         var changes = 0
         store.didChange = { changes += 1 }
 
-        store.mirror(logins, from: hub.id)
-        store.mirror(logins, from: hub.id)
+        try store.mirror(logins, from: hub.id)
+        try store.mirror(logins, from: hub.id)
 
         XCTAssertEqual(changes, 0)
         XCTAssertEqual(store.accounts, accounts)
@@ -108,18 +113,21 @@ final class CLIProxyHubTests: XCTestCase {
     func testTheMirrorFollowsLoginsAddedRemovedRenamedAndDisabledOnTheHub() throws {
         let (store, vault, hub) = try makeHub()
         store.add(kind: .claude, label: "Direct", credential: .oauth(OAuthTokens(accessToken: "direct")))
-        store.mirror([login("a", "claude"), login("b", "codex"), login("c", "claude")], from: hub.id)
+        try store.mirror([login("a", "claude"), login("b", "codex"), login("c", "claude")], from: hub.id)
         let b = try XCTUnwrap(store.accounts.first { $0.hub?.loginID == "b" })
         let c = try XCTUnwrap(store.accounts.first { $0.hub?.loginID == "c" })
         store.rename(c.id, to: "Renamed Here")
 
-        store.mirror([login("b", "codex", index: "moved"), login("c", "claude", disabled: true), login("d", "claude")], from: hub.id)
+        let next = [login("b", "codex", index: "moved"), login("c", "claude", disabled: true), login("d", "claude")]
+        try store.mirror(next, from: hub.id)
+        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "a", "b", "d"], "a disabled login disappears and a new one is added last")
+        try store.mirror(next, from: hub.id)
 
-        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "a gone or disabled login disappears and a new one is added last")
+        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "a login two listings lack disappears")
         XCTAssertEqual(store.accounts.first { $0.id == b.id }?.hub?.authIndex, "moved", "a renamed hub file is relinked, not re-added")
-        XCTAssertEqual(vault.ids.count, 3 + 1, "the gone and disabled logins' credentials are deleted; the hub key stays")
+        XCTAssertEqual(vault.ids.count, 3, "the gone and disabled logins' credentials are deleted")
 
-        store.mirror([login("b", "codex", index: "moved"), login("c", "claude"), login("d", "claude")], from: hub.id)
+        try store.mirror([login("b", "codex", index: "moved"), login("c", "claude"), login("d", "claude")], from: hub.id)
         XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d", "c"], "a login enabled again comes back as a new account, last")
         XCTAssertNotEqual(store.accounts.last?.id, c.id)
     }
@@ -127,7 +135,7 @@ final class CLIProxyHubTests: XCTestCase {
     func testRemovingTheHubRemovesItsAccountsAndKeyOnly() throws {
         let (store, vault, hub) = try makeHub()
         let direct = store.add(kind: .codex, label: "Direct", credential: .oauth(OAuthTokens(accessToken: "direct")))
-        store.mirror([login("a", "claude"), login("b", "codex")], from: hub.id)
+        try store.mirror([login("a", "claude"), login("b", "codex")], from: hub.id)
         XCTAssertEqual(store.accounts(onHub: hub.id).count, 2)
 
         store.removeHub(hub.id)
@@ -135,12 +143,13 @@ final class CLIProxyHubTests: XCTestCase {
         XCTAssertEqual(store.accounts.map(\.id), [direct.id])
         XCTAssertTrue(store.hubs.isEmpty)
         XCTAssertEqual(vault.ids, [direct.id])
+        XCTAssertNil(try store.hubKeys.load(hub.id))
         XCTAssertTrue(AccountStore(defaults: defaults, vault: vault).hubs.isEmpty, "the removal is saved")
     }
 
     func testAHubAndItsAccountsSurviveARelaunch() throws {
         let (store, vault, hub) = try makeHub()
-        store.mirror([login("a", "claude")], from: hub.id)
+        try store.mirror([login("a", "claude")], from: hub.id)
 
         let relaunched = AccountStore(defaults: defaults, vault: vault)
 
@@ -150,7 +159,7 @@ final class CLIProxyHubTests: XCTestCase {
 
     func testALoginOnAHubIsNeverADuplicateOfADirectSignIn() throws {
         let (store, vault, hub) = try makeHub()
-        store.mirror([login("a", "claude")], from: hub.id)
+        try store.mirror([login("a", "claude")], from: hub.id)
         let mirrored = try XCTUnwrap(store.accounts.first)
         try vault.update(.oauth(OAuthTokens(accessToken: "$TOKEN$", extras: [OAuthTokens.identityKey: "acct/org"])), for: mirrored.id)
 
@@ -163,7 +172,7 @@ final class CLIProxyHubTests: XCTestCase {
     private func makeHub() throws -> (AccountStore, RecordingVault, CLIProxyHub) {
         let vault = RecordingVault()
         defaults = isolatedDefaults()
-        let store = AccountStore(defaults: defaults, vault: vault)
+        let store = AccountStore(defaults: defaults, vault: vault, hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: URL(string: "http://mini.local:8317")!)
         try store.addHub(hub, key: "mgmt-key")
         return (store, vault, hub)
