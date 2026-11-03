@@ -3,20 +3,16 @@
 ## Run a local build
 
 ```sh
-./script/build_and_run.sh verify
+./script/build_and_run.sh verify   # build, sign, launch, and confirm it runs
+./script/build_and_run.sh logs     # launch and stream its log lines
 ```
 
-The script stops the dev build if it is running, builds the package, stages `dist/OpenUsage.app`,
-embeds Sparkle, signs the bundle with your Apple Development identity (ad hoc when none is installed),
-launches it, and confirms the process is up. The dev bundle id is `com.robinebers.openusage.dev`, so
-it keeps its own settings and Keychain items and runs beside an installed OpenUsage. It has no update
-feed, so the Updates section does not show.
-
-Every dev build shares one single-instance lock, so a copy launched while a dev build from another
-folder runs hands off to that copy and quits. `run` and `verify` then fail and print the running
-copy's path.
-
-`./script/build_and_run.sh logs` launches the app and streams its log lines.
+- The dev bundle id is `com.robinebers.openusage.dev`. It keeps its own settings and Keychain items
+  and runs beside an installed OpenUsage.
+- It has no update feed, so the Updates controls are disabled. It leaves alone the OpenRouter and Z.ai
+  keys 0.7.x saved.
+- Only one dev build runs at a time. If one from another folder is running, `run` and `verify` fail
+  and print its path.
 
 Widgets need an Apple Development identity and team id. The script infers the team from the signing
 certificate, or accepts `OPENUSAGE_TEAM_ID`. Without both, it warns and builds the host without widgets;
@@ -33,33 +29,20 @@ xcodebuild -project OpenUsageWidgets.xcodeproj -scheme OpenUsageWidgets \
 
 ## Read the logs
 
-OpenUsage logs through unified logging only, under the subsystem `OpenUsage`, one category per
-subsystem tag (`refresh`, `cache`, `http`, `auth`, `updates`, `config`, `statusitem`, `lifecycle`,
-`notifications`, and `plugin:<id>` and `auth:<id>` per account).
+OpenUsage logs through unified logging under the subsystem `OpenUsage`, with categories such as
+`refresh`, `http`, `auth`, `updates`, and `config`.
 
 ```sh
 log stream --info --predicate 'subsystem == "OpenUsage"'
 log stream --info --predicate 'subsystem == "OpenUsage" AND category == "refresh"'
-log show --last 1h --info --predicate 'subsystem == "OpenUsage"'
-```
-
-macOS keeps info lines in memory only, so `log show` finds them for a few minutes at most. Each
-refresh pass's `batch start` and `batch end` lines are notices, which it writes to disk, so this lists
-every pass after the fact:
-
-```sh
 log show --last 2h --predicate 'subsystem == "OpenUsage" AND category == "refresh"'
 ```
 
-Console.app shows the same lines; filter by subsystem.
-
-**Settings → Advanced → Log Level** sets how much is written, in every build. Info, the default, writes
-everything but debug lines. Debug adds them, and reading them needs `--debug` instead of `--info`.
-Warning keeps warnings and errors, and Error keeps errors only.
-
-The HTTP transport logs one line per exchange: method, host and path, status, and duration. It never
-logs a URL's query, a header, or a response body. Every message also passes `LogRedaction` before it
-is written, which masks tokens, keys, `account=` values, and home paths.
+- macOS keeps info lines in memory only, so `log show` finds them for a few minutes at most. Each
+  refresh pass's `batch start` and `batch end` lines go to disk, so the last command lists every pass.
+- **Settings → Advanced → Log Level** sets how much is written: Info (the default), Debug (read with
+  `--debug`), Warning, or Error.
+- Logs never hold a URL's query, a header, or a response body. Tokens, keys, and home paths are masked.
 
 ## Tests
 
@@ -68,5 +51,5 @@ script/test_quiet.sh
 script/test_quiet.sh --filter CursorTokenRefreshTests
 ```
 
-The script runs the suite niced without letting it take the keyboard or show a window, and fails the
-run if a test process ever came to the front.
+The script runs the suite niced, keeps it from taking the keyboard or the screen, and fails the run if
+a test process came to the front.

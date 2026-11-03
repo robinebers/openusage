@@ -1,0 +1,107 @@
+name: Test Build
+
+# Builds the same signed, notarized DMG a release builds, from any branch or commit, and uploads it as a
+# workflow artifact. It never tags, never creates a GitHub Release, and never touches gh-pages, so no
+# installed copy is offered this build. Start it from the Actions tab or with
+# `gh workflow run test-build.yml --ref main -f ref=<branch-or-sha>`.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch or commit SHA to build"
+        required: true
+        default: main
+        type: string
+      base_version:
+        description: "Approved version the test build previews; the run appends -test.<shortsha>"
+        required: true
+        default: 0.8.0-beta.1
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0          # full history so the CFBundleVersion (commit count) is correct
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Resolve test version
+        id: meta
+        env:
+          BASE_VERSION: ${{ inputs.base_version }}
+        run: |
+          [[ "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] \
+            || { echo "base_version must look like 0.8.0-beta.1, got: $BASE_VERSION" >&2; exit 1; }
+          VERSION="$BASE_VERSION-test.$(git rev-parse --short=7 HEAD)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION (build $(git rev-list --count HEAD)) from $(git rev-parse HEAD)"
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Resolve signing identity
+        run: |
+          IDENTITY="$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          [ -n "$IDENTITY" ] || { echo "No Developer ID Application identity found in the imported cert" >&2; exit 1; }
+          echo "CODESIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Write Sparkle private key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle_ed_private_key"
+          echo "SPARKLE_PRIVATE_KEY_FILE=$RUNNER_TEMP/sparkle_ed_private_key" >> "$GITHUB_ENV"
+
+      - name: Build, sign, and notarize the DMG
+        env:
+          SPARKLE_PUBLIC_KEY: ${{ secrets.SPARKLE_PUBLIC_KEY }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_APP_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          OPENUSAGE_VERSION: ${{ steps.meta.outputs.version }}
+        run: ./script/release.sh
+
+      # A private feed that lists only this DMG, for testing the in-app update on one Mac. Sparkle reads a
+      # SUFeedURL user default before the Info.plist value and needs an http(s) enclosure URL, so the
+      # enclosure points at a local web server that serves both downloaded files (see the release-swift
+      # skill). No --channel puts the item on the default channel, which stable and beta users both see.
+      - name: Generate test appcast
+        env:
+          DMG: OpenUsage-${{ steps.meta.outputs.version }}.dmg
+        run: |
+          GA="$(find .build/artifacts -type f -name generate_appcast 2>/dev/null | head -n1)"
+          [ -x "$GA" ] || { echo "generate_appcast not found under .build/artifacts" >&2; exit 1; }
+          mkdir -p test-feed
+          cp "dist/$DMG" "test-feed/$DMG"
+          cat "$SPARKLE_PRIVATE_KEY_FILE" | "$GA" \
+            --ed-key-file - \
+            --download-url-prefix "http://localhost:8000/" \
+            test-feed
+          grep -Eq "$DMG\"[^>]*sparkle:edSignature" test-feed/appcast.xml \
+            || { echo "Test appcast item for $DMG is missing or unsigned (SUPublicEDKey/private-key mismatch?)." >&2; exit 1; }
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist/OpenUsage-${{ steps.meta.outputs.version }}.dmg
+          archive: false
+          if-no-files-found: error
+
+      - name: Upload test appcast
+        uses: actions/upload-artifact@v7
+        with:
+          path: test-feed/appcast.xml
+          archive: false
+          if-no-files-found: error

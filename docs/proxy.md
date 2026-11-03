@@ -1,9 +1,11 @@
 # Proxy
 
-OpenUsage can send its provider requests through a proxy that you set in `~/.openusage/config.json`.
-The app has no setting for it.
+OpenUsage can send its provider requests through a proxy.
 
-## The file
+- Types: `socks5://`, `http://`, `https://`
+- Config file: `~/.openusage/config.json`
+- Default: off, so requests follow the macOS system proxy settings
+- UI: none
 
 ```json
 {
@@ -14,52 +16,24 @@ The app has no setting for it.
 }
 ```
 
-`url` takes a `socks5://`, `http://`, or `https://` proxy. Without a port, the scheme's default
-applies: 1080 for `socks5`, 80 for `http`, and 443 for `https`. With `https`, the connection to the
-proxy itself uses TLS.
+- Default ports: 1080 for `socks5`, 80 for `http`, 443 for `https`. With `https`, the connection to
+  the proxy uses TLS.
+- For a proxy sign-in, put it in the URL: `http://user:pass@proxy.example.com:8080`. Percent-encode an
+  `@` or `:` inside the user name or password. Any app you run can read the file.
+- OpenUsage reads the file once per launch. Quit and reopen it after a change.
+- It logs `proxy on` with the scheme, host, and port, or a `proxy off` error that says what to fix.
+  An unreadable file leaves proxying off. Neither line shows the password. See
+  [Debugging](debugging.md):
 
-A proxy that needs a sign-in takes the user name and password in the URL. Percent-encode an `@` or a
-`:` inside either one.
-
-```json
-{
-  "proxy": {
-    "enabled": true,
-    "url": "http://user:pass@proxy.example.com:8080"
-  }
-}
-```
-
-The file is plain text, so any app you run can read the password in it.
-
-## How OpenUsage reads it
-
-- OpenUsage reads the file once, before its first provider request after launch. Quit and reopen
-  OpenUsage after you change the file.
-- With no file, no `proxy` key, or `"enabled": false`, requests follow the macOS system proxy
-  settings.
-- With the proxy on, OpenUsage logs `proxy on` with the scheme, host, and port.
-- If OpenUsage cannot read or parse the file, it logs a `proxy off` error that says what to fix, and
-  requests follow the macOS system proxy settings. Neither line shows the user name or the password.
-
-Both lines are in the `config` category, and macOS keeps them on disk, so `log show` finds them later:
-
-```sh
-log show --last 1h --predicate 'subsystem == "OpenUsage" AND category == "config"'
-```
-
-[Debugging](debugging.md) has more on reading the log.
+  ```sh
+  log show --last 1h --predicate 'subsystem == "OpenUsage" AND category == "config"'
+  ```
 
 ## What goes through the proxy
 
-Every request OpenUsage sends to a provider goes through the proxy: usage reads, token renewals, and
-the token exchanges and device-code checks during sign-in. Requests to a
-[CLIProxyAPI hub](cliproxyapi.md) go through it too; the hub then calls the provider over its own
-network and its own proxy settings.
+Every provider request, sign-in token exchanges included, and requests to a
+[CLIProxyAPI hub](cliproxyapi.md). These don't:
 
-These do not:
-
-- The sign-in page, which opens in your browser and follows the browser's proxy settings.
-- The sign-in callback, which your browser sends to OpenUsage on `localhost`.
-- [Update](updates.md) checks and downloads, and the anonymous telemetry and crash reports described
-  in [Privacy](privacy.md). They follow the macOS system proxy settings.
+- The sign-in page and its `localhost` callback, which use your browser's proxy settings.
+- [Update](updates.md) checks and the telemetry in [Privacy](privacy.md), which follow the macOS system
+  proxy settings.

@@ -100,6 +100,13 @@ else
 fi
 ```
 
+## Test build (no release)
+
+`.github/workflows/test-build.yml` builds the same signed, notarized DMG from any branch or commit without a tag, a release, or a feed update, so nobody is offered it. Run `gh workflow run test-build.yml --ref main -f ref=<branch-or-sha>`. It versions the build `<base_version>-test.<shortsha>` (default base `0.8.0-beta.1`) and uploads two artifacts: the DMG and a test `appcast.xml` that lists only that DMG at `http://localhost:8000/`.
+
+- **Install test:** open the DMG and drag OpenUsage over the installed copy.
+- **In-app update test:** put both artifacts in one folder, run `python3 -m http.server 8000` there, run `defaults write com.robinebers.openusage SUFeedURL http://localhost:8000/appcast.xml`, restart OpenUsage, and click **Check for Updates…**. Sparkle reads that user default before the built-in feed. Afterwards run `defaults delete com.robinebers.openusage SUFeedURL`, or the app keeps checking the test feed.
+
 ## Changelog template
 
 Only include category sections that have entries.

@@ -1,37 +1,24 @@
 # Updates
 
-OpenUsage keeps itself up to date using [Sparkle](https://sparkle-project.org), the standard update
-framework for Mac apps. Updates are downloaded from OpenUsage's own release feed and verified before
-they install, so you always get a genuine, unmodified build.
+OpenUsage updates itself with [Sparkle](https://sparkle-project.org). It verifies every update before
+installing it.
 
-## How it works
-
-- **Automatic checks.** The app quietly checks for a new version in the background (about once an hour).
-  When one is found, an **Update Available** banner appears at the top of the popover instead of a
-  window popping up behind your other apps. Click **Install Update** to open the update window (release
-  notes, download, install) front and center. The banner's close button snoozes it; it comes back the
-  next time the app finds the update. While the banner is up, the menu bar also shows the app icon with
-  a dot at the far right.
-- **Manual check.** Choose **Check for Updates…** from the dashboard's **⋯** menu, or click it in
-  **Settings → Updates**, at any time.
-  For both manual checks and banner installs, OpenUsage brings itself to the foreground before opening
-  Sparkle so the update window doesn't get buried behind another app. Because OpenUsage normally lives
-  only in the menu bar, it briefly shows a Dock icon for the update session, then hides again.
-- **Turn it off.** The **Check Automatically** switch in **Settings → Updates** stops the
-  background checks. You can still check manually.
+- **Automatic checks.** About once an hour. A found update shows an **Update Available** banner at the
+  top of the panel. Click **Install Update** to open the update window. Closing the banner snoozes it
+  until the next check finds the update.
+- **Manual check.** **Check for Updates…** in the dashboard's **⋯** menu or in **Settings → Updates**.
+- **Turn it off.** **Settings → Updates → Check Automatically** stops the background checks. Manual
+  checks still work.
+- OpenUsage shows a Dock icon while the update window is open, then hides it again.
 
 ## Beta updates
 
-**Settings → Updates → Beta Updates** opts you into pre-release builds before they ship to
-everyone. Turn it off to go back to stable-only; you'll stay on your current version until the next
-stable release catches up.
-
-Everyone always receives stable releases — the beta option only *adds* pre-release builds on top.
+**Settings → Updates → Beta Updates** adds pre-release builds on top of stable releases. Turn it off to
+go back to stable only. You stay on your current version until the next stable release catches up.
 
 ## Where updates come from
 
-Update builds are published on OpenUsage's GitHub releases, and the list of available versions (the
-"appcast") is served from `https://robinebers.github.io/openusage/appcast.xml`. Each download is
-signed two ways — Apple notarization plus OpenUsage's own signature — and the app refuses anything that
-doesn't match. This is only available in the official signed release build, not in local developer
-builds.
+- Builds come from OpenUsage's GitHub releases. The appcast is
+  `https://robinebers.github.io/openusage/appcast.xml`.
+- Each download is notarized by Apple and signed by OpenUsage. The app refuses anything that doesn't match.
+- Only the official release build updates. Local developer builds don't.
