@@ -42,7 +42,8 @@ running low or used up stay visible.
 One provider after another, each a header above a card. The header is the provider's name and logo,
 and every account's name and plan sit inside the card above its rows. With several accounts, each
 keeps a name you can drag. The card holds every metric that has data and that you have not hidden, in
-the order you set.
+the order you set. Time ranges and Extra Usage spend always show: when the provider reports nothing for
+one, it reads 0.
 
 ## Hiding, pinning, and ordering metrics
 
@@ -128,7 +129,7 @@ When a saved breakdown is from an earlier reporting day, its preview and copied 
 
 A range adds up the days that supplied each figure; a figure the provider reported for the whole range
 wins. A quiet day or a day that could not be read adds nothing. For example, Last 30 Days can show the
-older days while Today is unavailable.
+older days while Today reads 0.
 
 The details show charges, tokens and the top five models, with the remaining named models grouped
 under **Other**. A bar shows the token split when the parts add up to the total. **Top Models** ranks
@@ -141,8 +142,8 @@ Click the copy button in the corner to copy a PNG of the details, with the provi
 whichever of Cost or Tokens is showing, without the switch.
 
 When every figure the provider reported for a range is zero, such as a `$0` charge and nothing else,
-the details say "<Provider> didn't report any data for this range." for every provider. Such a range
-has nothing to copy.
+or the provider reported nothing for it, the details say "<Provider> didn't report any data for this
+range." for every provider. Such a range has nothing to copy.
 
 ## Rename
 

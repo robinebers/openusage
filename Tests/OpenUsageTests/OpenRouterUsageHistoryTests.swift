@@ -120,7 +120,7 @@ final class OpenRouterUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime)["prior30"], "$43.50")
     }
 
-    func testAFailedActivityReadHidesItsRowsKeepsTheCardAndWaitsAnHour() async throws {
+    func testAFailedActivityReadZeroesItsRangesKeepsTheCardAndWaitsAnHour() async throws {
         let activity = TestSwitch<Int?>(500)
         let clock = TestClock(Self.now)
         let (store, runtime, http) = try makeAccount(activity: activity, clock: clock)
@@ -131,7 +131,7 @@ final class OpenRouterUsageHistoryTests: XCTestCase {
         await refresh(store, runtime)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(rows(store, runtime), ["today": "$26.50", "week": "$54", "month": "$112"])
+        XCTAssertEqual(rows(store, runtime), ["today": "$26.50", "yesterday": "$0", "week": "$54", "month": "$112", "prior30": "$0"])
         XCTAssertEqual(activityDates(http), ["all"])
 
         clock.set(Self.now.addingTimeInterval(3_660))

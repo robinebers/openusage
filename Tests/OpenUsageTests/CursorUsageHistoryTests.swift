@@ -169,7 +169,7 @@ final class CursorUsageHistoryTests: XCTestCase {
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), [:], "nothing read yet, so no row claims a value")
+        XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 0], "nothing read yet, so every range reads $0")
         let totalUsage = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "usage" })
         XCTAssertEqual(store.data(for: totalUsage).used, 25)
 
@@ -179,7 +179,8 @@ final class CursorUsageHistoryTests: XCTestCase {
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(spend(store, runtime), ["Last 30 Days": 35], "28 complete days at $1.25 after today and yesterday failed")
+        XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 35],
+                       "28 complete days at $1.25 after today and yesterday failed")
     }
 
     /// Each rate-limited request takes 15 seconds, so the wait has to start when the 429 arrives.
@@ -198,7 +199,7 @@ final class CursorUsageHistoryTests: XCTestCase {
             clock.set(answered.addingTimeInterval(wait - 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
             XCTAssertEqual(eventRequests(http).count, firstSweep, "no history read before the wait ends")
-            XCTAssertEqual(spend(store, runtime), [:])
+            XCTAssertEqual(spend(store, runtime), ["Today": 0, "Yesterday": 0, "Last 30 Days": 0])
 
             clock.set(answered.addingTimeInterval(wait + 1))
             _ = await store.refresh(providerID: runtime.provider.id, force: true)

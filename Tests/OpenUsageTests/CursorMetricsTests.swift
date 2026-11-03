@@ -111,7 +111,8 @@ final class CursorMetricsTests: XCTestCase {
         let (plan, data, paths) = try await refresh(usage: Self.individualUsage, planName: "Ultra")
 
         XCTAssertEqual(plan, "Ultra")
-        XCTAssertEqual(Set(data.keys), ["Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Credits"])
+        XCTAssertEqual(Set(data.keys), ["Total Usage", "Cursor Models", "Other Models", "Extra Usage", "Grok Bot", "Credits",
+                                        "Today", "Yesterday", "Last 30 Days"])
         XCTAssertEqual(data["Total Usage"]?.used, 25)
         XCTAssertEqual(data["Cursor Models"]?.used, 20)
         XCTAssertEqual(data["Other Models"]?.used, 40)
@@ -136,7 +137,8 @@ final class CursorMetricsTests: XCTestCase {
             )
 
             XCTAssertEqual(plan, "Enterprise", "GetPlanInfo says \(planName)")
-            XCTAssertEqual(Set(data.keys), ["Total Usage", "Requests", "Extra Usage", "Grok Bot"], planName)
+            XCTAssertEqual(Set(data.keys), ["Total Usage", "Requests", "Extra Usage", "Grok Bot", "Today", "Yesterday", "Last 30 Days"],
+                           planName)
             XCTAssertEqual(data["Requests"]?.kind, .count)
             XCTAssertEqual(data["Requests"]?.used, 120)
             XCTAssertEqual(data["Requests"]?.limit, 500)

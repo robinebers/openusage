@@ -3,7 +3,8 @@
 How each provider signs in and what its card shows. Every value comes from the provider's own API,
 except ChatGPT's credit value, an estimate at 4¢ a credit.
 OpenUsage computes no spend from logs and applies no model pricing; a metric the provider does not
-report stays hidden.
+report stays hidden. Time ranges (Today, Yesterday, This Week, and the like) and the Extra Usage rows of
+Claude, Cursor, and Copilot always show, at 0 when the provider reports nothing for them.
 
 | Provider | Sign-in | Card shows |
 |---|---|---|
@@ -53,7 +54,7 @@ one instead of returning to the app. The card reads `/api/oauth/usage` for the s
 Sonnet, and Fable windows and the extra-usage spend, and `/api/oauth/profile` once an hour for the
 plan, such as Pro, Max, or Ultra. A verified Ultra account has no 5-hour limit, so its card has no
 Session row. Extra Usage is a bar against the monthly limit, or reads like `$12.34 spent` when the
-account sets none.
+account sets none. With extra usage off, it reads `$0 spent`.
 
 The **Limit Resets** row counts the account's available rate-limit resets. Click the count to see
 when each expires. Choose **Use**, then **Reset** to spend one.
@@ -75,8 +76,8 @@ dollar amount for these ranges.
 
 The card reads the reports once an hour, on the first refresh of a new UTC day, and on ⌘R. Each
 report has its own cache and retry schedule. If the credit report is unavailable, the token counts
-still show. If today's or yesterday's counts cannot be read, Last 30 Days still includes the older
-days already read.
+still show. If today's or yesterday's counts cannot be read, that range reads 0 tokens, and Last 30
+Days still includes the older days already read.
 
 ## Cursor
 
@@ -102,7 +103,8 @@ The card reads the history one local day at a time, at most 4 days at once and f
 refresh. Today and yesterday are read on every refresh; an older day is read until one read of it
 succeeds. The days are kept in memory for each account, so the first refresh after a launch reads all
 30 days again. Last 30 Days sums the days read so far, even if today or yesterday could not be read.
-A failed day stays out of the sum. If Cursor rate-limits a
+A failed day adds nothing, and a range with no day read reads $0. Extra Usage reads `$0 spent` when
+on-demand usage is off. If Cursor rate-limits a
 history read, retries wait for its Retry-After or an hour when it gives no time.
 
 
@@ -117,7 +119,8 @@ If the project lookup failed, try refreshing again.
 ## Copilot
 
 Sign in with a GitHub device code. The card reads `/copilot_internal/user` for premium credits,
-extra-usage spend, and the chat and completion counts, and the plan.
+extra-usage spend, and the chat and completion counts, and the plan. Extra Usage reads 0 when the
+plan doesn't allow it.
 
 To see an organization's billing, add it as its own account: choose Copilot, then **Organization
 Billing**, and enter the organization and a token from an owner or billing manager. The card reads
@@ -194,7 +197,8 @@ A standard API key shows its own spend from `/api/v1/key`: Today, This Week, Thi
 when the key has a credit limit, **Budget** when a guardrail or workspace budget applies to it, and
 **Free Requests**, the account's free-model requests for the UTC day. A daily, weekly, or monthly limit
 resets at midnight UTC, and weeks start on Monday. OpenRouter lets only a Management key read the
-credits and the activity, so a standard key's card has no Balance, Yesterday, or Prior 30 Days.
+credits and the activity, so a standard key's card has no Balance, and its Yesterday and Prior 30 Days
+read $0.
 
 The card's right-click menu adds a **Credits** link to
 [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits).

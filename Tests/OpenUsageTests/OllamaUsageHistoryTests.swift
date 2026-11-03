@@ -111,12 +111,14 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertEqual(rows(store, runtime), Self.fullRows)
     }
 
-    func testALegacyPlanThatReportsOnlyRequestsShowsOnlyTheRequestsRow() async throws {
+    func testALegacyPlanThatReportsOnlyRequestsShowsItsRequestsAndZeroRanges() async throws {
         let (store, runtime, _, _) = try makeAccount(legacy: true)
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        XCTAssertEqual(rows(store, runtime), ["requests": "120 in 30 days"])
+        XCTAssertEqual(rows(store, runtime), [
+            "today": "$0 · 0 tokens", "yesterday": "$0 · 0 tokens", "last30": "$0 · 0 tokens", "requests": "120 in 30 days"
+        ])
     }
 
     func testASuccessfulReadCoversOmittedDaysWithoutInventingFigures() async {
@@ -133,13 +135,14 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertTrue(failed.days.isEmpty)
     }
 
-    func testAFailedReadHidesTheRowsKeepsTheCardAndWaitsAnHour() async throws {
+    func testAFailedReadZeroesTheRangesKeepsTheCardAndWaitsAnHour() async throws {
         let status = TestSwitch<Int?>(500)
         let (store, runtime, http, clock) = try makeAccount(usage: status)
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(rows(store, runtime), [:])
+        XCTAssertEqual(rows(store, runtime), ["today": "$0 · 0 tokens", "yesterday": "$0 · 0 tokens", "last30": "$0 · 0 tokens"],
+                       "Requests has no range to show")
         let monthly = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "monthly" })
         XCTAssertTrue(store.data(for: monthly).hasData)
 

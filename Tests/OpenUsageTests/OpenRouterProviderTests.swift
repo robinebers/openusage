@@ -74,8 +74,8 @@ final class OpenRouterProviderTests: XCTestCase {
         return values.first?.number
     }
 
-    /// A standard key and a Management key whose activity can't be read, each with nothing spent: Today,
-    /// This Week and This Month read $0 with nothing beside it, and the Today popup has nothing to show.
+    /// A standard key, and a Management key whose activity can't be read or is empty, each with nothing spent:
+    /// every range reads $0 with nothing beside it, and each popup has nothing to show.
     func testAKeyThatSpentNothingShowsZeroDollarsAndNoBYOK() async throws {
         let standard = OpenRouterFixtures.standardKey
             .replacingOccurrences(of: #""usage_daily":1.5,"usage_weekly":4,"usage_monthly":12"#, with: #""usage_daily":0,"usage_weekly":0,"usage_monthly":0"#)
@@ -92,6 +92,13 @@ final class OpenRouterProviderTests: XCTestCase {
                 case "/api/v1/activity": OpenRouterFixtures.response(500)
                 default: OpenRouterFixtures.managementAccount(request)
                 }
+            },
+            { request in
+                switch request.url.path() {
+                case "/api/v1/keys": OpenRouterFixtures.response(200, OpenRouterFixtures.keysPage(1, daily: 0, weekly: 0, monthly: 0))
+                case "/api/v1/activity": OpenRouterFixtures.response(200, #"{"data":[]}"#)
+                default: OpenRouterFixtures.managementAccount(request)
+                }
             }
         ]
         for handler in handlers {
@@ -100,12 +107,11 @@ final class OpenRouterProviderTests: XCTestCase {
 
             _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-            for key in ["today", "week", "month"] {
+            for key in ["today", "yesterday", "week", "month", "prior30"] {
                 let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key })
                 XCTAssertEqual(store.data(for: descriptor).dashboardRow(now: Self.now).mark, .value("$0"), key)
+                XCTAssertTrue(try XCTUnwrap(store.usageBreakdown(for: descriptor), key).isEmpty, key)
             }
-            let today = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "today" })
-            XCTAssertTrue(try XCTUnwrap(store.usageBreakdown(for: today)).isEmpty)
         }
     }
 

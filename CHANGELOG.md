@@ -24,6 +24,9 @@ shows only what each provider's API reports for the accounts you sign in to.
   Animations follow macOS's Reduce Motion setting.
 
 ### Changed
+- Dashboard: Today, Yesterday, and every other time range always show, at 0 when the provider reports
+  nothing for them. Claude, Cursor, and Copilot show Extra Usage at 0 when it's off. An account's page
+  still hides any of them with its switch.
 - Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
   bottom bar only while something is under it. The account name in an account page's header fades its
   hover highlight in.
