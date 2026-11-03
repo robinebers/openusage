@@ -8,7 +8,8 @@ mirrors it.
 ## Connect a hub
 
 1. Click **+** at the top of the Accounts screen and click **CLIProxyAPI** at the bottom of the list.
-2. Enter the hub's address, such as `hub.example.com:8317` or `http://192.168.1.20:8317`, and its
+2. Enter the hub's address, such as `hub.example.com:8317`, `http://192.168.1.20:8317`, or
+   `http://mini.tail1234.ts.net:8317`, and its
    management key. A pasted panel address (`…/management.html`) or API address (`…/v0/management`)
    works too.
 3. Click **Connect**. OpenUsage reads the hub's login list once. If the address or the key is wrong,
@@ -21,9 +22,14 @@ The hub must allow management from another machine (`allow-remote` in its config
 this Mac.
 
 An address without `http://` or `https://` uses https. OpenUsage sends the management key over plain
-http only when you type `http://`, and only to this Mac or the local network: `localhost`, a private
-or link-local IP address, or a `.local` name. The sheet warns that the key then crosses your network
-unencrypted. For any other host, use https.
+http only when you type `http://`, and only to this Mac, the local network, or Tailscale:
+
+- `localhost`, a private or link-local IP address, or a `.local` name.
+- A Tailscale MagicDNS name (`….ts.net`), or a Tailscale address in `100.64.0.0/10` or
+  `fd7a:115c:a1e0::/48`. Tailscale encrypts this traffic itself.
+
+For any other host, use https. If an https address to one of these hosts fails and the host answers
+over http, the sheet says the hub doesn't use https and gives the http address to try.
 
 ## Hub accounts
 
@@ -75,7 +81,8 @@ mirrors, how many of its logins OpenUsage doesn't support yet, and the last read
 | … has no working sign-in for this login | The hub's own sign-in for this login expired | Sign the login in again on the hub |
 | This login is no longer on the CLIProxyAPI hub | The login was removed or renamed on the hub | Nothing: the next read updates the list |
 | … couldn't reach Claude / ChatGPT | The hub can't reach the provider | Check the hub's network |
-| OpenUsage sends a management key over http only to this Mac or the local network | The address is plain http to another host | Connect with https |
+| Use https for <host> | The address is plain http to a host outside this Mac, the local network, and Tailscale | Connect with https |
+| This hub doesn't use https | The hub serves only plain http | Connect with the http address it gives |
 | The management key for the CLIProxyAPI hub at <host> is missing | The hub was saved by an earlier build, or its key was deleted | **Replace Management Key…**, or remove the hub |
 | … isn't the address its management key was saved for | The hub's address in the app's preferences changed | Remove the hub and connect it again |
 

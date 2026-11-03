@@ -278,6 +278,24 @@ final class AddAccountFlowTests: XCTestCase {
         flow.cancel()
     }
 
+    func testAHubErrorShowsOnlyAfterConnectAndClearsOnceTheUserTypes() async throws {
+        let flow = AddAccountFlow(store: makeStore(), connectHub: { _, _ in throw ProviderError.unavailable("Use https for hub.example.com.") })
+        flow.chooseHub()
+        flow.hubURL = "http://hub.example.com"
+        flow.apiKey = "mgmt-key"
+        XCTAssertNil(flow.errorMessage, "typing shows no error")
+
+        flow.connect()
+        try await waitUntil { flow.errorMessage != nil }
+        flow.hubURL = "https://hub.example.com"
+        XCTAssertNil(flow.errorMessage, "editing the address hides the error until Connect")
+
+        flow.connect()
+        try await waitUntil { flow.errorMessage != nil }
+        flow.apiKey = "other-key"
+        XCTAssertNil(flow.errorMessage, "editing the key hides the error until Connect")
+    }
+
     func testAddKeyWhileSavingStartsNoSecondSave() async throws {
         let store = makeStore()
         var started = 0
