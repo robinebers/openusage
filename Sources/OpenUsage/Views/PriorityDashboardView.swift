@@ -54,12 +54,7 @@ struct PriorityBoardList: View {
             .frame(maxWidth: .infinity, minHeight: 46)
         case .unavailable:
             accountNotices
-        case .allClear:
-            VStack(alignment: .leading, spacing: 0) {
-                sectionLabel("Running Out")
-                allClear
-            }
-        case .listed:
+        case .allClear, .listed:
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if !board.attention.isEmpty || board.showsClearRow { attentionSection }
                 if !board.usedUp.isEmpty { usedUpSection }
@@ -268,31 +263,6 @@ struct PriorityBoardList: View {
         .frame(height: 46)
         .padding(.horizontal, 4)
         .accessibilityElement(children: .combine)
-    }
-
-    private var allClear: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Circle().stroke(Self.green.opacity(0.10), lineWidth: 1).frame(width: 110, height: 110)
-                Circle().stroke(Self.green.opacity(0.20), lineWidth: 1).frame(width: 86, height: 86)
-                Circle().fill(Self.green.opacity(0.16)).frame(width: 60, height: 60)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(Self.green)
-            }
-            .frame(width: 112, height: 112)
-            .padding(.bottom, 12)
-            .accessibilityHidden(true)
-            Text("All Clear")
-                .font(.system(size: 15, weight: .semibold))
-                .padding(.bottom, 3)
-            Text("Nothing needs your attention right now.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 18)
-        .padding(.bottom, 22)
     }
 
     private var waitingRow: some View {

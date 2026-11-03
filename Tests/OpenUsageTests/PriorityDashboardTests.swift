@@ -102,7 +102,7 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         }
     }
 
-    /// Running Out keeps its header when all it holds is All Clear, with or without Pinned and Used Up around it.
+    /// All Clear is always the small row under the Running Out header, with or without Pinned and Used Up around it.
     func testRunningOutHasItsHeaderAboveAllClear() throws {
         let provider = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
         func line(_ title: String, used: Double) -> DashboardLine {
@@ -143,7 +143,15 @@ final class PriorityDashboardTests: QuietWindowTestCase {
 
         let alone = PriorityBoard.make(accounts: [DashboardAccount(provider: provider, lines: [session])], now: Date())
         XCTAssertEqual(alone.summary, .allClear)
-        XCTAssertTrue(inked(try render(alone), from: 0, to: 14), "no header above the lone All Clear")
+        let aloneShot = try render(alone)
+        XCTAssertTrue(inked(aloneShot, from: 0, to: 14), "no header above the lone All Clear")
+
+        let pinnedOnly = PriorityBoard.make(accounts: [DashboardAccount(provider: provider, lines: [session])],
+                                            pinned: [session.id], now: Date())
+        XCTAssertEqual(pinnedOnly.summary, .allClear)
+        for shot in [aloneShot, try render(pinnedOnly)] {
+            XCTAssertLessThan(CGFloat(shot.rep.pixelsHigh) / shot.scale - (try checkTop(shot)), 46, "the list ends with the 46 pt All Clear row, not the big All Clear")
+        }
 
         let used = line("Weekly", used: 100)
         let between = PriorityBoard.make(accounts: [DashboardAccount(provider: provider, lines: [session, used])],
