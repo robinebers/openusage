@@ -70,15 +70,15 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var updatesSection: some View {
         @Bindable var updater = updater
-        if updater.isActive {
-            Section("Updates") {
-                Toggle("Check Automatically", isOn: $updater.automaticallyChecksForUpdates)
-                Toggle("Beta Updates", isOn: $updater.betaChannelEnabled)
-                HStack {
-                    Spacer(minLength: 0)
-                    Button("Check for Updates…") { updater.checkForUpdates() }
-                        .disabled(!updater.canCheckForUpdates)
-                }
+        Section("Updates") {
+            Toggle("Check Automatically", isOn: $updater.automaticallyChecksForUpdates)
+                .disabled(!updater.isActive)
+            Toggle("Beta Updates", isOn: $updater.betaChannelEnabled)
+                .disabled(!updater.isActive)
+            HStack {
+                Spacer(minLength: 0)
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
             }
         }
     }
