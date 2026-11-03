@@ -47,8 +47,8 @@ Account names and settings live in the app's own preferences. OAuth tokens and A
 app's own Keychain service.
 
 After an update from 0.7.x, the OpenRouter and Z.ai keys you typed into 0.7.x are added as accounts
-once, and the first account you add for each provider takes that provider's 0.7.x
-hidden metrics and order. OpenUsage never changes 0.7.x's saved
+once, unless you turned that provider off in 0.7.x, and the first account you add for each provider
+takes that provider's 0.7.x hidden metrics and order. OpenUsage never changes 0.7.x's saved
 layout, so going back to 0.7.x finds its stars and order as you left them. See
 [Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
 

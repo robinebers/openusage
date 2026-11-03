@@ -60,6 +60,36 @@ final class APIKeyV1FilesTests: XCTestCase {
         XCTAssertEqual(http.requests.filter { $0.url == ZAIUsageClient.quotaURL }.count, 1, "a refused key is checked once")
     }
 
+    func testLeavesAProviderTheUserTurnedOffIn0716Off() async throws {
+        let openRouterFile = #"{"apiKey":"sk-or-saved"}"#
+        let home = try makeHome(openRouter: openRouterFile, zai: #"{"apiKey":"zai-saved"}"#)
+        let (store, vault) = makeStore()
+        let defaults = isolatedDefaults()
+        defaults.set(["claude@aaaa1111", "zai"], forKey: "openusage.enabledProviders.v1")
+        let http = acceptingHTTP()
+
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+
+        XCTAssertEqual(store.accounts.map(\.kind), [.zai], "the enabled provider still imports")
+        XCTAssertEqual(try store.accounts.map { try vault.load($0.id) }, [.apiKey("zai-saved")])
+        XCTAssertFalse(http.requests.contains { $0.url.host == "openrouter.ai" }, "a provider the user turned off sends no key check")
+        XCTAssertEqual(try String(contentsOf: home.appending(path: ".config/openusage/openrouter.json"), encoding: .utf8), openRouterFile)
+    }
+
+    func testLeavesAProviderOnAnOlderDisabledListOff() async throws {
+        let home = try makeHome(openRouter: #"{"apiKey":"sk-or-saved"}"#)
+        let (store, _) = makeStore()
+        let defaults = isolatedDefaults()
+        defaults.set(["openrouter"], forKey: "openusage.disabledProviders.v1")
+        let http = acceptingHTTP()
+
+        await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
+
+        XCTAssertTrue(store.accounts.isEmpty)
+        XCTAssertTrue(http.requests.isEmpty, "a provider the user turned off sends no key check")
+    }
+
     func testAKeyCheckThatCouldNotReachTheProviderIsTriedAgainOnTheNextLaunch() async throws {
         let home = try makeHome(openRouter: #"{"apiKey":"sk-or-saved"}"#)
         let (store, vault) = makeStore()

@@ -2,14 +2,19 @@
 
 ## Unreleased
 
+**Upgrading from 0.7.x:** add your accounts again from the **Accounts** screen. OpenUsage no longer
+picks up the sign-ins of the coding tools on your Mac, so most accounts don't carry over. The
+OpenRouter and Z.ai keys you saved in 0.7.x are added for you, unless you had turned that provider off.
+
 The new OpenUsage announced in [#1441](https://github.com/robinebers/openusage/issues/1441). The app
 shows only what each provider's API reports for the accounts you sign in to.
 
 ### Removed
 - Account discovery. OpenUsage no longer reads other tools' credentials, config files, Keychain items,
   databases, or logs. Sign in to each account from the new **Accounts** screen instead.
-- Spend and token tracking, model pricing, and the pricing supplement. The dashboard shows the limits
-  and dollar values a provider reports, nothing computed apart from ChatGPT's credit value (below).
+- Spend and token estimates from local logs, model pricing, and the pricing supplement. The dashboard
+  shows the limits and dollar values a provider reports, nothing computed apart from ChatGPT's credit
+  value (below).
 - iCloud sync of usage history (daily tokens and spend).
 - The log file. The app logs through unified logging only
   (`log stream --predicate 'subsystem == "OpenUsage"'`).
@@ -69,7 +74,8 @@ shows only what each provider's API reports for the accounts you sign in to.
   by provider (`.providers.codex`); `openusage codex | jq '.providers[]'` reads every ChatGPT account.
   `displayName` names the account the way the app does (`ChatGPT · Work`).
   `schema` is now `openusage.limits.v2`, so a script can tell this shape from 0.7.x's `v1`.
-  The `errors` key is gone: the command no longer refreshes, and a failing account shows `"stale": true`.
+  The `errors` key is gone: the command no longer refreshes, and an account shows `"stale": true` once
+  its last fetch is past `expiresAt`.
   `expiresAt`, the moment an account turns stale, is 10 minutes after `fetchedAt` instead of 5, when
   the app shows its clock next to the account.
   Exit code `4` now means nothing has been fetched yet for the named accounts, not that a refresh failed.
@@ -98,44 +104,70 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account".
 - Accounts: every account has a name the card shows. A blank name, or one that only repeats the
   provider's, becomes `<Provider> Account`, such as `OpenRouter Account`, for existing accounts too.
-- Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
-  and usage they carry stay off disk, and every read goes to the provider.
+- Provider responses are no longer saved to a cache under `~/Library/Caches`. The last fetched usage is
+  saved on this Mac in the app's own preferences, with account names and the layout.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
 - Claude: the plan reads Max or Ultra, Anthropic's new names for Max 5x and Max 20x.
-- Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
-  counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
-  it: the charge, usage events, each kind of token, and the top models.
+- Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, and resting the pointer on a
+  range shows what Cursor reported for it: the charge, usage events, each kind of token, and the top
+  models.
 - Dashboard: resting the pointer on a range with nothing but a zero total says `<Provider> didn't report
   any data for this range.`, for every provider.
 - Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
   for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
   range shows what Ollama reported for it: requests, each kind of token, and the top models.
-- ChatGPT: Today, Yesterday, and Last 30 Days show the credits charged and the tokens counted on UTC
-  days, a Turns row counts the last 30 days' turns, and Credit Limit shows a workspace's spending limit.
-  Resting the pointer on a range shows what ChatGPT reported for it.
+- ChatGPT: Today, Yesterday, and Last 30 Days show the tokens counted on UTC days, and Credit Limit
+  shows a workspace's spending limit. Resting the pointer on a range shows what ChatGPT reported for it.
 - Grok: a new sign-in no longer asks for `profile` or `api:access`, so its token can't run Grok
   models. Add the account again to drop them from an existing sign-in.
 - Accounts: connect a CLIProxyAPI server with its address and management key, and its Claude,
   ChatGPT, Antigravity, Devin, and Grok logins show as accounts, kept in step with the server. A login
   you also signed in directly shows twice; the hub's copy carries the CLIProxyAPI mark.
+- Panel: it is exactly as tall as its content, with no empty space under a short list, and its top edge
+  no longer jumps while it resizes. On macOS 15 it grows with the slide back from Accounts, not after it.
+- Accounts: accounts keep one order on every screen, grouped by provider, and an account keeps its place
+  when another account of its provider is removed.
+- Accounts: a saved account this build can't read no longer hides the others, and it is kept as it was.
+- Accounts: renaming an account keeps ⌘Z undo for the layout. Hiding every metric shows a line pointing
+  to Accounts, not the Add an Account screen.
+- Accounts: replacing a key that was waiting out a rate limit reads the new key at once.
+- Copilot: an organization account's right-click menu opens its **Organization Billing** page.
+- Sign-ins: Claude and Antigravity send a random `state`, never the PKCE verifier. A pasted Devin token
+  is masked.
+- Sign-ins: a stray request to the sign-in callback, or a network error during a device-code sign-in,
+  no longer ends the sign-in.
+- Sign-ins: a Claude sign-in whose profile can't be read fails with **Try Again** instead of adding an
+  account with no identity, and **Sign In Again** always checks the new sign-in with its own request.
+- Antigravity: a refused token is renewed once, as in 0.7.16, and a failed project lookup is tried again
+  on the next refresh instead of reading as an expired sign-in.
+- Refresh: one stuck read no longer stalls every refresh and notification.
+- Rate limits: a manual refresh, an early sign-in renewal, and a Claude request that finishes late all
+  respect the provider's newest rate-limit wait. Copilot reads GitHub's rate-limit 403 as a rate limit,
+  not a rejected token, and Antigravity keeps the wait when both of its hosts answer 429.
+- Claude: once a reset spends a grant's last reset, a reset left on another grant can be claimed without
+  waiting for the next hourly check.
+- Cursor: a usage event without tokens adds 0 tokens, so it no longer hides its range's token total.
+- Notifications: Settings reads the notification permission from macOS each time, so a permission
+  turned off in System Settings shows as off.
 
 ### Kept
 - Automatic updates through Sparkle, with the same release feed, the beta channel, and the update
   banner.
 - **Check for Updates…** in the dashboard's **⋯** menu, between Settings and Report an Issue…, as in 0.7.x.
   The dev build shows it and the Settings Updates section disabled instead of hiding them.
-- Anonymous telemetry through PostHog, with the same opt-out in Settings. Anonymous crash reports
-  are always sent; they are not optional.
+- Anonymous telemetry through PostHog, with the same opt-out in Settings for extra analytics. An
+  anonymous daily active ping and crash reports are always sent; they are not optional.
 - Notifications, keyboard shortcuts, Launch at Login, Theme, and Time Format.
 - The Almost Out, Cutting It Close, and Will Run Out switches in Settings, named after the alerts they
   send. A line under each says when it fires, in place of 0.7.x's info button.
 - The proxy setting in `~/.openusage/config.json`, which now covers sign-in too and logs an error
   when the file is invalid.
 - Your 0.7.x hidden metrics, metric order, and provider order, on the first account you add for each
-  provider. Stars don't carry over. 0.7.x's saved layout stays on disk unchanged, so a downgrade
-  finds it as it was.
+  provider, from the account 0.7.x had on. Stars don't carry over. 0.7.x's saved layout stays on disk
+  unchanged, so a downgrade finds it as it was.
 - The OpenRouter and Z.ai keys you typed into 0.7.x, added once as accounts on the first launch when
-  the provider has no account yet and the key still passes a usage read. The key files stay unchanged.
+  the provider has no account yet, 0.7.x had it on, and the key still passes a usage read. A key that
+  couldn't be checked or saved is tried again on the next launch. The key files stay unchanged.
 - Hide From Screen Share, which shows the app icon in the menu bar instead of usage while the
   screen is shared or recorded.
 - ChatGPT's Extra Usage row shows the credits' dollar value, an estimate at 4¢ a credit.
