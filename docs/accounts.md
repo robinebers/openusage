@@ -44,11 +44,12 @@ Click the name at the top of the account's page, double-click it on the dashboar
 elsewhere saves; Esc cancels. An empty field keeps the old name, and a name that only repeats the
 provider's becomes "<Provider> Account", so every account has a name the card shows.
 
-## Hide and order metrics
+## Hide, pin, and order metrics
 
 An account's page lists its metrics. Turn a switch off to hide that metric from All Usage, Priority,
-the menu bar, and notifications, and drag a handle to reorder the account's metrics. See
-[Hiding and ordering metrics](dashboard.md#hiding-and-ordering-metrics).
+the menu bar, and notifications. Click the pin beside a shown metric's switch to list it under Pinned at
+the top of Priority. Drag a handle to reorder the account's metrics. See
+[Hiding, pinning, and ordering metrics](dashboard.md#hiding-pinning-and-ordering-metrics).
 
 ## Replace an API key
 

@@ -37,6 +37,7 @@ final class LayoutStore {
 
         state = LayoutState(
             hiddenMetricIDs: saved.hiddenMetricIDs.filter { registry.descriptor(id: $0) != nil },
+            priorityPinIDs: saved.priorityPinIDs.filter { registry.descriptor(id: $0) != nil },
             providerOrder: saved.providerOrder,
             metricOrderByProvider: saved.metricOrderByProvider.filter { registry.provider(id: $0.key) != nil },
             seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil }
@@ -72,7 +73,22 @@ final class LayoutStore {
         recordingUndoStep {
             guard registry.descriptor(id: descriptorID) != nil else { return false }
             if shown { return state.hiddenMetricIDs.remove(descriptorID) != nil }
+            state.priorityPinIDs.remove(descriptorID)
             return state.hiddenMetricIDs.insert(descriptorID).inserted
+        }
+    }
+
+    func isMetricPinned(_ descriptorID: String) -> Bool {
+        state.priorityPinIDs.contains(descriptorID)
+    }
+
+    /// Only a shown metric can be pinned.
+    @discardableResult
+    func setMetric(_ descriptorID: String, pinned: Bool) -> Bool {
+        recordingUndoStep {
+            guard registry.descriptor(id: descriptorID) != nil else { return false }
+            if !pinned { return state.priorityPinIDs.remove(descriptorID) != nil }
+            return isMetricShown(descriptorID) && state.priorityPinIDs.insert(descriptorID).inserted
         }
     }
 
