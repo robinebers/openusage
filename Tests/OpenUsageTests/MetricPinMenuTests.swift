@@ -93,6 +93,7 @@ final class MetricPinMenuTests: QuietWindowTestCase {
     private let accountMenu = ["Refresh", "Rename", "Edit Account…", "", "Share Screenshot"]
 
     func testRightClickingAMetricOnACardPinsOrUnpinsItAndTheAccountNameHasNoPin() async throws {
+        try QuietTestProcess.requireFocus()
         let hosted = try hostDashboard(tab: .allUsage)
         try await waitUntil { [hosted.account, hosted.session, hosted.weekly].allSatisfy { hosted.frames.byID[$0] != nil } }
         let session = try XCTUnwrap(hosted.frames.byID[hosted.session])
@@ -113,6 +114,7 @@ final class MetricPinMenuTests: QuietWindowTestCase {
     }
 
     func testRightClickingAPinnedRowOnPriorityUnpinsItAndAnyOtherRowPinsIt() async throws {
+        try QuietTestProcess.requireFocus()
         let hosted = try hostDashboard(tab: .priority) { $0.session }
         try await Task.sleep(for: .milliseconds(300))
         /// The menus down the middle of the tab, top to bottom, one per row.
