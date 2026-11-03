@@ -50,7 +50,7 @@ final class AccountStore {
     /// own becomes the provider's default account name.
     static func name(_ label: String, for kind: ProviderKind) -> String {
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty || name.caseInsensitiveCompare(kind.displayName) == .orderedSame ? kind.defaultAccountLabel : name
+        return name.isEmpty || name.caseInsensitiveCompare(kind.displayName) == .orderedSame ? "\(kind.displayName) Account" : name
     }
 
     static func load(from defaults: UserDefaults) -> (accounts: [Account], unreadableEntries: [Any]) {

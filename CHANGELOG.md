@@ -77,8 +77,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - OpenRouter: a Management key adds Yesterday and Prior 30 Days from OpenRouter's activity. Resting
   the pointer on a range shows its BYOK spend, tokens, and top models. A standard key adds Budget and
   Free Requests.
-- OpenRouter: Today, This Week, and This Month show dollars only, also when the card first shows what an
-  earlier build saved. BYOK shows only when resting the pointer on a range.
+- OpenRouter: Today, This Week, and This Month no longer show the BYOK an earlier build saved. BYOK
+  shows only when resting the pointer on a range.
 - Accounts: a new Cursor account is named after its email, not "Cursor Account".
 - Accounts: every account has a name the card shows. A blank name, or one that only repeats the
   provider's, becomes `<Provider> Account`, such as `OpenRouter Account`, for existing accounts too.

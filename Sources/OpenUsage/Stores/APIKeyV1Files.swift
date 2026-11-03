@@ -28,7 +28,7 @@ enum APIKeyV1Files {
                 do {
                     try await runtime.readSnapshot(using: .apiKey(key))
                     if !accounts.accounts.contains(where: { $0.kind == kind }) {
-                        let account = accounts.add(kind: kind, label: kind.defaultAccountLabel, credential: .apiKey(key))
+                        let account = accounts.add(kind: kind, label: kind.displayName, credential: .apiKey(key))
                         guard accounts.accounts.contains(where: { $0.id == account.id }) else {
                             AppLog.warn(.config, "could not save the \(kind.displayName) key 0.7.x saved in \(file), trying again next launch")
                             continue

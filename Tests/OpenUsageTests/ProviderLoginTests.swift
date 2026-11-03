@@ -225,13 +225,13 @@ final class ProviderLoginTests: XCTestCase {
         }
     }
 
-    func testOllamaKeyLoginUsesTheDefaultNameWithoutAnEmail() async throws {
+    func testOllamaKeyLoginKeepsTheProviderNameWithoutAnEmail() async throws {
         for (account, status) in [(#"{"Name":"dev","Plan":"free"}"#, 200), (#"{"Email":""}"#, 200), ("{}", 401)] {
             let http = Self.ollamaHTTP(account: account, status: status)
 
             let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
 
-            XCTAssertEqual(result.label, "Ollama Account")
+            XCTAssertEqual(result.label, "Ollama")
         }
     }
 

@@ -109,26 +109,23 @@ final class OpenRouterProviderTests: XCTestCase {
         }
     }
 
-    /// The build before this row went dollars-only saved BYOK beside them, and a launch within the refresh
-    /// interval shows that saved snapshot without reading OpenRouter.
-    func testRowsFromASnapshotAnEarlierBuildSavedShowDollarsOnly() async throws {
-        let (runtime, http) = try runtime(OpenRouterFixtures.managementAccount)
+    /// The build before rows went dollars-only saved BYOK beside them. This build never shows that snapshot,
+    /// even on a launch within the refresh interval, and reads OpenRouter instead.
+    func testASnapshotAnEarlierBuildSavedWithBYOKIsNotShown() async throws {
+        let (runtime, _) = try runtime(OpenRouterFixtures.managementAccount)
         let defaults = isolatedDefaults()
-        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
         let saved = ["Today", "This Week", "This Month"].map { label in
             MetricLine.values(label: label, values: [MetricValue(number: 0, kind: .dollars), MetricValue(number: 0, kind: .dollars, label: "BYOK")])
         }
-        cache.save([runtime.provider.id: ProviderSnapshot(provider: runtime.provider, plan: "Pay-as-you-go", lines: saved, refreshedAt: Self.now)])
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: defaults, now: { Self.now })
+        ProviderSnapshotCache(userDefaults: defaults, storageKey: "openusage.providerSnapshots.v11")
+            .save([runtime.provider.id: ProviderSnapshot(provider: runtime.provider, plan: "Pay-as-you-go", lines: saved, refreshedAt: Self.now)])
+        let store = WidgetDataStore.forTesting([runtime], cache: ProviderSnapshotCache(userDefaults: defaults), defaults: defaults, now: { Self.now })
 
         let outcome = await store.refresh(providerID: runtime.provider.id)
 
-        XCTAssertEqual(outcome, .cacheHit)
-        XCTAssertTrue(http.requests.isEmpty)
-        for key in ["today", "week", "month"] {
-            let descriptor = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == key })
-            XCTAssertEqual(store.data(for: descriptor).dashboardRow(now: Self.now).mark, .value("$0"), key)
-        }
+        XCTAssertEqual(outcome, .refreshed)
+        let today = try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "today" })
+        XCTAssertEqual(store.data(for: today).dashboardRow(now: Self.now).mark, .value("$26.50"))
     }
 
     func testAManagementKeyShowsTheAccountsSpendSummedOverEveryPageOfKeys() async throws {
