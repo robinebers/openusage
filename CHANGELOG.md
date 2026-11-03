@@ -24,8 +24,9 @@ shows only what each provider's API reports for the accounts you sign in to.
   Animations follow macOS's Reduce Motion setting.
 
 ### Changed
-- Panel: scrolled content fades out under the top and bottom bars on every macOS version, with no glass
-  backdrop behind them, and the account name in an account page's header fades its hover highlight in.
+- Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
+  bottom bar only while something is under it. The account name in an account page's header fades its
+  hover highlight in.
 - Z.ai: a key Z.ai refuses reads as rejected, not as an invalid response, so the 0.7.x key import
   stops checking it on every launch.
 - Dashboard: after an update from 0.7.x, the empty dashboard welcomes you back, says OpenUsage no longer

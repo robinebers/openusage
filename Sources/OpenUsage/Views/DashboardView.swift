@@ -264,7 +264,7 @@ struct DashboardView: View {
             } action: { _, height in
                 if includeChrome, height > 0 { measuredIdeal[screen, popover.dashboardTab] = height }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .panelBars {
                 if includeChrome {
                     PopoverTopBar(
                         screen: screen,
@@ -272,8 +272,7 @@ struct DashboardView: View {
                         horizontalPadding: PanelMetrics.margin
                     )
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            } bottom: {
                 if includeChrome {
                     PopoverFooter(screen: screen, horizontalPadding: PanelMetrics.margin)
                 }

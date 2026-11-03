@@ -35,7 +35,6 @@ struct SettingsScreen: View {
         .contentMargins(.horizontal, PanelMetrics.margin - Self.formRowInset, for: .scrollContent)
         .contentMargins(.top, DashboardContentView.barGap - Self.formRowInset, for: .scrollContent)
         .contentMargins(.bottom, PanelMetrics.margin - Self.formRowInset, for: .scrollContent)
-        .panelScrollEdge()
         .scrollPosition($scrollPosition)
         .onChange(of: popover.settingsTab) { scrollPosition.scrollTo(edge: .top) }
         .onChange(of: popover.screen, initial: true) { _, screen in
