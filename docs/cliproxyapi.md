@@ -15,7 +15,9 @@ mirrors it.
    the sheet says why and nothing is saved.
 
 There is no list to pick from: every supported login on the hub appears at once, each at the bottom of
-its provider's accounts, named after its email.
+its provider's accounts on the dashboard, named after its email.
+
+You can connect more than one hub. Each hub has its own row, management key, and accounts.
 
 The hub must allow management from another machine (`allow-remote` in its config), unless it runs on
 this Mac.
@@ -28,11 +30,12 @@ unencrypted. For any other host, use https.
 ## Hub accounts
 
 A hub account has the same card, metrics, menu-bar stars, order, and reset buttons as an account you
-signed in directly. Its icon carries the CLIProxyAPI mark in the corner, in Accounts and on its page,
-and its name carries the mark on the dashboard.
+signed in directly. Its name carries the CLIProxyAPI mark on the dashboard, and its icon carries it on
+its page. In Accounts, hub accounts are listed on their hub's page, not in the list of accounts. Drag
+them on the dashboard to change their order.
 
 The hub manages its logins, so a hub account's page has no **Remove Account…**; it says
-"Managed by CLIProxyAPI at <host>" instead. Renaming it, hiding metrics, and starring them work as for
+"Managed by <host>" instead, and **Back** returns to the hub's page. Renaming it, hiding metrics, and starring them work as for
 any account. A login that is also signed in directly shows twice, once with the mark.
 
 ## Staying in sync
@@ -48,15 +51,19 @@ hour. Then:
 - A login renamed on the hub, or a ChatGPT login switched to another workspace, keeps its account,
   name, and stars.
 
-If the Keychain refuses to save a login, the hub's row shows the error and the next read tries again.
+If the Keychain refuses to save a login, the hub's page shows the error and the next read tries again.
 
 Logins for providers OpenUsage doesn't support yet are not shown. That includes Cursor: the hub's Cursor
 plugin holds a Cursor API key, and Cursor's usage reads need the session OpenUsage signs in with.
 
-## The hub's row
+## The hub in Accounts
 
-Each connected hub has a row under the accounts. It shows the hub's address, how many accounts it
-mirrors, how many of its logins OpenUsage doesn't support yet, and the last read's error, if any.
+Connected hubs are listed under the accounts, one row each: the hub's address and how many accounts it
+mirrors. A warning sign means the last read failed. Click the row to open the hub's page, which shows:
+
+- The last read's error, if any.
+- The accounts the hub mirrors. Click one to open its page.
+- How many of the hub's logins OpenUsage doesn't support yet.
 
 - **Replace Management Key…** checks the new key with one read of the login list before saving it.
   A refused key leaves the old key in place.

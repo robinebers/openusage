@@ -27,7 +27,8 @@ Open it from the panel's **⋯** menu or press Return on the dashboard.
      same organization is not added twice.
 
 To add the Claude, ChatGPT, Antigravity, Devin, and Grok logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom of
-the list and enter the hub's address and management key. See [CLIProxyAPI hubs](cliproxyapi.md).
+the list and enter the hub's address and management key. The hub gets its own row under your accounts,
+and its accounts are listed on the hub's page. See [CLIProxyAPI hubs](cliproxyapi.md).
 
 If a sign-in fails, **Try Again** starts it over. The close button in a sign-in step's corner (or Esc)
 goes back to the provider list; **Cancel** on the list closes the sheet.
@@ -68,7 +69,7 @@ account has **Replace Token…** instead.
 **Remove Account…** sits at the bottom of the account's page. Removing an account deletes its sign-in
 from this Mac. You can add the account again at any time. If the Keychain refuses to delete the
 sign-in, the account stays and its page shows why. An account from a CLIProxyAPI hub has no
-**Remove Account…**: remove the login on the hub, or remove the whole hub from its row in Accounts.
+**Remove Account…**: remove the login on the hub, or remove the whole hub from its page in Accounts.
 
 ## Where things are stored
 

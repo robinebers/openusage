@@ -10,6 +10,12 @@ final class CLIProxyHubSync {
         case checking
         case synced(unsupported: Int)
         case failed(String)
+
+        /// The logins the last read listed that OpenUsage doesn't support yet.
+        var unsupported: Int {
+            guard case .synced(let unsupported) = self else { return 0 }
+            return unsupported
+        }
     }
 
     private(set) var statuses: [UUID: Status] = [:]

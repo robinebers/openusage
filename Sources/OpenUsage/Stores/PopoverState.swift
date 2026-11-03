@@ -50,6 +50,7 @@ final class PopoverState {
             screenSlideID += 1
             if screen != .accounts {
                 customizeProviderID = nil
+                customizeHubID = nil
                 isAddingAccount = false
             }
         }
@@ -57,6 +58,8 @@ final class PopoverState {
     private(set) var screenSlideFrom = PopoverScreen.dashboard
     private(set) var screenSlideID = 0
     var customizeProviderID: String?
+    /// The CLIProxyAPI hub whose page Accounts shows. An account opened from it goes back to it.
+    var customizeHubID: UUID?
     var isAddingAccount = false
     /// The account the Add Account sheet signs in again, in place of adding a new one.
     var signingInAgainProviderID: String?
@@ -77,6 +80,10 @@ final class PopoverState {
             withAnimation(Motion.spring) { customizeProviderID = nil }
             return true
         }
+        if customizeHubID != nil {
+            withAnimation(Motion.spring) { customizeHubID = nil }
+            return true
+        }
         guard screen != .dashboard else { return false }
         withAnimation(Motion.modeSwitch) { screen = .dashboard }
         return true
@@ -89,6 +96,7 @@ final class PopoverState {
     func openAccounts(_ providerID: String?) {
         withAnimation(Motion.modeSwitch) {
             customizeProviderID = providerID
+            customizeHubID = nil
             screen = .accounts
         }
     }
