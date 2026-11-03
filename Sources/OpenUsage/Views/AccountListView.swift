@@ -11,7 +11,7 @@ struct AccountListView: View {
     @State private var activeProviderID: String?
 
     var body: some View {
-        let providers = layout.orderedProviders()
+        let providers = directProviders
         let hubs = container.accounts.hubs
         VStack(spacing: PanelMetrics.sectionSpacing) {
             if providers.isEmpty, hubs.isEmpty {
@@ -24,12 +24,22 @@ struct AccountListView: View {
                 }
                 .cardSurface()
             }
-            ForEach(hubs) { hub in
-                CLIProxyHubRow(hub: hub)
+            if !hubs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(hubs) { hub in
+                        CLIProxyHubRow(hub: hub) { withAnimation(Motion.spring) { popover.customizeHubID = hub.id } }
+                    }
+                }
+                .cardSurface()
             }
         }
         .animation(Motion.spring, value: providers.map(\.id))
         .animation(Motion.spring, value: hubs.map(\.id))
+    }
+
+    /// A hub's accounts are listed on its page, not here.
+    private var directProviders: [Provider] {
+        layout.orderedProviders().filter { $0.hubHost == nil }
     }
 
     private func accountRow(_ provider: Provider) -> some View {
@@ -57,7 +67,7 @@ struct AccountListView: View {
                     frames: frameStore.frames
                 )
             },
-            orderedIDs: { layout.orderedProviders().map(\.id) },
+            orderedIDs: { directProviders.map(\.id) },
             reorder: { layout.reorderProvider(dragged: provider.id, target: $0) }
         )
     }

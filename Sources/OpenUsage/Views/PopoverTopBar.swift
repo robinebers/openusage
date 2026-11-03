@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PopoverTopBar: View {
+    @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     let screen: PopoverScreen
@@ -18,6 +19,15 @@ struct PopoverTopBar: View {
                     AccountTitle(provider: provider)
                 } trailing: {
                     logo(for: provider)
+                }
+            } else if let hubID = popover.customizeHubID, let hub = container.accounts.hubs.first(where: { $0.id == hubID }) {
+                navigationBar(back: { popover.back() }) {
+                    Text(hub.host)
+                        .truncationMode(.middle)
+                } trailing: {
+                    ProviderIcon(id: CLIProxyHub.markID, side: 22, inset: 0.04)
+                        .frame(width: 28, height: 28)
+                        .accessibilityHidden(true)
                 }
             } else {
                 navigationBar(back: { popover.back() }) {

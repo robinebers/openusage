@@ -10,7 +10,7 @@ struct AccountListRow<Grip: View>: View {
             grip
 
             HStack(spacing: 8) {
-                AccountIcon(provider: provider, side: 18)
+                ProviderIcon(id: provider.icon, side: 18)
                 Text(provider.displayName)
                     .foregroundStyle(.primary)
                     .layoutPriority(1)
@@ -21,7 +21,7 @@ struct AccountListRow<Grip: View>: View {
                 Spacer(minLength: 0)
             }
             .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 22, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture { onOpen() }
 
