@@ -19,6 +19,17 @@ struct CLIProxyHubClient: Sendable {
         }
     }
 
+    /// The http address of an https hub that answers there instead, asked without the key: nil when nothing
+    /// answers, or when the key couldn't go to that address over http anyway.
+    func plainHTTPAddress(of url: URL) async -> URL? {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.scheme = "http"
+        guard url.scheme == "https", let plain = components?.url, CLIProxyHub.allowsKey(at: plain),
+              (try? await http.send(HTTPRequest(method: "GET", url: plain, timeout: 5)))?.statusCode == 200
+        else { return nil }
+        return plain
+    }
+
     /// Sends `request` through the hub as the linked login and returns the upstream answer, so a
     /// provider client reads it as if it had called the provider itself.
     func call(_ request: HTTPRequest, via link: HubLink, key: String, upstream: String) async throws -> HTTPResponse {
@@ -75,8 +86,8 @@ struct CLIProxyHubClient: Sendable {
         )
         let host = CLIProxyHub.host(of: url)
         guard CLIProxyHub.allowsKey(at: url) else {
-            AppLog.error(LogTag.auth("cliproxy"), "\(host) is plain http outside this Mac and the local network; not sending the management key")
-            throw ProviderError.unavailable("OpenUsage sends a management key over http only to this Mac or the local network. Connect to \(host) with https.")
+            AppLog.error(LogTag.auth("cliproxy"), "\(host) is plain http outside this Mac, the local network, and Tailscale; not sending the management key")
+            throw ProviderError.unavailable("Use https for \(host). OpenUsage uses http only for a hub on this Mac, your local network, or Tailscale.")
         }
         let response: HTTPResponse
         do {

@@ -53,17 +53,19 @@ struct CLIProxyHub: Codable, Identifiable, Hashable, Sendable {
     }
 
     /// Whether the management key may go to `url` at all: over https anywhere, and over http only to
-    /// this Mac or a host on the local network (a private or link-local address, or a `.local` name).
+    /// this Mac, a host on the local network (a private or link-local address, or a `.local` name), or a
+    /// Tailscale peer (a `.ts.net` name or an address in 100.64.0.0/10 or fd7a:115c:a1e0::/48), whose
+    /// traffic WireGuard encrypts.
     static func allowsKey(at url: URL) -> Bool {
         guard url.scheme == "http" else { return url.scheme == "https" }
         guard let host = url.host()?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]")) else { return false }
-        if host == "localhost" || host.hasSuffix(".local") { return true }
+        if host == "localhost" || host.hasSuffix(".local") || host.hasSuffix(".ts.net") { return true }
         if host.contains(":") { return host == "::1" || host.hasPrefix("fe80:") || host.hasPrefix("fc") || host.hasPrefix("fd") }
         let parts = host.split(separator: ".", omittingEmptySubsequences: false)
         let octets = parts.compactMap { UInt8($0) }
         guard parts.count == 4, octets.count == 4 else { return false }
         return switch (octets[0], octets[1]) {
-        case (127, _), (10, _), (192, 168), (169, 254), (172, 16...31): true
+        case (127, _), (10, _), (192, 168), (169, 254), (172, 16...31), (100, 64...127): true
         default: false
         }
     }

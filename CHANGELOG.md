@@ -123,6 +123,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Accounts: connect a CLIProxyAPI server with its address and management key, and its Claude,
   ChatGPT, Antigravity, Devin, and Grok logins show as accounts, kept in step with the server. A login
   you also signed in directly shows twice; the hub's copy carries the CLIProxyAPI mark.
+- CLIProxyAPI: a hub on Tailscale connects over http, the Connect sheet shows one message at a time,
+  and it says when a hub doesn't use https.
 - Panel: it is exactly as tall as its content, with no empty space under a short list, and its top edge
   no longer jumps while it resizes. On macOS 15 it grows with the slide back from Accounts, not after it.
 - Accounts: accounts keep one order on every screen, grouped by provider, and an account keeps its place

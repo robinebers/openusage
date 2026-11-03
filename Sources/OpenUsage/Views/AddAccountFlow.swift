@@ -17,11 +17,15 @@ enum AddAccountChoice: Hashable {
 @Observable
 final class AddAccountFlow {
     var selection: AddAccountChoice?
-    var apiKey = ""
+    var apiKey = "" {
+        didSet { if isConnectingHub, apiKey != oldValue { errorMessage = nil } }
+    }
     var accountName = ""
     var pastedCode = ""
     var organization = ""
-    var hubURL = ""
+    var hubURL = "" {
+        didSet { if hubURL != oldValue { errorMessage = nil } }
+    }
     private(set) var isConnectingHub = false
     private(set) var provider: ProviderKind?
     private(set) var method: ProviderAuthMethod?
