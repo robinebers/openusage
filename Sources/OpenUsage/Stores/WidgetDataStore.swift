@@ -231,7 +231,8 @@ final class WidgetDataStore {
     func data(for descriptor: WidgetDescriptor) -> WidgetData {
         var result: WidgetData
         if let snapshot = snapshots[descriptor.providerID],
-           let line = snapshot.line(label: descriptor.metricLabel),
+           let line = snapshot.line(label: descriptor.metricLabel)
+               ?? descriptor.unreportedValues.map({ .values(label: descriptor.metricLabel, values: $0) }),
            let data = resolve(line, descriptor: descriptor) {
             result = data
         } else {

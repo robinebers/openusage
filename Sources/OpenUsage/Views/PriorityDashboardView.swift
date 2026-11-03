@@ -8,7 +8,7 @@ struct PriorityDashboardView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             PriorityBoardList(
-                board: dataStore.priorityBoard(in: layout.displayGroups, now: context.date),
+                board: dataStore.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: context.date),
                 now: context.date,
                 onToggleMeterStyle: { dataStore.meterStyle.toggle() },
                 onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
@@ -32,6 +32,14 @@ struct PriorityBoardList: View {
     private static let gaugeSide: CGFloat = 32
 
     var body: some View {
+        VStack(alignment: .leading, spacing: PanelMetrics.margin) {
+            if !board.pinned.isEmpty { pinnedSection }
+            summary
+        }
+    }
+
+    @ViewBuilder
+    private var summary: some View {
         switch board.summary {
         case .waitingForUsage:
             waitingRow
@@ -50,7 +58,7 @@ struct PriorityBoardList: View {
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if !board.attention.isEmpty {
                     attentionSection
-                } else if board.hasCompleteUsage {
+                } else if board.showsClearRow {
                     clearRow
                 }
                 if !board.usedUp.isEmpty { usedUpSection }
@@ -112,11 +120,21 @@ struct PriorityBoardList: View {
         .accessibilityValue(notice.message)
     }
 
+    private var pinnedSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Pinned")
+            ForEach(board.pinned) { pin in
+                limitRow(pin.provider, pin.data, severity: pin.severity)
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
     private var attentionSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Running Out")
             ForEach(board.attention) { item in
-                attentionRow(item)
+                limitRow(item.provider, item.data, severity: item.reason.severity)
                     .padding(.horizontal, 4)
             }
         }
@@ -153,27 +171,27 @@ struct PriorityBoardList: View {
         }
     }
 
-    private func attentionRow(_ item: PriorityItem) -> some View {
+    private func limitRow(_ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity) -> some View {
         HStack(spacing: 10) {
-            PriorityGauge(fraction: item.data.fraction, severity: item.reason.severity, icon: item.provider.icon)
+            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon)
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.data.title)
+                Text(data.title)
                     .font(.system(size: 13, weight: .medium))
-                Text(item.provider.accountName)
-                    .accessibilityLabel(item.provider.fullName)
+                Text(provider.accountName)
+                    .accessibilityLabel(provider.fullName)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
+                    .truncationMode(provider.isNamedByEmail ? .middle : .tail)
             }
             .lineLimit(1)
             Spacer(minLength: 0)
             VStack(alignment: .trailing, spacing: 1) {
-                toggling(item.data.hasMeterStyleToggle ? onToggleMeterStyle : nil) {
-                    Text(item.data.amountText)
+                toggling(data.hasMeterStyleToggle ? onToggleMeterStyle : nil) {
+                    Text(data.amountText)
                         .font(.system(size: 13, weight: .medium))
                         .monospacedDigit()
                 }
-                if let reset = item.data.compactResetText(now: now) {
+                if let reset = data.compactResetText(now: now) {
                     toggling(onToggleResetDisplay) {
                         Text(reset)
                             .font(.system(size: 11))

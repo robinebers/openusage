@@ -62,6 +62,17 @@ struct PriorityItem: Identifiable {
     }
 }
 
+/// A metric the user pinned to the top of Priority, listed there whatever its reading.
+struct PinnedMetric: Identifiable {
+    let provider: Provider
+    let line: DashboardLine
+    /// Its color as Priority would list it, so an empty balance stays red.
+    let severity: WidgetData.MeterSeverity
+
+    var id: String { line.id }
+    var data: WidgetData { line.data }
+}
+
 /// The limits that need the user, most urgent first, for the menu bar and the Priority tab.
 struct PriorityBoard {
     enum Summary: Equatable {
@@ -82,11 +93,14 @@ struct PriorityBoard {
         var id: String { provider.id }
     }
 
+    /// In dashboard order. A pinned metric is never listed again under Running Out or Used Up.
+    let pinned: [PinnedMetric]
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
     let notices: [AccountNotice]
     let summary: Summary
-    let hasCompleteUsage: Bool
+    /// Every account reported and nothing, pinned or not, is running out.
+    let showsClearRow: Bool
 
     /// Multiple running-low limits can change places as their windows age, even without a new reading.
     func requiresRankingClock(at now: Date) -> Bool {
@@ -98,7 +112,7 @@ struct PriorityBoard {
 
     /// `accounts` is in the user's saved order, which breaks every tie.
     static func make(
-        accounts: [DashboardAccount], now: Date,
+        accounts: [DashboardAccount], pinned pinnedIDs: Set<String> = [], now: Date,
         status: (DashboardAccount) -> ReadStatus = { $0.lines.contains(where: \.data.hasData) ? .current : .waiting }
     ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
@@ -130,18 +144,26 @@ struct PriorityBoard {
         } else {
             .noReportedLimits
         }
+        let listed = ranked.filter { !pinnedIDs.contains($0.id) }
         return PriorityBoard(
-            attention: ranked.filter { !$0.reason.isUsedUp },
-            usedUp: ranked.filter(\.reason.isUsedUp),
-            notices: notices, summary: summary, hasCompleteUsage: !awaitingUsage && notices.isEmpty
+            pinned: lines.filter { pinnedIDs.contains($0.1.id) }.map { provider, line in
+                PinnedMetric(provider: provider, line: line, severity: PriorityItem.Reason(line, now: now)?.severity ?? .normal)
+            },
+            attention: listed.filter { !$0.reason.isUsedUp },
+            usedUp: listed.filter(\.reason.isUsedUp),
+            notices: notices, summary: summary,
+            showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
     }
+
+    /// Whether the tab lists anything, pinned or not, worth copying as a picture.
+    var hasRows: Bool { summary == .listed || !pinned.isEmpty }
 }
 
 extension WidgetDataStore {
-    func priorityBoard(in groups: [ProviderMetrics], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
+    func priorityBoard(in groups: [ProviderMetrics], pinned: Set<String> = [], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
         let accounts = accounts(in: groups)
-        return PriorityBoard.make(accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, now: now) { account in
+        return PriorityBoard.make(accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, now: now) { account in
             if let message = self.problem(for: account.id) {
                 // A provider's notice can itself contain account details. Share only the status.
                 return .unavailable(hidingEmails ? "Current usage unavailable." : message)

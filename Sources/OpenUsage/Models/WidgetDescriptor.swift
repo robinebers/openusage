@@ -9,6 +9,8 @@ struct WidgetDescriptor: Identifiable, Hashable {
     let sample: WidgetData
     var limitResources: [LimitResourceDescriptor] = []
     var historyRow: HistoryRow?
+    /// What the row reads when the provider reports nothing for it; nil hides the row instead.
+    var unreportedValues: [MetricValue]?
 
     init(provider: Provider, key: String, metricLabel: String, sample: WidgetData) {
         id = "\(provider.id).\(key)"

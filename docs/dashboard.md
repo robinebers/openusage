@@ -10,6 +10,10 @@ When you have no accounts, both tabs show **Add Account**, which opens the provi
 
 Priority shows only what needs you, most urgent first.
 
+**Pinned** comes first when you have pinned a metric on its account's page. It lists every pinned metric
+that has data, whatever its reading, in your dashboard order: account by account, then each account's
+metric order. A pinned metric appears only here, never again under Running Out or Used Up.
+
 **Running Out** lists every limit with 30% or less left, whose bar is orange or red. Time never decides
 what's listed, only the order: what would run out soonest at your current pace comes first, then limits
 with no pace to go by, least left first.
@@ -36,15 +40,18 @@ running low or used up stay visible.
 ## All Usage
 
 One provider after another, each a header above a card. The header is the provider's name and logo,
-and every account's name and plan sit inside the card above its rows. A single account named after
-the provider shows just its plan. With several accounts, each keeps a name you can drag. The card
-holds every metric that has data and that you have not hidden, in the order you set.
+and every account's name and plan sit inside the card above its rows. With several accounts, each
+keeps a name you can drag. The card holds every metric that has data and that you have not hidden, in
+the order you set. Time ranges and Extra Usage spend always show: when the provider reports nothing for
+one, it reads 0.
 
-## Hiding and ordering metrics
+## Hiding, pinning, and ordering metrics
 
 An account's page in **Accounts** lists all of its metrics, in its order. Turn a metric's switch off to
-hide it everywhere: All Usage, Priority, the menu bar, and notifications. Drag a metric by its handle to
-change where it sits within the account. Both choices are saved and survive a restart. A new account
+hide it everywhere: All Usage, Priority, the menu bar, and notifications. Click the pin beside the switch
+to list the metric under Pinned at the top of Priority; a hidden metric can't be pinned, and hiding a
+pinned metric unpins it. Drag a metric by its handle to change where it sits within the account. These
+choices are saved and survive a restart; removing an account removes its pins. A new account
 shows every metric, in the provider's order. If you hide every metric of every account, the dashboard
 says so and points you to Accounts.
 
@@ -122,7 +129,7 @@ When a saved breakdown is from an earlier reporting day, its preview and copied 
 
 A range adds up the days that supplied each figure; a figure the provider reported for the whole range
 wins. A quiet day or a day that could not be read adds nothing. For example, Last 30 Days can show the
-older days while Today is unavailable.
+older days while Today reads 0.
 
 The details show charges, tokens and the top five models, with the remaining named models grouped
 under **Other**. A bar shows the token split when the parts add up to the total. **Top Models** ranks
@@ -134,9 +141,9 @@ Named models can add up to less than 100% when attribution is partial.
 Click the copy button in the corner to copy a PNG of the details, with the provider's name and
 whichever of Cost or Tokens is showing, without the switch.
 
-**No Usage** means the range was read, the provider counted activity such as requests or tokens, and
-every reported figure was zero. If the provider reported only spend, a free request is possible, so the detail
-shows the amount, even when it is `$0`. A **No Usage** range has nothing to copy.
+When every figure the provider reported for a range is zero, such as a `$0` charge and nothing else,
+or the provider reported nothing for it, the details say "<Provider> didn't report any data for this
+range." for every provider. Such a range has nothing to copy.
 
 ## Rename
 

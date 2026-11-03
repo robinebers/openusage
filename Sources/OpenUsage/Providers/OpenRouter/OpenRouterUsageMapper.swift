@@ -15,11 +15,6 @@ struct OpenRouterKey: Equatable, Sendable {
 }
 
 enum OpenRouterUsageMapper {
-    /// Spend today, this week and this month, before any key is added.
-    static let noSpend: [UsageWindow: UsageTotals] = [
-        .today: .zero([.spend, .byokSpend]), .thisWeek: .zero([.spend, .byokSpend]), .thisMonth: .zero([.spend, .byokSpend])
-    ]
-
     /// A UTC day with no activity row.
     static let quietDay = UsageDay(
         totals: .zero([.spend, .byokSpend, .tokens, .inputTokens, .cacheReadTokens, .outputTokens, .reasoningTokens]),

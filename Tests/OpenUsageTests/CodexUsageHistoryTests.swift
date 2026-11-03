@@ -224,14 +224,15 @@ final class CodexUsageHistoryTests: XCTestCase {
         }
     }
 
-    func testADayTheCountsDoNotReportYetShowsNoTokensUntilALaterReadReportsIt() async throws {
+    func testADayTheCountsDoNotReportYetReadsZeroTokensWithNothingToShow() async throws {
         let reportsToday = TestSwitch(false)
         let (store, runtime, _, clock) = try makeAccount(reportsToday: reportsToday)
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertEqual(rows(store, runtime), [
-            "yesterday": "8.1M tokens", "last30": "2B tokens"
-        ], "an unreported day is not a day of zero tokens, and the range sums the days that report")
+            "today": "0 tokens", "yesterday": "8.1M tokens", "last30": "2B tokens"
+        ], "a day with no use still shows Today, and the range sums the days that report")
+        XCTAssertTrue(try XCTUnwrap(store.usageBreakdown(for: try descriptor(runtime, "today"))).isEmpty)
 
         reportsToday.value = true
         clock.set(now.addingTimeInterval(61 * 60))
@@ -271,7 +272,7 @@ final class CodexUsageHistoryTests: XCTestCase {
 
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
         XCTAssertNil(store.errorMessage(for: runtime.provider.id))
-        XCTAssertEqual(rows(store, runtime), [:])
+        XCTAssertEqual(rows(store, runtime), ["today": "0 tokens", "yesterday": "0 tokens", "last30": "0 tokens"])
         XCTAssertEqual(store.data(for: try descriptor(runtime, "weekly")).used, 29)
 
         reports.value = nil
@@ -287,7 +288,8 @@ final class CodexUsageHistoryTests: XCTestCase {
         reports.value = 503
         clock.set(now.addingTimeInterval(122 * 60))
         _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(Set(rows(store, runtime).keys), ["last30"])
+        XCTAssertEqual(rows(store, runtime)["today"], "0 tokens")
+        XCTAssertEqual(rows(store, runtime)["yesterday"], "0 tokens")
         XCTAssertEqual(store.usageBreakdown(for: month)?.totals[.tokens], 2_006_800_581,
                        "Oct 2 and Oct 29 remain available after the reread of today and yesterday fails")
     }

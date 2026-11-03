@@ -24,6 +24,9 @@ shows only what each provider's API reports for the accounts you sign in to.
   Animations follow macOS's Reduce Motion setting.
 
 ### Changed
+- Dashboard: Today, Yesterday, and every other time range always show, at 0 when the provider reports
+  nothing for them. Claude, Cursor, and Copilot show Extra Usage at 0 when it's off. An account's page
+  still hides any of them with its switch.
 - Panel: content scrolls cleanly under the top bar, with no glass backdrop, and blurs softly under the
   bottom bar only while something is under it. The account name in an account page's header fades its
   hover highlight in.
@@ -42,8 +45,12 @@ shows only what each provider's API reports for the accounts you sign in to.
   right-click menus hold refresh, share screenshot, and quick links.
 - Dashboard: two tabs, **Priority** for the limits running out or used up, most urgent first, and
   **All Usage** for every account. The panel opens on the **Default Tab** in Settings, Priority at first.
+- Priority: pin a metric with the pin beside its switch on its account's page, and it gets a **Pinned**
+  section at the top of Priority, whatever its reading.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
   Display → Priority Icons, sets how many, from App Icon Only to Up to 5. It starts at Up to 3.
+- Menu bar: when an update is available, the app icon shows at the far right with a dot, after the
+  limits and any `+7` count, whatever **Show In Menu Bar** is set to.
 - Notifications: Cutting It Close now fires when a limit drops under 30% left, not when its pace nears
   the limit. A switch you turned on in 0.7.x stays on.
 - Settings: **Log Level** is back under Advanced → Debug and keeps the level you chose in 0.7.x. It
@@ -78,8 +85,11 @@ shows only what each provider's API reports for the accounts you sign in to.
 - OpenRouter: a Management key adds Yesterday and Prior 30 Days from OpenRouter's activity. Resting
   the pointer on a range shows its BYOK spend, tokens, and top models. A standard key adds Budget and
   Free Requests.
-- Accounts: a new Cursor account is named after its email, not "Cursor Account", and an API-key
-  account shows its provider's name once, not `OpenRouter · OpenRouter`.
+- OpenRouter: Today, This Week, and This Month no longer show the BYOK an earlier build saved. BYOK
+  shows only when resting the pointer on a range.
+- Accounts: a new Cursor account is named after its email, not "Cursor Account".
+- Accounts: every account has a name the card shows. A blank name, or one that only repeats the
+  provider's, becomes `<Provider> Account`, such as `OpenRouter Account`, for existing accounts too.
 - Provider responses are no longer saved to a cache under `~/Library/Caches`, so the emails, org ids,
   and usage they carry stay off disk, and every read goes to the provider.
 - Accounts: a new Ollama account is named after its ollama.com email, not "Ollama".
@@ -87,6 +97,8 @@ shows only what each provider's API reports for the accounts you sign in to.
 - Cursor: Today, Yesterday, and Last 30 Days add the tokens Cursor reports, a new Usage Events row
   counts the last 30 days' events, and resting the pointer on a range shows what Cursor reported for
   it: the charge, usage events, each kind of token, and the top models.
+- Dashboard: resting the pointer on a range with nothing but a zero total says `<Provider> didn't report
+  any data for this range.`, for every provider.
 - Ollama: new Today, Yesterday, and Last 30 Days rows show the usage value and tokens Ollama reports
   for each UTC day, a Requests row counts the last 30 days' requests, and resting the pointer on a
   range shows what Ollama reported for it: requests, each kind of token, and the top models.

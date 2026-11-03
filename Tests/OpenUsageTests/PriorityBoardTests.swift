@@ -202,6 +202,23 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(result.usedUp.map(\.id), ["claude@2.Sooner", "claude@2.Later", balance.id])
     }
 
+    func testAPinnedEmptyBalanceStaysRedAndIsListedOnlyUnderPinned() throws {
+        let balance = try realLine(.openrouter, "balance", values: [zero(.dollars)])
+        let healthy = paced("Weekly", used: 10, left: day)
+        let result = PriorityBoard.make(accounts: [
+            DashboardAccount(provider: personal, lines: [balance]), account(work, healthy),
+        ], pinned: [balance.id, "claude@2.Weekly"], now: now)
+
+        XCTAssertEqual(result.pinned.map(\.severity), [.critical, .normal])
+        XCTAssertTrue(result.usedUp.isEmpty)
+        XCTAssertEqual(result.summary, .listed)
+
+        let onlyHealthy = PriorityBoard.make(accounts: [account(work, healthy)], pinned: ["claude@2.Weekly"], now: now)
+        XCTAssertEqual(onlyHealthy.summary, .allClear)
+        XCTAssertTrue(onlyHealthy.hasRows, "a healthy pin alone can still be copied as a picture")
+        XCTAssertFalse(PriorityBoard.make(accounts: [account(work, healthy)], now: now).hasRows)
+    }
+
     func testABalanceWithAnythingLeftIsNotListed() throws {
         let cents = try realLine(.cursor, "credits", values: [MetricValue(number: 0.01, kind: .dollars)])
         let credits = try realLine(.codex, "credits", values: [MetricValue(number: 0.04, kind: .dollars), MetricValue(number: 1, kind: .count, label: "credits")])
@@ -321,7 +338,7 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(live.summary, .listed)
         XCTAssertEqual(live.attention.map(\.id), [other.id])
         XCTAssertEqual(live.notices.map(\.message), [failure.message])
-        XCTAssertFalse(live.hasCompleteUsage)
+        XCTAssertFalse(live.showsClearRow)
         let shared = store.priorityBoard(in: groups, now: now, hidingEmails: true)
         let notice = try XCTUnwrap(shared.notices.first)
         XCTAssertFalse(notice.provider.fullName.contains(email))

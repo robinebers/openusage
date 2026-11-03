@@ -64,20 +64,21 @@ and a workspace's credit limit.
 
 - **Menu bar.** The limits closest to running out show on their own, each named, up to the number you
   set, with any others as a count like `+7`. When a provider has more than one account, its mark
-  carries the account name's initials.
+  carries the account name's initials. When an update is available, the app icon shows last, with a dot.
 - **Priority.** See which limits are running low or used up and which accounts need a refresh or a new
-  sign-in. Click an amount or a reset time to switch how it reads.
+  sign-in, under any metrics you pinned. Click an amount or a reset time to switch how it reads.
 - **All Usage.** A header per provider above a card, with each account's name and plan inside the
   card. A limit is one line: its label, a level bar, its amount, and its reset. The bar is blue, orange
   at 30% left, and red at 10% left. Click a value to flip
   every row between used and left, a reset between countdown and exact time. Rest the pointer on a bar
   to read where your pace lands at the reset, on a value to read its other side, on a reset to read
   the other format, and on the warning or clock after an account's name to read why it is there.
-  A usage range shows the provider's total or sums the days it reported. Open its breakdown to see
-  model usage and whether any days are missing, including after reopening the app.
+  A usage range shows the provider's total or sums the days it reported, and reads 0 when it reported
+  none. Open its breakdown to see model usage and whether any days are missing, including after
+  reopening the app.
   Right-click a header, a card, an account, or a row for its actions. Drag to reorder.
-- **Metrics per account.** An account's page in Accounts has a switch per metric to hide it everywhere
-  and a handle to drag its metrics into order.
+- **Metrics per account.** An account's page in Accounts has a switch per metric to hide it everywhere,
+  a pin to list it under Pinned at the top of Priority, and a handle to drag its metrics into order.
 - **Resets.** Claude and ChatGPT accounts show a Limit Resets row with the number of available rate-limit
   resets. Click the count or focus it and press Space to see when each expires and spend one.
 - **Share.** Rest the pointer on a provider's header and click the copy button at its right, or

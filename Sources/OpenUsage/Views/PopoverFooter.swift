@@ -17,7 +17,7 @@ struct PopoverFooter: View {
                 HStack(alignment: .center, spacing: 8) {
                     if !layout.displayGroups.isEmpty { nextUpdateButton }
                     Spacer(minLength: 8)
-                    if popover.dashboardTab == .priority, liveBoard.summary == .listed { copyPriorityButton }
+                    if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
                     optionsMenu
                 }
                 .padding(.horizontal, 4)
@@ -52,7 +52,7 @@ struct PopoverFooter: View {
     }
 
     private var liveBoard: PriorityBoard {
-        dataStore.priorityBoard(in: layout.displayGroups, now: Date(), hidingEmails: true)
+        dataStore.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date(), hidingEmails: true)
     }
 
     /// Copies the Priority tab as a picture. It reads the live board when clicked.

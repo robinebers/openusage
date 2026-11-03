@@ -20,7 +20,8 @@ Open it from the panel's **⋯** menu or press Return on the dashboard.
    - **Device code** (Copilot, Grok): the sheet shows a code. **Copy Code**, click **Open Browser**,
      and enter the code. The sheet closes when the provider confirms.
    - **API key** (Ollama, OpenCode, OpenRouter, Z.ai): create a key on the page the sheet links to,
-     paste it, and click **Add Account**. The key is added only once a usage read accepts it.
+     paste it, and click **Add Account**. The key is added only once a usage read accepts it. The
+     account is named after the provider, such as "OpenRouter Account".
    - **Organization Billing** (Copilot): enter the organization and a token from one of its owners or
      billing managers, and click **Add Account**. The account is named after the organization, and the
      same organization is not added twice.
@@ -40,13 +41,15 @@ A Claude account in two organizations counts as two accounts, and so does a Devi
 
 Click the name at the top of the account's page, double-click it on the dashboard, or choose
 **Rename** from its right-click menu. The field opens with the whole name selected. Return or a click
-elsewhere saves; Esc cancels.
+elsewhere saves; Esc cancels. An empty field keeps the old name, and a name that only repeats the
+provider's becomes "<Provider> Account", so every account has a name the card shows.
 
-## Hide and order metrics
+## Hide, pin, and order metrics
 
 An account's page lists its metrics. Turn a switch off to hide that metric from All Usage, Priority,
-the menu bar, and notifications, and drag a handle to reorder the account's metrics. See
-[Hiding and ordering metrics](dashboard.md#hiding-and-ordering-metrics).
+the menu bar, and notifications. Click the pin beside a shown metric's switch to list it under Pinned at
+the top of Priority. Drag a handle to reorder the account's metrics. See
+[Hiding, pinning, and ordering metrics](dashboard.md#hiding-pinning-and-ordering-metrics).
 
 ## Replace an API key
 

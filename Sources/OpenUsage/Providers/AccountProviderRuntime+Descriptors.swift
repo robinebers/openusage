@@ -20,7 +20,8 @@ extension AccountProviderRuntime {
                     .exportingLimit("fable", unit: "percent"),
                 .boundedDollars(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage spent",
                                 limit: 100, valueWord: "spent")
-                    .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars)),
+                    .exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars))
+                    .showingWhenUnreported([MetricValue(number: 0, kind: .dollars)]),
                 rateLimitResets(key: "rateLimitResets", provider: provider)
             ]
         case .codex:
@@ -51,7 +52,8 @@ extension AccountProviderRuntime {
                     .exportingLimit("apiUsage", unit: "percent"),
                 .boundedDollars(key: "onDemand", provider: provider, title: "Extra Usage", metricLabel: "On-demand",
                                 limit: 100, valueWord: "spent")
-                    .exportingLimit("onDemand", unit: "usd", source: .progressOrValue(kind: .dollars)),
+                    .exportingLimit("onDemand", unit: "usd", source: .progressOrValue(kind: .dollars))
+                    .showingWhenUnreported([MetricValue(number: 0, kind: .dollars)]),
                 .percent(key: "grokBot", provider: provider, title: "Grok Bot", metricLabel: "Grok Bot usage")
                     .exportingLimit("grokBot", unit: "percent"),
                 .boundedCount(key: "requests", provider: provider, title: "Requests", limit: 500,
@@ -90,7 +92,8 @@ extension AccountProviderRuntime {
                 .percent(key: "premium", provider: provider, title: "Credits", metricLabel: "Credits")
                     .exportingLimit("premiumCredits", unit: "credits", source: .progressOrValue(kind: .count)),
                 .values(key: "extra", provider: provider, title: "Extra Usage")
-                    .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count)),
+                    .exportingLimit("extraUsage", unit: "count", source: .value(kind: .count))
+                    .showingWhenUnreported([MetricValue(number: 0, kind: .count)]),
                 .boundedCount(key: "chat", provider: provider, title: "Chat", limit: 0)
                     .exportingLimit("chat", unit: "percent"),
                 .boundedCount(key: "completions", provider: provider, title: "Completions", limit: 0)
