@@ -59,6 +59,10 @@ shows only what each provider's API reports for the accounts you sign in to.
   instead, never in both.
 - Priority: right-click a metric on All Usage or a row on Priority to **Pin** or **Unpin** it, and
   **All Clear** is always one row under the **Running Out** header.
+- Dashboard: an account that hasn't reported yet shows grey placeholder rows on Priority and All Usage
+  instead of **Waiting for Usage**, even while other accounts have reported.
+- Priority: an account lists under **Needs Attention** only once a refresh fails, not while it loads
+  on launch.
 - Menu bar: shows the limits closest to running out on its own. **Show In Menu Bar**, under Settings →
   Display → Priority Icons at the top of the tab, sets how many, from App Icon Only to Up to 5. It starts
   at Up to 3.
