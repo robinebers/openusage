@@ -64,7 +64,7 @@ and a workspace's credit limit.
 
 - **Menu bar.** The limits closest to running out show on their own, each named, up to the number you
   set, with any others as a count like `+7`. When a provider has more than one account, its mark
-  carries the account name's initials.
+  carries the account name's initials. When an update is available, the app icon shows last, with a dot.
 - **Priority.** See which limits are running low or used up and which accounts need a refresh or a new
   sign-in. Click an amount or a reset time to switch how it reads.
 - **All Usage.** A header per provider above a card, with each account's name and plan inside the

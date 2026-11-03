@@ -23,6 +23,9 @@ With nothing running out, or with the setting on **App Icon Only**, the strip sh
 From Screen Share](privacy.md#screen-sharing) on, it also shows the app icon while your screen is shared
 or recorded.
 
+When OpenUsage finds an [update](updates.md), the app icon shows at the far right of the strip, after
+any count, with a dot at its top-right, whatever the setting. It goes away with the update banner.
+
 When a provider has more than one account, its mark always carries the account name's
 initials: the first letter of its first word and of its last, so "Personal" reads P and "Attention
 Machine 1" reads A1. Two accounts named alike share a tag; rename one to tell them apart.

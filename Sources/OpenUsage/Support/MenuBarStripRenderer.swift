@@ -4,7 +4,7 @@ import SwiftUI
 @MainActor
 enum MenuBarStripRenderer {
     static func image(for content: MenuBarContent) -> NSImage? {
-        guard !content.isEmpty else { return nil }
+        guard !content.isEmpty else { return content.updateAvailable ? appIconWithUpdateDot : nil }
         let renderer = ImageRenderer(content: MenuBarTextStrip(content: content))
         renderer.scale = 2
         guard let rendered = renderer.cgImage else { return nil }
@@ -20,6 +20,26 @@ enum MenuBarStripRenderer {
 
     static var appIcon: NSImage {
         ProviderMarks.image(for: "openusage", side: 18, inset: 0.08)
+    }
+
+    /// The app icon at the same size with a dot in its top-right corner, cut out of the mark so the two
+    /// never touch.
+    static var appIconWithUpdateDot: NSImage {
+        let icon = appIcon
+        let image = NSImage(size: icon.size, flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            icon.draw(in: rect)
+            let dot = CGRect(x: rect.maxX - 5, y: rect.maxY - 5, width: 5, height: 5)
+            context.setBlendMode(.clear)
+            context.fillEllipse(in: dot.insetBy(dx: -1, dy: -1))
+            context.setBlendMode(.normal)
+            context.setFillColor(.black)
+            context.fillEllipse(in: dot)
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Update available"
+        return image
     }
 
     nonisolated static func trimmedToVisibleContent(_ image: CGImage) -> CGImage? {
@@ -78,6 +98,10 @@ private struct MenuBarTextStrip: View {
             }
             if content.overflow > 0 {
                 overflowCount(content.overflow)
+            }
+            if content.updateAvailable {
+                Image(nsImage: MenuBarStripRenderer.appIconWithUpdateDot)
+                    .renderingMode(.template)
             }
         }
         .foregroundStyle(.black)

@@ -11,13 +11,15 @@ struct MenuBarContent: Equatable {
 
     let items: [Item]
     var overflow = 0
+    var updateAvailable = false
 
     var isEmpty: Bool { items.isEmpty }
 
     var accessibilityText: String {
         let shown = items.map { "\($0.provider.fullName) \($0.label) \($0.value)" }
         let more = overflow > 0 ? ["\(overflow) more"] : []
-        return (shown + more).joined(separator: "; ")
+        let update = updateAvailable ? ["Update available"] : []
+        return (shown + more + update).joined(separator: "; ")
     }
 }
 
