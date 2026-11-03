@@ -25,7 +25,7 @@ struct CLIProxyHubClient: Sendable {
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         components?.scheme = "http"
         guard url.scheme == "https", let plain = components?.url, CLIProxyHub.allowsKey(at: plain),
-              (try? await http.send(HTTPRequest(method: "GET", url: plain, timeout: 5))) != nil
+              (try? await http.send(HTTPRequest(method: "GET", url: plain, timeout: 5)))?.statusCode == 200
         else { return nil }
         return plain
     }
