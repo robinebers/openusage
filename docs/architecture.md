@@ -37,7 +37,7 @@ which swaps the runtimes in place and refreshes new ones. The status item and pa
 - `ProviderLogin` (`Services/ProviderLogin.swift`) is the sign-in contract. It drives a browser,
   token-page, or device-code prompt and returns a label and a credential. `ProviderLoginCatalog`
   maps each kind to its login.
-- Browser logins live in `Services/BrowserProviderLogins.swift`, device-code and API-key logins in
+- Browser logins live in `Services/BrowserProviderLogins.swift`, device-code, Cursor, and API-key logins in
   `Services/DeviceProviderLogins.swift`, and Devin's in `Providers/Devin/DevinLogin.swift`.
 - `CredentialVault` (`Services/AccountCredentialVault.swift`) keeps one credential per account in
   the app's Keychain service.

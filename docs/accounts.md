@@ -37,8 +37,7 @@ its right-click menu. Return saves and Esc cancels.
 
 ## Hide, pin, and order metrics
 
-On an account's page, turn a switch off to hide a metric from the dashboard, the menu bar, and
-notifications. Click the pin to list it under Pinned in Priority. Drag a handle to reorder. See
+An account's page has a switch, a pin, and a drag handle for each metric. See
 [Hiding, pinning, and ordering metrics](dashboard.md#hiding-pinning-and-ordering-metrics).
 
 ## Replace an API key

@@ -98,10 +98,6 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 - A range adds up the days that supplied each figure. A quiet or unreadable day adds nothing.
 - The copy button copies a PNG of the details.
 
-## Rename
-
-Double-click an account's name, or choose **Rename** from its menu. Return saves and Esc cancels.
-
 ## Share
 
 Click a provider's logo, or choose **Share Screenshot**, to copy a PNG of its card. On one account

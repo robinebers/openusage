@@ -9,7 +9,7 @@ OpenUsage refreshes every account every 5 minutes. There is no setting for the i
 | Launch | Accounts whose saved values are 5 minutes old or more |
 | Every 5 minutes | Every account. A pass missed during sleep runs on wake |
 | Adding an account | That account |
-| **⌘R**, or clicking **Next update in …** | Every account, skipping the cache and any wait after a failure |
+| **⌘R**, or clicking **Next update in …** | Every account, skipping the cache and the wait after a failure |
 | An account's **Refresh** menu item | Its accounts, like ⌘R |
 | Claiming a rate-limit reset | That account |
 | Launch, opening Accounts, and hourly | Each [CLIProxyAPI hub](cliproxyapi.md#staying-in-sync)'s login list |
