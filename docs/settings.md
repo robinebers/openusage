@@ -69,7 +69,7 @@ window. Click it to open All Usage. The next time you open the panel yourself it
 
 ## Updates
 
-This section appears in the released build only; the dev build has no update feed.
+The dev build has no update feed, so it shows this section with every control disabled.
 
 | Setting | Control | What it changes |
 |---|---|---|

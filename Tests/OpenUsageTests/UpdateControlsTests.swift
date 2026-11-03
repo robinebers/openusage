@@ -19,10 +19,13 @@ final class UpdateControlsTests: QuietWindowTestCase {
         }
     }
 
-    func testSettingsShowsTheUpdatesSectionOnlyWhileTheUpdaterRuns() async throws {
-        let without = try await settingsHeight(updaterActive: false)
-        let with = try await settingsHeight(updaterActive: true)
-        XCTAssertGreaterThan(with - without, 100, "the Updates section's two switches and button add to General")
+    func testSettingsShowsTheUpdatesSectionAndDisablesItInADevBuild() async throws {
+        for active in [false, true] {
+            let (switches, buttons) = try await settingsControls(updaterActive: active)
+            XCTAssertEqual(switches.count, 3, "Launch at Login, Check Automatically and Beta Updates (active: \(active))")
+            XCTAssertEqual(switches.dropFirst().map(\.isEnabled), [active, active], "the update switches follow isActive")
+            XCTAssertEqual(buttons.map(\.isEnabled), [active], "Check for Updates… follows canCheckForUpdates")
+        }
     }
 
     func testTheDashboardShowsTheBannerForAnAvailableUpdate() async throws {
@@ -71,10 +74,13 @@ final class UpdateControlsTests: QuietWindowTestCase {
         return try XCTUnwrap(items, "the Options button didn't open its menu")
     }
 
-    private func settingsHeight(updaterActive: Bool) async throws -> CGFloat {
+    /// The General tab's switches and push buttons, in order. A dev build's updater never starts, so it
+    /// can neither run nor check.
+    private func settingsControls(updaterActive: Bool) async throws -> (switches: [NSControl], buttons: [NSButton]) {
         let container = testContainer()
         let updater = UpdaterController()
         updater.isActive = updaterActive
+        updater.canCheckForUpdates = updaterActive
         container.popover.screen = .settings
         let settings = SettingsScreen()
             .environment(container)
@@ -82,7 +88,22 @@ final class UpdateControlsTests: QuietWindowTestCase {
             .environment(container.popover)
             .environment(container.dataStore)
             .environment(updater)
-        return try await documentHeight(of: settings)
+        let (window, host) = show(settings, size: CGSize(width: PanelMetrics.width, height: 500))
+        defer { window.close() }
+        func controls(in view: NSView) -> [NSControl] {
+            [view as? NSControl].compactMap { $0 } + view.subviews.flatMap(controls)
+        }
+        var found: [NSControl] = []
+        try await waitUntil {
+            host.layoutSubtreeIfNeeded()
+            found = controls(in: host)
+            return found.contains { $0 is NSSwitch }
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        host.layoutSubtreeIfNeeded()
+        found = controls(in: host)
+        let buttons = found.compactMap { $0 as? NSButton }.filter { !($0 is NSPopUpButton) && !($0 is NSSwitch) }
+        return (found.filter { $0 is NSSwitch }, buttons)
     }
 
     private func dashboardHeight(availableUpdate: String?) async throws -> CGFloat {
