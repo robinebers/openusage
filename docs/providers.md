@@ -165,8 +165,8 @@ whole account.
 
 A standard API key shows its own spend: Today, This Week, This Month, **Key Limit** when the key has
 a limit, **Budget** when a guardrail or workspace budget applies, and **Free Requests** for the UTC
-day. It has no Balance, and its Yesterday and Prior 30 Days read $0. Limits reset at midnight UTC,
-and weeks start on Monday.
+day. It has no Balance, and its Yesterday and Prior 30 Days read $0. A daily, weekly, or monthly
+limit resets at midnight UTC, and weeks start on Monday.
 
 The right-click menu adds a **Credits** link.
 
