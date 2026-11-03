@@ -125,6 +125,19 @@ cat >"$INFO_PLIST" <<PLIST
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>ts.net</key>
+      <dict>
+        <key>NSIncludesSubdomains</key>
+        <true/>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+    </dict>
+  </dict>
 </dict>
 </plist>
 PLIST
