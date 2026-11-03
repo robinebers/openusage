@@ -164,6 +164,30 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         XCTAssertTrue(inked(shot, from: check - 32, to: check - 20), "no header between Pinned and All Clear")
     }
 
+    /// A skeleton takes the space of the rows that replace it, so nothing around it moves when a reading lands.
+    func testSkeletonRowsAreTheHeightOfTheRowsThatReplaceThem() {
+        let claude = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
+        let chatGPT = Provider(id: "codex@1", kind: .codex, accountLabel: "robin@example.com")
+        func height(_ view: some View, width: CGFloat) -> CGFloat {
+            NSHostingView(rootView: view.frame(width: width).environment(\.colorScheme, .light)).fittingSize.height
+        }
+        let firstLaunch = PriorityBoard.make(
+            accounts: [DashboardAccount(provider: claude, lines: []), DashboardAccount(provider: chatGPT, lines: [])], now: Date()
+        )
+        XCTAssertEqual(height(PriorityBoardList(board: firstLaunch, now: Date()), width: DashboardGrid.cardWidth), 2 * 46,
+                       "one 46 pt Priority row per account, nothing else")
+
+        let lines = ["Session", "Weekly"].map { title in
+            let data = WidgetData(title: title, kind: .percent, used: 40, limit: 100)
+            return DashboardLine(descriptor: WidgetDescriptor(provider: chatGPT, key: title, metricLabel: title, sample: data), data: data)
+        }
+        let rowWidth = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
+        let waiting = DashboardAccountRows(account: DashboardAccount(provider: chatGPT, lines: [], waitingMetricIDs: lines.map(\.id)))
+        let read = DashboardAccountRows(account: DashboardAccount(provider: chatGPT, lines: lines))
+        XCTAssertEqual(height(waiting, width: rowWidth), height(read, width: rowWidth))
+        XCTAssertGreaterThan(height(waiting, width: rowWidth), 2 * DashboardGrid.rowHeight - 1)
+    }
+
     private func firstButton(in view: NSView) -> NSButton? {
         if let button = view as? NSButton { return button }
         for child in view.subviews {
