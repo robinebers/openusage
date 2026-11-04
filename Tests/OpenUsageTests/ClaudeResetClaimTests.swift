@@ -233,6 +233,17 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertNotNil(runtime.claude.session?.resetGrants.check)
     }
 
+    func testRefusedClaimKeepsTheCheck() async throws {
+        let http = makeHTTP(claim: { _ in .json(#"{"result":"not_limited","reason":null}"#) })
+        let runtime = try makeRuntime(http: http)
+        await prime(runtime)
+
+        let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .nothingToReset)
+        XCTAssertNotNil(runtime.claude.session?.resetGrants.check?.status, "a refused claim changed nothing, so the hourly check stands")
+    }
+
     private func makeHTTP(
         grants: String = grantsBlock,
         claim: @escaping @Sendable (HTTPRequest) throws -> HTTPResponse

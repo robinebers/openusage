@@ -63,6 +63,12 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertNil(ClaudeResetGrantStatus.parse(["eligible": true, "grants": [["id": "g", "resets_left": 1e300]]]))
     }
 
+    func testAnUnreadableCheckThrows() {
+        XCTAssertThrowsError(try resetsLine("not json")) { error in
+            XCTAssertEqual(error as? ProviderError, .invalidResponse)
+        }
+    }
+
     func testResetGrantsRequestIdentifiesAsClaudeCode() async throws {
         // Anthropic gates reset grants by client surface: an unrecognized User-Agent comes back
         // `eligible: false, ineligible_reason: "surface"` with no grants.

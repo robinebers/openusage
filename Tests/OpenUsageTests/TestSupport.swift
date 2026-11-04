@@ -20,8 +20,8 @@ final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
 }
 
 extension HTTPResponse {
-    static func json(_ text: String, status: Int = 200, headers: [String: String] = [:]) -> HTTPResponse {
-        HTTPResponse(statusCode: status, headers: headers, body: Data(text.utf8))
+    static func json(_ text: String, status: Int = 200) -> HTTPResponse {
+        HTTPResponse(statusCode: status, headers: [:], body: Data(text.utf8))
     }
 }
 
