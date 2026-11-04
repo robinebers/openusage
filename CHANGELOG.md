@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.1
 
 **Upgrading from 0.7.x:** add your accounts again from the **Accounts** screen. OpenUsage no longer
 picks up the sign-ins of the coding tools on your Mac, so most accounts don't carry over. The
