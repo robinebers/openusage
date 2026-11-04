@@ -56,12 +56,12 @@ jobs:
             echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
 
-      # Sparkle's update window shows this version's CHANGELOG.md section, embedded in its appcast item by
-      # generate_appcast below. Extracting it first stops a release without notes before anything ships.
+      # Runs before the build so a release without CHANGELOG.md notes stops before anything is published.
       - name: Extract release notes
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
+          set -o pipefail
           mkdir -p feed
           git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "v$VERSION" "feed/OpenUsage-$VERSION.md"
 
