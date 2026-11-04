@@ -6,6 +6,7 @@ struct WidgetData: Hashable {
 
     let title: String
     let kind: MetricKind
+    var currencyCode: String?
     let used: Double
     var limit: Double?
     var displayMode: WidgetDisplayMode = .used
@@ -91,7 +92,7 @@ struct WidgetData: Hashable {
         guard hasData else { return Self.noDataValue }
         if let valueTextOverride { return valueTextOverride }
         if let first = values.first {
-            return MetricFormatter.number(first.number, kind: first.kind, style: .row)
+            return MetricFormatter.number(first.number, kind: first.kind, style: .row, currencyCode: first.currencyCode)
         }
         return format(displayedValue)
     }
@@ -100,7 +101,7 @@ struct WidgetData: Hashable {
         if kind == .percent, let limit, limit > 0 {
             return MetricFormatter.number(displayedValue / limit * 100, kind: .percent, style: .tray)
         }
-        return MetricFormatter.number(displayedValue, kind: kind, style: .tray)
+        return MetricFormatter.number(displayedValue, kind: kind, style: .tray, currencyCode: currencyCode)
     }
 
     var unboundedDetail: String {
@@ -111,7 +112,7 @@ struct WidgetData: Hashable {
         guard hasData else { return [Self.noDataDetail] }
         if let valueTextOverride { return [valueTextOverride] }
         if values.count == 1, values[0].kind == .dollars, let word = unboundedValueWord {
-            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row)) \(word)"]
+            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row, currencyCode: values[0].currencyCode)) \(word)"]
         }
         if !values.isEmpty {
             let hasDollars = values.contains { $0.kind == .dollars }
@@ -141,7 +142,7 @@ struct WidgetData: Hashable {
     }
 
     private func format(_ value: Double) -> String {
-        MetricFormatter.number(value, kind: kind, style: .row)
+        MetricFormatter.number(value, kind: kind, style: .row, currencyCode: currencyCode)
     }
 }
 

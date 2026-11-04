@@ -3,17 +3,23 @@ import Foundation
 enum ProgressFormat: Hashable, Sendable, Codable {
     case percent
     case dollars
+    case currency(code: String)
     case count(suffix: String)
 
     var metricKind: MetricKind {
         switch self {
         case .percent:
             return .percent
-        case .dollars:
+        case .dollars, .currency:
             return .dollars
         case .count:
             return .count
         }
+    }
+
+    var currencyCode: String? {
+        guard case .currency(let code) = self else { return nil }
+        return code
     }
 }
 

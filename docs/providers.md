@@ -54,8 +54,8 @@ resets popover says so, and you can spend the reset in Claude Code instead.
   app, paste it into the sheet.
 - The card reads the plan (Pro, Max, or Ultra) once an hour. Ultra has no 5-hour limit, so it has no
   Session row.
-- Extra Usage shows spend against the monthly limit, or the amount spent when there is no limit. It
-  hides while extra usage is off.
+- Extra Usage shows spend against the monthly limit, or the amount spent when there is no limit, in
+  the account's billing currency. It hides while extra usage is off.
 - **Limit Resets** counts the account's rate-limit resets. Click the count to see when each expires.
   Choose **Use**, then **Reset**, to spend one.
 
