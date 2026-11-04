@@ -11,22 +11,7 @@ struct AccountNameText: View {
         if privacyMode {
             Text(verbatim: placeholder)
                 .truncationMode(.tail)
-                .blur(radius: 1.5)
-                .mask {
-                    LinearGradient(colors: [.white, .clear], startPoint: .leading, endPoint: .trailing)
-                        .padding(-8)
-                }
-                .overlay {
-                    Text(verbatim: placeholder)
-                        .truncationMode(.tail)
-                        .blur(radius: 4)
-                        .mask {
-                            LinearGradient(colors: [.clear, .white], startPoint: .leading, endPoint: .trailing)
-                                .padding(-8)
-                        }
-                        .accessibilityHidden(true)
-                        .allowsHitTesting(false)
-                }
+                .blur(radius: 4)
                 .textSelection(.disabled)
                 .accessibilityLabel(PrivacyModeSetting.accountName(provider, isEnabled: true))
         } else {
