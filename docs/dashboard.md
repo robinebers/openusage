@@ -12,8 +12,8 @@ The panel that opens from the menu bar icon. It has two tabs, Priority and All U
 Priority shows only what needs you, most urgent first.
 
 - **Pinned** comes first, with every pinned metric that has data. A pinned metric that's running
-  out moves to Running Out until it recovers, and one that's used up moves to Used Up until it
-  resets.
+  out moves to Running Out until it recovers, one that's used up moves to Used Up until it resets,
+  and one listed under Use It or Lose It moves there until it resets.
 - **Running Out** lists every limit at or under its Warning level (30% left by default, set in
   [Priority Limits](settings.md#priority-limits)). With **Burning Fast** on, it also lists a limit
   that would run out before it resets at your current pace, however much it has left, with the time
@@ -22,6 +22,10 @@ Priority shows only what needs you, most urgent first.
   pace, least left first.
 - **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
   credits, shows here only at exactly zero.
+- **Use It or Lose It** lists, with the setting of that name on, a limit that resets within 24 hours
+  with over 50% left, the same rule as the alert. Only windows longer than a day count, never the
+  5-hour session or a dollar spending cap. Each shows when it resets, like `Resets in 18h`, soonest
+  first. These limits never show in the menu bar.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is
   running low. It waits for accounts that haven't reported yet.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.

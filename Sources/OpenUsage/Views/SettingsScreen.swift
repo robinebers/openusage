@@ -109,6 +109,13 @@ struct SettingsScreen: View {
                         .foregroundStyle(Theme.severityColor(.warning))
                 }
             }
+            Toggle(isOn: $dataStore.showsUseItOrLoseIt) {
+                limitLabel("Use It or Lose It", subtitle: PaceMilestone.useItOrLoseIt.settingSubtitle(dataStore.priorityLimits)) {
+                    Image(systemName: "hourglass.tophalf.filled")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.severityColor(.normal))
+                }
+            }
         }
         Section("Appearance") {
             picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })

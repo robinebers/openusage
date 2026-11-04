@@ -56,8 +56,8 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 - **Share.** Copy a picture of your usage to the clipboard.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
   it unused.
-- **Priority limits.** Choose how much left turns a limit orange or red, and see limits you're burning
-  through too fast while they still have plenty left.
+- **Priority limits.** Choose how much left turns a limit orange or red, see limits you're burning
+  through too fast while they still have plenty left, and see limits about to reset mostly unused.
 - **Global shortcut.** Toggle the panel from anywhere.
 - **[Command line](docs/cli.md).** Your usage as JSON, for scripts and agents.
 - **[Automatic updates](docs/updates.md).** Signed, notarized updates, with an optional beta channel.
