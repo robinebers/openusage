@@ -8,10 +8,6 @@ struct MuseUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func account(token: String) async throws -> MuseAccount {
         let response = try await http.send(HTTPRequest(
             method: "POST",
@@ -22,11 +18,12 @@ struct MuseUsageClient: Sendable {
                 "Accept": "application/json",
                 "x-api-version": "1.0.0"
             ],
-            body: Data(#"{"onboard":false}"#.utf8),
-            timeout: 15
+            body: Data(#"{"onboard":false}"#.utf8)
         ))
         try ProviderError.requireSuccess(response, kind: .muse)
-        guard let account = try? JSONDecoder().decode(MuseAccount.self, from: response.body) else {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        guard let account = try? decoder.decode(MuseAccount.self, from: response.body) else {
             throw ProviderError.invalidResponse
         }
         return account
@@ -52,12 +49,6 @@ struct MuseAccount: Decodable, Sendable {
         enum CodingKeys: String, CodingKey {
             case usedPercent = "used_percent"
             case resetsAt = "resets_at"
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            usedPercent = try container.decode(Double.self, forKey: .usedPercent)
-            resetsAt = try container.decodeIfPresent(Double.self, forKey: .resetsAt).map(Date.init(timeIntervalSince1970:))
         }
     }
 

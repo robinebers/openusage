@@ -78,7 +78,7 @@ struct MuseLogin: ProviderLogin {
             http: http,
             prompt: prompt
         )
-        let email = try await MuseUsageClient(http: http).account(token: token.accessToken).email
+        let email = try await MuseUsageClient(http: http).account(token: token.accessToken).email?.trimmingCharacters(in: .whitespaces).nilIfEmpty
         return (email ?? ProviderKind.muse.displayName, .oauth(OAuthTokens(
             accessToken: token.accessToken,
             extras: email.map { [OAuthTokens.identityKey: "muse:\($0)"] } ?? [:]

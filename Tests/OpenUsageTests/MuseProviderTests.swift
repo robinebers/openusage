@@ -81,6 +81,12 @@ final class MuseProviderTests: XCTestCase {
             .percent("Weekly", 18, resetsAt: Self.weeklyReset, periodMs: MetricPeriod.weekMs)
         ], "a kept window past its reset has reset")
 
+        let partial = try self.harness(Self.response(200, Self.active))
+        _ = try await partial.runtime.refresh().get()
+        partial.answer.value = Self.response(200, Self.body(usage: #"{"weekly":{"used_percent":20}}"#))
+        let weeklyOnly = try await partial.runtime.refresh().get().lines
+        XCTAssertEqual(weeklyOnly, [.percent("Weekly", 20, periodMs: MetricPeriod.weekMs)], "a reported usage keeps nothing it left out")
+
         let fresh = try self.harness(Self.response(200, Self.body()))
         let unknown = try await fresh.runtime.refresh().get().lines
         XCTAssertEqual(unknown, [], "nothing known and nothing reported")
