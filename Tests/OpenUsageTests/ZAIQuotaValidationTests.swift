@@ -48,24 +48,14 @@ final class ZAIQuotaValidationMapperTests: XCTestCase {
         }
     }
 
-    func testUnknownEntriesDoNotHideKnownMeters() throws {
-        let body = Data(
-            #"{"data":{"limits":[{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70},{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":25}]}}"#.utf8
-        )
+    func testUnknownLimitsShowNothingAndDoNotHideKnownMeters() throws {
+        let unknown = #"{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70}"#
+        XCTAssertTrue(try ZAIUsageMapper.mapQuota(Data(#"{"data":{"limits":[\#(unknown)]}}"#.utf8)).isEmpty)
 
-        let lines = try ZAIUsageMapper.mapQuota(body)
+        let known = #"{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":25}"#
+        let lines = try ZAIUsageMapper.mapQuota(Data(#"{"data":{"limits":[\#(unknown),\#(known)]}}"#.utf8))
 
         XCTAssertNotNil(lines.first { $0.label == "Session" })
         XCTAssertNil(lines.first { $0.label == "Weekly" })
-    }
-
-    func testOnlyUnknownLimitsRemainForwardCompatibleNoData() throws {
-        let body = Data(
-            #"{"data":{"limits":[{"type":"FUTURE_LIMIT"},{"type":"TOKENS_LIMIT","unit":99,"number":1,"percentage":70}]}}"#.utf8
-        )
-
-        let lines = try ZAIUsageMapper.mapQuota(body)
-
-        XCTAssertTrue(lines.isEmpty)
     }
 }

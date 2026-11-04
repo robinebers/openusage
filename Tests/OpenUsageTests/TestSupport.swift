@@ -4,20 +4,6 @@ import XCTest
 import os
 @testable import OpenUsage
 
-final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
-    var response: HTTPResponse
-    var requests: [HTTPRequest] = []
-
-    init(response: HTTPResponse) {
-        self.response = response
-    }
-
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        requests.append(request)
-        return response
-    }
-}
-
 final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
     private let requestsLock = OSAllocatedUnfairLock(initialState: [HTTPRequest]())
     var requests: [HTTPRequest] { requestsLock.withLock { $0 } }
@@ -30,6 +16,12 @@ final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         requestsLock.withLock { $0.append(request) }
         return try await handler(request)
+    }
+}
+
+extension HTTPResponse {
+    static func json(_ text: String, status: Int = 200, headers: [String: String] = [:]) -> HTTPResponse {
+        HTTPResponse(statusCode: status, headers: headers, body: Data(text.utf8))
     }
 }
 

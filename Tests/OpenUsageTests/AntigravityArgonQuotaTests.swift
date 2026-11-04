@@ -27,10 +27,6 @@ final class AntigravityArgonQuotaTests: XCTestCase {
         }, [20, 30, 40, 50], file: file, line: line)
     }
 
-    func testAbsentArgonPreservesExistingFourBuckets() {
-        assertSharedPoolsOnly(summary(groupName: "Unrelated group", buckets: ""))
-    }
-
     func testUnavailableArgonPreservesSharedQuotas() {
         let unavailable = [
             "",

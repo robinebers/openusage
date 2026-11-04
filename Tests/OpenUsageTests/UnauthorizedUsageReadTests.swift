@@ -32,7 +32,7 @@ final class UnauthorizedUsageReadTests: XCTestCase {
             for expiresAt in [nil, Date().addingTimeInterval(3600)] {
                 let name = "\(provider.kind) expiring \(expiresAt == nil ? "at an unknown time" : "in an hour")"
                 let (result, http, saved) = try await Self.refresh(provider, expiresAt: expiresAt) { attempt in
-                    attempt == 1 ? HTTPResponse(statusCode: 401, headers: [:], body: Data()) : Self.ok(provider.usage)
+                    attempt == 1 ? HTTPResponse(statusCode: 401, headers: [:], body: Data()) : .json(provider.usage)
                 }
                 XCTAssertNil(result.failure?.message, name)
                 XCTAssertEqual(http.requests.count { $0.url == provider.tokenURL }, 1, name)
@@ -82,7 +82,7 @@ final class UnauthorizedUsageReadTests: XCTestCase {
         let attempts = OSAllocatedUnfairLock(initialState: 0)
         let http = RoutingHTTPClient { request in
             switch request.url {
-            case provider.tokenURL: ok(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#)
+            case provider.tokenURL: .json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#)
             case provider.usageURL: usage(attempts.withLock { $0 += 1; return $0 })
             default: HTTPResponse(statusCode: 404, headers: [:], body: Data())
             }
@@ -90,9 +90,5 @@ final class UnauthorizedUsageReadTests: XCTestCase {
         let result = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh()
         guard case .oauth(let saved)? = try vault.load(account.id) else { return (result, http, nil) }
         return (result, http, saved)
-    }
-
-    private nonisolated static func ok(_ body: String) -> HTTPResponse {
-        HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
     }
 }

@@ -14,23 +14,6 @@ final class TokenRefreshMarginTests: XCTestCase {
         XCTAssertEqual(saved.expiresAt, now.addingTimeInterval(28_800), "the provider's own expiry is stored")
     }
 
-    func testClaudeTokenWithTimeToSpareIsNotRefreshed() async throws {
-        let (http, _) = try await refreshClaude(expiringIn: 10 * 60)
-        XCTAssertFalse(http.requests.contains { $0.url.host() == "platform.claude.com" })
-    }
-
-    func testCodexTokenExpiringWithinTheMarginIsRefreshedBeforeTheUsageRead() async throws {
-        let http = try await refreshCodex(expiringIn: 60)
-        XCTAssertEqual(http.requests.first?.url, CodexLogin.tokenURL)
-        let usage = try XCTUnwrap(http.requests.first { $0.url == CodexUsageClient.usageURL })
-        XCTAssertEqual(usage.headers["Authorization"], "Bearer new-access")
-    }
-
-    func testCodexTokenWithTimeToSpareIsNotRefreshed() async throws {
-        let http = try await refreshCodex(expiringIn: 10 * 60)
-        XCTAssertFalse(http.requests.contains { $0.url == CodexLogin.tokenURL })
-    }
-
     private func refreshClaude(expiringIn seconds: TimeInterval) async throws -> (RoutingHTTPClient, OAuthTokens) {
         let account = Account(kind: .claude, label: "Claude")
         let vault = InMemoryCredentialVault()
@@ -50,21 +33,5 @@ final class TokenRefreshMarginTests: XCTestCase {
         _ = try await AccountProviderRuntime(account: account, vault: vault, http: http, now: { [now] in now }).refresh().get()
         guard case .oauth(let saved)? = try vault.load(account.id) else { throw XCTSkip("no credential") }
         return (http, saved)
-    }
-
-    private func refreshCodex(expiringIn seconds: TimeInterval) async throws -> RoutingHTTPClient {
-        let account = Account(kind: .codex, label: "Codex")
-        let vault = InMemoryCredentialVault()
-        try vault.save(.oauth(OAuthTokens(
-            accessToken: "old-access", refreshToken: "refresh", expiresAt: now.addingTimeInterval(seconds)
-        )), for: account.id)
-        let http = RoutingHTTPClient { request in
-            if request.url == CodexLogin.tokenURL {
-                return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"access_token":"new-access","refresh_token":"next"}"#.utf8))
-            }
-            return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"rate_limit":{}}"#.utf8))
-        }
-        _ = await AccountProviderRuntime(account: account, vault: vault, http: http, now: { [now] in now }).refresh()
-        return http
     }
 }

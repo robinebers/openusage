@@ -64,7 +64,7 @@ final class ZAIResetTests: XCTestCase {
     }
 
     func testUseRequestNamesTheExactRecordAndWindow() async throws {
-        let http = RoutingHTTPClient { _ in Self.response(#"{"success":true}"#) }
+        let http = RoutingHTTPClient { _ in .json(#"{"success":true}"#) }
         _ = try await ZAIUsageClient(http: http).useReset(Self.weekly21, requestID: "request-1", apiKey: "key-1")
 
         let request = try XCTUnwrap(http.requests.first)
@@ -77,10 +77,10 @@ final class ZAIResetTests: XCTestCase {
     }
 
     func testOnlySuccessTrueCountsAsSpent() {
-        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: Self.response(#"{"success":true}"#)), .success)
-        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: Self.response(#"{"success":false,"msg":"no"}"#)), .failed(.refused))
-        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: Self.response(#"{"success":true}"#, status: 500)), .failed(.refused))
-        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: Self.response("{}", status: 401)), .failed(.signInExpired))
+        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: .json(#"{"success":true}"#)), .success)
+        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: .json(#"{"success":false,"msg":"no"}"#)), .failed(.refused))
+        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: .json(#"{"success":true}"#, status: 500)), .failed(.refused))
+        XCTAssertEqual(ZAIResetsMapper.claimOutcome(from: .json("{}", status: 401)), .failed(.signInExpired))
     }
 
     func testRefreshAddsTheResetsRowAndTheClaimServiceListsThem() async throws {
@@ -95,7 +95,7 @@ final class ZAIResetTests: XCTestCase {
     }
 
     func testAFailedResetListLeavesTheMetersWorking() async throws {
-        for failure in [Self.response("{}", status: 500), Self.response("not json")] {
+        for failure in [HTTPResponse.json("{}", status: 500), .json("not json")] {
             let runtime = try makeRuntime(RoutingHTTPClient { request in
                 request.url == ZAIUsageClient.resetListURL ? failure : Self.route(request)
             })
@@ -111,10 +111,10 @@ final class ZAIResetTests: XCTestCase {
             switch request.url {
             case ZAIUsageClient.resetListURL:
                 let record = #"{"recordId":7,"available":\#(!claimed.value),"expireTime":"\#(expiry)","grantType":"GLOBAL"}"#
-                return Self.response(#"{"success":true,"data":{"weekResets":[\#(record)]}}"#)
+                return .json(#"{"success":true,"data":{"weekResets":[\#(record)]}}"#)
             case ZAIUsageClient.useResetURL:
                 claimed.value = true
-                return Self.response(#"{"success":true}"#)
+                return .json(#"{"success":true}"#)
             default:
                 return Self.route(request)
             }
@@ -180,14 +180,10 @@ final class ZAIResetTests: XCTestCase {
 
     private nonisolated static func route(_ request: HTTPRequest) -> HTTPResponse {
         switch request.url {
-        case ZAIUsageClient.quotaURL: response(quota)
-        case ZAIUsageClient.resetListURL: response(list)
-        case ZAIUsageClient.useResetURL: response(#"{"code":200,"success":true}"#)
-        default: response("{}", status: 404)
+        case ZAIUsageClient.quotaURL: .json(quota)
+        case ZAIUsageClient.resetListURL: .json(list)
+        case ZAIUsageClient.useResetURL: .json(#"{"code":200,"success":true}"#)
+        default: .json("{}", status: 404)
         }
-    }
-
-    private nonisolated static func response(_ body: String, status: Int = 200) -> HTTPResponse {
-        HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
     }
 }
