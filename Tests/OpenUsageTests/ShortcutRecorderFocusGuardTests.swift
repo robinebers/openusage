@@ -30,7 +30,7 @@ final class ShortcutRecorderFocusGuardTests: QuietWindowTestCase {
         container.popover.screen = .settings
         try await waitUntil { recorder.isEnabled }
         XCTAssertTrue(window.makeFirstResponder(recorder))
-        XCTAssertNotNil(window.focusedShortcutRecorder)
+        XCTAssertNotNil(recorder.currentEditor())
         window.makeFirstResponder(nil)
     }
 
@@ -49,7 +49,7 @@ final class ShortcutRecorderFocusGuardTests: QuietWindowTestCase {
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertNil(KeyboardShortcuts.getShortcut(for: .togglePopover), "⌘, was recorded as the global shortcut")
         XCTAssertEqual(container.popover.screen, .settings, "⌘, didn't open Settings")
-        XCTAssertNil(window.focusedShortcutRecorder)
+        XCTAssertNil(recorder.currentEditor())
     }
 
     func testClearingStrayFocusDropsTheRecorderButKeepsATextField() throws {
@@ -63,7 +63,7 @@ final class ShortcutRecorderFocusGuardTests: QuietWindowTestCase {
 
         XCTAssertTrue(panel.makeFirstResponder(recorder))
         panel.clearStrayFocus()
-        XCTAssertNil(panel.focusedShortcutRecorder, "the recorder kept focus")
+        XCTAssertNil(recorder.currentEditor(), "the recorder kept focus")
         XCTAssertFalse(panel.firstResponder is NSText)
 
         XCTAssertTrue(panel.makeFirstResponder(field))

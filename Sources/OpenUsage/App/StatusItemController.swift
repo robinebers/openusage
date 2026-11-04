@@ -77,15 +77,9 @@ class MenuBarPanel: NSPanel {
     /// close otherwise never does. Skips a live text field, whose focus is the user's intent, but not the
     /// shortcut recorder: AppKit can focus it without a click, and then it records the next key press.
     func clearStrayFocus() {
-        guard focusedShortcutRecorder != nil || !(firstResponder is NSText) else { return }
+        let recording = (firstResponder as? NSTextView)?.delegate is KeyboardShortcuts.RecorderCocoa
+        guard recording || !(firstResponder is NSText) else { return }
         makeFirstResponder(nil)
-    }
-}
-
-extension NSWindow {
-    /// The shortcut recorder whose field editor holds the keyboard, while one is recording.
-    var focusedShortcutRecorder: KeyboardShortcuts.RecorderCocoa? {
-        (firstResponder as? NSTextView)?.delegate as? KeyboardShortcuts.RecorderCocoa
     }
 }
 
