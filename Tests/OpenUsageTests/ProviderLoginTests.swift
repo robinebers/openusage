@@ -133,7 +133,7 @@ final class ProviderLoginTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case "/oauth2/device/code":
-                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","expires_in":600,"interval":1}"#)
+                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","verification_uri_complete":"","expires_in":600,"interval":1}"#)
             case "/oauth2/token":
                 Self.response("""
                 {"access_token":"\(accessToken)","refresh_token":"grok-refresh","expires_in":3600}
@@ -151,6 +151,7 @@ final class ProviderLoginTests: XCTestCase {
 
         XCTAssertEqual(result.label, "grok@example.com")
         XCTAssertEqual(prompt.value?.deviceCode?.userCode, "GROK-CODE")
+        XCTAssertEqual(prompt.value?.deviceCode?.verificationURL, URL(string: "https://auth.x.ai/activate"), "an unusable prefilled link falls back to the plain one")
         let start = try XCTUnwrap(http.requests.first { $0.url.path == "/oauth2/device/code" })
         XCTAssertEqual(Self.formBody(start)["client_id"], GrokLogin.clientID)
         XCTAssertEqual(Self.formBody(start)["scope"], "openid email offline_access grok-cli:access")

@@ -217,7 +217,8 @@ private func deviceAuthorization(
     fields["scope"] = scopes
     let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
-    guard let verificationURL = URL(string: device.verificationURIComplete ?? device.verificationURI), verificationURL.scheme == "https" else {
+    let candidates = [device.verificationURIComplete, device.verificationURI].compactMap { $0.flatMap(URL.init(string:)) }
+    guard let verificationURL = candidates.first(where: { $0.scheme == "https" }) else {
         throw LoginError.invalidResponse
     }
     await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
