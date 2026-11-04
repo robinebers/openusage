@@ -91,6 +91,13 @@ final class OllamaUsageHistoryTests: XCTestCase {
         XCTAssertEqual(request.url.host, "ollama.com")
         XCTAssertEqual(request.method, "GET")
         XCTAssertEqual(request.headers["Authorization"], "Bearer ollama-key")
+        let balance = try XCTUnwrap(http.requests.first { $0.url.path == OllamaUsageClient.balancePath })
+        XCTAssertEqual(balance.url, URL(string: "https://ollama.com/api/balance"))
+        XCTAssertEqual(balance.headers["Authorization"], "Bearer ollama-key")
+        let monthly = store.data(for: try XCTUnwrap(runtime.widgetDescriptors.first { $0.key == "monthly" }))
+        XCTAssertEqual(monthly.used, 27.5)
+        XCTAssertEqual(monthly.limit, 100)
+        XCTAssertEqual(monthly.kind, .dollars)
     }
 
     func testTodayAndYesterdayAreReadAgainHourlyFromTheLastSevenDaysAndOnCommandR() async throws {
@@ -123,14 +130,15 @@ final class OllamaUsageHistoryTests: XCTestCase {
 
     func testASuccessfulReadCoversOmittedDaysWithoutInventingFigures() async {
         let sparse = #"{"granularity":"day","buckets":[{"from":"2026-10-29T00:00:00Z","until":"2026-10-30T00:00:00Z","request_count":3}]}"#
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data(sparse.utf8)))
+        let answer = TestSwitch(HTTPResponse.json(sparse))
+        let http = RoutingHTTPClient { _ in answer.value }
         let source = OllamaHistorySource(client: OllamaUsageClient(http: http), apiKey: "key", accountID: "ollama")
         let dates = UsageHistory.dayStarts(0..<2, now: Self.now, calendar: source.calendar)
         let read = await source.read(dates, asOf: Self.now, calendar: source.calendar)
         XCTAssertEqual(read.days[dates[0]], UsageDay(totals: UsageTotals()))
         XCTAssertEqual(read.days[dates[1]]?.totals.values, [.requests: 3])
 
-        http.response = HTTPResponse(statusCode: 500, headers: [:], body: Data())
+        answer.value = HTTPResponse(statusCode: 500, headers: [:], body: Data())
         let failed = await source.read(dates, asOf: Self.now, calendar: source.calendar)
         XCTAssertTrue(failed.days.isEmpty)
     }

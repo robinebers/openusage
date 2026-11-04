@@ -200,14 +200,18 @@ final class CodexUsageHistoryTests: XCTestCase {
     }
 
     func testAWorkspaceReportWithoutChargedCreditsShowsNoCredits() async throws {
-        let (store, runtime, _, _) = try makeAccount(planType: "team", workspaceBreakdown: CodexUsageFixtures.relativeBreakdown)
+        for breakdown in [CodexUsageFixtures.relativeBreakdown, "{}"] {
+            let (store, runtime, _, _) = try makeAccount(planType: "team", workspaceBreakdown: breakdown)
 
-        _ = await store.refresh(providerID: runtime.provider.id, force: true)
+            _ = await store.refresh(providerID: runtime.provider.id, force: true)
 
-        XCTAssertEqual(rows(store, runtime), [
-            "today": "0 tokens", "yesterday": "8.1M tokens", "last30": "2B tokens"
-        ], "relative units never show as dollars")
-        XCTAssertEqual(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.models, [])
+            XCTAssertEqual(rows(store, runtime), [
+                "today": "0 tokens", "yesterday": "8.1M tokens", "last30": "2B tokens"
+            ], breakdown)
+            let yesterday = store.usageBreakdown(for: try descriptor(runtime, "yesterday"))
+            XCTAssertEqual(yesterday?.models, [], breakdown)
+            XCTAssertNil(yesterday?.totals[.credits], breakdown)
+        }
     }
 
     func testBusinessEducationAndEnterprisePlansReadTheirChargedCreditsByModel() async throws {
@@ -320,13 +324,6 @@ final class CodexUsageHistoryTests: XCTestCase {
         let partial = try XCTUnwrap(store.usageBreakdown(for: month))
         XCTAssertEqual(partial.totals[.tokens], full.totals[.tokens])
         XCTAssertEqual(partial.totals[.credits], 3, "only Oct 29's charge remains after the credit reread fails")
-    }
-
-    func testInvalidWorkspaceCreditsStillShowTokenCounts() async throws {
-        let (store, runtime, _, _) = try makeAccount(planType: "team", workspaceBreakdown: "{}")
-        _ = await store.refresh(providerID: runtime.provider.id, force: true)
-        XCTAssertEqual(rows(store, runtime)["last30"], "2B tokens")
-        XCTAssertNil(store.usageBreakdown(for: try descriptor(runtime, "yesterday"))?.totals[.credits])
     }
 
     func testTheCreditLimitShowsWhatTheWorkspaceLetsTheMemberSpend() async throws {

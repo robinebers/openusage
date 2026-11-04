@@ -48,15 +48,7 @@ By submitting a pull request, you agree that your contribution is licensed under
 
 ### Add a provider
 
-Each provider is a `ProviderKind` case, a `ProviderLogin` the user starts from the Accounts screen, and a small module under `Sources/OpenUsage/Providers/<Name>/`: a usage client that calls the provider's API with the account's own credential, and a mapper that normalizes the response into metric lines. OpenUsage never reads credentials, files, or logs that belong to other tools, and never estimates spend. See [docs/adding-a-provider.md](docs/adding-a-provider.md) for the full walkthrough (and [docs/architecture.md](docs/architecture.md) for how the pieces fit together).
-
-1. Open or comment on an issue and wait for a maintainer to approve it (`approved` label) and assign it to you — include why the provider fits and how its usage data is accessible
-2. Add the `ProviderKind` case and its sign-in, then create `Sources/OpenUsage/Providers/<Name>/` with the usage client and mapper
-3. Add the provider's metrics as descriptors in `AccountProviderRuntime+Descriptors.swift`
-4. Add focused tests under `Tests/OpenUsageTests/`
-5. Add the provider to `docs/providers.md` (sign-in, metrics, where the plan badge comes from, what its errors mean)
-6. Test it locally with `./script/build_and_run.sh`
-7. Open a PR with screenshots showing it working
+Get the provider issue approved and assigned to you, then follow [docs/adding-a-provider.md](docs/adding-a-provider.md).
 
 You can also [open an issue](https://github.com/robinebers/openusage/issues/new?template=new_provider.yml) to request a provider without building it yourself.
 
@@ -91,11 +83,7 @@ Don't open a PR for a feature without an approved issue assigned to you first. [
 
 ## Code Standards
 
-- Swift 6 with strict concurrency, built with SwiftPM (no Xcode project)
-- Follow existing patterns in the codebase — [AGENTS.md](AGENTS.md) is the engineering contract
-- User-visible behavior changes must update the matching `docs/` page(s) in the same PR
-- UI copy is plain language and sentence case
-- No new dependencies without justification
+[AGENTS.md](AGENTS.md) is the engineering contract.
 
 ## Maintainers
 

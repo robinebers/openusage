@@ -2,19 +2,12 @@ import Foundation
 
 extension ClaudeLogin {
     static func refresh(_ refreshToken: String, http: any HTTPClient, now: Date) async throws -> OAuthGrant {
-        let body: [String: Any] = [
+        let response = try await LoginHTTP.postJSON(tokenURL, fields: [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
             "client_id": clientID,
             "scope": scopes
-        ]
-        let response = try await http.send(HTTPRequest(
-            method: "POST",
-            url: tokenURL,
-            headers: ["Content-Type": "application/json"],
-            body: try JSONSerialization.data(withJSONObject: body),
-            timeout: 15
-        ))
+        ], using: http)
         return try OAuthTokenResponse(renewal: response, kind: .claude).grant(now: now)
     }
 }
@@ -52,10 +45,6 @@ struct ClaudeUsageClient: Sendable {
     static let resetGrantsURL = URL(string: "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1")!
 
     var httpClient: HTTPClient
-
-    init(httpClient: HTTPClient = URLSessionHTTPClient()) {
-        self.httpClient = httpClient
-    }
 
     func fetchUsage(accessToken: String) async throws -> HTTPResponse {
         try await sendUsageRequest(url: Self.usageURL, accessToken: accessToken)

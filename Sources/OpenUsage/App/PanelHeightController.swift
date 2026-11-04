@@ -36,7 +36,7 @@ final class PanelHeightController {
         panel: MenuBarPanel,
         defaults: UserDefaults = .standard,
         currentScreen: @escaping () -> PopoverScreen,
-        currentTab: @escaping () -> DashboardTab = { .priority }
+        currentTab: @escaping () -> DashboardTab
     ) {
         self.panel = panel
         self.defaults = defaults
@@ -67,7 +67,7 @@ final class PanelHeightController {
         })
     }
 
-    func prepareForOpening(below buttonRect: NSRect, tab: DashboardTab = .priority) {
+    func prepareForOpening(below buttonRect: NSRect, tab: DashboardTab) {
         morphSettleTask?.cancel()
         isMorphing = false
         PanelHeightBridge.invalidate()

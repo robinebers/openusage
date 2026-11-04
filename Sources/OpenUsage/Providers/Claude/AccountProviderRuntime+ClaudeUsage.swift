@@ -34,11 +34,11 @@ extension AccountProviderRuntime {
             try? await readClaudeProfile(session, tokens: tokens)
         }
         if let resets = claudeResetsLine(session) { lines.append(resets) }
-        return ProviderUsage(plan: session.planRead.value, lines: lines)
+        let plan = session.planRead.value
+        return ProviderUsage(plan: plan, lines: lines, lineTitles: ClaudeUsageMapper.lineTitles(plan: plan))
     }
 
-    func restore(_ snapshot: ProviderSnapshot) {
-        guard account.kind == .claude else { return }
+    func restoreClaude(_ snapshot: ProviderSnapshot) {
         claude.restoredPlan = snapshot.plan
         claude.restoredResets = snapshot.line(label: ClaudeResetGrantStatus.lineLabel)
     }
@@ -56,6 +56,8 @@ extension AccountProviderRuntime {
         if grantsDue { await readClaudeResetGrants(session, accessToken: tokens.accessToken) }
         var updated = snapshot
         updated.plan = session.planRead.value
+        let titles = ClaudeUsageMapper.lineTitles(plan: updated.plan)
+        updated.lineTitles = titles.isEmpty ? nil : titles
         updated.lines.removeAll { $0.label == ClaudeResetGrantStatus.lineLabel }
         if let resets = claudeResetsLine(session) { updated.lines.append(resets) }
         return updated == snapshot ? nil : updated

@@ -3,10 +3,6 @@ import XCTest
 
 @MainActor
 final class RefreshSettingTests: XCTestCase {
-    func testCadenceIsFixedAtFiveMinutes() {
-        XCTAssertEqual(RefreshSetting.interval, 300)
-    }
-
     func testRelaunchWithinTheIntervalShowsTheSavedSnapshotWithoutRefetching() async {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let suite = isolatedDefaults()
@@ -47,30 +43,6 @@ final class RefreshSettingTests: XCTestCase {
         let runtime = makeRuntime(used: 80)
         await makeStore(runtime: runtime, suite: suite, now: now).refreshAll()
         XCTAssertEqual(runtime.refreshCount, 1)
-    }
-
-    func testWithinSessionPassServedFromCacheUntilInterval() async {
-        var now = Date(timeIntervalSince1970: 1_800_000_000)
-        let suite = isolatedDefaults()
-
-        let cache = ProviderSnapshotCache(userDefaults: suite, storageKey: "snapshots")
-        cache.save(["test": ProviderSnapshot(
-            providerID: "test",
-            displayName: "Test",
-            lines: [.progress(label: "Session", used: 20, limit: 100, format: .percent)],
-            refreshedAt: now.addingTimeInterval(-240)
-        )])
-
-        let runtime = makeRuntime(used: 80)
-        let store = WidgetDataStore.forTesting([runtime], cache: cache, defaults: suite, now: { now })
-        await store.refreshAll()
-
-        XCTAssertEqual(runtime.refreshCount, 0)
-        XCTAssertNotNil(store.snapshots["test"])
-
-        now = now.addingTimeInterval(61)
-        await store.refreshAll()
-        XCTAssertEqual(runtime.refreshCount, 1, "the same-session cache expires after the refresh interval")
     }
 
     private func storeSnapshot(

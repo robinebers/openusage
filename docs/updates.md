@@ -4,7 +4,7 @@ OpenUsage updates itself with [Sparkle](https://sparkle-project.org). It verifie
 installing it.
 
 - **Automatic checks.** About once an hour. A found update shows an **Update Available** banner at the
-  top of the panel. Click **Install Update** to open the update window. Closing the banner snoozes it
+  top of the panel. Click **Install Update** to open the update window, which lists what's new in that version. Closing the banner snoozes it
   until the next check finds the update.
 - **Manual check.** **Check for Updates…** in the dashboard's **⋯** menu or in **Settings → Updates**.
 - **Turn it off.** **Settings → Updates → Check Automatically** stops the background checks. Manual

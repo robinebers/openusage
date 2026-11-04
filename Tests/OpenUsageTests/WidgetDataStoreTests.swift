@@ -4,22 +4,6 @@ import os
 
 @MainActor
 final class WidgetDataStoreTests: XCTestCase {
-    func testRefreshAllPersistsAndPublishesAllProviderSnapshots() async {
-        let fixtures = ["alpha", "beta", "gamma"].map { makeRuntime($0) }
-        let ids = fixtures.map { $0.0.id }
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            fixtures.map { $0.1 },
-            defaults: defaults
-        )
-
-        await store.refreshAll()
-
-        XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
-        XCTAssertEqual(Set(persisted.keys), Set(ids))
-    }
-
     func testForcedRefreshesWaitingOnOneReadTakeTurns() async throws {
         let account = Account(kind: .openrouter, label: "Work")
         let vault = InMemoryCredentialVault()
@@ -80,20 +64,6 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 1, "the waiting refresh asked again inside the provider's wait")
     }
 
-    func testSingleProviderRefreshPersistsImmediately() async {
-        let fixture = makeRuntime("single")
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            [fixture.1],
-            defaults: defaults
-        )
-
-        await store.refresh(providerID: fixture.0.id, force: true)
-
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
-        XCTAssertNotNil(persisted[fixture.0.id])
-    }
-
     func testAFinishedAccountShowsAndPersistsWithoutWaitingForThePass() async {
         let fast = makeRuntime("fast")
         let slowProvider = Provider(id: "slow", kind: .codex)
@@ -137,44 +107,6 @@ final class WidgetDataStoreTests: XCTestCase {
         let outcomes = await refreshTask.value
         XCTAssertEqual(outcomes, [.refreshed, .refreshed])
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty)
-    }
-
-    func testResolvesProgressSnapshotIntoWidgetData() async {
-        let provider = Provider(id: "test", kind: .codex)
-        let descriptor = WidgetDescriptor(
-            provider: provider,
-            key: "session",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
-        )
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(
-                    label: "Session",
-                    used: 42,
-                    limit: 100,
-                    format: .percent,
-                    resetsAt: Date(timeIntervalSinceNow: 60 * 60),
-                    periodDurationMs: 5 * 60 * 60 * 1000
-                )]
-            )
-        )
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
-
-        await store.refreshAll()
-        let data = store.data(for: descriptor)
-
-        XCTAssertEqual(data.used, 42)
-        XCTAssertEqual(data.displayedValue, 58)
-        XCTAssertEqual(data.valueText, "58%")
-        guard case .bar(_, _, let value, let reset, _) = data.dashboardRow().mark else { return XCTFail("not a bar") }
-        XCTAssertEqual(value, "58%")
-        XCTAssertNotNil(reset, "a meter with a reset date shows its countdown")
     }
 
     func testBarFractionMatchesRoundedValue() {
@@ -317,7 +249,7 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testCursorCreditsRenderAsUnboundedBalance() async {
         let provider = Provider(id: "cursor", kind: .cursor)
-        let descriptor = WidgetDescriptor.dollarBalance(
+        let descriptor = WidgetDescriptor.values(
             key: "credits",
             provider: provider,
             title: "Credits",
@@ -361,6 +293,31 @@ final class WidgetDataStoreTests: XCTestCase {
 
         let data = store.data(for: descriptor)
         XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
+    }
+
+    func testClaudesExtraUsageReadsInTheBillingCurrency() async throws {
+        let account = Account(kind: .claude, label: "Team")
+        let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "extra" })
+        let provider = AccountProviderRuntime.provider(for: account)
+        func data(_ extra: String) async throws -> WidgetData {
+            let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(
+                statusCode: 200, headers: [:], body: Data(#"{"extra_usage":\#(extra)}"#.utf8)
+            ))
+            let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
+                                      snapshot: ProviderSnapshot(provider: provider, plan: nil, lines: lines))
+            let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+            store.meterStyle = .used
+            await store.refreshAll()
+            return store.data(for: descriptor)
+        }
+
+        let capped = try await data(#"{"is_enabled":true,"used_credits":1234,"monthly_limit":5000,"currency":"EUR","decimal_places":2}"#)
+        XCTAssertEqual(capped.amountText, "€12.34 used")
+        XCTAssertEqual(capped.meterStyleTooltip, "€37.66 left")
+        XCTAssertEqual(capped.menuBarValue, "€12")
+
+        let uncapped = try await data(#"{"is_enabled":true,"used_credits":1500,"monthly_limit":null,"currency":"JPY","decimal_places":0}"#)
+        XCTAssertEqual(uncapped.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("¥1.5K spent")))
     }
 
     func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {

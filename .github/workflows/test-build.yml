@@ -45,6 +45,18 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Building $VERSION (build $(git rev-list --count HEAD)) from $(git rev-parse HEAD)"
 
+      - name: Extract release notes
+        env:
+          BASE_VERSION: ${{ inputs.base_version }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -o pipefail
+          section=Unreleased
+          grep -qxF "## v$BASE_VERSION" CHANGELOG.md && section="v$BASE_VERSION"
+          mkdir -p test-feed
+          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "$section" "test-feed/OpenUsage-$VERSION.md"
+          echo "Release notes from the \"## $section\" section."
+
       - name: Import Developer ID certificate
         uses: apple-actions/import-codesign-certs@v7
         with:
@@ -88,9 +100,13 @@ jobs:
           cat "$SPARKLE_PRIVATE_KEY_FILE" | "$GA" \
             --ed-key-file - \
             --download-url-prefix "http://localhost:8000/" \
+            --embed-release-notes \
             test-feed
           grep -Eq "$DMG\"[^>]*sparkle:edSignature" test-feed/appcast.xml \
             || { echo "Test appcast item for $DMG is missing or unsigned (SUPublicEDKey/private-key mismatch?)." >&2; exit 1; }
+          xmllint --xpath "string(//item[enclosure[contains(@url, '/$DMG')]]/description)" test-feed/appcast.xml \
+            | grep '[^[:space:]]' >/dev/null \
+            || { echo "Test appcast item for $DMG has no release notes in <description>." >&2; exit 1; }
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7

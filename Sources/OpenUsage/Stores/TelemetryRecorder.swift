@@ -1,15 +1,29 @@
 import Foundation
 
 struct TelemetryConfigSnapshot: Sendable {
-    let enabledProviders: [String]
-    let enabledMetricIDs: [String]
-}
+    struct ProviderAccounts: Sendable {
+        let kind: ProviderKind
+        var direct = 0
+        var cliProxyAPI = 0
+    }
 
-struct ProviderDailyCounter: Codable, Sendable, Equatable {
-    var day: String
-    var success = 0
-    var failure = 0
-    var manual = 0
+    let providers: [ProviderAccounts]
+    let enabledMetricIDs: [String]
+
+    init(accounts: [Account], enabledMetricIDs: [String]) {
+        var providers: [ProviderAccounts] = []
+        for account in accounts {
+            let index = providers.firstIndex { $0.kind == account.kind } ?? providers.endIndex
+            if index == providers.endIndex { providers.append(ProviderAccounts(kind: account.kind)) }
+            if account.hub == nil {
+                providers[index].direct += 1
+            } else {
+                providers[index].cliProxyAPI += 1
+            }
+        }
+        self.providers = providers
+        self.enabledMetricIDs = enabledMetricIDs
+    }
 }
 
 @MainActor
@@ -22,7 +36,7 @@ final class TelemetryRecorder {
     private static let installIDKey = "installID"
     private static let enabledKey = "enabled"
     private static let activeDayKey = "activeDay"
-    private static let providerDaysKey = "providerDays"
+    private static let providerAccountsDayKey = "providerAccountsDay"
 
     static var suite: UserDefaults {
         UserDefaults(suiteName: (Bundle.main.bundleIdentifier ?? "com.openusage.app") + ".telemetry") ?? .standard
@@ -55,84 +69,38 @@ final class TelemetryRecorder {
         return minted
     }
 
-    func providerCounters() -> [String: ProviderDailyCounter] {
-        guard let data = defaults.data(forKey: Self.providerDaysKey) else { return [:] }
-        return (try? JSONDecoder().decode([String: ProviderDailyCounter].self, from: data)) ?? [:]
-    }
-
     func tick() {
         let today = Self.dayString(now())
-        if isEnabled {
-            flushStaleCounters(today: today)
-        }
-        if defaults.string(forKey: Self.activeDayKey) != today {
+        let sendActive = defaults.string(forKey: Self.activeDayKey) != today
+        let sendProviderAccounts = isEnabled && defaults.string(forKey: Self.providerAccountsDayKey) != today
+        guard sendActive || sendProviderAccounts else { return }
+        let config = snapshot()
+
+        if sendActive {
             defaults.set(today, forKey: Self.activeDayKey)
-            emitDailyActive()
+            sink.capture("app_daily_active", [
+                "install_id": installID,
+                "app_version": AppInfo.version,
+                "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
+                "enabled_providers": config.providers.map(\.kind.rawValue),
+                "enabled_metric_ids": config.enabledMetricIDs
+            ])
         }
-    }
-
-    func record(providerID: String, result: WidgetDataStore.RefreshOutcome, manual: Bool) {
-        guard isEnabled, result == .refreshed || result == .failed else { return }
-
-        let today = Self.dayString(now())
-        var counters = providerCounters()
-        if let existing = counters[providerID], existing.day != today {
-            emitProviderRollup(providerID: providerID, counter: existing)
-            counters[providerID] = nil
+        if sendProviderAccounts {
+            defaults.set(today, forKey: Self.providerAccountsDayKey)
+            let providers: [[String: Any]] = config.providers.map {
+                [
+                    "provider_id": $0.kind.rawValue,
+                    "direct_count": $0.direct,
+                    "cliproxyapi_count": $0.cliProxyAPI
+                ]
+            }
+            sink.capture("provider_accounts_daily", ["install_id": installID, "providers": providers])
         }
-        var counter = counters[providerID] ?? ProviderDailyCounter(day: today)
-        if result == .refreshed {
-            counter.success += 1
-        } else {
-            counter.failure += 1
-        }
-        if manual { counter.manual += 1 }
-        counters[providerID] = counter
-        setProviderCounters(counters)
+        sink.flush()
     }
 
     func flush() {
-        sink.flush()
-    }
-
-    private func flushStaleCounters(today: String) {
-        var counters = providerCounters()
-        var changed = false
-        for (providerID, counter) in counters where counter.day != today {
-            emitProviderRollup(providerID: providerID, counter: counter)
-            counters[providerID] = nil
-            changed = true
-        }
-        if changed { setProviderCounters(counters) }
-    }
-
-    private func setProviderCounters(_ counters: [String: ProviderDailyCounter]) {
-        guard let data = try? JSONEncoder().encode(counters) else {
-            AppLog.warn(.config, "failed to persist telemetry counters")
-            return
-        }
-        defaults.set(data, forKey: Self.providerDaysKey)
-    }
-
-    private func emitDailyActive() {
-        let config = snapshot()
-        sink.capture("app_daily_active", [
-            "install_id": installID,
-            "app_version": AppInfo.version,
-            "os_version": ProcessInfo.processInfo.operatingSystemVersionString,
-            "enabled_providers": config.enabledProviders,
-            "enabled_metric_ids": config.enabledMetricIDs
-        ])
-        sink.flush()
-    }
-
-    private func emitProviderRollup(providerID: String, counter: ProviderDailyCounter) {
-        sink.capture("provider_refresh_daily", [
-            "provider_id": providerID,
-            "success_count": counter.success,
-            "failure_count": counter.failure,
-            "manual_refresh_count": counter.manual
-        ])
         sink.flush()
     }
 

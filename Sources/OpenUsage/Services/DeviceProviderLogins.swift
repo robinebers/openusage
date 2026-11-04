@@ -50,12 +50,33 @@ struct GrokLogin: ProviderLogin {
             http: http,
             prompt: prompt
         )
-        let claims = token.accessToken.jwtPayload(as: GrokIDClaims.self)
-        return (claims?.email ?? "Grok Account", .oauth(OAuthTokens(
+        let claims = ProviderParse.jwtPayloadData(token.accessToken).flatMap { try? JSONDecoder().decode(GrokIDClaims.self, from: $0) }
+        return (claims?.email ?? "Grok Account", .oauth(token.tokens(extras: (claims?.sub ?? claims?.email).map { [OAuthTokens.identityKey: $0] } ?? [:])))
+    }
+}
+
+/// Muse Code's device sign-in, under the Muse CLI's own public client: Meta registers no other clients.
+/// It sends no scope: the usage read needs none, and the device endpoint refuses `openid`. The sign-in
+/// returns a `dca:` token with no refresh token, and the account takes the email Muse reports for it.
+struct MuseLogin: ProviderLogin {
+    static let clientID = "1031625952748946"
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        let token = try await deviceAuthorization(
+            provider: "Meta",
+            startURL: URL(string: "https://auth.meta.com/oidc/device/authorization/")!,
+            tokenURL: URL(string: "https://auth.meta.com/oidc/device/token/")!,
+            clientID: Self.clientID,
+            scopes: nil,
+            deniedMessage: "Meta device sign-in was denied.",
+            http: http,
+            prompt: prompt
+        )
+        let email = try await MuseUsageClient(http: http).account(token: token.accessToken).email?.trimmingCharacters(in: .whitespaces).nilIfEmpty
+        return (email ?? ProviderKind.muse.displayName, .oauth(OAuthTokens(
             accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            expiresAt: token.expiry,
-            extras: (claims?.sub ?? claims?.email).map { [OAuthTokens.identityKey: $0] } ?? [:]
+            extras: email.map { [OAuthTokens.identityKey: "muse:\($0)"] } ?? [:]
         )))
     }
 }
@@ -170,6 +191,7 @@ enum ProviderLoginCatalog {
         case .copilot: CopilotLogin()
         case .devin: DevinLogin()
         case .grok: GrokLogin()
+        case .muse: MuseLogin()
         case .ollama, .opencodeGo, .openrouter, .zai: APIKeyLogin(kind: kind)
         }
     }
@@ -180,15 +202,18 @@ private func deviceAuthorization(
     startURL: URL,
     tokenURL: URL,
     clientID: String,
-    scopes: String,
+    scopes: String?,
     headers: [String: String] = [:],
     deniedMessage: String,
     http: any HTTPClient,
     prompt: @Sendable (LoginPrompt) async -> Void
 ) async throws -> OAuthTokenResponse {
-    let start = try await LoginHTTP.postForm(startURL, fields: ["client_id": clientID, "scope": scopes], using: http, headers: headers)
+    var fields = ["client_id": clientID]
+    fields["scope"] = scopes
+    let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
-    guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
+    let candidates = [device.verificationURIComplete, device.verificationURI].compactMap { $0.flatMap(URL.init(string:)) }
+    guard let verificationURL = candidates.first(where: { $0.scheme == "https" && $0.host?.isEmpty == false }) else {
         throw LoginError.invalidResponse
     }
     await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
@@ -201,7 +226,7 @@ private func deviceAuthorization(
         if let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body) {
             return .complete(token)
         }
-        return switch LoginHTTP.jsonObject(response)["error"] {
+        return switch ProviderParse.jsonObject(response.body)?["error"] as? String {
         case "authorization_pending": .pending
         case "slow_down": .slowDown
         case "expired_token": .failed("\(provider) device sign-in expired.")
@@ -215,12 +240,14 @@ private struct DeviceCode: Decodable {
     let deviceCode: String
     let userCode: String
     let verificationURI: String
+    let verificationURIComplete: String?
     let expiresIn: Int
     let interval: TimeInterval?
     enum CodingKeys: String, CodingKey {
         case deviceCode = "device_code"
         case userCode = "user_code"
         case verificationURI = "verification_uri"
+        case verificationURIComplete = "verification_uri_complete"
         case expiresIn = "expires_in"
         case interval
     }

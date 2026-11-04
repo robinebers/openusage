@@ -51,6 +51,8 @@ Wait for explicit approval of the changelog before changing any files. Accept ed
 
 Prepend the approved section right after the `# Changelog` header. Commit on `main`:
 
+Name the section exactly `## v{version}` and commit it before tagging: `release.yml` embeds it as the notes in Sparkle's update window and fails the release when it is missing or empty. The Test Build uses `## v{base_version}`, or `## Unreleased` until that exists.
+
 ```sh
 git switch main && git pull
 git add CHANGELOG.md && git commit -m "docs: changelog for v{version}"

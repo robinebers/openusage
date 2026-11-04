@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 final class RefreshTimeoutTests: XCTestCase {
-    func testHungProviderRefreshFailsAndStopsTheSpinner() async {
+    func testHungProviderRefreshFailsAndStopsTheSpinner() async throws {
         let (provider, descriptor) = makeProvider()
         let runtime = HangingProviderRuntime(provider: provider, descriptors: [descriptor])
         let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, timeout: 0.05)
@@ -13,22 +13,12 @@ final class RefreshTimeoutTests: XCTestCase {
         let outcome = await store.refresh(providerID: provider.id, force: true)
 
         XCTAssertEqual(outcome, .failed)
+        try await waitUntil { runtime.wasCancelled }
+        XCTAssertTrue(runtime.wasCancelled, "a refresh the store gave up on must be cancelled, or the hung work runs forever")
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty, "the spinner must stop when the deadline wins")
         XCTAssertEqual(store.errorMessage(for: provider.id)?.hasPrefix("Refresh timed out after"), true)
         let next = await store.refresh(providerID: provider.id)
         XCTAssertEqual(next, .backedOff)
-    }
-
-    func testHungProviderRefreshIsCancelledWhenTheDeadlineWins() async {
-        let (provider, descriptor) = makeProvider()
-        let runtime = HangingProviderRuntime(provider: provider, descriptors: [descriptor])
-        let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, timeout: 0.05)
-
-        let outcome = await store.refresh(providerID: provider.id, force: true)
-
-        XCTAssertEqual(outcome, .failed)
-        let cancelled = await waitUntil { runtime.wasCancelled }
-        XCTAssertTrue(cancelled, "a refresh the store gave up on must be cancelled, or the hung work runs forever")
     }
 
     func testRefreshInsideTheDeadlineStillSucceeds() async {
@@ -75,8 +65,8 @@ final class RefreshTimeoutTests: XCTestCase {
             await store.refreshAll()
         }
 
-        let refreshed = await waitUntil { other.refreshCount == 2 }
-        XCTAssertTrue(refreshed, "a Claude hourly read stuck on its Keychain item must not hold up the next pass")
+        try await waitUntil { other.refreshCount == 2 }
+        XCTAssertEqual(other.refreshCount, 2, "a Claude hourly read stuck on its Keychain item must not hold up the next pass")
     }
 
     func testAPassJoinsAStuckKeychainReadInsteadOfStartingAnother() async throws {
@@ -85,7 +75,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
         vault.stall()
         let passes = [Task { await runtime.refresh() }, Task { await runtime.refresh() }]
-        _ = await waitUntil { vault.loads > 0 }
+        try await waitUntil { vault.loads > 0 }
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(vault.loads, 1, "a stuck Keychain read holds a thread, so a second pass must wait on it, not start another")
 
@@ -102,7 +92,7 @@ final class RefreshTimeoutTests: XCTestCase {
 
         vault.stall()
         let first = Task { await runtime.refresh() }
-        _ = await waitUntil { vault.loads > 0 }
+        try await waitUntil { vault.loads > 0 }
         try await runtime.replaceCredential(.oauth(OAuthTokens(accessToken: "renewed", refreshToken: "refresh")))
         let second = Task { await runtime.refresh() }
         let third = Task { await runtime.refresh() }
@@ -143,16 +133,6 @@ final class RefreshTimeoutTests: XCTestCase {
         let defaults = isolatedDefaults()
         return WidgetDataStore.forTesting([runtime], defaults: defaults, providerRefreshTimeout: timeout)
     }
-
-    private func waitUntil(_ condition: @MainActor () -> Bool) async -> Bool {
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while ContinuousClock.now < deadline {
-            if condition() { return true }
-            try? await Task.sleep(for: .milliseconds(1))
-        }
-        return condition()
-    }
-
 }
 
 /// A vault whose reads block once stalled, the way a Keychain read waits on a prompt nobody answers.

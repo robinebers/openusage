@@ -8,10 +8,6 @@ struct CopilotUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchUsage(token: String) async throws -> HTTPResponse {
         guard let url = URL(string: Self.usageURL) else {
             throw ProviderError.invalidResponse
@@ -40,17 +36,11 @@ struct CopilotUsageClient: Sendable {
     /// One organization's Copilot credits and spend this month, read with a token from an owner or
     /// billing manager of the organization: the Copilot sign-in itself cannot read organization billing.
     func organizationUsage(_ organization: String, token: String) async throws -> [MetricLine] {
-        let response = try await http.send(HTTPRequest(
-            method: "GET",
-            url: Self.organizationUsageURL(organization),
-            headers: [
-                "Authorization": "Bearer \(token)",
-                "Accept": "application/vnd.github+json",
-                "User-Agent": "OpenUsage",
-                "X-GitHub-Api-Version": "2022-11-28"
-            ],
-            timeout: 15
-        ))
+        let response = try await LoginHTTP.get(Self.organizationUsageURL(organization), bearerToken: token, using: http, headers: [
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "OpenUsage",
+            "X-GitHub-Api-Version": "2022-11-28"
+        ])
         if ProviderError.isAuthFailure(response) { throw ProviderError.keyRejected("GitHub rejected the token.") }
         if response.statusCode == 404 {
             throw ProviderError.unavailable("GitHub has no organization “\(organization)” this token can read.")

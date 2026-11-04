@@ -19,22 +19,6 @@ final class CLIProxyHubTests: XCTestCase {
     ]}
     """#
 
-    func testTheRecordedListingReadsAsLogins() throws {
-        let logins = try HubLogin.listing(from: Data(Self.recordedListing.utf8))
-
-        XCTAssertEqual(logins.map(\.id), [
-            "claude-alice@example.com.json", "claude-apikey-file.json", "claude-disabled@example.com.json",
-            "claude-notoken@example.com.json", "codex-codex-user@example.com-plus.json", "kimi-kim@example.com.json"
-        ], "hub order is kept")
-        XCTAssertEqual(logins.map(\.kind), [.claude, .claude, .claude, .claude, .codex, nil])
-        XCTAssertEqual(logins.map(\.label), [
-            "alice@example.com", "claude", "disabled@example.com", "notoken@example.com", "codex-user@example.com", "kim@example.com"
-        ], "a login without an email takes the hub's label")
-        XCTAssertEqual(logins.first { $0.isDisabled }?.id, "claude-disabled@example.com.json")
-        XCTAssertEqual(logins.first { $0.kind == .codex }?.chatGPTAccountID, "acct-dummy-0001")
-        XCTAssertEqual(logins.first?.authIndex, "b799da203df01af5")
-    }
-
     func testEveryHubProviderWithARuntimeIsMirroredAndCursorIsNot() throws {
         let providers = ["antigravity", "devin", "xai", "cursor", "gemini"]
         let body = #"{"files":["# + providers.map { #"{"id":"\#($0)","auth_index":"\#($0)-index","provider":"\#($0)","account_type":"oauth"}"# }
@@ -80,9 +64,12 @@ final class CLIProxyHubTests: XCTestCase {
         try store.mirror(try HubLogin.listing(from: Data(Self.recordedListing.utf8)), from: hub.id)
 
         XCTAssertEqual(store.accounts.map(\.kind), [.claude, .claude, .claude, .codex])
-        XCTAssertEqual(store.accounts.map(\.label).last, "codex-user@example.com")
+        XCTAssertEqual(
+            store.accounts.map(\.label), ["alice@example.com", "Claude Account", "notoken@example.com", "codex-user@example.com"],
+            "hub order is kept, a login disabled on the hub gets no account, and one without an email gets the default name"
+        )
+        XCTAssertEqual(store.accounts.first?.hub?.authIndex, "b799da203df01af5")
         XCTAssertTrue(store.accounts.allSatisfy { $0.hub?.hubID == hub.id && $0.hub?.hubURL == hub.url })
-        XCTAssertFalse(store.accounts.contains { $0.label == "disabled@example.com" }, "a login disabled on the hub gets no account")
         let codex = try XCTUnwrap(store.accounts.first { $0.kind == .codex })
         XCTAssertEqual(
             try vault.load(codex.id),
@@ -114,6 +101,7 @@ final class CLIProxyHubTests: XCTestCase {
         let (store, vault, hub) = try makeHub()
         store.add(kind: .claude, label: "Direct", credential: .oauth(OAuthTokens(accessToken: "direct")))
         try store.mirror([login("a", "claude"), login("b", "codex"), login("c", "claude")], from: hub.id)
+        let a = try XCTUnwrap(store.accounts.first { $0.hub?.loginID == "a" })
         let b = try XCTUnwrap(store.accounts.first { $0.hub?.loginID == "b" })
         let c = try XCTUnwrap(store.accounts.first { $0.hub?.loginID == "c" })
         store.rename(c.id, to: "Renamed Here")
@@ -125,7 +113,7 @@ final class CLIProxyHubTests: XCTestCase {
 
         XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "a login two listings lack disappears")
         XCTAssertEqual(store.accounts.first { $0.id == b.id }?.hub?.authIndex, "moved", "a renamed hub file is relinked, not re-added")
-        XCTAssertEqual(vault.ids.count, 3, "the gone and disabled logins' credentials are deleted")
+        XCTAssertEqual(try [a, c].map { try vault.load($0.id) }, [nil, nil], "the gone and disabled logins' credentials are deleted")
 
         try store.mirror([login("b", "codex", index: "moved"), login("c", "claude"), login("d", "claude")], from: hub.id)
         XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d", "c"], "a login enabled again comes back as a new account, last")
@@ -136,13 +124,14 @@ final class CLIProxyHubTests: XCTestCase {
         let (store, vault, hub) = try makeHub()
         let direct = store.add(kind: .codex, label: "Direct", credential: .oauth(OAuthTokens(accessToken: "direct")))
         try store.mirror([login("a", "claude"), login("b", "codex")], from: hub.id)
-        XCTAssertEqual(store.accounts(onHub: hub.id).count, 2)
+        let mirrored = store.accounts(onHub: hub.id)
+        XCTAssertEqual(mirrored.count, 2)
 
         store.removeHub(hub.id)
 
         XCTAssertEqual(store.accounts.map(\.id), [direct.id])
         XCTAssertTrue(store.hubs.isEmpty)
-        XCTAssertEqual(vault.ids, [direct.id])
+        XCTAssertEqual(try (mirrored + [direct]).map { try vault.load($0.id) }, [nil, nil, .oauth(OAuthTokens(accessToken: "direct"))])
         XCTAssertNil(try store.hubKeys.load(hub.id))
         XCTAssertTrue(AccountStore(defaults: defaults, vault: vault).hubs.isEmpty, "the removal is saved")
     }
@@ -169,8 +158,8 @@ final class CLIProxyHubTests: XCTestCase {
 
     private var defaults: UserDefaults!
 
-    private func makeHub() throws -> (AccountStore, RecordingVault, CLIProxyHub) {
-        let vault = RecordingVault()
+    private func makeHub() throws -> (AccountStore, InMemoryCredentialVault, CLIProxyHub) {
+        let vault = InMemoryCredentialVault()
         defaults = isolatedDefaults()
         let store = AccountStore(defaults: defaults, vault: vault, hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: URL(string: "http://mini.local:8317")!)
@@ -184,22 +173,4 @@ final class CLIProxyHubTests: XCTestCase {
             chatGPTAccountID: provider == "codex" ? "acct-\(id)" : nil
         )
     }
-}
-
-/// An in-memory vault that can list what it holds.
-final class RecordingVault: CredentialVault, @unchecked Sendable {
-    private let lock = NSLock()
-    private var credentials: [UUID: AccountCredential] = [:]
-
-    var ids: Set<UUID> { lock.withLock { Set(credentials.keys) } }
-
-    func load(_ id: UUID) throws -> AccountCredential? { lock.withLock { credentials[id] } }
-    func save(_ credential: AccountCredential, for id: UUID) throws { lock.withLock { credentials[id] = credential } }
-    func update(_ credential: AccountCredential, for id: UUID) throws {
-        try lock.withLock {
-            guard credentials[id] != nil else { throw CredentialVaultError.missingCredential }
-            credentials[id] = credential
-        }
-    }
-    func delete(_ id: UUID) throws { lock.withLock { credentials[id] = nil } }
 }

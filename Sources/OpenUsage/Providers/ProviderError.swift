@@ -39,6 +39,12 @@ enum ProviderError: Error, LocalizedError, Equatable {
         guard (200..<300).contains(response.statusCode) else { throw ProviderError.failed(response) }
     }
 
+    static func requireSuccessJSON(_ response: HTTPResponse, kind: ProviderKind) throws -> [String: Any] {
+        try requireSuccess(response, kind: kind)
+        guard let body = ProviderParse.jsonObject(response.body) else { throw ProviderError.invalidResponse }
+        return body
+    }
+
     static func failed(_ response: HTTPResponse, now: Date = Date()) -> ProviderError {
         isRateLimit(response) ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
     }

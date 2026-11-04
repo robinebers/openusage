@@ -37,12 +37,7 @@ struct ClaudeLogin: ProviderLogin {
             throw LoginError.failed("Claude didn’t return your profile. Click Try Again to sign in again.")
         }
         let identity = ClaudeAccountProfile.identity(accountUUID: info.account.uuid, organizationUUID: info.organization?.uuid)
-        return (info.account.email ?? info.email ?? "Claude Account", .oauth(OAuthTokens(
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            expiresAt: token.expiry,
-            extras: [OAuthTokens.identityKey: identity]
-        )))
+        return (info.account.email ?? info.email ?? "Claude Account", .oauth(token.tokens(extras: [OAuthTokens.identityKey: identity])))
     }
 }
 
@@ -77,7 +72,8 @@ struct CodexLogin: ProviderLogin {
         let device = try LoginHTTP.decode(CodexDeviceStart.self, from: start)
         let verifyURL = URL(string: "https://auth.openai.com/codex/device")!
         await prompt(.deviceCode(userCode: device.userCode, verificationURL: verifyURL))
-        let deviceToken: CodexDeviceToken = try await DeviceCodePoller.poll(interval: device.interval, expiresIn: 900) { [http] in
+        let interval = ProviderParse.number(ProviderParse.jsonObject(start.body)?["interval"]) ?? 5
+        let deviceToken: CodexDeviceToken = try await DeviceCodePoller.poll(interval: interval, expiresIn: 900) { [http] in
             let url = URL(string: "https://auth.openai.com/api/accounts/deviceauth/token")!
             let response = try await LoginHTTP.postJSON(url, fields: [
                 "device_auth_id": device.deviceAuthID,
@@ -86,10 +82,9 @@ struct CodexLogin: ProviderLogin {
             if (200..<300).contains(response.statusCode) {
                 return .complete(try LoginHTTP.decode(CodexDeviceToken.self, from: response))
             }
-            let error = LoginHTTP.jsonObject(response)["error"] ?? ""
-            if response.statusCode == 403 || response.statusCode == 404 || error == "deviceauth_authorization_pending" {
-                return .pending
-            }
+            if response.statusCode == 403 || response.statusCode == 404 { return .pending }
+            let error = ProviderParse.jsonObject(response.body)?["error"] as? String ?? ""
+            if error == "deviceauth_authorization_pending" { return .pending }
             if error == "slow_down" { return .slowDown }
             return .failed(error == "expired_token" ? "Device sign-in expired." : "Device sign-in failed.")
         }
@@ -109,18 +104,13 @@ struct CodexLogin: ProviderLogin {
             "redirect_uri": redirectURI
         ], using: http)
         let token = try LoginHTTP.decode(OAuthTokenResponse.self, from: response)
-        let accessClaims = token.accessToken.jwtPayload(as: CodexAccessClaims.self)
-        let idClaims = token.idToken?.jwtPayload(as: CodexIDClaims.self)
-        let accountID = accessClaims?.auth?.chatgptAccountID
+        let auth = ProviderParse.jwtPayload(token.accessToken)?["https://api.openai.com/auth"] as? [String: Any]
+        let accountID = auth?["chatgpt_account_id"] as? String
+        let email = token.idToken.flatMap(ProviderParse.jwtPayload)?["email"] as? String
         var extras: [String: String] = [:]
         extras["chatgpt_account_id"] = accountID
-        if let accountID, let email = idClaims?.email { extras[OAuthTokens.identityKey] = "\(accountID)/\(email)" }
-        return (idClaims?.email ?? "ChatGPT Account", .oauth(OAuthTokens(
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            expiresAt: token.expiry,
-            extras: extras
-        )))
+        if let accountID, let email { extras[OAuthTokens.identityKey] = "\(accountID)/\(email)" }
+        return (email ?? "ChatGPT Account", .oauth(token.tokens(extras: extras)))
     }
 }
 
@@ -159,12 +149,7 @@ struct AntigravityLogin: ProviderLogin {
         let userInfoURL = URL(string: "https://www.googleapis.com/oauth2/v1/userinfo?alt=json")!
         let userInfo = try await LoginHTTP.get(userInfoURL, bearerToken: token.accessToken, using: http)
         let user = try? LoginHTTP.decode(GoogleUserInfo.self, from: userInfo)
-        return (user?.email ?? "Google Account", .oauth(OAuthTokens(
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            expiresAt: token.expiry,
-            extras: (user?.id ?? user?.email).map { [OAuthTokens.identityKey: $0] } ?? [:]
-        )))
+        return (user?.email ?? "Google Account", .oauth(token.tokens(extras: (user?.id ?? user?.email).map { [OAuthTokens.identityKey: $0] } ?? [:])))
     }
 }
 
@@ -181,25 +166,9 @@ private struct GoogleUserInfo: Decodable { let id: String?; let email: String? }
 private struct CodexDeviceStart: Decodable {
     let deviceAuthID: String
     let userCode: String
-    let intervalValue: TimeInterval
     enum CodingKeys: String, CodingKey {
         case deviceAuthID = "device_auth_id"
         case userCode = "user_code"
-        case intervalValue = "interval"
-    }
-    var interval: TimeInterval { intervalValue }
-
-    init(from decoder: Decoder) throws {
-        let values = try decoder.container(keyedBy: CodingKeys.self)
-        deviceAuthID = try values.decode(String.self, forKey: .deviceAuthID)
-        userCode = try values.decode(String.self, forKey: .userCode)
-        if let interval = try? values.decode(TimeInterval.self, forKey: .intervalValue) {
-            intervalValue = interval
-        } else if let interval = try? values.decode(String.self, forKey: .intervalValue), let number = TimeInterval(interval) {
-            intervalValue = number
-        } else {
-            intervalValue = 5
-        }
     }
 }
 
@@ -211,14 +180,3 @@ private struct CodexDeviceToken: Decodable {
         case codeVerifier = "code_verifier"
     }
 }
-
-private struct CodexAccessClaims: Decodable {
-    struct Auth: Decodable {
-        let chatgptAccountID: String?
-        enum CodingKeys: String, CodingKey { case chatgptAccountID = "chatgpt_account_id" }
-    }
-    let auth: Auth?
-    enum CodingKeys: String, CodingKey { case auth = "https://api.openai.com/auth" }
-}
-
-private struct CodexIDClaims: Decodable { let email: String? }

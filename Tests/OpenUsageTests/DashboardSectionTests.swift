@@ -13,7 +13,7 @@ final class DashboardSectionTests: QuietWindowTestCase {
         data.expiriesAt = [Date().addingTimeInterval(86_400), Date().addingTimeInterval(7 * 86_400)]
         let descriptor = WidgetDescriptor(provider: provider, key: "resets", metricLabel: data.title, sample: data)
         let live = LiveLine(DashboardLine(descriptor: descriptor, data: data))
-        let view = ResetRow(live: live).frame(width: DashboardGrid.cardWidth).animationReduction(true)
+        let view = ResetRow(live: live).frame(width: PanelMetrics.width - 2 * PanelMetrics.margin).animationReduction(true)
         let (window, host) = show(view)
         let shown = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
         func detail() -> NSWindow? { NSApp.windows.first { $0.isVisible && !shown.contains(ObjectIdentifier($0)) } }

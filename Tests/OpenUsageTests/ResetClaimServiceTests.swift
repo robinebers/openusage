@@ -58,7 +58,7 @@ final class ResetClaimServiceTests: XCTestCase {
         }
     }
 
-    func testOnlyClaudeAndCodexAccountsGetAClaimService() {
+    func testOnlyClaudeCodexAndZAIAccountsGetAClaimService() {
         for kind in ProviderKind.allCases {
             let runtime = AccountProviderRuntime(account: Account(kind: kind, label: "Work"), vault: InMemoryCredentialVault())
             let service = runtime.resetClaimService { .refreshed }
@@ -69,7 +69,10 @@ final class ResetClaimServiceTests: XCTestCase {
             case .codex:
                 XCTAssertEqual(service?.accountID, runtime.account.cardID)
                 XCTAssertEqual(service?.isClaimable, true)
-            case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+            case .zai:
+                XCTAssertEqual(service?.accountID, runtime.account.cardID)
+                XCTAssertEqual(service?.windowResets, [], "nothing to claim before the first reset-list read")
+            case .cursor, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
                 XCTAssertNil(service, kind.rawValue)
             }
         }

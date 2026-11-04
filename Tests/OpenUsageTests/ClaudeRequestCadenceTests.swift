@@ -211,7 +211,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
     func testAClaimRefreshesTheMetersAtOnceWithoutAGrantsRead() async throws {
         let clock = TestClock(Self.start)
-        let http = Self.anthropic(claim: { Self.json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#) })
+        let http = Self.anthropic(claim: { .json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#) })
         let runtime = try makeRuntime(http: http, clock: clock)
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
         await store.refreshAll()
@@ -237,11 +237,11 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         let http = Self.anthropic(
             grants: {
                 let (left, next) = claimed.value ? (0, "b") : (1, "a")
-                return Self.json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"a","resets_left":\#(left)},{"id":"b","resets_left":1}],"next_grant_id":"\#(next)"}}"#)
+                return .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"a","resets_left":\#(left)},{"id":"b","resets_left":1}],"next_grant_id":"\#(next)"}}"#)
             },
             claim: {
                 claimed.value = true
-                return Self.json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#)
+                return .json(#"{"result":"reset","resets_left":0,"cleared":["five_hour"]}"#)
             }
         )
         let runtime = try makeRuntime(http: http, clock: clock)
@@ -362,7 +362,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
             case "/api/oauth/usage":
                 return request.isClaudeResetGrantsCheck ? grants() : usage()
             case "/api/oauth/profile":
-                return json(#"{"account":{"uuid":"acct"},"organization":{"uuid":"\#(orgUUID)","organization_type":"claude_max"}}"#)
+                return .json(#"{"account":{"uuid":"acct"},"organization":{"uuid":"\#(orgUUID)","organization_type":"claude_max"}}"#)
             case "/api/organizations/\(orgUUID)/reset_rate_limits":
                 return claim()
             default:
@@ -372,15 +372,11 @@ final class ClaudeRequestCadenceTests: XCTestCase {
     }
 
     private nonisolated static func usage() -> HTTPResponse {
-        json(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#)
+        .json(#"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#)
     }
 
     private nonisolated static func grants(resetsLeft: Int, endsAt: Date? = nil) -> HTTPResponse {
         let endsAtJSON = endsAt.map { "\"\(OpenUsageISO8601.string(from: $0))\"" } ?? "null"
-        return json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":\#(resetsLeft),"ends_at":\#(endsAtJSON)}],"next_grant_id":"g"}}"#)
-    }
-
-    private nonisolated static func json(_ text: String) -> HTTPResponse {
-        HTTPResponse(statusCode: 200, headers: [:], body: Data(text.utf8))
+        return .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":\#(resetsLeft),"ends_at":\#(endsAtJSON)}],"next_grant_id":"g"}}"#)
     }
 }

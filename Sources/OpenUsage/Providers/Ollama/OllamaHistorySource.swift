@@ -6,17 +6,12 @@ struct OllamaHistorySource: UsageHistorySource {
     var apiKey: String
     var accountID: String
 
-    private static let utc: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        return calendar
-    }()
     private static let measures: [(field: String, measure: UsageMeasure)] = [
         ("request_count", .requests), ("usage_usd", .usageValue), ("input_tokens", .inputTokens),
         ("cached_input_tokens", .cacheReadTokens), ("output_tokens", .outputTokens)
     ]
 
-    var calendar: Calendar { Self.utc }
+    var calendar: Calendar { .utc }
     /// Hourly, so history adds one call an hour per account.
     var rereadInterval: TimeInterval? { 3600 }
 

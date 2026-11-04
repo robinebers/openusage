@@ -4,11 +4,13 @@ struct WidgetData: Hashable {
     static let noDataValue = "—"
     static let noDataDetail = "No data"
 
-    let title: String
+    var title: String
     let kind: MetricKind
+    var currencyCode: String?
     let used: Double
     var limit: Double?
     var displayMode: WidgetDisplayMode = .used
+    var priorityLimits: PriorityLimits = .standard
     var resetDisplayMode: ResetDisplayMode = .relative
     var resetsAt: Date?
     var expiriesAt: [Date] = []
@@ -58,12 +60,12 @@ struct WidgetData: Hashable {
         case normal, warning, critical
     }
 
-    /// A limit's color, and whether Priority lists it, from what's left alone. Time plays no part.
+    /// A limit's color, and whether Priority lists it as running low, from what's left alone. Time plays no part.
     var severity: MeterSeverity {
         guard hasData, let limit, limit > 0 else { return .normal }
         let percentLeft = Int((remainingFraction * 100).rounded())
-        if percentLeft <= 10 { return .critical }
-        return percentLeft <= 30 ? .warning : .normal
+        if percentLeft <= priorityLimits.critical { return .critical }
+        return percentLeft <= priorityLimits.warning ? .warning : .normal
     }
 
     enum MeterState: Hashable {
@@ -91,7 +93,7 @@ struct WidgetData: Hashable {
         guard hasData else { return Self.noDataValue }
         if let valueTextOverride { return valueTextOverride }
         if let first = values.first {
-            return MetricFormatter.number(first.number, kind: first.kind, style: .row)
+            return MetricFormatter.number(first.number, kind: first.kind, style: .row, currencyCode: first.currencyCode)
         }
         return format(displayedValue)
     }
@@ -100,7 +102,7 @@ struct WidgetData: Hashable {
         if kind == .percent, let limit, limit > 0 {
             return MetricFormatter.number(displayedValue / limit * 100, kind: .percent, style: .tray)
         }
-        return MetricFormatter.number(displayedValue, kind: kind, style: .tray)
+        return MetricFormatter.number(displayedValue, kind: kind, style: .tray, currencyCode: currencyCode)
     }
 
     var unboundedDetail: String {
@@ -111,7 +113,7 @@ struct WidgetData: Hashable {
         guard hasData else { return [Self.noDataDetail] }
         if let valueTextOverride { return [valueTextOverride] }
         if values.count == 1, values[0].kind == .dollars, let word = unboundedValueWord {
-            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row)) \(word)"]
+            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row, currencyCode: values[0].currencyCode)) \(word)"]
         }
         if !values.isEmpty {
             let hasDollars = values.contains { $0.kind == .dollars }
@@ -141,7 +143,7 @@ struct WidgetData: Hashable {
     }
 
     private func format(_ value: Double) -> String {
-        MetricFormatter.number(value, kind: kind, style: .row)
+        MetricFormatter.number(value, kind: kind, style: .row, currencyCode: currencyCode)
     }
 }
 

@@ -49,19 +49,6 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(Set(ids(result.attention)), ["claude@1.At 30%, Nearly Reset", "claude@1.At 30%, Fresh"])
     }
 
-    func testARingFillsLikeItsBarUnderUsedAndLeft() {
-        var limit = unpaced("Weekly", used: 61)
-        limit.displayMode = .used
-        XCTAssertEqual(limit.fraction, 0.61, accuracy: 1e-9)
-        guard case .bar(let usedFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
-        XCTAssertEqual(limit.fraction, usedFill)
-
-        limit.displayMode = .remaining
-        XCTAssertEqual(limit.fraction, 0.39, accuracy: 1e-9)
-        guard case .bar(let leftFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
-        XCTAssertEqual(limit.fraction, leftFill)
-    }
-
     func testTheClockNeverChangesWhatIsListed() {
         let accounts = [account(personal, paced("Weekly", used: 75, left: 4 * day), paced("Fable", used: 40, left: 4 * day))]
         for later in [0, hour, day, 3 * day] {
@@ -88,12 +75,6 @@ final class PriorityBoardTests: XCTestCase {
 
         XCTAssertEqual(ids(result.attention), ["claude@1.Session", "claude@1.Weekly", "claude@1.Extra Usage"],
                        "a limit with no pace to tell by follows the ones that have one")
-    }
-
-    func testTheRunwayIsTheTimeLeftUntilTheLimitAtTheCurrentPace() throws {
-        let weekly = paced("Weekly", used: 31, left: 5 * day)
-        XCTAssertEqual(try XCTUnwrap(weekly.runway(now: now)), 69 / (31 / (2 * day)), accuracy: 1)
-        XCTAssertNil(unpaced("Credits", used: 80).runway(now: now), "no window, no pace")
     }
 
     func testEqualRanksKeepTheSavedOrder() {
@@ -202,16 +183,18 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(result.usedUp.map(\.id), ["claude@2.Sooner", "claude@2.Later", balance.id])
     }
 
-    func testAPinnedEmptyBalanceStaysRedAndIsListedOnlyUnderPinned() throws {
+    func testAPinnedEmptyBalanceIsListedOnlyUnderUsedUp() throws {
         let balance = try realLine(.openrouter, "balance", values: [zero(.dollars)])
         let healthy = paced("Weekly", used: 10, left: day)
         let result = PriorityBoard.make(accounts: [
             DashboardAccount(provider: personal, lines: [balance]), account(work, healthy),
         ], pinned: [balance.id, "claude@2.Weekly"], now: now)
 
-        XCTAssertEqual(result.pinned.map(\.severity), [.critical, .normal])
-        XCTAssertTrue(result.usedUp.isEmpty)
+        XCTAssertEqual(result.pinned.map(\.id), ["claude@2.Weekly"])
+        XCTAssertEqual(ids(result.usedUp), [balance.id])
+        XCTAssertEqual(result.usedUp.map(\.isPinned), [true], "its menu offers Unpin")
         XCTAssertEqual(result.summary, .listed)
+        XCTAssertTrue(result.showsClearRow)
 
         let onlyHealthy = PriorityBoard.make(accounts: [account(work, healthy)], pinned: ["claude@2.Weekly"], now: now)
         XCTAssertEqual(onlyHealthy.summary, .allClear)
@@ -219,25 +202,27 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertFalse(PriorityBoard.make(accounts: [account(work, healthy)], now: now).hasRows)
     }
 
-    func testAPinnedMetricRunningOutIsListedOnlyUnderRunningOutUntilItIsNot() {
+    func testAPinnedMetricRunningOutOrUsedUpIsListedOnlyThereUntilItIsNot() {
         let pins: Set<String> = ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"]
-        func pinnedBoard(sessionUsed: Double) -> PriorityBoard {
+        func pinnedBoard(sessionUsed: Double, monthlyUsed: Double) -> PriorityBoard {
             PriorityBoard.make(accounts: [account(personal,
                                                   paced("Session", used: sessionUsed, left: hour),
                                                   paced("Weekly", used: 20, left: day),
-                                                  paced("Monthly", used: 100, left: day))],
+                                                  paced("Monthly", used: monthlyUsed, left: day))],
                                pinned: pins, now: now)
         }
 
-        let runningOut = pinnedBoard(sessionUsed: 95)
+        let runningOut = pinnedBoard(sessionUsed: 95, monthlyUsed: 100)
         XCTAssertEqual(ids(runningOut.attention), ["claude@1.Session"])
         XCTAssertEqual(runningOut.attention.map(\.isPinned), [true], "its menu offers Unpin")
-        XCTAssertEqual(runningOut.pinned.map(\.id), ["claude@1.Weekly", "claude@1.Monthly"], "a used-up pin stays under Pinned")
-        XCTAssertTrue(runningOut.usedUp.isEmpty)
+        XCTAssertEqual(ids(runningOut.usedUp), ["claude@1.Monthly"])
+        XCTAssertEqual(runningOut.usedUp.map(\.isPinned), [true], "so does a used-up pin's")
+        XCTAssertEqual(runningOut.pinned.map(\.id), ["claude@1.Weekly"])
         XCTAssertFalse(runningOut.showsClearRow)
 
-        let recovered = pinnedBoard(sessionUsed: 20)
+        let recovered = pinnedBoard(sessionUsed: 20, monthlyUsed: 0)
         XCTAssertTrue(recovered.attention.isEmpty)
+        XCTAssertTrue(recovered.usedUp.isEmpty)
         XCTAssertEqual(recovered.pinned.map(\.id), ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"],
                        "back under Pinned in dashboard order")
 

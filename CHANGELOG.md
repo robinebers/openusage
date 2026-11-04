@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added
+- Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
+  resets apart, earliest first, and **Use** spends the earliest of a window
+  ([#1427](https://github.com/robinebers/openusage/issues/1427)).
+- Muse Code provider: sign in with a Meta device code to see your subscription's Session and Weekly
+  limits.
+- **Settings → Display → Priority Limits** sets how much left turns a limit Warning (orange) or
+  Critical (red), for the colors, Running Out, the menu bar, and the alerts. The alerts are now named
+  Warning and Critical.
+- **Burning Fast** under Priority Limits lists a limit that would run out before it resets at your
+  current pace, however much it has left, under Running Out and in the menu bar, with when it would
+  run out ([#1574](https://github.com/robinebers/openusage/issues/1574)). On by default.
+
+### Changed
+- Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of
+  staying under **Pinned** as an empty ring.
+
+### Fixed
+- Claude's Extra Usage shows the account's billing currency, such as €, instead of always $
+  ([#1425](https://github.com/robinebers/openusage/issues/1425)).
+- Cursor: Extra Usage reads "Team Spend" when its limit is the team's shared pool, so it no longer
+  looks like a personal cap. Personal limits still read Extra Usage.
+- Claude: Extra Usage reads "Spend" on an Enterprise plan, where it is the whole monthly bill
+  ([#1260](https://github.com/robinebers/openusage/issues/1260)).
+
+## v0.8.0-beta.1
+
 **Upgrading from 0.7.x:** add your accounts again from the **Accounts** screen. OpenUsage no longer
 picks up the sign-ins of the coding tools on your Mac, so most accounts don't carry over. The
 OpenRouter and Z.ai keys you saved in 0.7.x are added for you, unless you had turned that provider off.

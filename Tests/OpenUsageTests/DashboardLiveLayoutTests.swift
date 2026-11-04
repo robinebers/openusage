@@ -35,7 +35,7 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         )
         ProviderSnapshotCache(userDefaults: defaults).save([account.cardID: snapshot])
         let now = snapshot.refreshedAt
-        let calendar = CodexHistorySource.utc
+        let calendar = Calendar.utc
         let yesterday = try XCTUnwrap(UsageHistory.dayStarts([1], now: now, calendar: calendar).first)
         let day = UsageDay(
             totals: UsageTotals(values: [.tokens: 766_600_000, .inputTokens: 700_000_000, .outputTokens: 66_600_000, .turns: 100]),

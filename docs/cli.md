@@ -11,7 +11,7 @@ openusage codex@1a2b3c4d   # one account, by its id
 ```
 
 - The argument is an account id (the `providers` key in the output) or a provider kind: `claude`,
-  `codex`, `cursor`, `antigravity`, `copilot`, `devin`, `grok`, `ollama`, `opencode`,
+  `codex`, `cursor`, `antigravity`, `copilot`, `devin`, `grok`, `muse`, `ollama`, `opencode`,
   `openrouter`, `zai`. Anything else is an error.
 - `--force` from 0.7.x is accepted and does nothing. The command says so on stderr.
 
@@ -84,7 +84,8 @@ Each resource is one value with a `unit`:
 - A resource with no current value is left out, not shown as zero.
 - `unit` follows the provider's live format. Cursor `totalUsage` is `percent`, or `requests` on
   request-based Enterprise plans. Copilot `premiumCredits` is `percent` on paid plans, or a
-  `credits` count on org-managed seats that only report personal usage.
+  `credits` count on org-managed seats that only report personal usage. Claude `extraUsage` is the
+  account's billing currency, such as `usd` or `eur`.
 
 A failed refresh doesn't change the output. The app shows the failure, with its reason in the
 account's right-click menu.
@@ -100,10 +101,11 @@ account's right-click menu.
 | Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions`; an organization account: `orgCredits`, `orgSpend` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
+| Muse Code | `session`, `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `balance`, `keyLimit` |
-| Z.ai | `session`, `weekly`, `webSearches` |
+| Z.ai | `session`, `weekly`, `webSearches`, `rateLimitResets` |
 
 - ChatGPT `credits` is `0` when the balance is empty, and absent when ChatGPT reports no balance.
 - Antigravity `argonWeekly` is the Gemini 4 Argon weekly quota, absent when the account has none.

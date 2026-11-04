@@ -14,6 +14,18 @@ Alerts, and Advanced. Changes apply at once.
 - **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
   first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 
+## Priority limits
+
+- **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
+  70% left, 30% by default.
+- **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
+- **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
+  before it resets at your current pace, however much it has left. On by default.
+
+They always count what's left, even with Show Usage As set to Used, and they also pick which limits
+the menu bar shows and when the Warning and Critical notifications fire. Critical always stays under
+Warning: moving one onto the other pushes the other 5% along.
+
 ## Appearance
 
 - **Theme.** System, Light, or Dark.
@@ -30,9 +42,10 @@ Click a limit's amount or reset on the dashboard to flip either one.
 
 All off by default. Turning the first one on asks macOS for permission.
 
-- **Almost Out.** A limit drops under 10%.
-- **Cutting It Close.** A limit drops under 30%.
-- **Will Run Out.** A limit may run out before its reset.
+- **Critical.** A limit drops to its Critical level or less left (10% by default).
+- **Warning.** A limit drops to its Warning level or less left (30% by default).
+- **Will Run Out.** A limit may run out before its reset. After it fires, it waits until the limit's
+  pace eases to 90% of the limit before it can fire again.
 
 Each fires once per metric per reset window. Click one to open All Usage.
 
@@ -40,7 +53,7 @@ Each fires once per metric per reset window. Click one to open All Usage.
 
 - **Hide From Screen Share.** Shows the app icon instead of your usage while your screen is
   shared or recorded. Off by default.
-- **Help Make OpenUsage Better.** Sends optional daily provider-refresh summaries. The daily active
+- **Help Make OpenUsage Better.** Sends optional daily account counts by provider. The daily active
   ping and crash reports don't depend on it.
 
 See [Privacy](privacy.md).

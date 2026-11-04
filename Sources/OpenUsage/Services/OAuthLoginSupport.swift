@@ -51,11 +51,6 @@ enum LoginHTTP {
         }
         return try JSONDecoder().decode(type, from: response.body)
     }
-
-    static func jsonObject(_ response: HTTPResponse) -> [String: String] {
-        guard let values = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any] else { return [:] }
-        return values.compactMapValues { $0 as? String }
-    }
 }
 
 struct OAuthTokenResponse: Decodable {
@@ -73,6 +68,10 @@ struct OAuthTokenResponse: Decodable {
 
     func grant(now: Date) -> OAuthGrant {
         OAuthGrant(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresIn.map { now.addingTimeInterval($0) })
+    }
+
+    func tokens(extras: [String: String]) -> OAuthTokens {
+        OAuthTokens(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiry, extras: extras)
     }
 }
 
@@ -106,13 +105,6 @@ struct OAuthGrant: Sendable {
     var expiresAt: Date?
 }
 
-extension String {
-    func jwtPayload<T: Decodable>(as type: T.Type) -> T? {
-        guard let data = ProviderParse.jwtPayloadData(self) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
-    }
-}
-
 enum LoginError: LocalizedError, Sendable {
     case cancelled
     case invalidResponse
@@ -144,28 +136,6 @@ enum AuthorizationInput: Sendable {
     case pasted(String)
 }
 
-func waitForAuthorizationInput(
-    server: LoopbackCallbackServer,
-    pastedCode: AsyncStream<String>
-) async throws -> AuthorizationInput {
-    try await withTaskCancellationHandler {
-        try await withThrowingTaskGroup(of: AuthorizationInput.self) { tasks in
-            tasks.addTask { .callback(try await server.waitForCode()) }
-            tasks.addTask {
-                var iterator = pastedCode.makeAsyncIterator()
-                guard let value = await iterator.next() else { throw LoginError.cancelled }
-                return .pasted(value)
-            }
-            guard let result = try await tasks.next() else { throw LoginError.cancelled }
-            server.cancel()
-            tasks.cancelAll()
-            return result
-        }
-    } onCancel: {
-        server.cancel()
-    }
-}
-
 func authorizeInBrowser(
     _ authorizeURL: URL,
     clientID: String,
@@ -190,7 +160,22 @@ func authorizeInBrowser(
     ] + extraQuery
     guard let url = components.url else { throw LoginError.invalidResponse }
     await prompt(.browser(url, acceptsPastedCode: true))
-    let input = try await waitForAuthorizationInput(server: server, pastedCode: pastedCode)
+    let input = try await withTaskCancellationHandler {
+        try await withThrowingTaskGroup(of: AuthorizationInput.self) { tasks in
+            tasks.addTask { .callback(try await server.waitForCode()) }
+            tasks.addTask {
+                var iterator = pastedCode.makeAsyncIterator()
+                guard let value = await iterator.next() else { throw LoginError.cancelled }
+                return .pasted(value)
+            }
+            guard let result = try await tasks.next() else { throw LoginError.cancelled }
+            server.cancel()
+            tasks.cancelAll()
+            return result
+        }
+    } onCancel: {
+        server.cancel()
+    }
     return try authorizationCode(from: input, expectedState: state)
 }
 

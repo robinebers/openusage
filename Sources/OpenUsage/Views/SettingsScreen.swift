@@ -8,8 +8,8 @@ struct SettingsScreen: View {
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
-    @AppStorage(PaceMilestone.underTenPercent.settingKey) private var underTenPercent = false
-    @AppStorage(PaceMilestone.underThirtyPercent.settingKey) private var underThirtyPercent = false
+    @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
+    @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
@@ -42,7 +42,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if underTenPercent || underThirtyPercent || closeToRunningOut { checkNotificationPermission() }
+                if criticalAlert || warningAlert || closeToRunningOut { checkNotificationPermission() }
             }
         }
     }
@@ -94,6 +94,19 @@ struct SettingsScreen: View {
         } footer: {
             SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
         }
+        Section("Priority Limits") {
+            levelPicker("Warning", subtitle: "Turns a limit orange", severity: .warning,
+                        selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
+            levelPicker("Critical", subtitle: "Turns a limit red", severity: .critical,
+                        selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
+            Toggle(isOn: $dataStore.showsBurningFast) {
+                limitLabel("Burning Fast", subtitle: "Will run out before it resets") {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.severityColor(.warning))
+                }
+            }
+        }
         Section("Appearance") {
             picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })
                 .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
@@ -107,8 +120,8 @@ struct SettingsScreen: View {
 
     private var alertsTab: some View {
         Section {
-            notificationToggle(.underTenPercent, isOn: $underTenPercent)
-            notificationToggle(.underThirtyPercent, isOn: $underThirtyPercent)
+            notificationToggle(.critical, isOn: $criticalAlert)
+            notificationToggle(.warning, isOn: $warningAlert)
             notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
         } header: {
             Text("Notifications")
@@ -179,10 +192,35 @@ struct SettingsScreen: View {
         }
     }
 
+    private func levelPicker(
+        _ title: String, subtitle: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
+    ) -> some View {
+        Picker(selection: selection) {
+            ForEach(options, id: \.self) { Text("\($0)% left").tag($0) }
+        } label: {
+            limitLabel(title, subtitle: subtitle) {
+                Circle().fill(Theme.severityColor(severity)).frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    /// A Priority Limits row's label: its mark, then its title over what it does.
+    private func limitLabel(_ title: String, subtitle: String, @ViewBuilder mark: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            mark().frame(width: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private func notificationToggle(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) {
             Text(milestone.notificationTitle)
-            Text(milestone.settingSubtitle)
+            Text(milestone.settingSubtitle(dataStore.priorityLimits))
         }
         .onChange(of: isOn.wrappedValue) { _, enabled in
             if enabled { checkNotificationPermission() }

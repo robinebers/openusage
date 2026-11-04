@@ -9,10 +9,6 @@ private let userStatus = #"""
 private let refused = #"{"code":"unauthenticated","message":"invalid token"}"#
 private let selfServeStatusURL = "https://server.self-serve.windsurf.com/exa.seat_management_pb.SeatManagementService/GetUserStatus"
 
-private func response(_ body: String, status: Int = 200) -> HTTPResponse {
-    HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
-}
-
 private func jsonBody(_ request: HTTPRequest?) -> [String: Any]? {
     request?.body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
 }
@@ -24,7 +20,7 @@ final class DevinLoginTests: XCTestCase {
             let prompt = TestSwitch<LoginPrompt?>(nil)
             let (closedInput, input) = AsyncStream.makeStream(of: String.self)
             input.finish()
-            let http = RoutingHTTPClient { _ in response("{}", status: 500) }
+            let http = RoutingHTTPClient { _ in .json("{}", status: 500) }
             _ = try? await DevinLogin(http: http).login(prompt: { prompt.value = $0 }, pastedCode: closedInput)
 
             guard case .browserToken(let url) = prompt.value else { return XCTFail("expected the token page, got \(String(describing: prompt.value))") }
@@ -45,11 +41,11 @@ final class DevinLoginTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url.absoluteString {
             case "https://api.codeium.com/register_user/":
-                response(#"{"api_key":"devin-session-token$abc","name":"Rob","api_server_url":"https://server.self-serve.windsurf.com"}"#)
+                .json(#"{"api_key":"devin-session-token$abc","name":"Rob","api_server_url":"https://server.self-serve.windsurf.com"}"#)
             case selfServeStatusURL:
-                response(userStatus)
+                .json(userStatus)
             default:
-                response("{}", status: 404)
+                .json("{}", status: 404)
             }
         }
 
@@ -68,8 +64,8 @@ final class DevinLoginTests: XCTestCase {
     func testAnAPIKeyPastedInsteadOfATokenSignsInOnTheDefaultServer() async throws {
         let http = RoutingHTTPClient { request in
             request.url.host() == "api.codeium.com"
-                ? response(refused, status: 401)
-                : response(#"{"userStatus":{"email":"rob@example.com"}}"#)
+                ? .json(refused, status: 401)
+                : .json(#"{"userStatus":{"email":"rob@example.com"}}"#)
         }
 
         let result = try await signIn(pasting: "devin-session-token$pasted", http: http)
@@ -85,7 +81,7 @@ final class DevinLoginTests: XCTestCase {
     }
 
     func testATokenWindsurfRefusesAsksForANewOne() async throws {
-        let http = RoutingHTTPClient { _ in response(refused, status: 401) }
+        let http = RoutingHTTPClient { _ in .json(refused, status: 401) }
 
         do {
             _ = try await signIn(pasting: "expired-token", http: http)
@@ -96,7 +92,7 @@ final class DevinLoginTests: XCTestCase {
     }
 
     func testAnAPIServerOutsideHTTPSNeverReceivesTheKey() async throws {
-        let http = RoutingHTTPClient { _ in response(#"{"api_key":"devin-session-token$abc","api_server_url":"http://server.example"}"#) }
+        let http = RoutingHTTPClient { _ in .json(#"{"api_key":"devin-session-token$abc","api_server_url":"http://server.example"}"#) }
 
         do {
             _ = try await signIn(pasting: "one-time-token", http: http)
@@ -115,7 +111,7 @@ final class DevinLoginTests: XCTestCase {
             accessToken: "devin-session-token$abc",
             extras: [DevinUsageClient.apiServerURLKey: "https://server.self-serve.windsurf.com"]
         )), for: account.id)
-        let http = RoutingHTTPClient { _ in response(userStatus) }
+        let http = RoutingHTTPClient { _ in .json(userStatus) }
 
         let snapshot = try await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().get()
 

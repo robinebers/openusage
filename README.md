@@ -27,17 +27,18 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 
 ## Supported Providers
 
-- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage, rate-limit resets
+- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage (Enterprise spend), rate-limit resets
 - **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
 - **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
 - **[Antigravity](docs/providers.md#antigravity)**: Gemini and Claude quotas
 - **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing
 - **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
 - **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
+- **[Muse Code](docs/providers.md#muse-code)**: session, weekly
 - **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
 - **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
 - **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
-- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches
+- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches, rate-limit resets
 - **[CLIProxyAPI hubs](docs/cliproxyapi.md)**: every Claude, ChatGPT, Antigravity, Devin, and Grok login on
   a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server
 
@@ -55,6 +56,8 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 - **[macOS widgets](docs/macos-widgets.md).** One account's usage on the desktop or in Notification Center.
 - **Share.** Copy a picture of your usage to the clipboard.
 - **Notifications.** A heads-up before a limit runs out.
+- **Priority limits.** Choose how much left turns a limit orange or red, and see limits you're burning
+  through too fast while they still have plenty left.
 - **Global shortcut.** Toggle the panel from anywhere.
 - **[Command line](docs/cli.md).** Your usage as JSON, for scripts and agents.
 - **[Automatic updates](docs/updates.md).** Signed, notarized updates, with an optional beta channel.
@@ -74,7 +77,7 @@ How everything works, in [docs/](docs/README.md):
 - [Command line](docs/cli.md)
 - [Updates](docs/updates.md)
 - [Proxy](docs/proxy.md)
-- [Privacy](docs/privacy.md)
+- [Privacy](docs/privacy.md), including optional daily provider account counts
 
 ## License
 
@@ -137,7 +140,7 @@ The workflow needs these repository secrets (Settings → Secrets and variables 
   The key comes from PostHog → Settings → Personal API keys, and the project ID is the number in your
   project URL.
 - Keep the repository public, because Sparkle fetches the DMG and appcast anonymously. After the first
-  release, confirm that Settings → Pages serves the `gh-pages` branch.
+  release, confirm that Settings → Pages → Source is GitHub Actions; `deploy-pages.yml` publishes `gh-pages`.
 
 </details>
 

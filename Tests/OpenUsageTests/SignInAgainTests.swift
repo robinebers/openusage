@@ -87,10 +87,6 @@ final class SignInAgainTests: XCTestCase {
     }
 }
 
-import Foundation
-import XCTest
-@testable import OpenUsage
-
 @MainActor
 final class PR1535ClaudeTests: XCTestCase {
     private func login(token: String, identity: String) -> AccountCredential {
@@ -101,49 +97,30 @@ final class PR1535ClaudeTests: XCTestCase {
         HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":42}}"#.utf8))
     }
 
-    /// Holds the saved token's usage read, and refuses any other token.
-    private final class HeldUsageClient: HTTPClient, @unchecked Sendable {
-        private let state = NSLock()
-        private var held: CheckedContinuation<Void, Never>?
-        private var refused = 0
-
-        var isHolding: Bool { state.withLock { held != nil } }
-        var refusedCount: Int { state.withLock { refused } }
-
-        func release() {
-            state.withLock { held?.resume(); held = nil }
-        }
-
-        func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-            guard request.headers["Authorization"] == "Bearer saved" else {
-                state.withLock { refused += 1 }
-                return HTTPResponse(statusCode: 401, headers: [:], body: Data())
-            }
-            await withCheckedContinuation { continuation in state.withLock { held = continuation } }
-            return PR1535ClaudeTests.successfulUsage()
-        }
-    }
-
     func testARejectedSignInCantPassOnTheSavedTokensRequest() async throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
         let accounts = AccountStore(defaults: defaults, vault: vault)
         let saved = login(token: "saved", identity: "same-login/same-org")
         let account = accounts.add(kind: .claude, label: "Work", credential: saved)
-        let http = HeldUsageClient()
+        let savedRead = HeldResponse()
+        let http = RoutingHTTPClient { request in
+            guard request.headers["Authorization"] == "Bearer saved" else { return HTTPResponse(statusCode: 401, headers: [:], body: Data()) }
+            await savedRead.hold()
+            return Self.successfulUsage()
+        }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
 
         let refresh = Task { await container.dataStore.refresh(providerID: account.cardID, force: true) }
-        for _ in 0..<400 where !http.isHolding { try await Task.sleep(for: .milliseconds(5)) }
-        XCTAssertTrue(http.isHolding, "the saved token's read never started")
+        await savedRead.waitUntilHeld()
 
         let replacing = Task { try await container.replaceCredential(self.login(token: "rejected", identity: "same-login/same-org"), for: account.cardID) }
-        for _ in 0..<200 where http.refusedCount == 0 { try await Task.sleep(for: .milliseconds(5)) }
-        http.release()
+        try await waitUntil { http.requests.contains { $0.headers["Authorization"] != "Bearer saved" } }
+        await savedRead.release()
         _ = await refresh.value
 
         let result = await replacing.result
-        XCTAssertGreaterThan(http.refusedCount, 0, "the new sign-in never asked for itself")
+        XCTAssertTrue(http.requests.contains { $0.headers["Authorization"] != "Bearer saved" }, "the new sign-in never asked for itself")
         if case .success = result { XCTFail("a rejected sign-in was accepted on the saved token's answer") }
         XCTAssertEqual(try vault.load(account.id), saved)
     }
@@ -201,9 +178,6 @@ final class PR1535ClaudeTests: XCTestCase {
     }
 }
 
-import XCTest
-@testable import OpenUsage
-
 @MainActor
 final class AlertLevelTests: XCTestCase {
     func testOnlyEnabledHalfAlertStillFiresWhenAReadCrossesBothThresholds() async {
@@ -218,17 +192,14 @@ final class AlertLevelTests: XCTestCase {
             await evaluator.evaluate(
                 [descriptor],
                 data: { _ in WidgetData(title: "Weekly", kind: .percent, used: used, limit: 100) },
-                isOn: { $0 == .underThirtyPercent },
+                isOn: { $0 == .warning },
                 now: Date(),
                 providerName: { _ in "Cursor" }
             )
         }
-        XCTAssertEqual(sent, ["test.\(PaceMilestone.underThirtyPercent.rawValue)"])
+        XCTAssertEqual(sent, ["test.\(PaceMilestone.warning.rawValue)"])
     }
 }
-
-import XCTest
-@testable import OpenUsage
 
 @MainActor
 final class PR1535DetailsTests: XCTestCase {
@@ -240,7 +211,7 @@ final class PR1535DetailsTests: XCTestCase {
             let source = "{\"data\":[" + records.joined(separator: ",") + "]}"
             let report = try XCTUnwrap(CodexUsageReports.counts(Data(source.utf8)))
             let day = try XCTUnwrap(report.days["2026-10-30"])
-            let history = UsageHistory(calendar: CodexHistorySource.utc, asOf: date, days: [date: day])
+            let history = UsageHistory(calendar: Calendar.utc, asOf: date, days: [date: day])
             let details = try XCTUnwrap(UsageBreakdown(.today, in: history))
             XCTAssertEqual(details.totals[.turns], 4)
             XCTAssertEqual(details.totals[.tokens], 10)
@@ -251,31 +222,17 @@ final class PR1535DetailsTests: XCTestCase {
 
 }
 
-import XCTest
-@testable import OpenUsage
-
 final class CodexModelTotalsTests: XCTestCase {
     func testModelThatReportsTokensWithoutTurnsRetainsItsTokenRanking() throws {
         let source = #"{"data":[{"date":"2026-10-30","totals":{"turns":2,"text_total_tokens":50},"models":[{"model":"A","credits":0,"text_total_tokens":50}]}]}"#
         let report = try XCTUnwrap(CodexUsageReports.counts(Data(source.utf8)))
         let date = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-30T00:00:00Z"))
         let day = try XCTUnwrap(report.days["2026-10-30"])
-        let history = UsageHistory(calendar: CodexHistorySource.utc, asOf: date, days: [date: day])
+        let history = UsageHistory(calendar: Calendar.utc, asOf: date, days: [date: day])
         let details = try XCTUnwrap(UsageBreakdown(.today, in: history))
         XCTAssertEqual(details.models(by: .tokens).first?.tokens, 50)
     }
 }
-
-import AppKit
-import SwiftUI
-import XCTest
-@testable import OpenUsage
-
-
-
-import Foundation
-import XCTest
-@testable import OpenUsage
 
 private final class RejectCandidateVault: CredentialVault, @unchecked Sendable {
     let inner = InMemoryCredentialVault()
@@ -346,6 +303,8 @@ final class PR1535CancelTests: XCTestCase {
         let recheck = await container.dataStore.refresh(providerID: account.cardID, force: true)
         XCTAssertEqual(recheck, .refreshed, "The original refresh token had been rotated and the candidate's save failed; the next poll must use the valid retained grant.")
         XCTAssertEqual(http.requests.filter { $0.url == GrokLogin.tokenURL }.count, 1, "The old runtime retried a spent refresh token.")
+        guard case .oauth(let kept)? = try vault.load(account.id) else { return XCTFail("The retained grant was lost.") }
+        XCTAssertEqual(kept.refreshToken, "rotated-r", "The grant kept while renewals were stopped was not saved once they resumed.")
     }
 }
 

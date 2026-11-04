@@ -9,11 +9,7 @@ enum CodexUsageMapper {
         resetCredits: HTTPResponse? = nil,
         now: Date = Date()
     ) throws -> ProviderUsage {
-        try ProviderError.requireSuccess(response, kind: .codex)
-
-        guard let body = ProviderParse.jsonObject(response.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let body = try ProviderError.requireSuccessJSON(response, kind: .codex)
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]
@@ -136,8 +132,7 @@ enum CodexUsageMapper {
     ) -> (count: Int, expiries: [Date])? {
         let embedded = body["rate_limit_reset_credits"] as? [String: Any]
         let dedicated = resetCredits.flatMap { response -> [String: Any]? in
-            guard (200..<300).contains(response.statusCode), let body = ProviderParse.jsonObject(response.body),
-                  availableCount(in: body) != nil
+            guard let body = ProviderParse.jsonObject(response.body), availableCount(in: body) != nil
             else { return nil }
             return body
         }

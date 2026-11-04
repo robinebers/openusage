@@ -145,6 +145,22 @@ final class LimitsEnvelopeTests: XCTestCase {
         XCTAssertNil(resource["utilization"])
     }
 
+    func testClaudeExtraUsageExportsItsBillingCurrencyAsTheUnit() throws {
+        let provider = Provider(id: "claude", kind: .claude)
+        let extra = WidgetDescriptor.boundedDollars(
+            key: "extra", provider: provider, title: "Extra Usage",
+            metricLabel: "Extra usage spent", limit: 100
+        ).exportingLimit("extraUsage", unit: "usd", source: .progressOrValue(kind: .dollars))
+        func unit(_ line: MetricLine) throws -> String? {
+            let snapshot = ProviderSnapshot(providerID: "claude", displayName: "Claude", lines: [line], refreshedAt: fetchedAt)
+            return try limitResource("extraUsage", of: provider, snapshot: snapshot, descriptors: [extra])["unit"] as? String
+        }
+
+        XCTAssertEqual(try unit(.progress(label: "Extra usage spent", used: 12.34, limit: 50, format: .currency(code: "EUR"))), "eur")
+        XCTAssertEqual(try unit(.values(label: "Extra usage spent",
+                                        values: [MetricValue(number: 15, kind: .dollars, currencyCode: "EUR")])), "eur")
+    }
+
     @MainActor
     func testCopilotPremiumCreditsExportsPersonalCountAndPaidPercent() throws {
         let account = Account(kind: .copilot, label: "Copilot")
@@ -280,10 +296,11 @@ final class LimitsEnvelopeTests: XCTestCase {
             "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly"],
+            "muse": ["session", "weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["balance", "keyLimit"],
-            "zai": ["session", "weekly", "webSearches"]
+            "zai": ["session", "weekly", "webSearches", "rateLimitResets"]
         ]
 
         XCTAssertEqual(actual, expected)

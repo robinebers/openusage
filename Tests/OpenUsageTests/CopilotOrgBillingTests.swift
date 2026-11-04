@@ -16,8 +16,8 @@ final class CopilotOrgBillingTests: XCTestCase {
     ]
 
     func testOrgUsageCountsCopilotCreditsAndSpendOnly() {
-        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.orgBody)), Self.orgLines)
-        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(Self.ok(Self.noCopilotBody)), [
+        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(.json(Self.orgBody)), Self.orgLines)
+        XCTAssertEqual(CopilotOrgBillingMapper.usageLines(.json(Self.noCopilotBody)), [
             .values(label: "Org Credits", values: [MetricValue(number: 0, kind: .count, label: "credits")]),
             .values(label: "Org Spend", values: [MetricValue(number: 0, kind: .dollars)])
         ], "an org with no Copilot usage yet shows zero")
@@ -25,17 +25,17 @@ final class CopilotOrgBillingTests: XCTestCase {
 
     func testAnInvalidOrgReportMapsToNothing() {
         for body in ["not json", "{}", #"{"usageItems":{"product":"Copilot"}}"#, #"{"usageItems":[{"product":"Copilot","grossQuantity":100}]}"#] {
-            XCTAssertNil(CopilotOrgBillingMapper.usageLines(Self.ok(body)), body)
+            XCTAssertNil(CopilotOrgBillingMapper.usageLines(.json(body)), body)
         }
     }
 
     func testAddingAnOrganizationChecksTheTokenWithOneRead() async throws {
         let http = RoutingHTTPClient { request in
             switch request.headers["Authorization"] {
-            case "Bearer good": Self.ok(Self.orgBody)
-            case "Bearer garbage": Self.ok("<html>")
-            case "Bearer elsewhere": Self.response(404, "{}")
-            default: Self.response(403, "{}")
+            case "Bearer good": .json(Self.orgBody)
+            case "Bearer garbage": .json("<html>")
+            case "Bearer elsewhere": .json("{}", status: 404)
+            default: .json("{}", status: 403)
             }
         }
 
@@ -77,7 +77,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         let account = Account(kind: .copilot, label: "acme", organization: "acme")
         let vault = InMemoryCredentialVault()
         try vault.save(.apiKey("good"), for: account.id)
-        let http = RoutingHTTPClient { _ in Self.ok(Self.orgBody) }
+        let http = RoutingHTTPClient { _ in .json(Self.orgBody) }
         let snapshot = try await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().get()
 
         XCTAssertNil(snapshot.plan)
@@ -90,7 +90,7 @@ final class CopilotOrgBillingTests: XCTestCase {
         let vault = InMemoryCredentialVault()
         let accounts = AccountStore(defaults: defaults, vault: vault)
         let http = RoutingHTTPClient { request in
-            request.headers["Authorization"] == "Bearer refused" ? Self.response(403, "{}") : Self.ok(Self.orgBody)
+            request.headers["Authorization"] == "Bearer refused" ? .json("{}", status: 403) : .json(Self.orgBody)
         }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
         let acme = accounts.add(kind: .copilot, label: "acme", organization: "acme", credential: .apiKey("old"))
@@ -117,13 +117,5 @@ final class CopilotOrgBillingTests: XCTestCase {
         continuation.yield(token)
         continuation.finish()
         return try await CopilotOrganizationLogin(organization: "acme", http: http).login(prompt: { _ in }, pastedCode: input)
-    }
-
-    nonisolated private static func ok(_ body: String) -> HTTPResponse {
-        response(200, body)
-    }
-
-    nonisolated private static func response(_ status: Int, _ body: String) -> HTTPResponse {
-        HTTPResponse(statusCode: status, headers: [:], body: Data(body.utf8))
     }
 }

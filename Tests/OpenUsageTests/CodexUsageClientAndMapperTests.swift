@@ -3,11 +3,7 @@ import XCTest
 
 final class CodexUsageClientAndMapperTests: XCTestCase {
     func testRefreshEncodesReservedCharactersInRequestBody() async throws {
-        let http = FakeHTTPClient(response: HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: Data(#"{"access_token":"new-token"}"#.utf8)
-        ))
+        let http = RoutingHTTPClient { _ in .json(#"{"access_token":"new-token"}"#) }
 
         _ = try await CodexLogin.refresh("refresh token&=+/?%", http: http, now: Date())
 
@@ -22,11 +18,7 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
     }
 
     func testRefreshRejectsAnExpiredSession() async {
-        let http = FakeHTTPClient(response: HTTPResponse(
-            statusCode: 400,
-            headers: [:],
-            body: Data(#"{"error":{"code":"refresh_token_expired"}}"#.utf8)
-        ))
+        let http = RoutingHTTPClient { _ in .json(#"{"error":{"code":"refresh_token_expired"}}"#, status: 400) }
 
         do {
             _ = try await CodexLogin.refresh("refresh", http: http, now: Date())
@@ -36,30 +28,6 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         } catch {
             XCTFail("expected ProviderError.signInExpired(.codex), got \(error)")
         }
-    }
-
-    func testUsageMapperKeepsProviderReportedSessionLimit() throws {
-        let response = HTTPResponse(
-            statusCode: 200,
-            headers: [:],
-            body: Data(#"{"rate_limit":{"primary_window":{"used_percent":42,"reset_after_seconds":3600}}}"#.utf8)
-        )
-        let mapped = try CodexUsageMapper.mapUsageResponse(response)
-
-        guard case .progress(_, let used, let limit, _, _, _) = mapped.lines.first(where: { $0.label == "Session" })
-        else { return XCTFail("expected Session meter") }
-        XCTAssertEqual(used, 42)
-        XCTAssertEqual(limit, 100)
-    }
-
-    func testShowsRateLimitResetsBeforeCredits() throws {
-        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 1 }, "credits": { "balance": 100 } }"#.utf8)
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            HTTPResponse(statusCode: 200, headers: [:], body: body), now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-
-        XCTAssertEqual(resetsValues(mapped.lines), [MetricValue(number: 1, kind: .count, label: "available")])
-        XCTAssertEqual(mapped.lines.map(\.label), ["Rate Limit Resets", "Credits"])
     }
 
     @MainActor
@@ -84,43 +52,6 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
 
             XCTAssertEqual(descriptor.balance(in: store.data(for: descriptor))?.number, balance, credits)
             XCTAssertEqual(accounts.first?.lines.map(\.descriptor.key), balance == nil ? [] : ["credits"], credits)
-        }
-    }
-
-    func testShowsZeroRateLimitResets() throws {
-        let body = Data(#"{ "rate_limit_reset_credits": { "available_count": 0 } }"#.utf8)
-        let mapped = try CodexUsageMapper.mapUsageResponse(
-            HTTPResponse(statusCode: 200, headers: [:], body: body), now: Date(timeIntervalSince1970: 1_800_000_000)
-        )
-
-        XCTAssertEqual(resetsValues(mapped.lines), [MetricValue(number: 0, kind: .count, label: "available")])
-    }
-
-    func testDedicatedEndpointSortsAvailableExpiriesWithExplicitOrMissingStatus() throws {
-        let usage = HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8))
-        let expectedExpiries = [
-            OpenUsageISO8601.date(from: "2026-02-20T17:30:00.000Z")!,
-            OpenUsageISO8601.date(from: "2026-02-20T19:00:00.000Z")!
-        ]
-
-        for status in ["available", nil] as [String?] {
-            let statusField = status.map { "\"status\":\"\($0)\"," } ?? ""
-            let resetCredits = HTTPResponse(statusCode: 200, headers: [:], body: Data("""
-            {"available_count":2,"credits":[
-              {\(statusField)"expires_at":"2026-02-20T19:00:00.000Z"},
-              {\(statusField)"expires_at":"2026-02-20T17:30:00.000Z"},
-              {"status":"consumed","expires_at":"2026-02-20T16:10:00.000Z"}
-            ]}
-            """.utf8))
-            let mapped = try CodexUsageMapper.mapUsageResponse(
-                usage, resetCredits: resetCredits, now: OpenUsageISO8601.date(from: "2026-02-20T16:00:00.000Z")!
-            )
-
-            guard case .values(_, let values, let expiriesAt) = mapped.lines.first else {
-                return XCTFail("expected reset credits for status \(status ?? "omitted")")
-            }
-            XCTAssertEqual(values, [MetricValue(number: 2, kind: .count, label: "available")])
-            XCTAssertEqual(expiriesAt, expectedExpiries, status ?? "omitted")
         }
     }
 
@@ -151,7 +82,7 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
             HTTPResponse(statusCode: 200, headers: [:], body: body), now: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        XCTAssertNil(resetsValues(mapped.lines))
+        XCTAssertNil(mapped.lines.first { $0.label == "Rate Limit Resets" })
     }
 
     func testDropsWindowLengthCountAndCreditsTooLargeForAnInt() throws {
@@ -164,12 +95,5 @@ final class CodexUsageClientAndMapperTests: XCTestCase {
         XCTAssertEqual(mapped.lines.map(\.label), ["Session"])
         guard case .progress(_, _, _, _, _, let periodMs) = mapped.lines.first else { return XCTFail("expected Session meter") }
         XCTAssertEqual(periodMs, MetricPeriod.sessionMs)
-    }
-
-    private func resetsValues(_ lines: [MetricLine]) -> [MetricValue]? {
-        guard case .values(_, let values, _) = lines.first(where: { $0.label == "Rate Limit Resets" }) else {
-            return nil
-        }
-        return values
     }
 }

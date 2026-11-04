@@ -25,18 +25,11 @@ struct CursorUsageClient: Sendable {
     }
 
     func refreshToken(_ refreshToken: String) async throws -> HTTPResponse {
-        let body: [String: Any] = [
+        try await LoginHTTP.postJSON(Self.refreshURL, fields: [
             "grant_type": "refresh_token",
             "client_id": Self.clientID,
             "refresh_token": refreshToken
-        ]
-        return try await http.send(HTTPRequest(
-            method: "POST",
-            url: Self.refreshURL,
-            headers: ["Content-Type": "application/json"],
-            body: try JSONSerialization.data(withJSONObject: body),
-            timeout: 15
-        ))
+        ], using: http)
     }
 
     func fetchUsage(accessToken: String) async throws -> HTTPResponse {

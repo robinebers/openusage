@@ -58,12 +58,14 @@ final class PanelContentHeightTests: QuietWindowTestCase {
     private func openWithController(accounts: [String]) async throws -> HostedPopover {
         let hosted = try await hostPopover(accounts: accounts)
         let popover = hosted.popover
-        let controller = PanelHeightController(panel: hosted.panel, defaults: hosted.defaults) { popover.screen }
+        let controller = PanelHeightController(
+            panel: hosted.panel, defaults: hosted.defaults, currentScreen: { popover.screen }, currentTab: { .priority }
+        )
         controller.installBridge()
         addTeardownBlock { withExtendedLifetime(controller) {} }
         let visible = try XCTUnwrap(NSScreen.main).visibleFrame
         let button = NSRect(x: visible.minX + 100, y: (NSScreen.screens.map(\.frame.maxY).max() ?? 0) + 3_000, width: 20, height: 20)
-        controller.prepareForOpening(below: button)
+        controller.prepareForOpening(below: button, tab: .priority)
         hosted.open()
         XCTAssertEqual(hosted.panel.frame.maxY, (button.minY - PanelGeometry.topGap).rounded(.down))
         XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(hosted.panel.frame) })

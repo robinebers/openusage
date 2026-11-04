@@ -10,11 +10,13 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
+    var zaiResetsRead = SecondaryRead<[ZAIReset]>()
     var cursorMembershipRead = SecondaryRead<String>()
     let usageLedger = UsageLedger()
     let codexCreditsLedger = UsageLedger()
     var claude: ClaudeAccountState
     var codexMatchedCreditIDs: [String: String] = [:]
+    var museLastKnown: [MetricLine] = []
     /// One renewal at a time: a provider that rotates refresh tokens refuses a second renewal sent with
     /// the same one, so a caller that needs a renewal while one is in flight waits for its tokens, and a
     /// caller whose tokens another renewal already replaced takes the stored ones.
@@ -58,6 +60,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
+        zaiResetsRead.forget()
         cursorMembershipRead.forget()
         usageLedger.forgetLastRead()
         codexCreditsLedger.forgetLastRead()
@@ -94,8 +97,26 @@ final class AccountProviderRuntime: ProviderRuntime {
                 },
                 refreshAccount: refreshAccount
             )
-        case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+        case .zai:
+            return ResetClaimService(
+                accountID: account.cardID,
+                isClaimable: false,
+                confirmDetail: nil,
+                claimReset: nil,
+                refreshAccount: refreshAccount,
+                windowResets: unexpiredZAIResets ?? [],
+                claimWindowReset: { [self] reset, requestID in await claimZAIReset(reset, requestID: requestID) }
+            )
+        case .cursor, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
             return nil
+        }
+    }
+
+    func restore(_ snapshot: ProviderSnapshot) {
+        switch account.kind {
+        case .claude: restoreClaude(snapshot)
+        case .muse: museLastKnown = snapshot.lines
+        case .codex, .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai: break
         }
     }
 
@@ -146,6 +167,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             case .copilot: try await refreshCopilot(credential)
             case .devin: try await refreshDevin(credential)
             case .grok: try await refreshGrok(credential)
+            case .muse: try await refreshMuse(credential)
             case .ollama: try await refreshOllama(credential)
             case .opencodeGo: try await refreshOpenCode(credential)
             case .openrouter: try await refreshOpenRouter(credential)
@@ -266,6 +288,14 @@ final class AccountProviderRuntime: ProviderRuntime {
         return ProviderUsage(plan: planRead.value, lines: mapped.lines, notice: mapped.notice)
     }
 
+    private func refreshMuse(_ credential: AccountCredential) async throws -> ProviderUsage {
+        guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
+        let account = try await MuseUsageClient(http: http).account(token: tokens.accessToken)
+        let usage = try MuseUsageMapper.map(account, lastKnown: museLastKnown, now: now())
+        museLastKnown = usage.lines
+        return usage
+    }
+
     private func refreshCursor(_ credential: AccountCredential) async throws -> ProviderUsage {
         var tokens = try await cursorTokens(credential)
         let client = CursorUsageClient(http: http)
@@ -274,10 +304,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             tokens = try await refreshCursorTokens(tokens)
             usageResponse = try await client.fetchUsage(accessToken: tokens.accessToken)
         }
-        try ProviderError.requireSuccess(usageResponse, kind: .cursor)
-        guard let usage = ProviderParse.jsonObject(usageResponse.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let usage = try ProviderError.requireSuccessJSON(usageResponse, kind: .cursor)
         return try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
     }
 
@@ -343,7 +370,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchSubscription(apiKey: key)), at: now())
         }
-        return try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
+        var usage = try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
+        if let resets = await zaiResets(apiKey: key) {
+            usage.lines.append(ZAIResetsMapper.line(resets))
+        }
+        return usage
     }
 
     private func successBody(_ response: HTTPResponse?) -> Data? {
@@ -406,6 +437,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     func readSnapshot(using credential: AccountCredential) async throws -> ProviderSnapshot {
         let usage = try await refresh(credential)
         var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
+        snapshot.lineTitles = usage.lineTitles.isEmpty ? nil : usage.lineTitles
         HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
         return snapshot
     }

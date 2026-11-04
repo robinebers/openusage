@@ -56,19 +56,12 @@ final class AppContainer {
             sink: sink,
             defaults: telemetryDefaults,
             snapshot: { [accounts, layout] in
-                var kinds: [String] = []
-                for kind in accounts.accounts.map(\.kind.rawValue) where !kinds.contains(kind) {
-                    kinds.append(kind)
-                }
-                return TelemetryConfigSnapshot(
-                    enabledProviders: kinds,
+                TelemetryConfigSnapshot(
+                    accounts: accounts.accounts,
                     enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey)
                 )
             }
         )
-        dataStore.onRefreshOutcome = { [weak telemetry] kind, result, manual in
-            telemetry?.record(providerID: kind.rawValue, result: result, manual: manual)
-        }
         self.telemetry = telemetry
         let widgetBridge = WidgetBridgeCoordinator.makeDefault(
             exporter: WidgetBridgeExporter(layout: layout, dataStore: dataStore)
@@ -88,8 +81,9 @@ final class AppContainer {
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return nil }
+        let rereadsResets = runtime.account.kind == .zai
         return runtime.resetClaimService { [dataStore] in
-            await dataStore.refresh(providerID: providerID, force: true)
+            await dataStore.refresh(providerID: providerID, force: true, rereadHourly: rereadsResets)
         }
     }
 

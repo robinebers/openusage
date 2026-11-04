@@ -11,10 +11,6 @@ struct OpenRouterUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func key(apiKey: String, now: Date) async throws -> OpenRouterKey {
         try OpenRouterUsageMapper.key(try await get(Self.keyURL, apiKey: apiKey), now: now)
     }
@@ -56,15 +52,6 @@ struct OpenRouterUsageClient: Sendable {
         guard let url = URL(string: urlString) else {
             throw ProviderError.invalidResponse
         }
-
-        return try await http.send(HTTPRequest(
-            method: "GET",
-            url: url,
-            headers: [
-                "Authorization": "Bearer \(apiKey)",
-                "Accept": "application/json"
-            ],
-            timeout: 15
-        ))
+        return try await LoginHTTP.get(url, bearerToken: apiKey, using: http, headers: ["Accept": "application/json"])
     }
 }

@@ -1,9 +1,9 @@
 import Foundation
 
 enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
-    case underTenPercent
-    /// Keeps its old raw value, so a saved switch stays on or off through the rename.
-    case underThirtyPercent = "healthyToClose"
+    /// The two levels keep their old raw values, so a saved switch stays on or off through the renames.
+    case critical = "underTenPercent"
+    case warning = "healthyToClose"
     case closeToRunningOut
 }
 
@@ -13,26 +13,26 @@ extension PaceMilestone {
     /// The two levels follow what's left, the same rule as Priority. Only this one follows the pace.
     var isPace: Bool { self == .closeToRunningOut }
 
-    var settingSubtitle: String {
+    func settingSubtitle(_ limits: PriorityLimits) -> String {
         switch self {
-        case .underTenPercent: return "A limit drops under 10%"
-        case .underThirtyPercent: return "A limit drops under 30%"
+        case .critical: return "A limit drops to \(limits.critical)% or less left"
+        case .warning: return "A limit drops to \(limits.warning)% or less left"
         case .closeToRunningOut: return "A limit may run out before its reset"
         }
     }
 
     var notificationTitle: String {
         switch self {
-        case .underTenPercent: return "Almost Out"
-        case .underThirtyPercent: return "Cutting It Close"
+        case .critical: return "Critical"
+        case .warning: return "Warning"
         case .closeToRunningOut: return "Will Run Out"
         }
     }
 
-    var body: String {
+    func body(_ limits: PriorityLimits) -> String {
         switch self {
-        case .underTenPercent: return "Under 10% left for this window."
-        case .underThirtyPercent: return "Under 30% left for this window."
+        case .critical: return "\(limits.critical)% or less left for this window."
+        case .warning: return "\(limits.warning)% or less left for this window."
         case .closeToRunningOut: return "May run out before the limit resets."
         }
     }
@@ -99,16 +99,15 @@ enum PaceNotificationLogic {
         if currentBucket != .untracked {
             let previousBucket = next.previousBucket
             if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.closeToRunningOut) }
-            if currentBucket < previousBucket, currentBucket <= .close {
-                next.firedMilestones.remove(.closeToRunningOut)
-            }
+            // Re-arms only once the pace eases to 90% of the limit, where Priority stops listing it as burning fast.
+            if currentBucket == .healthy { next.firedMilestones.remove(.closeToRunningOut) }
             next.previousBucket = currentBucket
         }
 
-        if severity == .critical, next.previousSeverity != .critical { candidate(.underTenPercent) }
-        if severity != .normal, next.previousSeverity == .normal { candidate(.underThirtyPercent) }
-        if severity != .critical { next.firedMilestones.remove(.underTenPercent) }
-        if severity == .normal { next.firedMilestones.remove(.underThirtyPercent) }
+        if severity == .critical, next.previousSeverity != .critical { candidate(.critical) }
+        if severity != .normal, next.previousSeverity == .normal { candidate(.warning) }
+        if severity != .critical { next.firedMilestones.remove(.critical) }
+        if severity == .normal { next.firedMilestones.remove(.warning) }
         next.previousSeverity = severity
 
         return Transition(fire: fire, newState: next)

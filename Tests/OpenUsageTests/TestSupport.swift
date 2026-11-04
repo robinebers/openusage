@@ -4,20 +4,6 @@ import XCTest
 import os
 @testable import OpenUsage
 
-final class FakeHTTPClient: HTTPClient, @unchecked Sendable {
-    var response: HTTPResponse
-    var requests: [HTTPRequest] = []
-
-    init(response: HTTPResponse) {
-        self.response = response
-    }
-
-    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        requests.append(request)
-        return response
-    }
-}
-
 final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
     private let requestsLock = OSAllocatedUnfairLock(initialState: [HTTPRequest]())
     var requests: [HTTPRequest] { requestsLock.withLock { $0 } }
@@ -30,6 +16,12 @@ final class RoutingHTTPClient: HTTPClient, @unchecked Sendable {
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
         requestsLock.withLock { $0.append(request) }
         return try await handler(request)
+    }
+}
+
+extension HTTPResponse {
+    static func json(_ text: String, status: Int = 200) -> HTTPResponse {
+        HTTPResponse(statusCode: status, headers: [:], body: Data(text.utf8))
     }
 }
 
@@ -173,32 +165,45 @@ final class InMemoryHubKeyVault: HubKeyVault, @unchecked Sendable {
 }
 
 final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
-    private let lock = NSLock()
-    private var credentials: [UUID: AccountCredential] = [:]
+    private let credentials = OSAllocatedUnfairLock(initialState: [UUID: AccountCredential]())
+
+    func load(_ id: UUID) throws -> AccountCredential? { credentials.withLock { $0[id] } }
+    func save(_ credential: AccountCredential, for id: UUID) throws { credentials.withLock { $0[id] = credential } }
+    func delete(_ id: UUID) throws { credentials.withLock { $0[id] = nil } }
+
+    func update(_ credential: AccountCredential, for id: UUID) throws {
+        try credentials.withLock {
+            guard $0[id] != nil else { throw CredentialVaultError.missingCredential }
+            $0[id] = credential
+        }
+    }
+}
+
+final class FailingVault: CredentialVault, @unchecked Sendable {
+    let loadError = TestSwitch<(any Error)?>(nil)
+    let saveError = TestSwitch<(any Error)?>(nil)
+    let updateError = TestSwitch<(any Error)?>(nil)
+    let deleteError = TestSwitch<(any Error)?>(nil)
+    private let stored = InMemoryCredentialVault()
 
     func load(_ id: UUID) throws -> AccountCredential? {
-        lock.lock()
-        defer { lock.unlock() }
-        return credentials[id]
+        if let error = loadError.value { throw error }
+        return try stored.load(id)
     }
 
     func save(_ credential: AccountCredential, for id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        credentials[id] = credential
+        if let error = saveError.value { throw error }
+        try stored.save(credential, for: id)
     }
 
     func update(_ credential: AccountCredential, for id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard credentials[id] != nil else { throw CredentialVaultError.missingCredential }
-        credentials[id] = credential
+        if let error = updateError.value { throw error }
+        try stored.update(credential, for: id)
     }
 
     func delete(_ id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        credentials.removeValue(forKey: id)
+        if let error = deleteError.value { throw error }
+        try stored.delete(id)
     }
 }
 

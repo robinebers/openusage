@@ -133,7 +133,7 @@ final class ProviderLoginTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case "/oauth2/device/code":
-                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","expires_in":600,"interval":1}"#)
+                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","verification_uri_complete":"https:/activate","expires_in":600,"interval":1}"#)
             case "/oauth2/token":
                 Self.response("""
                 {"access_token":"\(accessToken)","refresh_token":"grok-refresh","expires_in":3600}
@@ -151,12 +151,50 @@ final class ProviderLoginTests: XCTestCase {
 
         XCTAssertEqual(result.label, "grok@example.com")
         XCTAssertEqual(prompt.value?.deviceCode?.userCode, "GROK-CODE")
+        XCTAssertEqual(prompt.value?.deviceCode?.verificationURL, URL(string: "https://auth.x.ai/activate"), "an unusable prefilled link falls back to the plain one")
         let start = try XCTUnwrap(http.requests.first { $0.url.path == "/oauth2/device/code" })
         XCTAssertEqual(Self.formBody(start)["client_id"], GrokLogin.clientID)
         XCTAssertEqual(Self.formBody(start)["scope"], "openid email offline_access grok-cli:access")
         let token = try XCTUnwrap(http.requests.first { $0.url.path == "/oauth2/token" })
         XCTAssertEqual(Self.formBody(token)["grant_type"], "urn:ietf:params:oauth:grant-type:device_code")
         XCTAssertEqual(Self.formBody(token)["device_code"], "device")
+    }
+
+    func testMuseDeviceLoginSendsNoScopeAndNamesTheAccountByEmail() async throws {
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/oidc/device/authorization":
+                Self.response(#"{"device_code":"device","user_code":"MUSE-CODE","verification_uri":"https://auth.meta.com/oauth/device/","verification_uri_complete":"https://auth.meta.com/oauth/device/?code=MUSE-CODE","expires_in":600,"interval":1}"#)
+            case "/oidc/device/token":
+                Self.response(#"{"access_token":"dca:muse-access","token_type":"Bearer"}"#)
+            case "/muse-code/key":
+                Self.response(#"{"api_key":"LLM|SYNTHETIC-inference-key","user_email":"muse@example.com","is_subs_active":true}"#)
+            default:
+                Self.response("{}", status: 404)
+            }
+        }
+        let prompt = PromptCapture()
+
+        let result = try await MuseLogin(http: http).login(
+            prompt: { prompt.store($0) },
+            pastedCode: emptyInput()
+        )
+
+        XCTAssertEqual(result.label, "muse@example.com")
+        XCTAssertEqual(result.credential, .oauth(OAuthTokens(
+            accessToken: "dca:muse-access",
+            extras: [OAuthTokens.identityKey: "muse:muse@example.com"]
+        )), "only the dca: token is stored, never the inference key the key read returns")
+        XCTAssertEqual(prompt.value?.deviceCode?.userCode, "MUSE-CODE")
+        XCTAssertEqual(prompt.value?.deviceCode?.verificationURL, URL(string: "https://auth.meta.com/oauth/device/?code=MUSE-CODE"), "the browser opens with the code filled in")
+        let start = try XCTUnwrap(http.requests.first { $0.url.path == "/oidc/device/authorization" })
+        XCTAssertEqual(Self.formBody(start), ["client_id": MuseLogin.clientID], "no scope field at all")
+        let token = try XCTUnwrap(http.requests.first { $0.url.path == "/oidc/device/token" })
+        XCTAssertEqual(Self.formBody(token)["grant_type"], "urn:ietf:params:oauth:grant-type:device_code")
+        XCTAssertEqual(Self.formBody(token)["device_code"], "device")
+        let key = try XCTUnwrap(http.requests.first { $0.url.path == "/muse-code/key" })
+        XCTAssertEqual(key.headers["Authorization"], "Bearer dca:muse-access")
+        XCTAssertEqual(Self.jsonBody(key)?["onboard"] as? Bool, false)
     }
 
     func testCursorLoginPollsForTokens() async throws {

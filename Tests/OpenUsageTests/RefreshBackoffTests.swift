@@ -150,6 +150,15 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertEqual(RefreshFailure(error: ProviderError.rateLimited(retryAfter: 60)).kind, .rateLimited(retryAfter: 60))
     }
 
+    func testAForbiddenThatNamesARateLimitThrowsRateLimited() {
+        for (headers, retryAfter) in [(["x-ratelimit-remaining": "0"], nil), (["retry-after": "60"], 60.0)] as [([String: String], TimeInterval?)] {
+            let response = HTTPResponse(statusCode: 403, headers: headers, body: Data())
+            XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .copilot)) { error in
+                XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: retryAfter), "\(headers)")
+            }
+        }
+    }
+
     private let provider = Provider(id: "test", kind: .claude)
 
     private var descriptor: WidgetDescriptor {

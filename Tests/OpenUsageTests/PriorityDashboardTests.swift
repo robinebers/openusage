@@ -174,14 +174,14 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         let firstLaunch = PriorityBoard.make(
             accounts: [DashboardAccount(provider: claude, lines: []), DashboardAccount(provider: chatGPT, lines: [])], now: Date()
         )
-        XCTAssertEqual(height(PriorityBoardList(board: firstLaunch, now: Date()), width: DashboardGrid.cardWidth), 2 * 46,
+        XCTAssertEqual(height(PriorityBoardList(board: firstLaunch, now: Date()), width: PanelMetrics.width - 2 * PanelMetrics.margin), 2 * 46,
                        "one 46 pt Priority row per account, nothing else")
 
         let lines = ["Session", "Weekly"].map { title in
             let data = WidgetData(title: title, kind: .percent, used: 40, limit: 100)
             return DashboardLine(descriptor: WidgetDescriptor(provider: chatGPT, key: title, metricLabel: title, sample: data), data: data)
         }
-        let rowWidth = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
+        let rowWidth = PanelMetrics.width - 2 * PanelMetrics.margin - 2 * DashboardGrid.cardPadding
         let waiting = DashboardAccountRows(account: DashboardAccount(provider: chatGPT, lines: [], waitingMetricIDs: lines.map(\.id)))
         let read = DashboardAccountRows(account: DashboardAccount(provider: chatGPT, lines: lines))
         XCTAssertEqual(height(waiting, width: rowWidth), height(read, width: rowWidth))

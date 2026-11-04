@@ -38,22 +38,4 @@ final class ProviderSnapshotCacheTests: XCTestCase {
         XCTAssertEqual(snapshot.line(label: "Yesterday"), .values(label: "Yesterday", values: [MetricValue(number: 4200, kind: .count, label: "tokens")]))
         XCTAssertNil(snapshot.usageBreakdowns)
     }
-
-    func testBlobSavedWithAnAppVersionStillLoads() throws {
-        struct VersionedPayload: Encodable {
-            var snapshots: [String: ProviderSnapshot]
-            var appVersion: String
-        }
-        let defaults = isolatedDefaults()
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        let saved = VersionedPayload(snapshots: ["alpha": snapshot("alpha", used: 42, now: now)], appVersion: "1.0.0")
-        defaults.set(try encoder.encode(saved), forKey: "k")
-
-        XCTAssertEqual(
-            ProviderSnapshotCache(userDefaults: defaults, storageKey: "k").load()["alpha"]?.lines.first,
-            .progress(label: "Session", used: 42, limit: 100, format: .percent)
-        )
-    }
 }

@@ -5,14 +5,15 @@ struct PopoverTopBar: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     let screen: PopoverScreen
-    let height: CGFloat
-    let horizontalPadding: CGFloat
 
     @ViewBuilder
     var body: some View {
         switch screen {
         case .dashboard:
-            DashboardTabBar(horizontalPadding: horizontalPadding)
+            CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: Bindable(popover).dashboardTab)
+                .padding(.horizontal, PanelMetrics.margin)
+                .padding(.top, PanelMetrics.margin)
+                .padding(.bottom, DashboardContentView.barGap)
         case .accounts:
             if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
                 navigationBar(back: { popover.back() }) {
@@ -49,7 +50,7 @@ struct PopoverTopBar: View {
                 .frame(height: 28)
                 SettingsTabBar()
             }
-            .padding(.horizontal, horizontalPadding)
+            .padding(.horizontal, PanelMetrics.margin)
             .padding(.top, PanelMetrics.margin)
             .padding(.bottom, DashboardContentView.barGap)
         }
@@ -73,8 +74,8 @@ struct PopoverTopBar: View {
                 trailing()
             }
         }
-        .padding(.horizontal, horizontalPadding)
-        .frame(height: height, alignment: .bottom)
+        .padding(.horizontal, PanelMetrics.margin)
+        .frame(height: 36, alignment: .bottom)
         .frame(maxWidth: .infinity)
     }
 
@@ -136,20 +137,6 @@ private struct SettingsTabBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-private struct DashboardTabBar: View {
-    let horizontalPadding: CGFloat
-
-    @Environment(PopoverState.self) private var popover
-
-    var body: some View {
-        @Bindable var popover = popover
-        CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: $popover.dashboardTab)
-            .padding(.horizontal, horizontalPadding)
-            .padding(.top, PanelMetrics.margin)
-            .padding(.bottom, DashboardContentView.barGap)
     }
 }
 

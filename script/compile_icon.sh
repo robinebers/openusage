@@ -21,6 +21,5 @@ xcrun actool "$ROOT_DIR/assets/AppIcon.icon" --compile "$OUT" \
   --app-icon AppIcon --enable-on-demand-resources NO --development-region en \
   --target-device mac --platform macosx --minimum-deployment-target 15.0 \
   --output-partial-info-plist /dev/null --output-format human-readable-text --errors --warnings
-rm -f "$OUT/partial.plist"
 
 echo "Wrote $OUT/Assets.car and AppIcon.icns"

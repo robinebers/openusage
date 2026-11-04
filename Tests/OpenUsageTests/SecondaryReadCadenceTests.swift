@@ -8,7 +8,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
 
     func testCodexReadsResetCreditsHourly() async throws {
         let counts = try await hourOfRefreshes(.codex, credential: .oauth(OAuthTokens(accessToken: "token"))) { _ in
-            Self.ok(#"{"rate_limit":{}}"#)
+            .json(#"{"rate_limit":{}}"#)
         }
         XCTAssertEqual(counts.perHour[CodexUsageClient.usageURL.path], 12)
         XCTAssertEqual(counts.perHour[CodexUsageClient.resetCreditsURL.path], 1)
@@ -35,9 +35,9 @@ final class SecondaryReadCadenceTests: XCTestCase {
                 switch request.url {
                 case CodexUsageClient.resetCreditsURL:
                     let credits = entry.dedicated > 0 ? #"{"id":"RateLimitResetCredit_1","status":"available","expires_at":"\#(expiry)"}"# : ""
-                    return Self.ok(#"{"available_count":\#(entry.dedicated),"credits":[\#(credits)]}"#)
+                    return .json(#"{"available_count":\#(entry.dedicated),"credits":[\#(credits)]}"#)
                 default:
-                    return Self.ok(#"{"rate_limit":{},"rate_limit_reset_credits":{"available_count":\#(live.value)}}"#)
+                    return .json(#"{"rate_limit":{},"rate_limit_reset_credits":{"available_count":\#(live.value)}}"#)
                 }
             }
             let clock = TestClock(start)
@@ -59,7 +59,7 @@ final class SecondaryReadCadenceTests: XCTestCase {
     func testGrokReadsThePlanHourly() async throws {
         let credits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-06-30T21:36:52+00:00","end":"2026-07-07T21:36:52+00:00"},"creditUsagePercent":40}}"#
         let counts = try await hourOfRefreshes(.grok, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
-            request.url == GrokUsageClient.settingsURL ? Self.ok(#"{"subscription_tier_display":"SuperGrok"}"#) : Self.ok(credits)
+            request.url == GrokUsageClient.settingsURL ? .json(#"{"subscription_tier_display":"SuperGrok"}"#) : .json(credits)
         }
         XCTAssertEqual(counts.perHour[GrokUsageClient.settingsURL.path], 1)
         XCTAssertEqual(counts.total, 13)
@@ -67,17 +67,27 @@ final class SecondaryReadCadenceTests: XCTestCase {
     }
 
     func testOllamaReadsThePlanHourly() async throws {
-        let counts = try await hourOfRefreshes(.ollama, credential: .apiKey("key")) { _ in Self.ok("{}") }
+        let counts = try await hourOfRefreshes(.ollama, credential: .apiKey("key")) { _ in .json("{}") }
         XCTAssertEqual(counts.perHour[OllamaUsageClient.balancePath], 12)
         XCTAssertEqual(counts.perHour[OllamaUsageClient.accountPath], 1)
         XCTAssertEqual(counts.total, 13)
     }
 
     func testZAIReadsTheSubscriptionHourly() async throws {
-        let counts = try await hourOfRefreshes(.zai, credential: .apiKey("key")) { _ in Self.ok("{}") }
+        let counts = try await hourOfRefreshes(.zai, credential: .apiKey("key")) { _ in .json("{}") }
         XCTAssertEqual(counts.perHour[ZAIUsageClient.quotaURL.path], 12)
         XCTAssertEqual(counts.perHour[ZAIUsageClient.subscriptionURL.path], 1)
         XCTAssertEqual(counts.total, 13)
+    }
+
+    func testZAIReadsTheResetListHourly() async throws {
+        let quota = #"{"data":{"limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"percentage":10}]},"success":true}"#
+        let counts = try await hourOfRefreshes(.zai, credential: .apiKey("key")) { request in
+            .json(request.url == ZAIUsageClient.quotaURL ? quota : #"{"success":true,"data":{}}"#)
+        }
+        XCTAssertEqual(counts.perHour[ZAIUsageClient.quotaURL.path], 12)
+        XCTAssertEqual(counts.perHour[ZAIUsageClient.resetListURL.path], 1)
+        XCTAssertEqual(counts.nextHour[ZAIUsageClient.resetListURL.path], 1)
     }
 
     func testCursorReadsThePlanAndTheMembershipHourly() async throws {
@@ -110,17 +120,17 @@ final class SecondaryReadCadenceTests: XCTestCase {
     func testAntigravityReadsCodeAssistHourly() async throws {
         let counts = try await hourOfRefreshes(.antigravity, credential: .oauth(OAuthTokens(accessToken: "token"))) { request in
             request.url.path.hasSuffix(AntigravityUsageClient.loadCodeAssistPath)
-                ? Self.ok(#"{"cloudaicompanionProject":"p"}"#)
-                : Self.ok(#"{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","remainingFraction":0.8}]}]}"#)
+                ? .json(#"{"cloudaicompanionProject":"p"}"#)
+                : .json(#"{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","remainingFraction":0.8}]}]}"#)
         }
         XCTAssertEqual(counts.perHour.filter { $0.key.hasSuffix(AntigravityUsageClient.loadCodeAssistPath) }.values.reduce(0, +), 1)
     }
 
     func testAForcedRefreshAsksTheHourlyReadsAgain() async throws {
-        let codex = try await passThenForcedRefresh(.codex) { _ in Self.ok(#"{"rate_limit":{}}"#) }
+        let codex = try await passThenForcedRefresh(.codex) { _ in .json(#"{"rate_limit":{}}"#) }
         XCTAssertEqual(codex.map { $0[CodexUsageClient.resetCreditsURL.path] }, [1, 2])
 
-        let ollama = try await passThenForcedRefresh(.ollama, credential: .apiKey("key")) { _ in Self.ok("{}") }
+        let ollama = try await passThenForcedRefresh(.ollama, credential: .apiKey("key")) { _ in .json("{}") }
         XCTAssertEqual(ollama.map { $0[OllamaUsageClient.accountPath] }, [1, 2])
 
         let cursor = try await passThenForcedRefresh(.cursor, credential: cursorCredential) { request in
@@ -140,14 +150,14 @@ final class SecondaryReadCadenceTests: XCTestCase {
     nonisolated private static func cursor(_ request: HTTPRequest, membership: String, usage: String) -> HTTPResponse {
         switch request.url {
         case CursorUsageClient.planURL:
-            return ok(#"{"planInfo":{"planName":"Pro"}}"#)
+            return .json(#"{"planInfo":{"planName":"Pro"}}"#)
         case CursorUsageClient.usageSummaryURL:
-            return ok(#"""
+            return .json(#"""
             {"billingCycleStart":"2026-10-01T00:00:00Z","billingCycleEnd":"2026-11-01T00:00:00Z",
              "membershipType":"\#(membership)","individualUsage":{"onDemand":{"enabled":true,"used":100,"limit":1000}}}
             """#)
         default:
-            return ok(usage)
+            return .json(usage)
         }
     }
 
@@ -206,9 +216,5 @@ final class SecondaryReadCadenceTests: XCTestCase {
             requests.reduce(into: [:]) { $0[$1.url.path, default: 0] += 1 }
         }
         return Counts(perHour: byPath(hour), total: hour.count, nextHour: byPath(next), lastPlan: lastPlan)
-    }
-
-    nonisolated private static func ok(_ body: String) -> HTTPResponse {
-        HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
     }
 }

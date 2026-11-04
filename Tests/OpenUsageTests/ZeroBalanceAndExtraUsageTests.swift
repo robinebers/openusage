@@ -20,10 +20,6 @@ final class ZeroBalanceAndExtraUsageTests: XCTestCase {
         try XCTUnwrap(ProviderParse.jsonObject(Data(text.utf8)))
     }
 
-    private func ok(_ body: String) -> HTTPResponse {
-        HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
-    }
-
     private func cursorLines(_ extra: String, creditGrants: String? = nil) throws -> [MetricLine] {
         let usage = try json(#"""
         {"billingCycleEnd":"1764547200000","billingCycleStart":"1761955200000","enabled":true,
@@ -35,7 +31,7 @@ final class ZeroBalanceAndExtraUsageTests: XCTestCase {
 
     func testClaudeExtraUsageHidesWhenOffAndShowsZeroSpentWhenOn() async throws {
         func lines(_ extra: String) throws -> [MetricLine] {
-            try ClaudeUsageMapper.mapUsageResponse(ok(#"{"five_hour":{"utilization":10},"extra_usage":\#(extra)}"#))
+            try ClaudeUsageMapper.mapUsageResponse(.json(#"{"five_hour":{"utilization":10},"extra_usage":\#(extra)}"#))
         }
         let off = await shownRow(.claude, try lines(#"{"is_enabled":false,"monthly_limit":null,"used_credits":null}"#), key: "extra")
         XCTAssertNil(off)
@@ -74,7 +70,7 @@ final class ZeroBalanceAndExtraUsageTests: XCTestCase {
 
     func testGrokExtraUsageHidesWithNoPayAsYouGoCapAndShowsTheCap() async throws {
         func lines(_ cap: String) throws -> [MetricLine] {
-            try GrokUsageMapper.mapCreditsConfig(ok(#"""
+            try GrokUsageMapper.mapCreditsConfig(.json(#"""
             {"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2026-06-30T21:36:52Z",
              "end":"2026-07-07T21:36:52Z"}\#(cap)}}
             """#)).lines

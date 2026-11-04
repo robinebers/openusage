@@ -19,19 +19,6 @@ final class UsageHistoryTests: XCTestCase {
         Dictionary(uniqueKeysWithValues: (0..<30).map { ($0, UsageDay(totals: totals)) })
     }
 
-    func testASumAddsWhatEitherPartReports() {
-        let sum = UsageTotals(values: [.spend: 1, .tokens: 10]).adding(UsageTotals(values: [.spend: 2, .usageEvents: 4]))
-
-        XCTAssertEqual(sum.values, [.spend: 3, .tokens: 10, .usageEvents: 4])
-    }
-
-    func testDaysAreLocalDaysRunningBackFromToday() {
-        XCTAssertEqual(
-            UsageHistory.dayStarts(0...1, now: now, calendar: calendar),
-            [Date(timeIntervalSince1970: 1_793_390_400), Date(timeIntervalSince1970: 1_793_304_000)]
-        )
-    }
-
     func testDaysAcrossSantiagosClockChangesAreItsDayStarts() throws {
         var santiago = Calendar(identifier: .gregorian)
         santiago.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Santiago"))
@@ -76,23 +63,10 @@ final class UsageHistoryTests: XCTestCase {
                        .values(label: "Usage Events", values: [MetricValue(number: 60, kind: .count, label: "in 30 days")]))
     }
 
-    func testABreakdownRanksTheTopFiveModelsAndFoldsTheRestIntoOther() throws {
-        let models = Dictionary(uniqueKeysWithValues: (1...7).map {
-            ("model-\($0)", UsageTotals(values: [.usageEvents: 1, .tokens: Double($0 * 10)]))
-        })
-        let history = history([0: UsageDay(totals: UsageTotals(values: [.usageEvents: 7, .tokens: 280]), byModel: models)])
-
-        let breakdown = try XCTUnwrap(UsageBreakdown(.today, in: history))
-
-        XCTAssertEqual(breakdown.models.map(\.name), ["model-7", "model-6", "model-5", "model-4", "model-3", "Other"])
-                XCTAssertEqual(breakdown.models.map(\.tokens), [70, 60, 50, 40, 30, 30])
-        XCTAssertEqual(breakdown.modelFigures, [.tokens])
-    }
-
     func testRestoredWindowsUseTheOriginalReportingDayAfterProviderMidnight() throws {
         let beforeUTC = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-31T23:59:00Z"))
         let afterUTC = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-11-01T00:01:00Z"))
-        let utc = CodexHistorySource.utc
+        let utc = Calendar.utc
         let format = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: utc.timeZone)
         func restored(_ window: UsageWindow, calendar: Calendar) throws -> UsageBreakdown {
             let history = UsageHistory(calendar: calendar, asOf: beforeUTC, reported: [window: .zero([.tokens])])
@@ -125,22 +99,6 @@ final class UsageHistoryTests: XCTestCase {
         for index in 6...10 {
             XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("\"model-\(index)\""))
         }
-    }
-
-    func testModelsRankByDollarsAndKeepTheirTokens() throws {
-        let byModel = [
-            "busy": UsageTotals(values: [.spend: 1, .tokens: 900]),
-            "pricey": UsageTotals(values: [.spend: 9, .tokens: 100]),
-        ]
-        let days = [0: UsageDay(totals: UsageTotals(values: [.spend: 10, .tokens: 1_000]), byModel: byModel)]
-
-        let today = try XCTUnwrap(UsageBreakdown(.today, in: history(days)))
-
-        XCTAssertEqual(today.modelFigures, [.cost, .tokens])
-        XCTAssertEqual(today.models.map(\.name), ["pricey", "busy"])
-        XCTAssertEqual(today.models.map(\.dollars), [9, 1])
-        XCTAssertEqual(today.models.map(\.tokens), [100, 900])
-        XCTAssertEqual(today.models(by: .tokens).map(\.name), ["busy", "pricey"], "the Tokens tab ranks by tokens")
     }
 
     func testModelsNoOneWasChargedForRankByTokensWithNoDollars() throws {

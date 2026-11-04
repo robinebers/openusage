@@ -14,10 +14,15 @@ final class WidgetDataStore {
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
     private static let menuBarLimitKey = "menuBarLimit"
+    private static let priorityWarningKey = "priorityWarning"
+    private static let priorityCriticalKey = "priorityCritical"
+    private static let priorityBurningFastKey = "priorityBurningFast"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
-    var snapshots: [String: ProviderSnapshot] = [:]
+    var snapshots: [String: ProviderSnapshot] = [:] {
+        didSet { latchBurningFast() }
+    }
     private var inFlight: [String: Task<Result<ProviderSnapshot, RefreshFailure>, Never>] = [:]
     var refreshingProviderIDs: Set<String> { Set(inFlight.keys) }
     var lastRefreshAt: Date?
@@ -28,14 +33,32 @@ final class WidgetDataStore {
         didSet { defaults.set(meterStyle.rawValue, forKey: Self.meterStyleKey) }
     }
 
-    @ObservationIgnored var onRefreshOutcome: (@MainActor (ProviderKind, RefreshOutcome, Bool) -> Void)?
-
     var resetDisplayMode: ResetDisplayMode {
         didSet { defaults.set(resetDisplayMode.rawValue, forKey: Self.resetDisplayModeKey) }
     }
 
     var menuBarLimit: MenuBarLimit {
         didSet { defaults.set(menuBarLimit.rawValue, forKey: Self.menuBarLimitKey) }
+    }
+
+    var priorityLimits: PriorityLimits {
+        didSet {
+            defaults.set(priorityLimits.warning, forKey: Self.priorityWarningKey)
+            defaults.set(priorityLimits.critical, forKey: Self.priorityCriticalKey)
+        }
+    }
+
+    /// Priority lists limits that would run out before they reset, however much they have left.
+    var showsBurningFast: Bool {
+        didSet { defaults.set(showsBurningFast, forKey: Self.priorityBurningFastKey) }
+    }
+
+    /// The limits that were burning fast at their last reading, with their window's reset. See `BurningFast`.
+    private(set) var burningFastWindows: [String: Date] = [:]
+
+    /// What Priority and the menu bar list as burning fast, or nil while the setting is off.
+    var burningFast: BurningFast? {
+        showsBurningFast ? BurningFast(latched: burningFastWindows) : nil
     }
 
     init(
@@ -56,6 +79,11 @@ final class WidgetDataStore {
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
+        self.priorityLimits = PriorityLimits(
+            warning: defaults.object(forKey: Self.priorityWarningKey) as? Int ?? PriorityLimits.standard.warning,
+            critical: defaults.object(forKey: Self.priorityCriticalKey) as? Int ?? PriorityLimits.standard.critical
+        )
+        self.showsBurningFast = defaults.object(forKey: Self.priorityBurningFastKey) as? Bool ?? true
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -160,12 +188,11 @@ final class WidgetDataStore {
         }
         let snapshot: ProviderSnapshot
         switch result {
-        case .failure(let failure): return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
+        case .failure(let failure): return recordFailure(failure, providerID: providerID)
         case .success(let refreshed): snapshot = refreshed
         }
         store(snapshot, for: providerID)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
-        onRefreshOutcome?(provider.provider.kind, .refreshed, force)
         return .refreshed
     }
 
@@ -187,12 +214,11 @@ final class WidgetDataStore {
         }
     }
 
-    private func recordFailure(_ failure: RefreshFailure, providerID: String, kind: ProviderKind, force: Bool) -> RefreshOutcome {
+    private func recordFailure(_ failure: RefreshFailure, providerID: String) -> RefreshOutcome {
         let backoff = RefreshBackoff.after(failure, previous: backoffs[providerID], now: now())
         backoffs[providerID] = backoff
         let wait = Int(backoff.retryAt.timeIntervalSince(now()))
         AppLog.warn(.refresh, "\(providerID) failed: \(failure.message) Next try in \(wait)s.")
-        onRefreshOutcome?(kind, .failed, force)
         return .failed
     }
 
@@ -207,13 +233,25 @@ final class WidgetDataStore {
         inFlight.removeValue(forKey: id)?.cancel()
         providersByID[id] = provider
         store(snapshot, for: id)
-        onRefreshOutcome?(provider.provider.kind, .refreshed, true)
     }
 
     private func store(_ snapshot: ProviderSnapshot, for providerID: String) {
         backoffs[providerID] = nil
         snapshots[providerID] = snapshot
         cache.save(snapshots)
+    }
+
+    private func latchBurningFast() {
+        let at = now()
+        let previous = BurningFast(latched: burningFastWindows)
+        var burning: [String: Date] = [:]
+        for descriptor in registry.providers.flatMap({ registry.descriptors(for: $0.id) }) {
+            let data = data(for: descriptor)
+            guard let reset = data.resetsAt,
+                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data)) else { continue }
+            burning[descriptor.id] = reset
+        }
+        if burning != burningFastWindows { burningFastWindows = burning }
     }
 
     func errorMessage(for providerID: String) -> String? {
@@ -235,12 +273,14 @@ final class WidgetDataStore {
                ?? descriptor.unreportedValues.map({ .values(label: descriptor.metricLabel, values: $0) }),
            let data = resolve(line, descriptor: descriptor) {
             result = data
+            result.title = snapshot.lineTitles?[descriptor.metricLabel] ?? result.title
         } else {
             result = descriptor.sample
             result.hasData = false
         }
 
         result.displayMode = meterStyle
+        result.priorityLimits = priorityLimits
         result.resetDisplayMode = resetDisplayMode
         return result
     }
@@ -287,6 +327,7 @@ final class WidgetDataStore {
             var result = WidgetData(
                 title: descriptor.sample.title,
                 kind: format.metricKind,
+                currencyCode: format.currencyCode,
                 used: normalizedUsed,
                 limit: limit,
                 resetsAt: resetsAt,

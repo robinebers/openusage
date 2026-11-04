@@ -12,9 +12,14 @@ The panel that opens from the menu bar icon. It has two tabs, Priority and All U
 Priority shows only what needs you, most urgent first.
 
 - **Pinned** comes first, with every pinned metric that has data. A pinned metric that's running
-  out moves to Running Out until it recovers.
-- **Running Out** lists every limit with 30% or less left. What would run out soonest at your
-  current pace comes first, then limits with no pace, least left first.
+  out moves to Running Out until it recovers, and one that's used up moves to Used Up until it
+  resets.
+- **Running Out** lists every limit at or under its Warning level (30% left by default, set in
+  [Priority Limits](settings.md#priority-limits)). With **Burning Fast** on, it also lists a limit
+  that would run out before it resets at your current pace, however much it has left, with the time
+  it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
+  90% of the limit. What would run out soonest at your current pace comes first, then limits with no
+  pace, least left first.
 - **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
   credits, shows here only at exactly zero.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is
@@ -48,9 +53,10 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 
 ### Resets
 
-Claude and ChatGPT accounts show a **Limit Resets** row while they have rate-limit resets available.
-Hover over the count to see the expiry dates, or click it to keep them open. To spend a reset,
-choose **Use**, then **Reset**.
+Claude, ChatGPT, and Z.ai accounts show a **Limit Resets** row while they have rate-limit resets
+available. Hover over the count to see the expiry dates, or click it to keep them open. To spend a
+reset, choose **Use**, then **Reset**. Z.ai lists its Session and Weekly resets apart, and only the
+earliest of each can be used.
 
 ### Account status
 
