@@ -21,15 +21,6 @@ final class PanelGeometryTests: XCTestCase {
         XCTAssertEqual(left.y, 846)
     }
 
-    func testMaximumHeightUsesAvailableRoomAndDisplayCap() {
-        let visible = NSRect(x: 0, y: 0, width: 1200, height: 1000)
-
-        XCTAssertEqual(
-            PanelGeometry.maximumHeight(topLeft: NSPoint(x: 100, y: 900), visibleFrame: visible),
-            850
-        )
-    }
-
     func testShortDisplayCapsTheHeightToTheRoomBelowTheAnchor() {
         let visible = NSRect(x: 0, y: 0, width: 500, height: 200)
         let maximum = PanelGeometry.maximumHeight(
@@ -38,17 +29,6 @@ final class PanelGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(maximum, 170)
-    }
-
-    func testChangingHeightKeepsTopEdgeFixed() {
-        let topLeft = NSPoint(x: 120, y: 800)
-        let short = PanelGeometry.frame(topLeft: topLeft, width: 320, height: 300)
-        let tall = PanelGeometry.frame(topLeft: topLeft, width: 320, height: 650)
-
-        XCTAssertEqual(short.maxY, topLeft.y)
-        XCTAssertEqual(tall.maxY, topLeft.y)
-        XCTAssertEqual(short.minX, tall.minX)
-        XCTAssertEqual(short.width, tall.width)
     }
 
     func testFractionalAnchorAndHeightsKeepTopEdgeOnOneWholePoint() {

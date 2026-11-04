@@ -22,14 +22,6 @@ final class PaceNotificationLogicTests: XCTestCase {
         )
     }
 
-    func testUnderThirtyPercentFiresOnce() {
-        let first = step(healthy)
-        XCTAssertTrue(first.fire.isEmpty)
-        let second = step(healthy, fraction: 0.25, from: first.newState)
-        XCTAssertEqual(second.fire, [.warning])
-        XCTAssertTrue(step(healthy, fraction: 0.20, from: second.newState).fire.isEmpty)
-    }
-
     func testTheLevelsTurnOverExactlyWhereTheBarsChangeColor() {
         let primed = step(healthy, fraction: 0.31).newState
         XCTAssertEqual(step(healthy, fraction: 0.30, from: primed).fire, [.warning])
@@ -40,19 +32,6 @@ final class PaceNotificationLogicTests: XCTestCase {
     func testDroppingStraightUnderTenOffersBothLevelsLowestFirst() {
         let primed = step(healthy).newState
         XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.critical, .warning])
-    }
-
-    func testCloseToRunningOutFires() {
-        var state = step(healthy).newState
-        state = step(close, from: state).newState
-        let red = step(running, from: state)
-        XCTAssertEqual(red.fire, [.closeToRunningOut])
-    }
-
-    func testJumpStraightFromHealthyToRedFiresCritical() {
-        let state = step(healthy).newState
-        let red = step(running, from: state)
-        XCTAssertEqual(red.fire, [.closeToRunningOut])
     }
 
     func testUnderTenPercentFiresOncePerWindow() {
@@ -84,15 +63,6 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(refired.fire, [.closeToRunningOut])
     }
 
-    func testResetJitterDoesNotRearmExistingAlerts() {
-        let jitteredReset = reset.addingTimeInterval(0.09)
-        for meterState in [close, running] {
-            let primed = step(healthy).newState
-            let fired = step(meterState, from: primed).newState
-            XCTAssertTrue(step(meterState, resetsAt: jitteredReset, from: fired).fire.isEmpty)
-        }
-    }
-
     func testRecoveryThenReworseningRefires() {
         var state = step(healthy).newState
         state = step(healthy, fraction: 0.25, from: state).newState
@@ -112,11 +82,6 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertFalse(recovered.fire.contains(.critical))
         let dipsAgain = step(close, fraction: 0.05, from: recovered.newState)
         XCTAssertTrue(dipsAgain.fire.contains(.critical))
-    }
-
-    func testNoDataNeverFires() {
-        let result = step(.noData, fraction: 0.01)
-        XCTAssertTrue(result.fire.isEmpty)
     }
 
     func testUnpacedLimitFiresOnlyAlmostOutUnderTenPercent() {

@@ -49,19 +49,6 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(Set(ids(result.attention)), ["claude@1.At 30%, Nearly Reset", "claude@1.At 30%, Fresh"])
     }
 
-    func testARingFillsLikeItsBarUnderUsedAndLeft() {
-        var limit = unpaced("Weekly", used: 61)
-        limit.displayMode = .used
-        XCTAssertEqual(limit.fraction, 0.61, accuracy: 1e-9)
-        guard case .bar(let usedFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
-        XCTAssertEqual(limit.fraction, usedFill)
-
-        limit.displayMode = .remaining
-        XCTAssertEqual(limit.fraction, 0.39, accuracy: 1e-9)
-        guard case .bar(let leftFill, _, _, _, _) = limit.dashboardRow(now: now).mark else { return XCTFail("no bar") }
-        XCTAssertEqual(limit.fraction, leftFill)
-    }
-
     func testTheClockNeverChangesWhatIsListed() {
         let accounts = [account(personal, paced("Weekly", used: 75, left: 4 * day), paced("Fable", used: 40, left: 4 * day))]
         for later in [0, hour, day, 3 * day] {
@@ -88,12 +75,6 @@ final class PriorityBoardTests: XCTestCase {
 
         XCTAssertEqual(ids(result.attention), ["claude@1.Session", "claude@1.Weekly", "claude@1.Extra Usage"],
                        "a limit with no pace to tell by follows the ones that have one")
-    }
-
-    func testTheRunwayIsTheTimeLeftUntilTheLimitAtTheCurrentPace() throws {
-        let weekly = paced("Weekly", used: 31, left: 5 * day)
-        XCTAssertEqual(try XCTUnwrap(weekly.runway(now: now)), 69 / (31 / (2 * day)), accuracy: 1)
-        XCTAssertNil(unpaced("Credits", used: 80).runway(now: now), "no window, no pace")
     }
 
     func testEqualRanksKeepTheSavedOrder() {

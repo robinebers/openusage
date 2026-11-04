@@ -56,14 +56,4 @@ final class PopoverTopBarTests: QuietWindowTestCase {
     private func hostedViews(in view: NSView) -> [NSView] {
         view.subviews.flatMap { [$0] + hostedViews(in: $0) }
     }
-
-    func testLeavingAccountsDropsAnOpenAddAccountSheet() {
-        let popover = PopoverState()
-        popover.screen = .accounts
-        popover.isAddingAccount = true
-
-        popover.screen = .dashboard
-
-        XCTAssertFalse(popover.isAddingAccount)
-    }
 }

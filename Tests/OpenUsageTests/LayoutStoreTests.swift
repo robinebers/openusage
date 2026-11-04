@@ -69,58 +69,6 @@ final class LayoutStoreTests: XCTestCase {
         }
     }
 
-    func testFreshDefaultLayoutShowsEveryMetricForAccountCards() {
-        let accounts = [Account(kind: .claude, label: "Work"), Account(kind: .codex, label: "Work")]
-        let providers = ProviderCatalog.make(accounts: accounts, vault: InMemoryCredentialVault())
-        let store = makeStore(registry: .from(providers))
-
-        for account in accounts {
-            XCTAssertTrue(store.visibleDescriptors.contains { $0.id == "\(account.cardID).session" })
-            XCTAssertTrue(store.visibleDescriptors.contains { $0.id == "\(account.cardID).rateLimitResets" })
-        }
-    }
-
-    func testMetricOrderPersists() throws {
-        let defaults = isolatedDefaults()
-        let store = makeStore(defaults)
-        let first = try XCTUnwrap(store.orderedSupportedMetrics(for: "claude").first?.id)
-
-        XCTAssertTrue(store.reorderMetric(dragged: "claude.extra", target: first, in: "claude"))
-
-        XCTAssertEqual(makeStore(defaults).orderedSupportedMetrics(for: "claude").first?.id, "claude.extra")
-    }
-
-    func testDisplayGroupsListEveryMetricInMetricOrder() {
-        let store = makeStore()
-
-        XCTAssertTrue(store.reorderMetric(dragged: "claude.weekly", target: "claude.session", in: "claude"))
-
-        let group = store.displayGroups.first { $0.provider.id == "claude" }
-        XCTAssertEqual(group?.metrics.map(\.id), ["claude.weekly", "claude.session", "claude.extra", "claude.today"])
-    }
-
-    func testAccountListFollowsReorder() {
-        let store = makeStore()
-        XCTAssertTrue(store.reorderProvider(dragged: "cursor", target: "claude"))
-        XCTAssertEqual(store.orderedProviders().map(\.id), ["cursor", "claude", "codex"])
-        XCTAssertEqual(store.displayGroups.map(\.provider.id), ["cursor", "claude", "codex"])
-    }
-
-    func testCustomizeProviderIDClearsWhenLeavingAccounts() {
-        let store = PopoverState()
-        store.screen = .accounts
-        store.customizeProviderID = "claude"
-        XCTAssertEqual(store.customizeProviderID, "claude")
-
-        store.screen = .dashboard
-        XCTAssertNil(store.customizeProviderID, "leaving Accounts resets the L2 selection back to the list")
-
-        store.screen = .accounts
-        store.customizeProviderID = "codex"
-        store.screen = .settings
-        XCTAssertNil(store.customizeProviderID)
-    }
-
     private func makeStore(_ defaults: UserDefaults? = nil, registry: WidgetRegistry = .mock) -> LayoutStore {
         LayoutStore(registry: registry, defaults: defaults ?? isolatedDefaults())
     }

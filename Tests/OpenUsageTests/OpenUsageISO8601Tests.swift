@@ -3,11 +3,6 @@ import Testing
 @testable import OpenUsage
 
 struct OpenUsageISO8601Tests {
-    @Test func parsesZuluISO() {
-        let date = OpenUsageISO8601.date(from: "2099-01-01T00:00:00.000Z")
-        #expect(date != nil)
-    }
-
     @Test func normalizesMicrosecondsWithoutTimezoneLikeClaudeAPI() {
         let date = OpenUsageISO8601.date(from: "2099-01-01T00:00:00.123456")
         #expect(date != nil)

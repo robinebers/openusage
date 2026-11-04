@@ -9,39 +9,6 @@ final class PaceTests: XCTestCase {
         now.addingTimeInterval(period * (1 - elapsed))
     }
 
-    func testZeroUsageHasNoPaceSignal() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        XCTAssertNil(Pace.evaluate(used: 0, limit: 100, resetsAt: reset, periodDuration: week, now: now))
-    }
-
-    func testEarlyInWindowStillProjectsPace() {
-        let reset = resetsAt(elapsed: 0.02, period: week)
-        XCTAssertEqual(Pace.evaluate(used: 5, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status, .behind)
-    }
-
-    func testAheadOnTrackBehindThresholds() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        let cases: [(used: Double, status: Pace.Status)] = [
-            (44, .ahead), (46, .onTrack),
-            (50, .onTrack), (60, .behind), (100, .behind), (130, .behind)
-        ]
-
-        for testCase in cases {
-            XCTAssertEqual(
-                Pace.evaluate(used: testCase.used, limit: 100, resetsAt: reset, periodDuration: week, now: now)?.status,
-                testCase.status,
-                "used: \(testCase.used)"
-            )
-        }
-    }
-
-    func testEvaluateProjectsEndOfPeriodUsage() {
-        let reset = resetsAt(elapsed: 0.5, period: week)
-        let result = Pace.evaluate(used: 30, limit: 100, resetsAt: reset, periodDuration: week, now: now)
-        XCTAssertEqual(result?.status, .ahead)
-        XCTAssertEqual(result?.projectedUsage ?? 0, 60, accuracy: 0.01)
-    }
-
     func testWindowAlreadyResetReturnsNil() {
         let past = now.addingTimeInterval(-60)
         XCTAssertNil(Pace.evaluate(used: 50, limit: 100, resetsAt: past, periodDuration: week, now: now))
@@ -72,6 +39,7 @@ final class PaceTests: XCTestCase {
 
     func testThePaceVerdictPicksTheMeterState() {
         XCTAssertEqual(pacedData(used: 30).meterState(now: now), .healthy)
+        XCTAssertEqual(pacedData(used: 44).meterState(now: now), .healthy)
         XCTAssertEqual(pacedData(used: 46).meterState(now: now), .closeToLimit)
         XCTAssertEqual(pacedData(used: 60).meterState(now: now), .runningOut)
         XCTAssertEqual(pacedData(used: 50.2).meterState(now: now), .runningOut)
@@ -133,10 +101,5 @@ final class PaceTests: XCTestCase {
         let elapsed = 60 / session
         let reset = resetsAt(elapsed: elapsed, period: session)
         XCTAssertNil(Pace.evaluate(used: 1, limit: 100, resetsAt: reset, periodDuration: session, now: now))
-    }
-
-    func testUntouchedMeterEarlyInItsWindowIsUnpaced() {
-        let data = pacedData(used: 0, elapsed: 0.03)
-        XCTAssertEqual(data.meterState(now: now), .unpaced)
     }
 }

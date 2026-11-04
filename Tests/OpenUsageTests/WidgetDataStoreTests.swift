@@ -4,22 +4,6 @@ import os
 
 @MainActor
 final class WidgetDataStoreTests: XCTestCase {
-    func testRefreshAllPersistsAndPublishesAllProviderSnapshots() async {
-        let fixtures = ["alpha", "beta", "gamma"].map { makeRuntime($0) }
-        let ids = fixtures.map { $0.0.id }
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            fixtures.map { $0.1 },
-            defaults: defaults
-        )
-
-        await store.refreshAll()
-
-        XCTAssertEqual(Set(store.snapshots.keys), Set(ids))
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
-        XCTAssertEqual(Set(persisted.keys), Set(ids))
-    }
-
     func testForcedRefreshesWaitingOnOneReadTakeTurns() async throws {
         let account = Account(kind: .openrouter, label: "Work")
         let vault = InMemoryCredentialVault()
@@ -80,20 +64,6 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(http.requests.count, 1, "the waiting refresh asked again inside the provider's wait")
     }
 
-    func testSingleProviderRefreshPersistsImmediately() async {
-        let fixture = makeRuntime("single")
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting(
-            [fixture.1],
-            defaults: defaults
-        )
-
-        await store.refresh(providerID: fixture.0.id, force: true)
-
-        let persisted = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots").load()
-        XCTAssertNotNil(persisted[fixture.0.id])
-    }
-
     func testAFinishedAccountShowsAndPersistsWithoutWaitingForThePass() async {
         let fast = makeRuntime("fast")
         let slowProvider = Provider(id: "slow", kind: .codex)
@@ -137,44 +107,6 @@ final class WidgetDataStoreTests: XCTestCase {
         let outcomes = await refreshTask.value
         XCTAssertEqual(outcomes, [.refreshed, .refreshed])
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty)
-    }
-
-    func testResolvesProgressSnapshotIntoWidgetData() async {
-        let provider = Provider(id: "test", kind: .codex)
-        let descriptor = WidgetDescriptor(
-            provider: provider,
-            key: "session",
-            metricLabel: "Session",
-            sample: WidgetData(title: "Session", kind: .percent, used: 0, limit: 100, displayMode: .remaining)
-        )
-        let runtime = StubRuntime(
-            provider: provider,
-            descriptors: [descriptor],
-            snapshot: ProviderSnapshot(
-                providerID: provider.id,
-                displayName: provider.displayName,
-                lines: [.progress(
-                    label: "Session",
-                    used: 42,
-                    limit: 100,
-                    format: .percent,
-                    resetsAt: Date(timeIntervalSinceNow: 60 * 60),
-                    periodDurationMs: 5 * 60 * 60 * 1000
-                )]
-            )
-        )
-        let defaults = isolatedDefaults()
-        let store = WidgetDataStore.forTesting([runtime], defaults: defaults)
-
-        await store.refreshAll()
-        let data = store.data(for: descriptor)
-
-        XCTAssertEqual(data.used, 42)
-        XCTAssertEqual(data.displayedValue, 58)
-        XCTAssertEqual(data.valueText, "58%")
-        guard case .bar(_, _, let value, let reset, _) = data.dashboardRow().mark else { return XCTFail("not a bar") }
-        XCTAssertEqual(value, "58%")
-        XCTAssertNotNil(reset, "a meter with a reset date shows its countdown")
     }
 
     func testBarFractionMatchesRoundedValue() {

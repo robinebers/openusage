@@ -173,32 +173,17 @@ final class InMemoryHubKeyVault: HubKeyVault, @unchecked Sendable {
 }
 
 final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
-    private let lock = NSLock()
-    private var credentials: [UUID: AccountCredential] = [:]
+    private let credentials = OSAllocatedUnfairLock(initialState: [UUID: AccountCredential]())
 
-    func load(_ id: UUID) throws -> AccountCredential? {
-        lock.lock()
-        defer { lock.unlock() }
-        return credentials[id]
-    }
-
-    func save(_ credential: AccountCredential, for id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        credentials[id] = credential
-    }
+    func load(_ id: UUID) throws -> AccountCredential? { credentials.withLock { $0[id] } }
+    func save(_ credential: AccountCredential, for id: UUID) throws { credentials.withLock { $0[id] = credential } }
+    func delete(_ id: UUID) throws { credentials.withLock { $0[id] = nil } }
 
     func update(_ credential: AccountCredential, for id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        guard credentials[id] != nil else { throw CredentialVaultError.missingCredential }
-        credentials[id] = credential
-    }
-
-    func delete(_ id: UUID) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        credentials.removeValue(forKey: id)
+        try credentials.withLock {
+            guard $0[id] != nil else { throw CredentialVaultError.missingCredential }
+            $0[id] = credential
+        }
     }
 }
 

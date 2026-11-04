@@ -13,22 +13,12 @@ final class RefreshTimeoutTests: XCTestCase {
         let outcome = await store.refresh(providerID: provider.id, force: true)
 
         XCTAssertEqual(outcome, .failed)
+        let cancelled = await waitUntil { runtime.wasCancelled }
+        XCTAssertTrue(cancelled, "a refresh the store gave up on must be cancelled, or the hung work runs forever")
         XCTAssertTrue(store.refreshingProviderIDs.isEmpty, "the spinner must stop when the deadline wins")
         XCTAssertEqual(store.errorMessage(for: provider.id)?.hasPrefix("Refresh timed out after"), true)
         let next = await store.refresh(providerID: provider.id)
         XCTAssertEqual(next, .backedOff)
-    }
-
-    func testHungProviderRefreshIsCancelledWhenTheDeadlineWins() async {
-        let (provider, descriptor) = makeProvider()
-        let runtime = HangingProviderRuntime(provider: provider, descriptors: [descriptor])
-        let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, timeout: 0.05)
-
-        let outcome = await store.refresh(providerID: provider.id, force: true)
-
-        XCTAssertEqual(outcome, .failed)
-        let cancelled = await waitUntil { runtime.wasCancelled }
-        XCTAssertTrue(cancelled, "a refresh the store gave up on must be cancelled, or the hung work runs forever")
     }
 
     func testRefreshInsideTheDeadlineStillSucceeds() async {

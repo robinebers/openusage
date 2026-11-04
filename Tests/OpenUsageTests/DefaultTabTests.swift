@@ -7,6 +7,7 @@ final class DefaultTabTests: XCTestCase {
         let defaults = isolatedDefaults()
         let popover = PopoverState()
 
+        popover.show(dashboardTab: .allUsage)
         popover.show(dashboardTab: .preferred(in: defaults))
         XCTAssertEqual(popover.dashboardTab, .priority)
 
@@ -14,15 +15,6 @@ final class DefaultTabTests: XCTestCase {
         popover.dashboardTab = .priority
         popover.show(dashboardTab: .preferred(in: defaults))
         XCTAssertEqual(popover.dashboardTab, .allUsage)
-    }
-
-    func testOpeningAllUsageFromANotificationPreservesTheDefaultForTheNextOpen() {
-        let defaults = isolatedDefaults()
-        let popover = PopoverState()
-        popover.show(dashboardTab: .allUsage)
-        XCTAssertEqual(popover.dashboardTab, .allUsage)
-        popover.show(dashboardTab: .preferred(in: defaults))
-        XCTAssertEqual(popover.dashboardTab, .priority)
     }
 
     func testClosingThePanelReturnsSettingsToItsFirstTab() {
