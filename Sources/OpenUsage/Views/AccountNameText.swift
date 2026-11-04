@@ -11,7 +11,7 @@ struct AccountNameText: View {
         if privacyMode {
             Text(verbatim: placeholder)
                 .truncationMode(.tail)
-                .blur(radius: 4)
+                .blur(radius: 5)
                 .textSelection(.disabled)
                 .accessibilityLabel(PrivacyModeSetting.accountName(provider, isEnabled: true))
         } else {
