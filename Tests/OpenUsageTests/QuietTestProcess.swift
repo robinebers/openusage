@@ -119,7 +119,7 @@ enum QuietHost {
 }
 
 @MainActor
-extension QuietWindowTestCase {
+extension XCTestCase {
     func waitUntil(
         timeout: Duration = .seconds(2), _ condition: @MainActor () -> Bool,
         file: StaticString = #filePath, line: UInt = #line
@@ -127,13 +127,16 @@ extension QuietWindowTestCase {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
             guard ContinuousClock.now < deadline else {
-                XCTFail("Timed out waiting for the UI", file: file, line: line)
+                XCTFail("Timed out waiting", file: file, line: line)
                 return
             }
             try await Task.sleep(for: .milliseconds(10))
         }
     }
+}
 
+@MainActor
+extension QuietWindowTestCase {
     func show(
         _ content: some View,
         in kind: QuietHost = .panel,

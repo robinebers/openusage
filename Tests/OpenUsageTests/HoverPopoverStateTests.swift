@@ -21,7 +21,7 @@ final class HoverPopoverStateTests: XCTestCase {
     func testAPinnedPopoverSurvivesHoverOutAndClosesWhenUnpinned() async throws {
         let state = HoverPopoverState(revealDelay: .zero, hideGrace: .zero)
         state.inlineHover(true)
-        try await settle(until: { state.isPresented })
+        try await waitUntil { state.isPresented }
 
         state.setPinned(true)
         state.inlineHover(false)
@@ -30,13 +30,6 @@ final class HoverPopoverStateTests: XCTestCase {
 
         state.setPinned(false)
 
-        try await settle(until: { !state.isPresented })
-    }
-
-    private func settle(until condition: () -> Bool) async throws {
-        for _ in 0..<200 where !condition() {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        XCTAssertTrue(condition())
+        try await waitUntil { !state.isPresented }
     }
 }

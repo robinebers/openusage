@@ -101,27 +101,29 @@ final class CommandLineToolInstallerTests: XCTestCase {
         XCTAssertEqual(installer.errorMessage, "Couldn't install the terminal helper: x")
     }
 
-    func testALinkIntoAnotherAppsBundleIsAConflict() throws {
+    func testAForeignLinkIsAConflictNeverClaimedOrRemoved() throws {
         let fixture = try fixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         try FileManager.default.createDirectory(atPath: (fixture.destination as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        let foreign = fixture.root.appendingPathComponent("Applications/Usage.app/Contents/Helpers/openusage").path
-        try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: foreign)
-        var operationRan = false
-        let installer = CommandLineToolInstaller(
-            sourcePath: fixture.source,
-            destinationPath: fixture.destination,
-            performPrivileged: { _, _, _ in
-                operationRan = true
-                return .success
-            }
-        )
+        for foreign in [fixture.root.appendingPathComponent("Applications/Usage.app/Contents/Helpers/openusage").path, "/tmp/another-openusage"] {
+            try? FileManager.default.removeItem(atPath: fixture.destination)
+            try FileManager.default.createSymbolicLink(atPath: fixture.destination, withDestinationPath: foreign)
+            var operationRan = false
+            let installer = CommandLineToolInstaller(
+                sourcePath: fixture.source,
+                destinationPath: fixture.destination,
+                performPrivileged: { _, _, _ in
+                    operationRan = true
+                    return .success
+                }
+            )
 
-        XCTAssertEqual(installer.status, .conflict)
-        installer.install()
-        installer.uninstall()
-        XCTAssertFalse(operationRan)
-        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination), foreign)
+            XCTAssertEqual(installer.status, .conflict, foreign)
+            installer.install()
+            installer.uninstall()
+            XCTAssertFalse(operationRan, foreign)
+            XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination), foreign, foreign)
+        }
     }
 
     func testTheHelperRuleNamesOnlyOpenUsageBundles() {
@@ -157,36 +159,6 @@ final class CommandLineToolInstallerTests: XCTestCase {
         XCTAssertFalse(operationRan)
         XCTAssertNotNil(installer.errorMessage)
         XCTAssertEqual(try String(contentsOfFile: fixture.destination, encoding: .utf8), "foreign")
-    }
-
-    func testForeignSymlinkIsNeverClaimedOrRemoved() throws {
-        let fixture = try fixture()
-        defer { try? FileManager.default.removeItem(at: fixture.root) }
-        try FileManager.default.createDirectory(
-            atPath: (fixture.destination as NSString).deletingLastPathComponent,
-            withIntermediateDirectories: true
-        )
-        try FileManager.default.createSymbolicLink(
-            atPath: fixture.destination,
-            withDestinationPath: "/tmp/another-openusage"
-        )
-        var operationRan = false
-        let installer = CommandLineToolInstaller(
-            sourcePath: fixture.source,
-            destinationPath: fixture.destination,
-            performPrivileged: { _, _, _ in
-                operationRan = true
-                return .success
-            }
-        )
-
-        XCTAssertEqual(installer.status, .conflict)
-        installer.uninstall()
-        XCTAssertFalse(operationRan)
-        XCTAssertEqual(
-            try FileManager.default.destinationOfSymbolicLink(atPath: fixture.destination),
-            "/tmp/another-openusage"
-        )
     }
 
     func testTheScriptLinksRefusesAnExistingPathOrAChangedLinkAndNeverWritesThroughAPlantedLink() throws {

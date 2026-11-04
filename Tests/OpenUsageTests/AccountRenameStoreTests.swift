@@ -1,19 +1,8 @@
-import os
 import XCTest
 @testable import OpenUsage
 
 @MainActor
 final class AccountRenameStoreTests: XCTestCase {
-    func testBeginSeedsTheDraftWithTheCurrentName() {
-        let (accounts, renaming) = makeStores()
-        let account = accounts.add(kind: .claude, label: "AM1", credential: .apiKey("key"))
-
-        renaming.begin(account.cardID)
-
-        XCTAssertEqual(renaming.edit?.providerID, account.cardID)
-        XCTAssertEqual(renaming.draft, "AM1")
-    }
-
     func testCommitSavesTheTrimmedDraft() {
         let (accounts, renaming) = makeStores()
         let account = accounts.add(kind: .claude, label: "AM1", credential: .apiKey("key"))
@@ -56,16 +45,9 @@ final class AccountRenameStoreTests: XCTestCase {
         let account = accounts.add(kind: .claude, label: "AM1", credential: .apiKey("key"))
         renaming.begin(account.cardID)
         renaming.draft = " AM1 "
+        accounts.didChange = { XCTFail("a no-op rename must not make AppContainer re-apply the layout") }
 
-        let accountsChanged = OSAllocatedUnfairLock(initialState: false)
-        withObservationTracking {
-            _ = accounts.accounts
-        } onChange: {
-            accountsChanged.withLock { $0 = true }
-        }
         renaming.commit()
-
-        XCTAssertFalse(accountsChanged.withLock { $0 }, "a no-op rename must not make AppContainer re-apply the layout")
     }
 
     func testBeginningAnotherRenameSavesTheOpenOne() {

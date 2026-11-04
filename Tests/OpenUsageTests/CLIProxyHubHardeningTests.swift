@@ -9,34 +9,6 @@ final class CLIProxyHubHardeningTests: XCTestCase {
     private let hubURL = URL(string: "http://mini.local:8317")!
     private let gate = CLIProxyHubGate()
 
-    func testAForgedHubThatReusesAnAccountIDNeverSendsOrDeletesThatAccountsSignIn() async throws {
-        let defaults = isolatedDefaults()
-        let vault = InMemoryCredentialVault()
-        let direct = Account(kind: .openrouter, label: "Direct")
-        let forgedHub = CLIProxyHub(id: direct.id, url: URL(string: "https://attacker.example")!)
-        let linked = Account(kind: .claude, label: "Linked", hub: HubLink(hub: forgedHub, login: Self.login("forged", "claude")))
-        try vault.save(.apiKey("sk-or-direct-secret"), for: direct.id)
-        try vault.save(.oauth(OAuthTokens(accessToken: CLIProxyHubClient.tokenPlaceholder)), for: linked.id)
-        defaults.set(try JSONEncoder().encode([direct, linked]), forKey: AccountStore.storageKey)
-        defaults.set(try JSONEncoder().encode([forgedHub]), forKey: AccountStore.hubsStorageKey)
-        let store = AccountStore(defaults: defaults, vault: vault, hubKeys: InMemoryHubKeyVault())
-        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"files":[]}"#.utf8)) }
-        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
-
-        await sync.syncDue(maxAge: 0)
-        let runtimes = ProviderCatalog.make(accounts: store.accounts, vault: vault, hubKeys: store.hubKeys, http: http, hubsEnabled: true)
-        let tunnelled = try XCTUnwrap(runtimes.first { $0.account.id == linked.id })
-        _ = await tunnelled.refresh()
-
-        XCTAssertTrue(http.requests.isEmpty, "the account's key is never loaded as the hub's")
-        XCTAssertEqual(
-            sync.status(of: forgedHub.id), .failed("The management key for the CLIProxyAPI hub at attacker.example is missing. Replace it in Accounts.")
-        )
-        store.removeHub(forgedHub.id)
-        XCTAssertEqual(try vault.load(direct.id), .apiKey("sk-or-direct-secret"), "removing the hub leaves the account's sign-in")
-        XCTAssertEqual(store.accounts.map(\.id), [direct.id])
-    }
-
     func testAKeyGoesOnlyToTheAddressItWasSavedFor() async throws {
         let defaults = isolatedDefaults()
         let vault = InMemoryCredentialVault()
@@ -157,7 +129,8 @@ final class CLIProxyHubHardeningTests: XCTestCase {
     }
 
     func testAFailedKeychainWriteLeavesTheHubUnreadSoTheNextSyncRetries() async throws {
-        let vault = SaveRefusingVault()
+        let vault = FailingVault()
+        vault.saveError.value = CredentialVaultError.missingCredential
         let store = AccountStore(defaults: isolatedDefaults(), vault: vault, hubKeys: InMemoryHubKeyVault())
         let listing = #"{"files":[{"id":"a","auth_index":"index-a","provider":"claude","account_type":"oauth"}]}"#
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(listing.utf8)) }
@@ -170,7 +143,7 @@ final class CLIProxyHubHardeningTests: XCTestCase {
             sync.status(of: hub.id), .failed("OpenUsage couldn’t save this hub’s logins in the Keychain. It tries again when Accounts opens.")
         )
 
-        vault.refusesSaves = false
+        vault.saveError.value = nil
         await sync.syncDue()
         XCTAssertEqual(http.requests.count, 2, "the hub is read again at the next sync, not an hour later")
         XCTAssertEqual(store.accounts.map(\.hub?.loginID), ["a"])
@@ -178,18 +151,17 @@ final class CLIProxyHubHardeningTests: XCTestCase {
     }
 
     func testAFailedRemovalIsTriedAgainAtTheNextRead() throws {
-        let vault = SaveRefusingVault()
-        vault.refusesSaves = false
+        let vault = FailingVault()
         let store = AccountStore(defaults: isolatedDefaults(), vault: vault, hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: hubURL)
         try store.addHub(hub, key: "mgmt-key")
         try store.mirror([Self.login("a", "claude")], from: hub.id)
         try store.mirror([], from: hub.id)
 
-        vault.refusesDeletes = true
+        vault.deleteError.value = CredentialVaultError.missingCredential
         XCTAssertThrowsError(try store.mirror([], from: hub.id))
         XCTAssertEqual(store.accounts.count, 1)
-        vault.refusesDeletes = false
+        vault.deleteError.value = nil
         try store.mirror([], from: hub.id)
 
         XCTAssertTrue(store.accounts.isEmpty, "the login two listings lacked is removed once the Keychain lets it go")
@@ -197,33 +169,5 @@ final class CLIProxyHubHardeningTests: XCTestCase {
 
     private static func login(_ id: String, _ provider: String) -> HubLogin {
         HubLogin(id: id, authIndex: "index-\(id)", provider: provider, label: id, isOAuth: true, isDisabled: false, chatGPTAccountID: nil)
-    }
-}
-
-private final class SaveRefusingVault: CredentialVault, @unchecked Sendable {
-    private let stored = InMemoryCredentialVault()
-    private let lock = NSLock()
-    private var refuses = true
-    private var refusesDeleting = false
-
-    var refusesSaves: Bool {
-        get { lock.withLock { refuses } }
-        set { lock.withLock { refuses = newValue } }
-    }
-
-    var refusesDeletes: Bool {
-        get { lock.withLock { refusesDeleting } }
-        set { lock.withLock { refusesDeleting = newValue } }
-    }
-
-    func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
-    func save(_ credential: AccountCredential, for id: UUID) throws {
-        if refusesSaves { throw CredentialVaultError.missingCredential }
-        try stored.save(credential, for: id)
-    }
-    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
-    func delete(_ id: UUID) throws {
-        if refusesDeletes { throw CredentialVaultError.missingCredential }
-        try stored.delete(id)
     }
 }

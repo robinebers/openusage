@@ -256,13 +256,6 @@ final class AddAccountFlowTests: XCTestCase {
         let defaults = isolatedDefaults()
         return AccountStore(defaults: defaults, vault: vault)
     }
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 where !condition() {
-            try await Task.sleep(for: .milliseconds(10))
-        }
-        XCTAssertTrue(condition(), "Timed out waiting for the add-account flow")
-    }
 }
 
 private actor CancellationFlag {

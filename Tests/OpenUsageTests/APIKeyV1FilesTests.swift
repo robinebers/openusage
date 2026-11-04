@@ -126,7 +126,8 @@ final class APIKeyV1FilesTests: XCTestCase {
 
     func testAKeyTheKeychainRefusedIsAddedOnTheNextLaunch() async throws {
         let home = try makeHome(openRouter: #"{"apiKey":"sk-or-saved"}"#)
-        let vault = RefusingVault()
+        let vault = FailingVault()
+        vault.saveError.value = KeychainVaultError.status(errSecInteractionNotAllowed)
         let store = AccountStore(defaults: isolatedDefaults(), vault: vault)
         let defaults = isolatedDefaults()
         let http = acceptingHTTP()
@@ -134,7 +135,7 @@ final class APIKeyV1FilesTests: XCTestCase {
         await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
         XCTAssertTrue(store.accounts.isEmpty)
 
-        vault.refuses.value = false
+        vault.saveError.value = nil
         await APIKeyV1Files.importOnce(into: store, defaults: defaults, home: home, http: http)
 
         let account = try XCTUnwrap(store.accounts.first)
@@ -199,24 +200,5 @@ final class APIKeyV1FilesTests: XCTestCase {
 
     private nonisolated static let zaiNoPlan = #"{"code":500,"msg":"当前用户不存在coding plan","success":false}"#
 
-    private nonisolated static let zaiQuota = #"""
-    {"code":200,"msg":"Operation successful","data":{"limits":[
-      {"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":17,"nextResetTime":1782724971179},
-      {"type":"TOKENS_LIMIT","unit":6,"number":1,"percentage":3,"nextResetTime":1783305486997},
-      {"type":"TIME_LIMIT","unit":5,"number":1,"usage":1000,"currentValue":0,"remaining":1000,"percentage":0,"nextResetTime":1785292686976,"usageDetails":[{"modelCode":"search-prime","usage":0},{"modelCode":"web-reader","usage":0},{"modelCode":"zread","usage":0}]}
-    ],"level":"pro"},"success":true}
-    """#
-}
-
-private final class RefusingVault: CredentialVault {
-    let refuses = TestSwitch(true)
-    private let stored = InMemoryCredentialVault()
-
-    func load(_ id: UUID) throws -> AccountCredential? { try stored.load(id) }
-    func save(_ credential: AccountCredential, for id: UUID) throws {
-        if refuses.value { throw KeychainVaultError.status(errSecInteractionNotAllowed) }
-        try stored.save(credential, for: id)
-    }
-    func update(_ credential: AccountCredential, for id: UUID) throws { try stored.update(credential, for: id) }
-    func delete(_ id: UUID) throws { try stored.delete(id) }
+    private nonisolated static let zaiQuota = #"{"code":200,"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"number":5,"percentage":17}]},"success":true}"#
 }

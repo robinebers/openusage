@@ -13,23 +13,27 @@ final class OAuthFoundationTests: XCTestCase {
 
     func testDeviceCodePollerHandlesPendingSlowDownAndSuccess() async throws {
         let results: [DeviceCodePollResult<String>] = [.pending, .slowDown, .complete("token")]
-        let index = LockedCounter()
-        let sleeps = LockedValues()
+        let index = TestSwitch(0)
+        let sleeps = TestSwitch<[TimeInterval]>([])
         let token = try await DeviceCodePoller.poll(
             interval: 1,
             expiresIn: 100,
-            sleep: { seconds in sleeps.append(seconds) },
-            request: { results[index.next()] }
+            sleep: { seconds in sleeps.value.append(seconds) },
+            request: {
+                defer { index.value += 1 }
+                return results[index.value]
+            }
         )
 
         XCTAssertEqual(token, "token")
-        XCTAssertEqual(sleeps.values, [1, 6])
+        XCTAssertEqual(sleeps.value, [1, 6])
     }
 
     func testDeviceCodePollerKeepsPollingThroughANetworkError() async throws {
-        let calls = LockedCounter()
+        let calls = TestSwitch(0)
         let token: String = try await DeviceCodePoller.poll(interval: 1, expiresIn: 100, sleep: { _ in }) {
-            if calls.next() == 0 { throw URLError(.timedOut) }
+            calls.value += 1
+            if calls.value == 1 { throw URLError(.timedOut) }
             return .complete("token")
         }
 
@@ -171,33 +175,5 @@ private final class CallbackClient: @unchecked Sendable {
             received += data
             if done { return String(decoding: received, as: UTF8.self) }
         }
-    }
-}
-
-private final class LockedCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = 0
-
-    func next() -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        defer { value += 1 }
-        return value
-    }
-}
-
-private final class LockedValues: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: [TimeInterval] = []
-    var values: [TimeInterval] {
-        lock.lock()
-        defer { lock.unlock() }
-        return stored
-    }
-
-    func append(_ value: TimeInterval) {
-        lock.lock()
-        defer { lock.unlock() }
-        stored.append(value)
     }
 }
