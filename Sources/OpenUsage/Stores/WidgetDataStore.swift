@@ -53,12 +53,12 @@ final class WidgetDataStore {
         didSet { defaults.set(showsBurningFast, forKey: Self.priorityBurningFastKey) }
     }
 
-    /// The limits that were burning fast at their last reading. See `BurningFast`.
-    private(set) var burningFastIDs: Set<String> = []
+    /// The limits that were burning fast at their last reading, with their window's reset. See `BurningFast`.
+    private(set) var burningFastWindows: [String: Date] = [:]
 
     /// What Priority and the menu bar list as burning fast, or nil while the setting is off.
     var burningFast: BurningFast? {
-        showsBurningFast ? BurningFast(latched: burningFastIDs) : nil
+        showsBurningFast ? BurningFast(latched: burningFastWindows) : nil
     }
 
     init(
@@ -243,10 +243,15 @@ final class WidgetDataStore {
 
     private func latchBurningFast() {
         let at = now()
-        let burning = Set(registry.providers.flatMap({ registry.descriptors(for: $0.id) }).filter {
-            BurningFast.isBurning(data(for: $0), now: at, wasBurning: burningFastIDs.contains($0.id))
-        }.map(\.id))
-        if burning != burningFastIDs { burningFastIDs = burning }
+        let previous = BurningFast(latched: burningFastWindows)
+        var burning: [String: Date] = [:]
+        for descriptor in registry.providers.flatMap({ registry.descriptors(for: $0.id) }) {
+            let data = data(for: descriptor)
+            guard let reset = data.resetsAt,
+                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data)) else { continue }
+            burning[descriptor.id] = reset
+        }
+        if burning != burningFastWindows { burningFastWindows = burning }
     }
 
     func errorMessage(for providerID: String) -> String? {

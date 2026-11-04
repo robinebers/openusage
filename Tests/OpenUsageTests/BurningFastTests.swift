@@ -66,7 +66,7 @@ final class BurningFastTests: XCTestCase {
     func testABurningLimitStaysListedUntilItsPaceEasesToNinetyPercent() {
         let nearlyEven = account(personal, paced("Weekly", used: 47.5, elapsed: 0.5))
         let eased = account(personal, paced("Weekly", used: 42.5, elapsed: 0.5))
-        let latched = BurningFast(latched: ["claude@1.Weekly"])
+        let latched = BurningFast(latched: ["claude@1.Weekly": now.addingTimeInterval(week / 2)])
 
         XCTAssertTrue(PriorityBoard.make(accounts: [nearlyEven], burningFast: BurningFast(), now: now).attention.isEmpty,
                       "95% of the limit by reset doesn't start listing it")
@@ -84,10 +84,10 @@ final class BurningFastTests: XCTestCase {
             [], registry: WidgetRegistry(providers: [personal], descriptors: [descriptor]), defaults: defaults, now: { clock.now }
         )
         let start = now.addingTimeInterval(-week / 2)
-        func read() {
+        func read(_ used: Double = 60, window: Double = 0) {
             store.snapshots[personal.id] = ProviderSnapshot(
                 provider: personal, plan: nil,
-                lines: [.percent("Weekly", 60, resetsAt: start.addingTimeInterval(week), periodMs: Int(week * 1000))],
+                lines: [.percent("Weekly", used, resetsAt: start.addingTimeInterval((window + 1) * week), periodMs: Int(week * 1000))],
                 refreshedAt: clock.now
             )
         }
@@ -107,6 +107,12 @@ final class BurningFastTests: XCTestCase {
         read()
         clock.set(start.addingTimeInterval(0.63 * week))
         XCTAssertTrue(listed().isEmpty, "a reading taken once it eased forgets it was burning")
+
+        clock.set(now)
+        read()
+        clock.set(start.addingTimeInterval(1.5 * week))
+        read(47, window: 1)
+        XCTAssertTrue(listed().isEmpty, "a new window at 94% of the limit doesn't inherit the last one burning")
 
         clock.set(now)
         store.showsBurningFast = false
