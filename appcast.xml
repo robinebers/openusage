@@ -3,6 +3,46 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.0-beta.2</title>
+            <pubDate>Wed, 04 Nov 2026 13:23:18 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>817</sparkle:version>
+            <sparkle:shortVersionString>0.8.0-beta.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Added
+- Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
+  resets apart, earliest first, and **Use** spends the earliest of a window
+  ([#1427](https://github.com/robinebers/openusage/issues/1427)).
+- Muse Code provider: sign in with a Meta device code to see your subscription's Session and Weekly
+  limits.
+- **Settings → Display → Priority Limits** sets how much left turns a limit Warning (orange) or
+  Critical (red), for the colors, Running Out, the menu bar, and the alerts. The alerts are now named
+  Warning and Critical.
+- **Burning Fast** under Priority Limits lists a limit that would run out before it resets at your
+  current pace, however much it has left, under Running Out and in the menu bar, with when it would
+  run out ([#1574](https://github.com/robinebers/openusage/issues/1574)). On by default.
+- **Use It or Lose It** notification: a weekly or monthly limit resets within 24 hours with over 50%
+  left ([#1593](https://github.com/robinebers/openusage/issues/1593)). Off by default.
+
+### Changed
+- Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of
+  staying under **Pinned** as an empty ring.
+- **Settings → General → Global Shortcut** uses the standard macOS shortcut recorder, and a usage
+  range with no data shows the provider's mark gently pulsing instead of breathing rings.
+
+### Fixed
+- Claude's Extra Usage shows the account's billing currency, such as €, instead of always $
+  ([#1425](https://github.com/robinebers/openusage/issues/1425)).
+- Cursor: Extra Usage reads "Team Spend" when its limit is the team's shared pool, so it no longer
+  looks like a personal cap. Personal limits still read Extra Usage.
+- Claude: Extra Usage reads "Spend" on an Enterprise plan, where it is the whole monthly bill
+  ([#1260](https://github.com/robinebers/openusage/issues/1260)).
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.0-beta.2/OpenUsage-0.8.0-beta.2.dmg" length="19108802" type="application/octet-stream" sparkle:edSignature="SIkDXoeD7X35YzYiyUMZpnw6PQsr84gvg87LgT3uJwz1SpJTtyz0yI1TOrvtLogSfIzjUhS652pVovjhGrqlDA=="/>
+        </item>
+        <item>
             <title>0.8.0-beta.1</title>
             <pubDate>Wed, 04 Nov 2026 05:12:30 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
