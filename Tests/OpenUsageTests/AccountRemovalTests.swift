@@ -47,17 +47,15 @@ final class AccountRemovalTests: XCTestCase {
         XCTAssertTrue(container.layout.displayGroups.isEmpty)
     }
 
-    func testAFailedRemovalKeepsTheAccountAndExplainsTheKeychainError() {
+    func testAFailedRemovalKeepsTheAccountAndExplainsTheKeychainError() throws {
         let accounts = AccountStore(defaults: isolatedDefaults(), vault: UndeletableVault())
         let account = accounts.add(kind: .ollama, label: "Ollama", credential: .apiKey("key"))
 
         accounts.remove(account.id)
 
         XCTAssertEqual(accounts.accounts.map(\.id), [account.id])
-        XCTAssertEqual(
-            accounts.lastError,
-            "OpenUsage couldn't use its Keychain item for this account (User interaction is not allowed.)."
-        )
+        let keychainReason = try XCTUnwrap(SecCopyErrorMessageString(errSecInteractionNotAllowed, nil) as String?)
+        XCTAssertEqual(accounts.lastError, "OpenUsage couldn't use its Keychain item for this account (\(keychainReason)).")
     }
 }
 
