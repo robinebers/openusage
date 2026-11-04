@@ -13,8 +13,9 @@ Priority shows only what needs you, most urgent first.
 
 - **Pinned** comes first, with every pinned metric that has data. A pinned metric that's running
   out moves to Running Out until it recovers.
-- **Running Out** lists every limit with 30% or less left. What would run out soonest at your
-  current pace comes first, then limits with no pace, least left first.
+- **Running Out** lists every limit at or under its Warning level (30% left by default, set in
+  [Priority Limits](settings.md#priority-limits)). What would run out soonest at your current pace
+  comes first, then limits with no pace, least left first.
 - **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
   credits, shows here only at exactly zero.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is

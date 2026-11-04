@@ -145,7 +145,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime, used: 75)
         XCTAssertEqual(recorder.posts.count, 1)
         XCTAssertEqual(recorder.posts.first?.0, "test.healthyToClose")
-        XCTAssertEqual(recorder.posts.first?.1, "Cutting It Close")
+        XCTAssertEqual(recorder.posts.first?.1, "Warning")
+        XCTAssertEqual(recorder.posts.first?.3, "30% or less left for this window.")
 
         await notify(base)
         XCTAssertEqual(recorder.posts.count, 1)
@@ -182,8 +183,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     func testAllTogglesOffSuppressesAllPosts() async {
         let settings = isolatedDefaults()
-        settings.set(false, forKey: PaceMilestone.underTenPercent.settingKey)
-        settings.set(false, forKey: PaceMilestone.underThirtyPercent.settingKey)
+        settings.set(false, forKey: PaceMilestone.critical.settingKey)
+        settings.set(false, forKey: PaceMilestone.warning.settingKey)
         settings.set(false, forKey: PaceMilestone.closeToRunningOut.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
@@ -201,7 +202,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime, used: 75)
         XCTAssertTrue(recorder.posts.isEmpty)
 
-        settings.set(true, forKey: PaceMilestone.underThirtyPercent.settingKey)
+        settings.set(true, forKey: PaceMilestone.warning.settingKey)
         await notify(base)
         XCTAssertEqual(recorder.posts.map(\.0), ["test.healthyToClose"])
     }
@@ -209,7 +210,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
     func testPerTriggerOffSuppressesThatMilestoneOnly() async {
         let settings = isolatedDefaults()
         allOn(settings)
-        settings.set(false, forKey: PaceMilestone.underThirtyPercent.settingKey)
+        settings.set(false, forKey: PaceMilestone.warning.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
@@ -229,7 +230,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(
             recorder.posts.contains { $0.0 == "test.underTenPercent" },
-            "Almost Out must fire on <10% remaining even when the meter displays 'used'"
+            "Critical must fire on 10% or less remaining even when the meter displays 'used'"
         )
     }
 

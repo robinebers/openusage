@@ -30,9 +30,10 @@ final class DisplaySettingsTests: QuietWindowTestCase {
             }
             return [entry].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(headingsAndPickers)
         }
-        try await waitUntil { headingsAndPickers(in: host).count >= 4 }
-        XCTAssertEqual(headingsAndPickers(in: host).prefix(4),
-                       ["Priority Icons", container.dataStore.menuBarLimit.label, "Appearance", AppearanceSetting.system.label],
-                       "Priority Icons and its Show In Menu Bar picker, then Appearance and its Theme picker")
+        try await waitUntil { headingsAndPickers(in: host).count >= 7 }
+        XCTAssertEqual(headingsAndPickers(in: host).prefix(7),
+                       ["Priority Icons", container.dataStore.menuBarLimit.label, "Priority Limits", "30% left", "10% left",
+                        "Appearance", AppearanceSetting.system.label],
+                       "Priority Icons and its picker, Priority Limits' Warning and Critical, then Appearance and its Theme picker")
     }
 }

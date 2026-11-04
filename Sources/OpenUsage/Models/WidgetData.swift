@@ -10,6 +10,7 @@ struct WidgetData: Hashable {
     let used: Double
     var limit: Double?
     var displayMode: WidgetDisplayMode = .used
+    var priorityLimits: PriorityLimits = .standard
     var resetDisplayMode: ResetDisplayMode = .relative
     var resetsAt: Date?
     var expiriesAt: [Date] = []
@@ -63,8 +64,8 @@ struct WidgetData: Hashable {
     var severity: MeterSeverity {
         guard hasData, let limit, limit > 0 else { return .normal }
         let percentLeft = Int((remainingFraction * 100).rounded())
-        if percentLeft <= 10 { return .critical }
-        return percentLeft <= 30 ? .warning : .normal
+        if percentLeft <= priorityLimits.critical { return .critical }
+        return percentLeft <= priorityLimits.warning ? .warning : .normal
     }
 
     enum MeterState: Hashable {
