@@ -7,6 +7,10 @@
   resets apart, earliest first, and **Use** spends the earliest of a window
   ([#1427](https://github.com/robinebers/openusage/issues/1427)).
 
+### Fixed
+- Claude's Extra Usage shows the account's billing currency, such as €, instead of always $
+  ([#1425](https://github.com/robinebers/openusage/issues/1425)).
+
 ## v0.8.0-beta.1
 
 **Upgrading from 0.7.x:** add your accounts again from the **Accounts** screen. OpenUsage no longer

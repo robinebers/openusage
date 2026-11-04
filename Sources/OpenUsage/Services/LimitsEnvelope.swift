@@ -67,7 +67,7 @@ enum LimitsEnvelope {
 
     private struct WireResource: Encodable {
         let kind: LimitResourceDescriptor.Kind
-        let unit: String
+        var unit: String
         var used: Double?
         var available: Double?
         var limit: Double?
@@ -97,6 +97,7 @@ enum LimitsEnvelope {
             case (.value, .values(_, let values, let expiries)),
                  (.progressOrValue, .values(_, let values, let expiries)):
                 guard let metric = resource.value(in: values) else { return nil }
+                unit = metric.currencyCode?.lowercased() ?? unit
                 if resource.kind == .balance {
                     available = metric.number
                 } else {
@@ -116,6 +117,8 @@ enum LimitsEnvelope {
                 return "percent"
             case .dollars:
                 return "usd"
+            case .currency(let code):
+                return code.lowercased()
             case .count(let suffix):
                 let unit = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
                 return unit.isEmpty ? nil : unit

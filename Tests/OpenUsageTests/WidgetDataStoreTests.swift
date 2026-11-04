@@ -363,6 +363,31 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
     }
 
+    func testClaudesExtraUsageReadsInTheBillingCurrency() async throws {
+        let account = Account(kind: .claude, label: "Team")
+        let descriptor = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).first { $0.key == "extra" })
+        let provider = AccountProviderRuntime.provider(for: account)
+        func data(_ extra: String) async throws -> WidgetData {
+            let lines = try ClaudeUsageMapper.mapUsageResponse(HTTPResponse(
+                statusCode: 200, headers: [:], body: Data(#"{"extra_usage":\#(extra)}"#.utf8)
+            ))
+            let runtime = StubRuntime(provider: provider, descriptors: [descriptor],
+                                      snapshot: ProviderSnapshot(provider: provider, plan: nil, lines: lines))
+            let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults())
+            store.meterStyle = .used
+            await store.refreshAll()
+            return store.data(for: descriptor)
+        }
+
+        let capped = try await data(#"{"is_enabled":true,"used_credits":1234,"monthly_limit":5000,"currency":"EUR","decimal_places":2}"#)
+        XCTAssertEqual(capped.amountText, "€12.34 used")
+        XCTAssertEqual(capped.meterStyleTooltip, "€37.66 left")
+        XCTAssertEqual(capped.menuBarValue, "€12")
+
+        let uncapped = try await data(#"{"is_enabled":true,"used_credits":1500,"monthly_limit":null,"currency":"JPY","decimal_places":0}"#)
+        XCTAssertEqual(uncapped.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("¥1.5K spent")))
+    }
+
     func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {
         let account = Account(kind: .claude, label: "Ultra")
         let descriptors = AccountProviderRuntime.widgetDescriptors(for: account)

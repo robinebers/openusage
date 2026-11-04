@@ -84,7 +84,8 @@ Each resource is one value with a `unit`:
 - A resource with no current value is left out, not shown as zero.
 - `unit` follows the provider's live format. Cursor `totalUsage` is `percent`, or `requests` on
   request-based Enterprise plans. Copilot `premiumCredits` is `percent` on paid plans, or a
-  `credits` count on org-managed seats that only report personal usage.
+  `credits` count on org-managed seats that only report personal usage. Claude `extraUsage` is the
+  account's billing currency, such as `usd` or `eur`.
 
 A failed refresh doesn't change the output. The app shows the failure, with its reason in the
 account's right-click menu.

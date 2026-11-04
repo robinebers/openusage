@@ -287,6 +287,7 @@ final class WidgetDataStore {
             var result = WidgetData(
                 title: descriptor.sample.title,
                 kind: format.metricKind,
+                currencyCode: format.currencyCode,
                 used: normalizedUsed,
                 limit: limit,
                 resetsAt: resetsAt,

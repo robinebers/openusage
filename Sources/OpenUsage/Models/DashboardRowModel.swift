@@ -65,6 +65,6 @@ extension WidgetData {
         guard hasMeterStyleToggle, let limit else { return nil }
         let other = displayMode == .remaining ? used : max(0, limit - used)
         let word = (displayMode == .remaining ? WidgetDisplayMode.used : .remaining).label.lowercased()
-        return "\(MetricFormatter.number(other, kind: kind, style: .row)) \(word)"
+        return "\(MetricFormatter.number(other, kind: kind, style: .row, currencyCode: currencyCode)) \(word)"
     }
 }
