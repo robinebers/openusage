@@ -134,7 +134,7 @@ struct PriorityBoardList: View {
             sectionLabel("Running Out")
             if board.attention.isEmpty { clearRow }
             ForEach(board.attention) { item in
-                limitRow(item.provider, item.data, severity: item.reason.severity)
+                limitRow(item.provider, item.data, severity: item.reason.severity, runOut: item.runOutText(now: now))
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
@@ -182,7 +182,8 @@ struct PriorityBoardList: View {
         }
     }
 
-    private func limitRow(_ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity) -> some View {
+    /// `runOut` takes the reset's place on a limit listed only for burning fast.
+    private func limitRow(_ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity, runOut: String? = nil) -> some View {
         HStack(spacing: 10) {
             PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon)
             VStack(alignment: .leading, spacing: 1) {
@@ -202,7 +203,12 @@ struct PriorityBoardList: View {
                         .font(.system(size: 13, weight: .medium))
                         .monospacedDigit()
                 }
-                if let reset = data.compactResetText(now: now) {
+                if let runOut {
+                    Text(runOut)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.severityTextColor(.warning))
+                        .monospacedDigit()
+                } else if let reset = data.compactResetText(now: now) {
                     toggling(onToggleResetDisplay) {
                         Text(reset)
                             .font(.system(size: 11))

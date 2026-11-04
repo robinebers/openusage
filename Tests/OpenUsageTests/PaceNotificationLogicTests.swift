@@ -34,6 +34,15 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.critical, .warning])
     }
 
+    func testWillRunOutReArmsOnlyOnceThePaceEasesToNinetyPercent() {
+        var state = step(running, from: step(healthy).newState).newState
+        state.firedMilestones.insert(.closeToRunningOut)
+        state = step(close, from: state).newState
+        XCTAssertTrue(step(running, from: state).fire.isEmpty, "easing to 95% and back doesn't fire it again")
+        state = step(healthy, from: state).newState
+        XCTAssertEqual(step(running, from: state).fire, [.closeToRunningOut])
+    }
+
     func testUnderTenPercentFiresOncePerWindow() {
         let primed = step(close, fraction: 0.50).newState
         let first = step(close, fraction: 0.08, from: primed)

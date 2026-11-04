@@ -11,6 +11,9 @@
 - **Settings → Display → Priority Limits** sets how much left turns a limit Warning (orange) or
   Critical (red), for the colors, Running Out, the menu bar, and the alerts. The alerts are now named
   Warning and Critical.
+- **Burning Fast** under Priority Limits lists a limit that would run out before it resets at your
+  current pace, however much it has left, under Running Out and in the menu bar, with when it would
+  run out ([#1574](https://github.com/robinebers/openusage/issues/1574)). On by default.
 
 ### Changed
 - Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of

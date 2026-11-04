@@ -97,6 +97,20 @@ struct SettingsScreen: View {
         Section("Priority Limits") {
             levelPicker("Warning", severity: .warning, selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
             levelPicker("Critical", severity: .critical, selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
+            Toggle(isOn: $dataStore.showsBurningFast) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flame.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.severityColor(.warning))
+                        .frame(width: 8)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Burning Fast")
+                        Text("Will run out before it resets")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         Section("Appearance") {
             picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })

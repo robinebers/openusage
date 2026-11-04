@@ -16,10 +16,13 @@ final class WidgetDataStore {
     private static let menuBarLimitKey = "menuBarLimit"
     private static let priorityWarningKey = "priorityWarning"
     private static let priorityCriticalKey = "priorityCritical"
+    private static let priorityBurningFastKey = "priorityBurningFast"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
-    var snapshots: [String: ProviderSnapshot] = [:]
+    var snapshots: [String: ProviderSnapshot] = [:] {
+        didSet { latchBurningFast() }
+    }
     private var inFlight: [String: Task<Result<ProviderSnapshot, RefreshFailure>, Never>] = [:]
     var refreshingProviderIDs: Set<String> { Set(inFlight.keys) }
     var lastRefreshAt: Date?
@@ -45,6 +48,19 @@ final class WidgetDataStore {
         }
     }
 
+    /// Priority lists limits that would run out before they reset, however much they have left.
+    var showsBurningFast: Bool {
+        didSet { defaults.set(showsBurningFast, forKey: Self.priorityBurningFastKey) }
+    }
+
+    /// The limits that were burning fast at their last reading. See `BurningFast`.
+    private(set) var burningFastIDs: Set<String> = []
+
+    /// What Priority and the menu bar list as burning fast, or nil while the setting is off.
+    var burningFast: BurningFast? {
+        showsBurningFast ? BurningFast(latched: burningFastIDs) : nil
+    }
+
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
@@ -67,6 +83,7 @@ final class WidgetDataStore {
             warning: defaults.object(forKey: Self.priorityWarningKey) as? Int ?? PriorityLimits.standard.warning,
             critical: defaults.object(forKey: Self.priorityCriticalKey) as? Int ?? PriorityLimits.standard.critical
         )
+        self.showsBurningFast = defaults.object(forKey: Self.priorityBurningFastKey) as? Bool ?? true
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -222,6 +239,14 @@ final class WidgetDataStore {
         backoffs[providerID] = nil
         snapshots[providerID] = snapshot
         cache.save(snapshots)
+    }
+
+    private func latchBurningFast() {
+        let at = now()
+        let burning = Set(registry.providers.flatMap({ registry.descriptors(for: $0.id) }).filter {
+            BurningFast.isBurning(data(for: $0), now: at, wasBurning: burningFastIDs.contains($0.id))
+        }.map(\.id))
+        if burning != burningFastIDs { burningFastIDs = burning }
     }
 
     func errorMessage(for providerID: String) -> String? {
