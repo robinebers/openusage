@@ -14,6 +14,8 @@
   ([#1425](https://github.com/robinebers/openusage/issues/1425)).
 - Cursor: Extra Usage reads "Team Spend" when its limit is the team's shared pool, so it no longer
   looks like a personal cap. Personal limits still read Extra Usage.
+- Claude: Extra Usage reads "Spend" on an Enterprise plan, where it is the whole monthly bill
+  ([#1260](https://github.com/robinebers/openusage/issues/1260)).
 
 ## v0.8.0-beta.1
 

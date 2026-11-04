@@ -27,7 +27,7 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 
 ## Supported Providers
 
-- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage, rate-limit resets
+- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage (Enterprise spend), rate-limit resets
 - **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
 - **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
 - **[Antigravity](docs/providers.md#antigravity)**: Gemini and Claude quotas

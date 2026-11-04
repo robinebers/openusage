@@ -76,6 +76,12 @@ enum ClaudeUsageMapper {
         return formatPlan(subscriptionType: subscriptionType, rateLimitTier: organization.rateLimitTier)
     }
 
+    /// An Enterprise organization (`organization_type` `claude_enterprise`) is billed by what it spends, so its
+    /// Extra Usage is the whole monthly bill, not usage beyond a plan.
+    static func lineTitles(plan: String?) -> [String: String] {
+        plan?.hasPrefix("Enterprise") == true ? ["Extra usage spent": "Spend"] : [:]
+    }
+
     private static func appendUsageWindow(_ value: Any?, label: String, periodDurationMs: Int, to lines: inout [MetricLine]) {
         guard let object = value as? [String: Any],
               let used = ProviderParse.number(object["utilization"])
