@@ -422,6 +422,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     func readSnapshot(using credential: AccountCredential) async throws -> ProviderSnapshot {
         let usage = try await refresh(credential)
         var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
+        snapshot.lineTitles = usage.lineTitles.isEmpty ? nil : usage.lineTitles
         HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
         return snapshot
     }

@@ -4,7 +4,7 @@ struct WidgetData: Hashable {
     static let noDataValue = "—"
     static let noDataDetail = "No data"
 
-    let title: String
+    var title: String
     let kind: MetricKind
     var currencyCode: String?
     let used: Double
