@@ -6,6 +6,8 @@
 - Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
   resets apart, earliest first, and **Use** spends the earliest of a window
   ([#1427](https://github.com/robinebers/openusage/issues/1427)).
+- Muse Code provider: sign in with a Meta device code to see your subscription's Session and Weekly
+  limits.
 
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $

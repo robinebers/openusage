@@ -72,7 +72,7 @@ final class ResetClaimServiceTests: XCTestCase {
             case .zai:
                 XCTAssertEqual(service?.accountID, runtime.account.cardID)
                 XCTAssertEqual(service?.windowResets, [], "nothing to claim before the first reset-list read")
-            case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter:
+            case .cursor, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
                 XCTAssertNil(service, kind.rawValue)
             }
         }

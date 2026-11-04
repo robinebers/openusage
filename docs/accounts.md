@@ -14,7 +14,7 @@ on the dashboard.
 |---|---|---|
 | Browser | Claude, ChatGPT, Cursor, Antigravity | Sign in in the browser that opens. If it shows a code, paste it and click **Continue**. |
 | Browser and token | Devin | Sign in to Windsurf, paste the token it shows (valid for 5 minutes) or a Windsurf API key, and click **Continue**. |
-| Device code | Copilot, Grok | Copy the code, click **Open Browser**, and enter it. |
+| Device code | Copilot, Grok, Muse Code | Copy the code, click **Open Browser**, and enter it if the page doesn't fill it in. |
 | API key | Ollama, OpenCode, OpenRouter, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. |
 | Organization billing | Copilot | Enter the organization and a token from an owner or billing manager, and click **Add Account**. |
 

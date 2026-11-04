@@ -37,8 +37,7 @@ extension AccountProviderRuntime {
         return ProviderUsage(plan: session.planRead.value, lines: lines)
     }
 
-    func restore(_ snapshot: ProviderSnapshot) {
-        guard account.kind == .claude else { return }
+    func restoreClaude(_ snapshot: ProviderSnapshot) {
         claude.restoredPlan = snapshot.plan
         claude.restoredResets = snapshot.line(label: ClaudeResetGrantStatus.lineLabel)
     }

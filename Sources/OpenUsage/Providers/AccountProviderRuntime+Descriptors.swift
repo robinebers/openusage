@@ -111,6 +111,13 @@ extension AccountProviderRuntime {
                     .exportingLimit("weekly", unit: "percent"),
                 .badge(key: "payAsYouGo", provider: provider, title: "Extra Usage", metricLabel: "Pay as you go")
             ]
+        case .muse:
+            [
+                .percent(key: "session", provider: provider, title: "Session", sessionStartSignal: .missingResetDate)
+                    .exportingLimit("session", unit: "percent"),
+                .percent(key: "weekly", provider: provider, title: "Weekly")
+                    .exportingLimit("weekly", unit: "percent")
+            ]
         case .ollama:
             [
                 .percent(key: "session", provider: provider, title: "Session")
