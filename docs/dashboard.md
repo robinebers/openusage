@@ -12,7 +12,8 @@ The panel that opens from the menu bar icon. It has two tabs, Priority and All U
 Priority shows only what needs you, most urgent first.
 
 - **Pinned** comes first, with every pinned metric that has data. A pinned metric that's running
-  out moves to Running Out until it recovers.
+  out moves to Running Out until it recovers, and one that's used up moves to Used Up until it
+  resets.
 - **Running Out** lists every limit at or under its Warning level (30% left by default, set in
   [Priority Limits](settings.md#priority-limits)). What would run out soonest at your current pace
   comes first, then limits with no pace, least left first.

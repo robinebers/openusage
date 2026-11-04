@@ -45,7 +45,7 @@ final class MetricPinTests: QuietWindowTestCase {
         let layout = LayoutStore(registry: .mock, defaults: defaults)
         let data = WidgetDataStore.forTesting([], registry: .mock, defaults: defaults)
         let lines: [String: [MetricLine]] = [
-            "claude": [.percent("Session", 40), .percent("Weekly", 100)],
+            "claude": [.percent("Session", 40), .percent("Weekly", 50)],
             "codex": [.percent("Session", 100), .percent("Weekly", 50)],
             "cursor": [.percent("Usage", 98)],
         ]
