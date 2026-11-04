@@ -60,13 +60,20 @@ extension RateLimitResetsDetail {
         ZAIResetWindow.allCases.compactMap { window in
             let resets = resets.filter { $0.window == window }
             guard !resets.isEmpty else { return nil }
-            return Window(window: window, entries: entries(from: resets.map(\.expiresAt), now: now, resets: resets))
+            return Window(window: window, entries: entries(from: resets.map { ($0.expiresAt, $0) }, now: now))
         }
     }
 
-    nonisolated static func entries(from expiries: [Date], now: Date = Date(), resets: [ZAIReset] = []) -> [Entry] {
+    nonisolated static func entries(from expiries: [Date], now: Date = Date()) -> [Entry] {
+        entries(from: expiries.map { ($0, nil) }, now: now)
+    }
+
+    /// Each expiry travels with the record it claims, so sorting can never pair a date with another record.
+    nonisolated static func entries(from items: [(date: Date, reset: ZAIReset?)], now: Date = Date()) -> [Entry] {
         var seen: [Date: Int] = [:]
-        return expiries.sorted().enumerated().map { index, date in
+        let sorted = items.sorted { ($0.date, $0.reset?.recordID ?? 0) < ($1.date, $1.reset?.recordID ?? 0) }
+        return sorted.enumerated().map { index, item in
+            let (date, reset) = item
             let ordinal = seen[date, default: 0]
             seen[date] = ordinal + 1
             let relative = Formatters.whenLabel(at: date, mode: .relative, now: now)
@@ -76,7 +83,7 @@ extension RateLimitResetsDetail {
                 id: index,
                 number: index + 1,
                 date: date,
-                key: Entry.Key(date: date, ordinal: ordinal, reset: resets.isEmpty ? nil : resets[index]),
+                key: Entry.Key(date: date, ordinal: ordinal, reset: reset),
                 severity: WidgetData.expirySeverity(secondsRemaining: date.timeIntervalSince(now)),
                 time: (imminent || absolute == nil) ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative

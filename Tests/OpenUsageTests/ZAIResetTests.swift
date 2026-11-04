@@ -56,6 +56,9 @@ final class ZAIResetTests: XCTestCase {
         let replacement = ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt)
         let replaced = RateLimitResetsDetail.windows([replacement, Self.weekly21, Self.session12], now: Self.now)
         XCTAssertNotEqual(replaced[0].entries[0].key, windows[0].entries[0].key, "a confirm never carries over to another record")
+        let unsorted = RateLimitResetsDetail.windows([Self.session12, Self.session11], now: Self.now)[0].entries
+        XCTAssertEqual(unsorted.map(\.date), unsorted.compactMap(\.key.reset?.expiresAt), "each date keeps its own record")
+        XCTAssertEqual(unsorted.first?.key.reset, Self.session11)
     }
 
     func testUseRequestNamesTheExactRecordAndWindow() async throws {
