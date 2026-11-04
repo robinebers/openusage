@@ -11,10 +11,6 @@ struct OpenRouterUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func key(apiKey: String, now: Date) async throws -> OpenRouterKey {
         try OpenRouterUsageMapper.key(try await get(Self.keyURL, apiKey: apiKey), now: now)
     }

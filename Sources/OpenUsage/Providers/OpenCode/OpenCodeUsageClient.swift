@@ -5,10 +5,6 @@ struct OpenCodeUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchUsage(apiKey: String) async throws -> HTTPResponse {
         try await http.send(HTTPRequest(
             method: "GET",

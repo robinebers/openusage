@@ -136,8 +136,7 @@ enum CodexUsageMapper {
     ) -> (count: Int, expiries: [Date])? {
         let embedded = body["rate_limit_reset_credits"] as? [String: Any]
         let dedicated = resetCredits.flatMap { response -> [String: Any]? in
-            guard (200..<300).contains(response.statusCode), let body = ProviderParse.jsonObject(response.body),
-                  availableCount(in: body) != nil
+            guard let body = ProviderParse.jsonObject(response.body), availableCount(in: body) != nil
             else { return nil }
             return body
         }

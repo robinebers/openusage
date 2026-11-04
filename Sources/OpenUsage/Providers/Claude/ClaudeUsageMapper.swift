@@ -53,27 +53,18 @@ enum ClaudeUsageMapper {
         return outcome(result) ?? .failed(.refused)
     }
 
-    static func formatPlan(subscriptionType: String?, rateLimitTier: String?) -> String? {
-        guard let raw = subscriptionType?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty
-        else {
-            return nil
-        }
+    static func formatLivePlan(profile: ClaudeAccountProfile) -> String? {
+        guard let organization = profile.organization, let type = organization.organizationType else { return nil }
+        let raw = (type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
         let base = raw.titleCased(separator: { $0 == " " }, lowercasingTail: true)
-        let tier = rateLimitTier ?? ""
+        let tier = organization.rateLimitTier ?? ""
         if base == "Ultra" || (base == "Max" && (tier.contains("ultra") || tier.contains("20x"))) { return "Ultra" }
         if base == "Max" { return base }
 
         guard let match = tier.range(of: #"\d+x"#, options: .regularExpression) else { return base }
         return "\(base) \(tier[match])"
-    }
-
-    static func formatLivePlan(profile: ClaudeAccountProfile) -> String? {
-        guard let organization = profile.organization else { return nil }
-        let subscriptionType = organization.organizationType.map { type in
-            type.hasPrefix("claude_") ? String(type.dropFirst("claude_".count)) : type
-        }
-        return formatPlan(subscriptionType: subscriptionType, rateLimitTier: organization.rateLimitTier)
     }
 
     /// An Enterprise organization (`organization_type` `claude_enterprise`) is billed by what it spends, so its

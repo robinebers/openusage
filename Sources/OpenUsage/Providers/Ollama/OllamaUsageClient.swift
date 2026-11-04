@@ -8,10 +8,6 @@ struct OllamaUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchBalance(apiKey: String) async throws -> HTTPResponse {
         try await send(method: "GET", path: Self.balancePath, apiKey: apiKey)
     }

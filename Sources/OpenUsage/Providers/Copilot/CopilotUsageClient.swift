@@ -8,10 +8,6 @@ struct CopilotUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchUsage(token: String) async throws -> HTTPResponse {
         guard let url = URL(string: Self.usageURL) else {
             throw ProviderError.invalidResponse

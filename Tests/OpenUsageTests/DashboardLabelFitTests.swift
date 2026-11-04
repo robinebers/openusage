@@ -14,7 +14,7 @@ final class DashboardLabelFitTests: XCTestCase {
     }
 
     func testLongAccountNameLeavesThePlanReadable() throws {
-        let width = DashboardGrid.cardWidth - 2 * DashboardGrid.cardPadding
+        let width = PanelMetrics.width - 2 * PanelMetrics.margin - 2 * DashboardGrid.cardPadding
         let plan = "SuperGrok Heavy"
         let planTextWidth = NSHostingView(rootView: Text(plan).font(DashboardGrid.planFont).fixedSize()).fittingSize.width
         func planInk(beside label: String) throws -> Int {

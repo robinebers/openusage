@@ -2,7 +2,6 @@ import Foundation
 
 struct WidgetRegistry: Sendable {
     let providers: [Provider]
-    let descriptors: [WidgetDescriptor]
 
     private let descriptorsByID: [String: WidgetDescriptor]
     private let providersByID: [String: Provider]
@@ -16,7 +15,6 @@ struct WidgetRegistry: Sendable {
             return provider
         }
         self.providers = providers
-        self.descriptors = descriptors
         self.descriptorsByID = Dictionary(
             descriptors.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }

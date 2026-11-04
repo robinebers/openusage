@@ -26,10 +26,6 @@ struct GrokUsageClient: Sendable {
 
     var httpClient: HTTPClient
 
-    init(httpClient: HTTPClient = URLSessionHTTPClient()) {
-        self.httpClient = httpClient
-    }
-
     func fetchCreditsConfig(accessToken: String) async throws -> HTTPResponse {
         try await httpClient.send(HTTPRequest(
             method: "GET",

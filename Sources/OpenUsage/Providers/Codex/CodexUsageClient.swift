@@ -31,10 +31,6 @@ struct CodexUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchUsage(accessToken: String, accountID: String?) async throws -> HTTPResponse {
         try await http.send(HTTPRequest(
             method: "GET",

@@ -53,10 +53,6 @@ struct ClaudeUsageClient: Sendable {
 
     var httpClient: HTTPClient
 
-    init(httpClient: HTTPClient = URLSessionHTTPClient()) {
-        self.httpClient = httpClient
-    }
-
     func fetchUsage(accessToken: String) async throws -> HTTPResponse {
         try await sendUsageRequest(url: Self.usageURL, accessToken: accessToken)
     }
