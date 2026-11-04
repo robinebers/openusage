@@ -8,6 +8,9 @@
   ([#1427](https://github.com/robinebers/openusage/issues/1427)).
 - Muse Code provider: sign in with a Meta device code to see your subscription's Session and Weekly
   limits.
+- **Settings → Display → Priority Limits** sets how much left turns a limit Warning (orange) or
+  Critical (red), for the colors, Running Out, the menu bar, and the alerts. The alerts are now named
+  Warning and Critical.
 
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $

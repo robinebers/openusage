@@ -14,6 +14,16 @@ Alerts, and Advanced. Changes apply at once.
 - **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
   first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 
+## Priority limits
+
+- **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
+  70% left, 30% by default.
+- **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
+
+They always count what's left, even with Show Usage As set to Used, and they also pick which limits
+the menu bar shows and when the Warning and Critical notifications fire. Critical always stays under
+Warning: moving one onto the other pushes the other 5% along.
+
 ## Appearance
 
 - **Theme.** System, Light, or Dark.
@@ -30,8 +40,8 @@ Click a limit's amount or reset on the dashboard to flip either one.
 
 All off by default. Turning the first one on asks macOS for permission.
 
-- **Almost Out.** A limit drops under 10%.
-- **Cutting It Close.** A limit drops under 30%.
+- **Critical.** A limit drops to its Critical level or less left (10% by default).
+- **Warning.** A limit drops to its Warning level or less left (30% by default).
 - **Will Run Out.** A limit may run out before its reset.
 
 Each fires once per metric per reset window. Click one to open All Usage.

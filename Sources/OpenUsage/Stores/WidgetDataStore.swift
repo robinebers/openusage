@@ -14,6 +14,8 @@ final class WidgetDataStore {
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
     private static let menuBarLimitKey = "menuBarLimit"
+    private static let priorityWarningKey = "priorityWarning"
+    private static let priorityCriticalKey = "priorityCritical"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
@@ -36,6 +38,13 @@ final class WidgetDataStore {
         didSet { defaults.set(menuBarLimit.rawValue, forKey: Self.menuBarLimitKey) }
     }
 
+    var priorityLimits: PriorityLimits {
+        didSet {
+            defaults.set(priorityLimits.warning, forKey: Self.priorityWarningKey)
+            defaults.set(priorityLimits.critical, forKey: Self.priorityCriticalKey)
+        }
+    }
+
     init(
         registry: WidgetRegistry,
         providers: [ProviderRuntime],
@@ -54,6 +63,10 @@ final class WidgetDataStore {
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
+        self.priorityLimits = PriorityLimits(
+            warning: defaults.object(forKey: Self.priorityWarningKey) as? Int ?? PriorityLimits.standard.warning,
+            critical: defaults.object(forKey: Self.priorityCriticalKey) as? Int ?? PriorityLimits.standard.critical
+        )
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -237,6 +250,7 @@ final class WidgetDataStore {
         }
 
         result.displayMode = meterStyle
+        result.priorityLimits = priorityLimits
         result.resetDisplayMode = resetDisplayMode
         return result
     }

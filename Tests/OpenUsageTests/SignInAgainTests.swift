@@ -218,12 +218,12 @@ final class AlertLevelTests: XCTestCase {
             await evaluator.evaluate(
                 [descriptor],
                 data: { _ in WidgetData(title: "Weekly", kind: .percent, used: used, limit: 100) },
-                isOn: { $0 == .underThirtyPercent },
+                isOn: { $0 == .warning },
                 now: Date(),
                 providerName: { _ in "Cursor" }
             )
         }
-        XCTAssertEqual(sent, ["test.\(PaceMilestone.underThirtyPercent.rawValue)"])
+        XCTAssertEqual(sent, ["test.\(PaceMilestone.warning.rawValue)"])
     }
 }
 

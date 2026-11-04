@@ -26,20 +26,20 @@ final class PaceNotificationLogicTests: XCTestCase {
         let first = step(healthy)
         XCTAssertTrue(first.fire.isEmpty)
         let second = step(healthy, fraction: 0.25, from: first.newState)
-        XCTAssertEqual(second.fire, [.underThirtyPercent])
+        XCTAssertEqual(second.fire, [.warning])
         XCTAssertTrue(step(healthy, fraction: 0.20, from: second.newState).fire.isEmpty)
     }
 
     func testTheLevelsTurnOverExactlyWhereTheBarsChangeColor() {
         let primed = step(healthy, fraction: 0.31).newState
-        XCTAssertEqual(step(healthy, fraction: 0.30, from: primed).fire, [.underThirtyPercent])
+        XCTAssertEqual(step(healthy, fraction: 0.30, from: primed).fire, [.warning])
         let orange = step(healthy, fraction: 0.11, from: primed).newState
-        XCTAssertEqual(step(healthy, fraction: 0.10, from: orange).fire, [.underTenPercent])
+        XCTAssertEqual(step(healthy, fraction: 0.10, from: orange).fire, [.critical])
     }
 
     func testDroppingStraightUnderTenOffersBothLevelsLowestFirst() {
         let primed = step(healthy).newState
-        XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.underTenPercent, .underThirtyPercent])
+        XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.critical, .warning])
     }
 
     func testCloseToRunningOutFires() {
@@ -58,9 +58,9 @@ final class PaceNotificationLogicTests: XCTestCase {
     func testUnderTenPercentFiresOncePerWindow() {
         let primed = step(close, fraction: 0.50).newState
         let first = step(close, fraction: 0.08, from: primed)
-        XCTAssertTrue(first.fire.contains(.underTenPercent))
+        XCTAssertTrue(first.fire.contains(.critical))
         let again = step(close, fraction: 0.05, from: first.newState)
-        XCTAssertFalse(again.fire.contains(.underTenPercent))
+        XCTAssertFalse(again.fire.contains(.critical))
     }
 
     func testColdStartPrimesWithoutFiring() {
@@ -71,7 +71,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         let recovered = step(healthy, fraction: 0.50, from: first.newState).newState
         let red = step(running, fraction: 0.02, from: recovered)
         XCTAssertTrue(red.fire.contains(.closeToRunningOut))
-        XCTAssertTrue(red.fire.contains(.underTenPercent))
+        XCTAssertTrue(red.fire.contains(.critical))
     }
 
     func testResetRolloverClearsFiredSetSoItCanFireAgain() {
@@ -99,7 +99,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         state = step(running, fraction: 0.25, from: state).newState
         state = step(healthy, from: state).newState
         let orange = step(healthy, fraction: 0.25, from: state)
-        XCTAssertEqual(orange.fire, [.underThirtyPercent])
+        XCTAssertEqual(orange.fire, [.warning])
         let red2 = step(running, fraction: 0.25, from: orange.newState)
         XCTAssertEqual(red2.fire, [.closeToRunningOut])
     }
@@ -107,11 +107,11 @@ final class PaceNotificationLogicTests: XCTestCase {
     func testUnderTenPercentReArmsAfterRecoveryAboveTen() {
         let primed = step(close, fraction: 0.50).newState
         let first = step(close, fraction: 0.05, from: primed)
-        XCTAssertTrue(first.fire.contains(.underTenPercent))
+        XCTAssertTrue(first.fire.contains(.critical))
         let recovered = step(close, fraction: 0.50, from: first.newState)
-        XCTAssertFalse(recovered.fire.contains(.underTenPercent))
+        XCTAssertFalse(recovered.fire.contains(.critical))
         let dipsAgain = step(close, fraction: 0.05, from: recovered.newState)
-        XCTAssertTrue(dipsAgain.fire.contains(.underTenPercent))
+        XCTAssertTrue(dipsAgain.fire.contains(.critical))
     }
 
     func testNoDataNeverFires() {
@@ -122,14 +122,14 @@ final class PaceNotificationLogicTests: XCTestCase {
     func testUnpacedLimitFiresOnlyAlmostOutUnderTenPercent() {
         let primed = step(.unpaced, fraction: 0.20).newState
         let first = step(.unpaced, fraction: 0.08, from: primed)
-        XCTAssertTrue(first.fire.contains(.underTenPercent))
-        XCTAssertFalse(first.fire.contains(.underThirtyPercent))
+        XCTAssertTrue(first.fire.contains(.critical))
+        XCTAssertFalse(first.fire.contains(.warning))
         XCTAssertFalse(first.fire.contains(.closeToRunningOut))
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
         var state = step(healthy).newState
         state = step(.noData, fraction: 0.5, from: state).newState
-        XCTAssertEqual(step(healthy, fraction: 0.25, from: state).fire, [.underThirtyPercent])
+        XCTAssertEqual(step(healthy, fraction: 0.25, from: state).fire, [.warning])
     }
 }
