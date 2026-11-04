@@ -25,13 +25,13 @@ struct ZAIUsageClient: Sendable {
     }
 
     func useReset(_ reset: ZAIReset, requestID: String, apiKey: String) async throws -> HTTPResponse {
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "targetType": "PERSONAL",
             "resetType": reset.window.rawValue,
             "recordId": reset.recordID,
-            "requestId": requestID
+            "requestId": requestID,
+            "grantType": reset.grantType
         ]
-        payload["grantType"] = reset.grantType
         return try await http.send(HTTPRequest(
             method: "POST",
             url: Self.useResetURL,

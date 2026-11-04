@@ -29,7 +29,7 @@ struct ZAIReset: Hashable, Sendable {
     let window: ZAIResetWindow
     let recordID: Int
     let expiresAt: Date
-    var grantType: String?
+    let grantType: String
 }
 
 enum ZAIResetsMapper {
@@ -46,12 +46,13 @@ enum ZAIResetsMapper {
             guard let records = records as? [[String: Any]] else { throw ProviderError.invalidResponse }
             for record in records where (record["available"] as? Bool) == true {
                 guard let id = record["recordId"] as? Int,
-                      let expiresAt = (record["expireTime"] as? String).flatMap(expiry)
+                      let expiresAt = (record["expireTime"] as? String).flatMap(expiry),
+                      let grantType = record["grantType"] as? String, !grantType.isEmpty
                 else {
                     throw ProviderError.invalidResponse
                 }
                 if expiresAt > now {
-                    resets.append(ZAIReset(window: window, recordID: id, expiresAt: expiresAt, grantType: record["grantType"] as? String))
+                    resets.append(ZAIReset(window: window, recordID: id, expiresAt: expiresAt, grantType: grantType))
                 }
             }
         }

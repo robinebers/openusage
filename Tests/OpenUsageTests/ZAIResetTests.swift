@@ -16,10 +16,10 @@ final class ZAIResetTests: XCTestCase {
     private nonisolated static let list = #"""
     {"code":200,"success":true,"data":{
       "fiveHourResets":[
-        {"recordId":12,"available":true,"expireTime":"2026-11-10 08:00:00"},
-        {"recordId":11,"available":true,"expireTime":"2026-11-06 20:00:00"},
-        {"recordId":13,"available":false,"expireTime":"2026-11-07 08:00:00"},
-        {"recordId":14,"available":true,"expireTime":"2026-11-03 08:00:00"}
+        {"recordId":12,"available":true,"expireTime":"2026-11-10 08:00:00","grantType":"GLOBAL"},
+        {"recordId":11,"available":true,"expireTime":"2026-11-06 20:00:00","grantType":"GLOBAL"},
+        {"recordId":13,"available":false,"expireTime":"2026-11-07 08:00:00","grantType":"GLOBAL"},
+        {"recordId":14,"available":true,"expireTime":"2026-11-03 08:00:00","grantType":"GLOBAL"}
       ],
       "weekResets":[{"recordId":21,"available":true,"expireTime":"2026-11-06 20:00:00","grantType":"GLOBAL"}]
     }}
@@ -29,9 +29,9 @@ final class ZAIResetTests: XCTestCase {
         ISO8601DateFormatter().date(from: text)!
     }
 
-    private nonisolated static let session11 = ZAIReset(window: .fiveHour, recordID: 11, expiresAt: utc("2026-11-06T12:00:00Z"))
+    private nonisolated static let session11 = ZAIReset(window: .fiveHour, recordID: 11, expiresAt: utc("2026-11-06T12:00:00Z"), grantType: "GLOBAL")
     private nonisolated static let weekly21 = ZAIReset(window: .week, recordID: 21, expiresAt: utc("2026-11-06T12:00:00Z"), grantType: "GLOBAL")
-    private nonisolated static let session12 = ZAIReset(window: .fiveHour, recordID: 12, expiresAt: utc("2026-11-10T00:00:00Z"))
+    private nonisolated static let session12 = ZAIReset(window: .fiveHour, recordID: 12, expiresAt: utc("2026-11-10T00:00:00Z"), grantType: "GLOBAL")
 
     func testListKeepsAvailableUnexpiredResetsOfBothWindowsEarliestFirstInUTCPlus8() throws {
         let resets = try ZAIResetsMapper.resets(from: Data(Self.list.utf8), now: Self.now)
@@ -42,6 +42,8 @@ final class ZAIResetTests: XCTestCase {
         for body in [
             #"{"success":true,"data":{"fiveHourResets":[{"recordId":1,"available":true,"expireTime":"2026-11-06T20:00:00Z"}]}}"#,
             #"{"success":true,"data":{"weekResets":[{"available":true,"expireTime":"2026-11-06 20:00:00"}]}}"#,
+            #"{"success":true,"data":{"weekResets":[{"recordId":1,"available":true,"expireTime":"2026-11-06 20:00:00"}]}}"#,
+            #"{"success":true,"data":{"weekResets":[{"recordId":1,"available":true,"expireTime":"2026-11-06 20:00:00","grantType":""}]}}"#,
             #"{"success":false,"msg":"error","data":null}"#
         ] {
             XCTAssertThrowsError(try ZAIResetsMapper.resets(from: Data(body.utf8), now: Self.now), body)
@@ -53,7 +55,7 @@ final class ZAIResetTests: XCTestCase {
         XCTAssertEqual(windows.map(\.window), [.fiveHour, .week])
         XCTAssertEqual(windows.map { $0.entries.compactMap(\.key.reset?.recordID) }, [[11, 12], [21]])
         XCTAssertNotEqual(windows[0].entries[0].key, windows[1].entries[0].key, "a shared expiry must not make one key")
-        let replacement = ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt)
+        let replacement = ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt, grantType: "GLOBAL")
         let replaced = RateLimitResetsDetail.windows([replacement, Self.weekly21, Self.session12], now: Self.now)
         XCTAssertNotEqual(replaced[0].entries[0].key, windows[0].entries[0].key, "a confirm never carries over to another record")
         let unsorted = RateLimitResetsDetail.windows([Self.session12, Self.session11], now: Self.now)[0].entries
@@ -108,7 +110,7 @@ final class ZAIResetTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url {
             case ZAIUsageClient.resetListURL:
-                let record = #"{"recordId":7,"available":\#(!claimed.value),"expireTime":"\#(expiry)"}"#
+                let record = #"{"recordId":7,"available":\#(!claimed.value),"expireTime":"\#(expiry)","grantType":"GLOBAL"}"#
                 return Self.response(#"{"success":true,"data":{"weekResets":[\#(record)]}}"#)
             case ZAIUsageClient.useResetURL:
                 claimed.value = true
@@ -146,9 +148,9 @@ final class ZAIResetTests: XCTestCase {
 
     func testAStaleRecordIsNeverSpentInPlaceOfAnother() async throws {
         let stale = [
-            ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt),
+            ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt, grantType: "GLOBAL"),
             Self.session12,
-            ZAIReset(window: .fiveHour, recordID: 11, expiresAt: Self.session11.expiresAt.addingTimeInterval(60))
+            ZAIReset(window: .fiveHour, recordID: 11, expiresAt: Self.session11.expiresAt.addingTimeInterval(60), grantType: "GLOBAL")
         ]
         for confirmed in stale {
             let http = RoutingHTTPClient { Self.route($0) }
