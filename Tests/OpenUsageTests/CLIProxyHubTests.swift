@@ -65,8 +65,8 @@ final class CLIProxyHubTests: XCTestCase {
 
         XCTAssertEqual(store.accounts.map(\.kind), [.claude, .claude, .claude, .codex])
         XCTAssertEqual(
-            store.accounts.map(\.label), ["alice@example.com", "claude", "notoken@example.com", "codex-user@example.com"],
-            "hub order is kept, a login disabled on the hub gets no account, and one without an email takes the hub's label"
+            store.accounts.map(\.label), ["alice@example.com", "Claude Account", "notoken@example.com", "codex-user@example.com"],
+            "hub order is kept, a login disabled on the hub gets no account, and one without an email gets the default name"
         )
         XCTAssertEqual(store.accounts.first?.hub?.authIndex, "b799da203df01af5")
         XCTAssertTrue(store.accounts.allSatisfy { $0.hub?.hubID == hub.id && $0.hub?.hubURL == hub.url })
