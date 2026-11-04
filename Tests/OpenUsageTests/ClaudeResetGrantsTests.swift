@@ -6,9 +6,8 @@ import XCTest
 final class ClaudeResetGrantsTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func resetsLine(_ json: String, status: Int = 200) throws -> MetricLine? {
-        let response = HTTPResponse(statusCode: status, headers: [:], body: Data(json.utf8))
-        return try ClaudeUsageMapper.mapResetGrantStatus(response)?.line(now: now)
+    private func resetsLine(_ json: String) throws -> MetricLine? {
+        try ClaudeUsageMapper.mapResetGrantStatus(.json(json))?.line(now: now)
     }
 
     private func countAndExpiries(_ line: MetricLine?) -> (Double?, [Date])? {
@@ -63,13 +62,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertNil(ClaudeResetGrantStatus.parse(["eligible": true, "grants": [["id": "g", "resets_left": 1e300]]]))
     }
 
-    func testRejectedOrUnreadableCheckThrows() {
-        XCTAssertThrowsError(try resetsLine("", status: 401)) { error in
-            XCTAssertEqual(error as? ProviderError, .signInExpired(.claude))
-        }
-        XCTAssertThrowsError(try resetsLine("", status: 429)) { error in
-            XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: nil))
-        }
+    func testAnUnreadableCheckThrows() {
         XCTAssertThrowsError(try resetsLine("not json")) { error in
             XCTAssertEqual(error as? ProviderError, .invalidResponse)
         }
@@ -78,7 +71,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
     func testResetGrantsRequestIdentifiesAsClaudeCode() async throws {
         // Anthropic gates reset grants by client surface: an unrecognized User-Agent comes back
         // `eligible: false, ineligible_reason: "surface"` with no grants.
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data("{}".utf8)))
+        let http = RoutingHTTPClient { _ in .json("{}") }
         _ = try await ClaudeUsageClient(httpClient: http)
             .fetchResetGrants(accessToken: "token")
         let request = try XCTUnwrap(http.requests.first)

@@ -20,28 +20,6 @@ final class CodexResetClaimTests: XCTestCase {
         Data(#"{"code": "\#(code)", "windows_reset": 2}"#.utf8)
     }
 
-    func testConsumeRequestShape() async throws {
-        let http = RoutingHTTPClient { _ in
-            HTTPResponse(statusCode: 200, headers: [:], body: Self.consumeBody(code: "reset"))
-        }
-        _ = try await CodexUsageClient(http: http).consumeResetCredit(
-            accessToken: "token-123", accountID: "acct-456",
-            creditID: "RateLimitResetCredit_target", redeemRequestID: "11111111-2222-3333-4444-555555555555"
-        )
-
-        let request = try XCTUnwrap(http.requests.first)
-        XCTAssertEqual(request.method, "POST")
-        XCTAssertEqual(request.url, CodexUsageClient.consumeResetCreditURL)
-        XCTAssertEqual(request.headers["Authorization"], "Bearer token-123")
-        XCTAssertEqual(request.headers["ChatGPT-Account-Id"], "acct-456")
-        XCTAssertEqual(request.headers["Content-Type"], "application/json")
-        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? [String: String])
-        XCTAssertEqual(payload, [
-            "redeem_request_id": "11111111-2222-3333-4444-555555555555",
-            "credit_id": "RateLimitResetCredit_target"
-        ])
-    }
-
     func testConsumeOutcomeDecodesAllProtocolCodes() {
         func outcome(_ code: String, status: Int = 200) -> ResetClaimOutcome {
             CodexUsageMapper.resetClaimOutcome(from: HTTPResponse(statusCode: status, headers: [:], body: Self.consumeBody(code: code)))
@@ -90,6 +68,8 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(http.requests.map(\.url), [CodexUsageClient.resetCreditsURL, CodexUsageClient.consumeResetCreditURL])
         XCTAssertEqual(http.requests.map { $0.headers["Authorization"] }, ["Bearer token-123", "Bearer token-123"])
         XCTAssertEqual(http.requests.map { $0.headers["ChatGPT-Account-Id"] }, ["acct-456", "acct-456"])
+        XCTAssertEqual(http.requests.last?.method, "POST")
+        XCTAssertEqual(http.requests.last?.headers["Content-Type"], "application/json")
         let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(http.requests.last?.body)) as? [String: String])
         XCTAssertEqual(payload["credit_id"], "RateLimitResetCredit_target", "the freshly matched id, by expiry")
         XCTAssertEqual(payload["redeem_request_id"], "redeem-1", "the caller's idempotency key, verbatim")
@@ -121,16 +101,6 @@ final class CodexResetClaimTests: XCTestCase {
         XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer token-new")
     }
 
-    func testClaimWithNoMatchingCreditIsNoCreditWithoutConsuming() async throws {
-        let http = makeHTTP(listBody: Data(#"{"credits": [], "available_count": 0}"#.utf8))
-        let runtime = try makeRuntime(http: http)
-
-        let outcome = await runtime.claimCodexResetCredit(expiringAt: Self.expiry, redeemRequestID: "redeem-1")
-
-        XCTAssertEqual(outcome, .noCredit)
-        XCTAssertEqual(http.requests.map(\.url), [CodexUsageClient.resetCreditsURL], "no consume POST is ever sent")
-    }
-
     func testClaimFailuresCollapseToFriendlyOutcomes() async throws {
         let noRequests = RoutingHTTPClient { request in
             XCTFail("no request should be sent without a credential: \(request.url)")
@@ -148,14 +118,6 @@ final class CodexResetClaimTests: XCTestCase {
             let outcome = await entry.runtime.claimCodexResetCredit(expiringAt: Self.expiry, redeemRequestID: "redeem-1")
             XCTAssertEqual(outcome, entry.expected, entry.name)
         }
-    }
-
-    func testClaimNothingToResetKeepsTheCredit() async throws {
-        let runtime = try makeRuntime(http: makeHTTP(consumeBody: Self.consumeBody(code: "nothing_to_reset")))
-
-        let outcome = await runtime.claimCodexResetCredit(expiringAt: Self.expiry, redeemRequestID: "redeem-1")
-
-        XCTAssertEqual(outcome, .nothingToReset)
     }
 
     func testLostConsumeAnswerIsRetriedWithTheSameKeyAndCredit() async throws {
@@ -237,6 +199,7 @@ final class CodexResetClaimTests: XCTestCase {
         let snapshot = try await runtime.refresh().get()
 
         XCTAssertEqual(outcome, .noCredit)
+        XCTAssertFalse(http.requests.contains { $0.url == CodexUsageClient.consumeResetCreditURL }, "no consume POST is ever sent")
         XCTAssertEqual(http.requests.count { $0.url == CodexUsageClient.resetCreditsURL }, 3, "the pass, the claim, and the claim's refresh")
         guard case .values(_, let values, let expiries) = snapshot.line(label: "Rate Limit Resets") else {
             return XCTFail("expected the Rate Limit Resets row")
@@ -269,14 +232,13 @@ final class CodexResetClaimTests: XCTestCase {
 
     private func makeHTTP(
         listStatus: Int = 200,
-        listBody: Data = listBody(),
         consumeStatus: Int = 200,
         consumeBody: Data = consumeBody(code: "reset")
     ) -> RoutingHTTPClient {
         RoutingHTTPClient { request in
             switch request.url {
             case CodexUsageClient.resetCreditsURL:
-                return HTTPResponse(statusCode: listStatus, headers: [:], body: listBody)
+                return HTTPResponse(statusCode: listStatus, headers: [:], body: Self.listBody())
             case CodexUsageClient.consumeResetCreditURL:
                 return HTTPResponse(statusCode: consumeStatus, headers: [:], body: consumeBody)
             default:

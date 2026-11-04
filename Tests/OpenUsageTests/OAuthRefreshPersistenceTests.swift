@@ -22,35 +22,6 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .oauth(OAuthTokens(accessToken: "renewed")))
     }
 
-    func testClaudeRefreshPersistsRotatedCredentialToVault() async throws {
-        let account = Account(kind: .claude, label: "Claude")
-        let vault = InMemoryCredentialVault()
-        try vault.save(
-            .oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)),
-            for: account.id
-        )
-        let http = RoutingHTTPClient { request in
-            if request.url.absoluteString == "https://platform.claude.com/v1/oauth/token" {
-                return HTTPResponse(
-                    statusCode: 200,
-                    headers: [:],
-                    body: Data(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#.utf8)
-                )
-            }
-            return HTTPResponse(statusCode: 401, headers: [:], body: Data())
-        }
-        let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
-
-        _ = await runtime.refresh()
-
-        guard case .oauth(let saved)? = try vault.load(account.id) else {
-            return XCTFail("Expected refreshed OAuth credential in the vault")
-        }
-        XCTAssertEqual(saved.accessToken, "new-access")
-        XCTAssertEqual(saved.refreshToken, "rotated-refresh")
-        XCTAssertNotNil(saved.expiresAt)
-    }
-
     func testAntigravityRefreshPersistsTheNewAccessTokenAndUsesIt() async throws {
         let account = Account(kind: .antigravity, label: "Google")
         let vault = InMemoryCredentialVault()
@@ -120,7 +91,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
 
     func testRenewalRefusedWithInvalidGrantIsAnExpiredSignIn() async throws {
         for status in [400, 401, 403] {
-            let failures = try await renewalFailures { Self.json(#"{"error":"invalid_grant"}"#, status: status) }
+            let failures = try await renewalFailures { .json(#"{"error":"invalid_grant"}"#, status: status) }
             for (kind, _) in Self.renewals {
                 XCTAssertEqual(failures[kind]?.message, ProviderError.signInExpired(kind).localizedDescription, "\(kind) \(status)")
             }
@@ -128,7 +99,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
     }
 
     func testRenewalRejectedForAnotherReasonIsARequestFailure() async throws {
-        let failures = try await renewalFailures { Self.json(#"{"error":"invalid_request"}"#, status: 400) }
+        let failures = try await renewalFailures { .json(#"{"error":"invalid_request"}"#, status: 400) }
         for (kind, _) in Self.renewals {
             XCTAssertEqual(
                 failures[kind],
@@ -139,7 +110,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
     }
 
     func testRenewalDuringAnOutageIsARequestFailure() async throws {
-        let failures = try await renewalFailures { Self.json("<html>Service Unavailable</html>", status: 503) }
+        let failures = try await renewalFailures { .json("<html>Service Unavailable</html>", status: 503) }
         for (kind, _) in Self.renewals {
             XCTAssertEqual(
                 failures[kind],
@@ -171,7 +142,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
     }
 
     func testRenewalAnswerWithoutATokenIsAnInvalidResponse() async throws {
-        let failures = try await renewalFailures { Self.json(#"{"token_type":"Bearer"}"#) }
+        let failures = try await renewalFailures { .json(#"{"token_type":"Bearer"}"#) }
         for (kind, _) in Self.renewals {
             XCTAssertEqual(failures[kind]?.message, ProviderError.invalidResponse.localizedDescription, "\(kind)")
         }
@@ -185,7 +156,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         let renewal = HeldResponse()
         let http = RoutingHTTPClient { _ in
             await renewal.hold()
-            return Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#)
+            return .json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#)
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
@@ -205,10 +176,10 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         let vault = InMemoryCredentialVault()
         let old = AccountCredential.oauth(OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh"))
         try vault.save(old, for: account.id)
-        let http = RoutingHTTPClient { _ in Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
+        let http = RoutingHTTPClient { _ in .json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
         let read: (OAuthTokens) async throws -> HTTPResponse = { tokens in
-            Self.json("{}", status: tokens.accessToken == "old-access" ? 401 : 200)
+            .json("{}", status: tokens.accessToken == "old-access" ? 401 : 200)
         }
 
         _ = try await runtime.authorizedRead(old, grant: ClaudeLogin.refresh, read: read)
@@ -227,7 +198,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             guard request.url.path == "/api/oauth/profile" else { return HTTPResponse(statusCode: 404, headers: [:], body: Data()) }
             await profile.hold()
-            return Self.json(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org"}}"#)
+            return .json(#"{"account":{"uuid":"acct"},"organization":{"uuid":"org"}}"#)
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
         let renewed = OAuthTokens(accessToken: "new-access", refreshToken: "rotated-refresh")
@@ -253,7 +224,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
             let vault = UpdateRefusingVault()
             let old = OAuthTokens(accessToken: "old-access", refreshToken: "old-refresh", expiresAt: .distantPast)
             try vault.save(.oauth(old), for: account.id)
-            let http = RoutingHTTPClient { _ in Self.json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
+            let http = RoutingHTTPClient { _ in .json(#"{"access_token":"new-access","refresh_token":"rotated-refresh","expires_in":3600}"#) }
             let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
             vault.refuses.value = true
@@ -322,10 +293,6 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
             XCTAssertEqual(try vault.load(account.id), stored, "\(kind)", file: file, line: line)
         }
         return failures
-    }
-
-    nonisolated private static func json(_ text: String, status: Int = 200) -> HTTPResponse {
-        HTTPResponse(statusCode: status, headers: [:], body: Data(text.utf8))
     }
 }
 

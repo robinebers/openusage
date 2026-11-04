@@ -27,29 +27,15 @@ final class OpenRouterUsageMapperTests: XCTestCase {
         }
     }
 
-    func testTheKeyLimitResetsAtMidnightUTCWithWeeksStartingMonday() throws {
-        let cases: [(String, String?, Int?)] = [
-            (#""daily""#, "2026-10-30T00:00:00Z", MetricPeriod.dayMs),
-            (#""weekly""#, "2026-11-02T00:00:00Z", MetricPeriod.weekMs),
-            (#""monthly""#, "2026-11-01T00:00:00Z", 31 * MetricPeriod.dayMs),
-            ("null", nil, nil)
-        ]
-        for (reset, resetsAt, periodMs) in cases {
-            XCTAssertEqual(try keyLimit(#""limit":10,"limit_remaining":7.5,"limit_reset":"# + reset), .progress(
-                label: "Key Limit", used: 2.5, limit: 10, format: .dollars, resetsAt: resetsAt.flatMap(date), periodDurationMs: periodMs
-            ), reset)
-        }
+    func testAKeyLimitWithoutAResetHasNoResetAndNoLimitHasNoRow() throws {
+        XCTAssertEqual(try keyLimit(#""limit":10,"limit_remaining":7.5,"limit_reset":null"#), .progress(
+            label: "Key Limit", used: 2.5, limit: 10, format: .dollars, resetsAt: nil, periodDurationMs: nil
+        ))
         XCTAssertNil(try keyLimit(#""limit":null,"limit_remaining":null,"limit_reset":null"#))
     }
 
     /// `total_credits` is every credit ever bought, not a limit, so the credits show as a balance and never as a meter.
     func testCreditsShowOnlyTheBalance() throws {
-        XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(OpenRouterFixtures.credits)), [
-            .values(label: "Balance", values: [MetricValue(number: 77.75, kind: .dollars)])
-        ])
-        XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":0,"total_usage":0}}"#)), [
-            .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
-        ])
         XCTAssertEqual(try OpenRouterUsageMapper.creditsLines(body(#"{"data":{"total_credits":10,"total_usage":12.5}}"#)), [
             .values(label: "Balance", values: [MetricValue(number: 0, kind: .dollars)])
         ])

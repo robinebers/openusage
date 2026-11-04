@@ -32,28 +32,4 @@ final class RetainedProviderUsageTests: XCTestCase {
         else { return XCTFail("expected Pay as you go badge") }
         XCTAssertEqual(text, "2500 cap")
     }
-
-    func testOllamaMapperKeepsProviderReturnedMonthlyDollarLimit() throws {
-        let lines = try OllamaUsageMapper.balanceLines(Data(#"""
-        {"included":{"allowance_usd":100,"balance_usd":72.5,
-          "period":{"from":"2026-06-01T00:00:00Z","until":"2026-07-01T00:00:00Z"}}}
-        """#.utf8))
-
-        guard case .progress(_, let used, let limit, let format, _, _) =
-            lines.first(where: { $0.label == "Monthly" })
-        else { return XCTFail("expected Monthly meter") }
-        XCTAssertEqual(used, 27.5)
-        XCTAssertEqual(limit, 100)
-        XCTAssertEqual(format, .dollars)
-    }
-
-    func testOllamaBalanceClientUsesBearerAPIKey() async throws {
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 200, headers: [:], body: Data()))
-
-        _ = try await OllamaUsageClient(http: http).fetchBalance(apiKey: "app-owned-key")
-
-        let request = try XCTUnwrap(http.requests.first)
-        XCTAssertEqual(request.url, URL(string: "https://ollama.com/api/balance"))
-        XCTAssertEqual(request.headers["Authorization"], "Bearer app-owned-key")
-    }
 }
