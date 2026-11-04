@@ -17,10 +17,24 @@ only the provider APIs those accounts need.
 - A [proxy](proxy.md) password stays in your `~/.openusage/config.json`. OpenUsage reads it but never
   writes or logs it.
 
+## Privacy Mode
+
+Turn on **Privacy Mode** under **Settings → Advanced → Privacy** before taking screenshots. It hides
+account names and emails, account initials, hub addresses, sign-in codes and personal input, and error
+details that may contain personal information. Provider names, plans, and usage stay visible. Copied
+usage pictures and new usage notifications use the same masking.
+
+It is off by default and remembers your choice. Clicking or hovering over hidden text never reveals
+it; turn Privacy Mode off to see personal details again. Account renaming is unavailable while it is
+on. Saved accounts, credentials, and refreshes are unchanged.
+
+Privacy Mode affects OpenUsage's display, not the [`openusage` command](cli.md), stored data, external
+browser or system windows, or notifications already delivered.
+
 ## Screen sharing
 
-**Settings → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead of your
-usage while your screen is shared or recorded. It is off by default and doesn't hide the panel.
+**Settings → Advanced → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead
+of your usage while your screen is shared or recorded. It is off by default and doesn't hide the panel.
 
 ## Anonymous telemetry
 
@@ -37,9 +51,9 @@ usage while your screen is shared or recorded. It is off by default and doesn't 
   holds no account details, credentials, or usage values.
 - **Provider account counts** say how many accounts are configured for each provider, split between
   direct accounts and accounts imported from CLIProxyAPI. They use the same random install id as the
-  app use ping and don't report refresh activity. Turn them off in **Settings → Privacy → Help Make
-  OpenUsage Better**. They are on by default for new installs, and existing installs keep their
-  stored choice.
+  app use ping and don't report refresh activity. Turn them off in **Settings → Advanced → Privacy →
+  Help Make OpenUsage Better**. They are on by default for new installs, and existing installs keep
+  their stored choice.
 - Telemetry never includes account names, emails, credentials, usage values, error messages, or file
   paths.
 - OpenUsage never identifies you to the analytics service. The analytics choice and install id are

@@ -143,6 +143,7 @@ private struct CancelRow: View {
 
 private struct BrowserSignInStep: View {
     @Bindable var flow: AddAccountFlow
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let provider: ProviderKind
     let cancel: () -> Void
 
@@ -212,7 +213,9 @@ private struct BrowserSignInStep: View {
         Form {
             Section {
                 Group {
-                    if case .browserToken = flow.prompt {
+                    if privacyMode {
+                        SecureField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
+                    } else if case .browserToken = flow.prompt {
                         SecureField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
                     } else {
                         TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
@@ -255,6 +258,7 @@ private struct BrowserSignInStep: View {
 
 private struct APIKeyStep: View {
     @Bindable var flow: AddAccountFlow
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let provider: ProviderKind
     let keyPage: URL
     let cancel: () -> Void
@@ -270,8 +274,14 @@ private struct APIKeyStep: View {
             Section {
                 SecureField("API Key", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.addKey() }
-                TextField("Name", text: $flow.accountName, prompt: Text(provider.displayName))
-                    .onSubmit { flow.addKey() }
+                Group {
+                    if privacyMode {
+                        SecureField("Name", text: $flow.accountName, prompt: Text(provider.displayName))
+                    } else {
+                        TextField("Name", text: $flow.accountName, prompt: Text(provider.displayName))
+                    }
+                }
+                .onSubmit { flow.addKey() }
             } footer: {
                 if let errorMessage = flow.errorMessage {
                     ErrorText(errorMessage)
@@ -326,6 +336,7 @@ private struct GitHubDomainStep: View {
 
 private struct OrganizationTokenStep: View {
     @Bindable var flow: AddAccountFlow
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let provider: ProviderKind
     let cancel: () -> Void
 
@@ -337,8 +348,14 @@ private struct OrganizationTokenStep: View {
         )
         Form {
             Section {
-                TextField("Organization", text: $flow.organization, prompt: Text("Required"))
-                    .onSubmit { flow.addKey() }
+                Group {
+                    if privacyMode {
+                        SecureField("Organization", text: $flow.organization, prompt: Text("Required"))
+                    } else {
+                        TextField("Organization", text: $flow.organization, prompt: Text("Required"))
+                    }
+                }
+                .onSubmit { flow.addKey() }
                 SecureField("Token", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.addKey() }
             } footer: {
@@ -444,19 +461,27 @@ private struct CloseButton: View {
 }
 
 private struct DeviceCodeBox: View {
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let code: String
 
     var body: some View {
-        Text(code)
-            .font(.system(.title2, design: .monospaced).weight(.semibold))
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Theme.cardFill, in: .rect(cornerRadius: 10))
+        Group {
+            if privacyMode {
+                Text("••••-••••")
+            } else {
+                Text(code)
+                    .textSelection(.enabled)
+            }
+        }
+        .font(.system(.title2, design: .monospaced).weight(.semibold))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Theme.cardFill, in: .rect(cornerRadius: 10))
     }
 }
 
 struct ErrorText: View {
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let message: String
     var alignment: Alignment = .leading
 
@@ -466,7 +491,7 @@ struct ErrorText: View {
     }
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
+        Label(PrivacyModeSetting.message(message, isEnabled: privacyMode), systemImage: "exclamationmark.triangle.fill")
             .font(.callout)
             .foregroundStyle(.red)
             .multilineTextAlignment(alignment == .center ? .center : .leading)

@@ -5,6 +5,7 @@ struct AccountDetailView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let providerID: String
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
@@ -19,7 +20,7 @@ struct AccountDetailView: View {
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
                 if let host = provider.hubHost {
                     metricsCard
-                    infoRow(icon: CLIProxyHub.markID, "Managed by \(host)")
+                    infoRow(icon: CLIProxyHub.markID, "Managed by \(PrivacyModeSetting.host(host, isEnabled: privacyMode))")
                 } else {
                     if let problem = dataStore.problem(for: providerID) {
                         ProblemCard(message: problem)
@@ -159,7 +160,7 @@ struct AccountDetailView: View {
         }
         .buttonStyle(.plain)
         .confirmationDialog(
-            "Remove \(provider.fullName)?",
+            "Remove \(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))?",
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
@@ -182,11 +183,12 @@ struct AccountDetailView: View {
 
 /// Why an account or a hub needs the user, at the top of its page.
 struct ProblemCard: View {
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let message: String
 
     var body: some View {
         Label {
-            Text(message)
+            Text(PrivacyModeSetting.message(message, isEnabled: privacyMode))
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")

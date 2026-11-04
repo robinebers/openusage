@@ -69,7 +69,7 @@ openusage codex@1a2b3c4d   # one account, by its id
 | Field | Meaning |
 | --- | --- |
 | `providers` | One entry per account, keyed by account id. An account not fetched yet, or for a provider this version lacks, has no entry. |
-| `displayName` | The provider and account name as the app shows them. |
+| `displayName` | The saved provider and account name. Privacy Mode does not mask command output. |
 | `plan` | The plan the provider reports. |
 | `fetchedAt` | When the app last fetched the account successfully. |
 | `expiresAt` | 10 minutes after `fetchedAt`, two refresh intervals. |

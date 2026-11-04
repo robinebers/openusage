@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AccountListRow<Grip: View>: View {
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let provider: Provider
     @ViewBuilder var grip: Grip
     var onOpen: () -> Void = {}
@@ -14,8 +15,8 @@ struct AccountListRow<Grip: View>: View {
                 Text(provider.displayName)
                     .foregroundStyle(.primary)
                     .layoutPriority(1)
-                if let accountLabel = provider.labelBesideName {
-                    Text(accountLabel)
+                if provider.labelBesideName != nil {
+                    Text(PrivacyModeSetting.accountName(provider, isEnabled: privacyMode))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -33,7 +34,7 @@ struct AccountListRow<Grip: View>: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open \(provider.fullName)")
+            .accessibilityLabel("Open \(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, PanelMetrics.controlRowPadding)

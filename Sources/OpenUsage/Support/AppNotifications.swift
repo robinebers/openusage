@@ -8,11 +8,18 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     private var onTap: (() -> Void)?
     private let authorizationStatus: () async -> UNAuthorizationStatus
+    private let isPrivacyModeEnabled: () -> Bool
 
-    init(authorizationStatus: @escaping () async -> UNAuthorizationStatus = {
-        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-    }) {
+    init(
+        authorizationStatus: @escaping () async -> UNAuthorizationStatus = {
+            await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        },
+        isPrivacyModeEnabled: @escaping () -> Bool = {
+            UserDefaults.standard.bool(forKey: PrivacyModeSetting.key)
+        }
+    ) {
         self.authorizationStatus = authorizationStatus
+        self.isPrivacyModeEnabled = isPrivacyModeEnabled
     }
 
     static var isRunningUnderTests: Bool {
@@ -26,16 +33,10 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     func post(idPrefix: String, title: String, subtitle: String, body: String) async -> Bool {
         guard !Self.isRunningUnderTests else { return false }
-        guard await requestAuthorization() else {
+        guard let content = await authorizedContent(title: title, subtitle: subtitle, body: body) else {
             AppLog.debug(.notifications, "skip \(idPrefix): not authorized")
             return false
         }
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.subtitle = subtitle
-        content.body = body
-        content.threadIdentifier = "openusage"
-        content.sound = .default
         let id = "openusage-\(idPrefix)-\(UUID().uuidString)"
         let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
         do {
@@ -46,6 +47,19 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
             AppLog.error(.notifications, "post \(idPrefix) failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    /// Authorization can suspend while the user changes Privacy Mode. Consult its current value only
+    /// after that wait, immediately before handing the content to the notification center.
+    func authorizedContent(title: String, subtitle: String, body: String) async -> UNMutableNotificationContent? {
+        guard await requestAuthorization() else { return nil }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.subtitle = PrivacyModeSetting.message(subtitle, isEnabled: isPrivacyModeEnabled())
+        content.body = body
+        content.threadIdentifier = "openusage"
+        content.sound = .default
+        return content
     }
 
     func requestAuthorization() async -> Bool {

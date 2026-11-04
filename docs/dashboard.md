@@ -78,6 +78,9 @@ earliest of each can be used.
 
 Hover over the warning or the clock, or right-click the account, to see why.
 
+With [Privacy Mode](privacy.md#privacy-mode) on, account names and personal error details stay hidden.
+Turn it off to read the full reason.
+
 ## Hiding, pinning, and ordering metrics
 
 An account's page in **Accounts** lists all of its metrics.
@@ -121,6 +124,7 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 Hover over a provider's card and click the copy button beside its logo, or choose **Share
 Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
 account. Emails are left out.
+With [Privacy Mode](privacy.md#privacy-mode) on, custom account names are hidden too.
 
 ## Update banner
 

@@ -16,3 +16,4 @@ The strip shows the limits closest to running out. You only choose how many.
 - When a provider has more than one account, its mark carries the account name's initials: "Personal"
   reads P and "Attention Machine 1" reads A1. Rename one of two accounts with the same initials to tell
   them apart.
+- [Privacy Mode](privacy.md#privacy-mode) hides these initials and account names in accessibility text.

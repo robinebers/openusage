@@ -29,6 +29,7 @@ struct PriorityBoardList: View {
     var onShowAllUsage: (() -> Void)?
     var onFixAccount: ((String) -> Void)?
     var onSetPinned: ((String, Bool) -> Void)?
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     private static let green = Color(nsColor: .systemGreen)
     private static let gaugeSide: CGFloat = 32
@@ -100,8 +101,8 @@ struct PriorityBoardList: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(notice.provider.displayName)
                     .font(.system(size: 13, weight: .semibold))
-                if let account = notice.provider.labelBesideName {
-                    Text(account)
+                if notice.provider.labelBesideName != nil {
+                    Text(PrivacyModeSetting.accountName(notice.provider, isEnabled: privacyMode))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .truncationMode(notice.provider.isNamedByEmail ? .middle : .tail)
@@ -115,7 +116,7 @@ struct PriorityBoardList: View {
             }
         }
         .frame(height: 28)
-        .accessibilityValue(notice.message)
+        .accessibilityValue(PrivacyModeSetting.message(notice.message, isEnabled: privacyMode))
     }
 
     private var pinnedSection: some View {
@@ -207,8 +208,8 @@ struct PriorityBoardList: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(data.title)
                     .font(.system(size: 13, weight: .medium))
-                Text(provider.accountName)
-                    .accessibilityLabel(provider.fullName)
+                Text(PrivacyModeSetting.accountName(provider, isEnabled: privacyMode))
+                    .accessibilityLabel(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(provider.isNamedByEmail ? .middle : .tail)
@@ -248,8 +249,8 @@ struct PriorityBoardList: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(item.data.title)
                     .font(.system(size: 13))
-                Text(item.provider.accountName)
-                    .accessibilityLabel(item.provider.fullName)
+                Text(PrivacyModeSetting.accountName(item.provider, isEnabled: privacyMode))
+                    .accessibilityLabel(PrivacyModeSetting.fullName(item.provider, isEnabled: privacyMode))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
@@ -313,7 +314,7 @@ struct PriorityBoardList: View {
                 .padding(.horizontal, 4)
                 .accessibilityElement()
                 .accessibilityLabel("Waiting for Usage")
-                .accessibilityValue(provider.fullName)
+                .accessibilityValue(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))
             }
         }
     }

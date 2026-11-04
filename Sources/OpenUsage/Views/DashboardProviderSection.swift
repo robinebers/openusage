@@ -150,18 +150,21 @@ struct AccountName: View {
     let font: Font
 
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     var body: some View {
-        if let renaming, let edit = renaming.edit, edit.providerID == account.id {
+        if !privacyMode, let renaming, let edit = renaming.edit, edit.providerID == account.id {
             InlineRenameField(renaming: renaming, edit: edit)
                 .font(font)
                 .fixedSize()
         } else {
-            Text(account.name)
+            Text(PrivacyModeSetting.accountName(account.provider, isEnabled: privacyMode))
                 .font(font)
                 .lineLimit(1)
                 .truncationMode(account.provider.isNamedByEmail ? .middle : .tail)
-                .onTapGesture(count: 2) { renaming?.begin(account.id) }
+                .onTapGesture(count: 2) {
+                    if !privacyMode { renaming?.begin(account.id) }
+                }
         }
     }
 }
@@ -175,22 +178,31 @@ struct AccountStatus {
 
     var isShowing: Bool { refreshing || notice != nil || staleness != nil }
 
-    @MainActor @ViewBuilder
+    @MainActor
     var glyph: some View {
-        if refreshing {
+        AccountStatusGlyph(status: self)
+    }
+}
+
+private struct AccountStatusGlyph: View {
+    let status: AccountStatus
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
+
+    var body: some View {
+        if status.refreshing {
             MotionAwareProgressView(controlSize: .mini)
                 .accessibilityLabel("Refreshing")
-        } else if let notice {
-            Button { onFix?() } label: {
+        } else if let notice = status.notice {
+            Button { status.onFix?() } label: {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.notice)
             }
             .buttonStyle(.plain)
-            .disabled(onFix == nil)
-            .hoverTooltip(notice)
-            .accessibilityLabel(notice)
-        } else if let staleness {
+            .disabled(status.onFix == nil)
+            .hoverTooltip(PrivacyModeSetting.message(notice, isEnabled: privacyMode))
+            .accessibilityLabel(PrivacyModeSetting.message(notice, isEnabled: privacyMode))
+        } else if let staleness = status.staleness {
             Image(systemName: "clock")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)

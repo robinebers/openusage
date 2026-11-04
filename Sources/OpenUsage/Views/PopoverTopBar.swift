@@ -4,6 +4,7 @@ struct PopoverTopBar: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let screen: PopoverScreen
 
     @ViewBuilder
@@ -23,7 +24,7 @@ struct PopoverTopBar: View {
                 }
             } else if let hubID = popover.customizeHubID, let hub = container.accounts.hubs.first(where: { $0.id == hubID }) {
                 navigationBar(back: { popover.back() }) {
-                    Text(hub.host)
+                    Text(PrivacyModeSetting.host(hub.host, isEnabled: privacyMode))
                         .truncationMode(.middle)
                 } trailing: {
                     ProviderIcon(id: CLIProxyHub.markID, side: 22, inset: 0.04)
@@ -144,26 +145,34 @@ private struct AccountTitle: View {
     let provider: Provider
 
     @Environment(AccountRenameStore.self) private var renaming
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     @State private var isHovered = false
 
     var body: some View {
-        if let edit = renaming.edit, edit.providerID == provider.id {
-            InlineRenameField(renaming: renaming, edit: edit)
-                .multilineTextAlignment(.center)
-        } else {
-            Button {
-                renaming.begin(provider.id)
-            } label: {
-                Text(provider.accountName)
-                    .hoverHighlight(isHovered)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .contentShape(Rectangle())
+        Group {
+            if privacyMode {
+                Text(PrivacyModeSetting.accountName(provider, isEnabled: true))
+            } else if let edit = renaming.edit, edit.providerID == provider.id {
+                InlineRenameField(renaming: renaming, edit: edit)
+                    .multilineTextAlignment(.center)
+            } else {
+                Button {
+                    renaming.begin(provider.id)
+                } label: {
+                    Text(provider.accountName)
+                        .hoverHighlight(isHovered)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onHover { isHovered = $0 }
+                .hoverTooltip("Rename Account")
+                .accessibilityLabel("\(provider.fullName), Rename Account")
             }
-            .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
-            .hoverTooltip("Rename Account")
-            .accessibilityLabel("\(provider.fullName), Rename Account")
+        }
+        .onChange(of: privacyMode, initial: true) { _, isEnabled in
+            if isEnabled { renaming.cancel() }
         }
     }
 }
