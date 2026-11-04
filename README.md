@@ -136,7 +136,7 @@ The workflow needs these repository secrets (Settings → Secrets and variables 
   The key comes from PostHog → Settings → Personal API keys, and the project ID is the number in your
   project URL.
 - Keep the repository public, because Sparkle fetches the DMG and appcast anonymously. After the first
-  release, confirm that Settings → Pages serves the `gh-pages` branch.
+  release, confirm that Settings → Pages → Source is GitHub Actions; `deploy-pages.yml` publishes `gh-pages`.
 
 </details>
 
