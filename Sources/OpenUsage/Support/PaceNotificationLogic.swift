@@ -135,9 +135,10 @@ enum PaceNotificationLogic {
 
     static let useItOrLoseItLead: TimeInterval = 24 * 60 * 60
 
-    /// Only for windows longer than a day, from the provider's own reset and what's left. A session never qualifies.
+    /// Only for windows longer than a day, from the provider's own reset and what's left. A session never qualifies,
+    /// and neither does a dollar limit: those are spending caps, where nothing is lost at the reset.
     static func isUnusedNearReset(_ data: WidgetData, now: Date) -> Bool {
-        guard data.hasData, let resetsAt = data.resetsAt,
+        guard data.hasData, data.kind != .dollars, let resetsAt = data.resetsAt,
               let periodDurationMs = data.periodDurationMs, periodDurationMs > MetricPeriod.dayMs else { return false }
         let untilReset = resetsAt.timeIntervalSince(now)
         return untilReset > 0 && untilReset <= useItOrLoseItLead && Int((data.remainingFraction * 100).rounded()) > 50

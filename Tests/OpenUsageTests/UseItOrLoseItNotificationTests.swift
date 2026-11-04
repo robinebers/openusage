@@ -64,6 +64,13 @@ final class UseItOrLoseItNotificationTests: XCTestCase {
         XCTAssertTrue(PaceNotificationLogic.isUnusedNearReset(weekly(used: 10, periodMs: MetricPeriod.monthMs), now: soon))
     }
 
+    func testSkipsDollarSpendCaps() {
+        var cap = WidgetData(title: "Key Limit", kind: .dollars, used: 20, limit: 100)
+        cap.resetsAt = reset
+        cap.periodDurationMs = MetricPeriod.monthMs
+        XCTAssertFalse(PaceNotificationLogic.isUnusedNearReset(cap, now: reset.addingTimeInterval(-3600)))
+    }
+
     func testFiresOncePerWindowAndReArmsOnTheNextWindow() async {
         let recorder = Recorder()
         let evaluator = evaluator(recorder)
