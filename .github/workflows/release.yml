@@ -56,6 +56,15 @@ jobs:
             echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
 
+      # Runs before the build so a release without CHANGELOG.md notes stops before anything is published.
+      - name: Extract release notes
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -o pipefail
+          mkdir -p feed
+          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "v$VERSION" "feed/OpenUsage-$VERSION.md"
+
       # Imports the Developer ID cert into a temporary keychain and adds it to the search list (cleaned up
       # automatically in a post step). Replaces a hand-rolled `security create-keychain`/`import` block.
       - name: Import Developer ID certificate
@@ -188,6 +197,7 @@ jobs:
             --ed-key-file - \
             --download-url-prefix "$DOWNLOAD_PREFIX" \
             --maximum-versions 0 \
+            --embed-release-notes \
             "${channel_arg[@]}" \
             feed
 
@@ -197,6 +207,9 @@ jobs:
           after=$(grep -c "<item>" feed/appcast.xml || true)
           grep -Eq "$DMG\"[^>]*sparkle:edSignature" feed/appcast.xml \
             || { echo "New item for $DMG is missing or unsigned (SUPublicEDKey/private-key mismatch?)." >&2; exit 1; }
+          xmllint --xpath "string(//item[enclosure[contains(@url, '/$DMG')]]/description)" feed/appcast.xml \
+            | grep '[^[:space:]]' >/dev/null \
+            || { echo "New item for $DMG has no release notes in <description>." >&2; exit 1; }
           [ "$after" -ge "$before" ] || { echo "Appcast item count dropped ($before -> $after) — aborting." >&2; exit 1; }
           echo "Appcast OK: $before -> $after items."
 
