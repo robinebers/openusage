@@ -35,5 +35,15 @@ final class DisplaySettingsTests: QuietWindowTestCase {
                        ["Priority Icons", container.dataStore.menuBarLimit.label, "Priority Limits", "30% left", "10% left",
                         "Appearance", AppearanceSetting.system.label],
                        "Priority Icons and its picker, Priority Limits' Warning and Critical, then Appearance and its Theme picker")
+
+        func texts(in element: Any) -> [String] {
+            guard let node = element as? NSObject else { return [] }
+            let text = node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.staticText.rawValue
+                ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
+            return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
+        }
+        let subtitles = ["This much left or less turns orange", "This much left or less turns red", "Will run out before it resets"]
+        try await waitUntil { Set(subtitles).isSubset(of: texts(in: host)) }
+        XCTAssertEqual(texts(in: host).filter(subtitles.contains), subtitles, "each Priority Limits row says what it does under its title")
     }
 }

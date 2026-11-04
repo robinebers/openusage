@@ -95,20 +95,15 @@ struct SettingsScreen: View {
             SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
         }
         Section("Priority Limits") {
-            levelPicker("Warning", severity: .warning, selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
-            levelPicker("Critical", severity: .critical, selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
+            levelPicker("Warning", subtitle: "This much left or less turns orange", severity: .warning,
+                        selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
+            levelPicker("Critical", subtitle: "This much left or less turns red", severity: .critical,
+                        selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
             Toggle(isOn: $dataStore.showsBurningFast) {
-                HStack(spacing: 8) {
+                limitLabel("Burning Fast", subtitle: "Will run out before it resets") {
                     Image(systemName: "flame.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(Theme.severityColor(.warning))
-                        .frame(width: 8)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Burning Fast")
-                        Text("Will run out before it resets")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
                 }
             }
         }
@@ -198,14 +193,26 @@ struct SettingsScreen: View {
     }
 
     private func levelPicker(
-        _ title: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
+        _ title: String, subtitle: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
     ) -> some View {
         Picker(selection: selection) {
             ForEach(options, id: \.self) { Text("\($0)% left").tag($0) }
         } label: {
-            HStack(spacing: 8) {
+            limitLabel(title, subtitle: subtitle) {
                 Circle().fill(Theme.severityColor(severity)).frame(width: 8, height: 8)
+            }
+        }
+    }
+
+    /// A Priority Limits row's label: its mark, then its title over what it does.
+    private func limitLabel(_ title: String, subtitle: String, @ViewBuilder mark: () -> some View) -> some View {
+        HStack(spacing: 8) {
+            mark().frame(width: 8)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
     }
