@@ -24,7 +24,7 @@ It uses Swift 6 with strict concurrency, and SwiftUI inside an AppKit status ite
 | `PopoverState` | The popover's screen and sheets. |
 | `WidgetDataStore` | The latest snapshot per account, refresh errors, and display settings. |
 | `AccountRenameStore` | Which account name is being edited. |
-| `TelemetryRecorder` | The daily ping and provider rollups. |
+| `TelemetryRecorder` | The daily ping and optional daily provider account counts. |
 | `HideFromScreenShareSetting` | The Hide From Screen Share switch. |
 
 Accounts are the source of truth. Every `AccountStore` change runs `AppContainer.syncAccounts`,
@@ -90,7 +90,7 @@ JSON. The command never refreshes and never opens the Keychain.
 
 - `UpdaterController` wraps Sparkle. Only `script/release.sh` writes `SUFeedURL`, so dev builds never
   check for updates. See [Updates](updates.md).
-- `PostHogTelemetrySink` sends the anonymous daily ping, crash reports, and optional provider
-  rollups. Events name providers, never accounts. See [Privacy](privacy.md).
+- `PostHogTelemetrySink` sends the anonymous daily ping, crash reports, and optional daily account
+  counts by provider. Events name providers, never accounts. See [Privacy](privacy.md).
 - `AppLog` writes to unified logging (subsystem `OpenUsage`). It drops lines below the level set in
   Settings and redacts every message with `LogRedaction`. See [Debugging](debugging.md).

@@ -28,16 +28,18 @@ usage while your screen is shared or recorded. It is off by default and doesn't 
 | --- | --- | --- |
 | App use ping | Once per local day | No |
 | Crash reports | The launch after a crash | No |
-| Refresh counts | At most once per provider per day | Yes |
+| Provider account counts | Once per active install per local day | Yes |
 
 - The **app use** ping says the app was active today, with the app and macOS version, which providers
   you have accounts for, and which metrics they have. Metric ids name the provider and metric
   (`claude.session`), never the account. A random install id lets the team count daily users.
 - A **crash report** holds the stack trace of OpenUsage's own code and the app and macOS version. It
   holds no account details, credentials, or usage values.
-- **Refresh counts** are how many refreshes succeeded or failed and how many you triggered by hand.
-  Turn them off in **Settings → Privacy → Help Make OpenUsage Better**. They are on by default for new
-  installs, and existing installs keep their stored choice.
+- **Provider account counts** say how many accounts are configured for each provider, split between
+  direct accounts and accounts imported from CLIProxyAPI. They use the same random install id as the
+  app use ping and don't report refresh activity. Turn them off in **Settings → Privacy → Help Make
+  OpenUsage Better**. They are on by default for new installs, and existing installs keep their
+  stored choice.
 - Telemetry never includes account names, emails, credentials, usage values, error messages, or file
   paths.
 - OpenUsage never identifies you to the analytics service. The analytics choice and install id are

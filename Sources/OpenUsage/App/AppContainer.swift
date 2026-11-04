@@ -55,19 +55,12 @@ final class AppContainer {
             sink: sink,
             defaults: telemetryDefaults,
             snapshot: { [accounts, layout] in
-                var kinds: [String] = []
-                for kind in accounts.accounts.map(\.kind.rawValue) where !kinds.contains(kind) {
-                    kinds.append(kind)
-                }
-                return TelemetryConfigSnapshot(
-                    enabledProviders: kinds,
+                TelemetryConfigSnapshot(
+                    accounts: accounts.accounts,
                     enabledMetricIDs: layout.visibleDescriptors.map(\.kindScopedKey)
                 )
             }
         )
-        dataStore.onRefreshOutcome = { [weak telemetry] kind, result, manual in
-            telemetry?.record(providerID: kind.rawValue, result: result, manual: manual)
-        }
         self.telemetry = telemetry
         accounts.didChange = { [weak self] in self?.syncAccounts() }
     }

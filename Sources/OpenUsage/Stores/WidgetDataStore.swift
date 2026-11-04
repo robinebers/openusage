@@ -28,8 +28,6 @@ final class WidgetDataStore {
         didSet { defaults.set(meterStyle.rawValue, forKey: Self.meterStyleKey) }
     }
 
-    @ObservationIgnored var onRefreshOutcome: (@MainActor (ProviderKind, RefreshOutcome, Bool) -> Void)?
-
     var resetDisplayMode: ResetDisplayMode {
         didSet { defaults.set(resetDisplayMode.rawValue, forKey: Self.resetDisplayModeKey) }
     }
@@ -160,12 +158,11 @@ final class WidgetDataStore {
         }
         let snapshot: ProviderSnapshot
         switch result {
-        case .failure(let failure): return recordFailure(failure, providerID: providerID, kind: provider.provider.kind, force: force)
+        case .failure(let failure): return recordFailure(failure, providerID: providerID)
         case .success(let refreshed): snapshot = refreshed
         }
         store(snapshot, for: providerID)
         AppLog.info(.refresh, "\(providerID) ok (\(durationMs)ms)")
-        onRefreshOutcome?(provider.provider.kind, .refreshed, force)
         return .refreshed
     }
 
@@ -187,12 +184,11 @@ final class WidgetDataStore {
         }
     }
 
-    private func recordFailure(_ failure: RefreshFailure, providerID: String, kind: ProviderKind, force: Bool) -> RefreshOutcome {
+    private func recordFailure(_ failure: RefreshFailure, providerID: String) -> RefreshOutcome {
         let backoff = RefreshBackoff.after(failure, previous: backoffs[providerID], now: now())
         backoffs[providerID] = backoff
         let wait = Int(backoff.retryAt.timeIntervalSince(now()))
         AppLog.warn(.refresh, "\(providerID) failed: \(failure.message) Next try in \(wait)s.")
-        onRefreshOutcome?(kind, .failed, force)
         return .failed
     }
 
@@ -207,7 +203,6 @@ final class WidgetDataStore {
         inFlight.removeValue(forKey: id)?.cancel()
         providersByID[id] = provider
         store(snapshot, for: id)
-        onRefreshOutcome?(provider.provider.kind, .refreshed, true)
     }
 
     private func store(_ snapshot: ProviderSnapshot, for providerID: String) {

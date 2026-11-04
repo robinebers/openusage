@@ -72,7 +72,7 @@ How everything works, in [docs/](docs/README.md):
 - [Command line](docs/cli.md)
 - [Updates](docs/updates.md)
 - [Proxy](docs/proxy.md)
-- [Privacy](docs/privacy.md)
+- [Privacy](docs/privacy.md), including optional daily provider account counts
 
 ## License
 
