@@ -29,6 +29,7 @@ struct ZAIReset: Hashable, Sendable {
     let window: ZAIResetWindow
     let recordID: Int
     let expiresAt: Date
+    var grantType: String?
 }
 
 enum ZAIResetsMapper {
@@ -49,7 +50,9 @@ enum ZAIResetsMapper {
                 else {
                     throw ProviderError.invalidResponse
                 }
-                if expiresAt > now { resets.append(ZAIReset(window: window, recordID: id, expiresAt: expiresAt)) }
+                if expiresAt > now {
+                    resets.append(ZAIReset(window: window, recordID: id, expiresAt: expiresAt, grantType: record["grantType"] as? String))
+                }
             }
         }
         return resets.sorted { ($0.expiresAt, $0.recordID) < ($1.expiresAt, $1.recordID) }

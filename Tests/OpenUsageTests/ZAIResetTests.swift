@@ -21,7 +21,7 @@ final class ZAIResetTests: XCTestCase {
         {"recordId":13,"available":false,"expireTime":"2026-11-07 08:00:00"},
         {"recordId":14,"available":true,"expireTime":"2026-11-03 08:00:00"}
       ],
-      "weekResets":[{"recordId":21,"available":true,"expireTime":"2026-11-06 20:00:00"}]
+      "weekResets":[{"recordId":21,"available":true,"expireTime":"2026-11-06 20:00:00","grantType":"GLOBAL"}]
     }}
     """#
 
@@ -30,7 +30,7 @@ final class ZAIResetTests: XCTestCase {
     }
 
     private nonisolated static let session11 = ZAIReset(window: .fiveHour, recordID: 11, expiresAt: utc("2026-11-06T12:00:00Z"))
-    private nonisolated static let weekly21 = ZAIReset(window: .week, recordID: 21, expiresAt: utc("2026-11-06T12:00:00Z"))
+    private nonisolated static let weekly21 = ZAIReset(window: .week, recordID: 21, expiresAt: utc("2026-11-06T12:00:00Z"), grantType: "GLOBAL")
     private nonisolated static let session12 = ZAIReset(window: .fiveHour, recordID: 12, expiresAt: utc("2026-11-10T00:00:00Z"))
 
     func testListKeepsAvailableUnexpiredResetsOfBothWindowsEarliestFirstInUTCPlus8() throws {
@@ -71,7 +71,7 @@ final class ZAIResetTests: XCTestCase {
         XCTAssertEqual(request.headers["Authorization"], "Bearer key-1")
         XCTAssertEqual(request.headers["Content-Type"], "application/json")
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? NSDictionary)
-        XCTAssertEqual(body, ["targetType": "PERSONAL", "resetType": "WEEK", "recordId": 21, "requestId": "request-1"])
+        XCTAssertEqual(body, ["targetType": "PERSONAL", "resetType": "WEEK", "recordId": 21, "requestId": "request-1", "grantType": "GLOBAL"])
     }
 
     func testOnlySuccessTrueCountsAsSpent() {
