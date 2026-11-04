@@ -137,7 +137,7 @@ enum PaceNotificationLogic {
 
     /// Only for windows longer than a day, from the provider's own reset and what's left. A session never qualifies.
     static func isUnusedNearReset(_ data: WidgetData, now: Date) -> Bool {
-        guard data.hasData, let limit = data.limit, limit > 0, let resetsAt = data.resetsAt,
+        guard data.hasData, let resetsAt = data.resetsAt,
               let periodDurationMs = data.periodDurationMs, periodDurationMs > MetricPeriod.dayMs else { return false }
         let untilReset = resetsAt.timeIntervalSince(now)
         return untilReset > 0 && untilReset <= useItOrLoseItLead && Int((data.remainingFraction * 100).rounded()) > 50
