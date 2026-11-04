@@ -63,7 +63,7 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           mkdir -p feed
-          ./script/release_notes.sh "v$VERSION" "feed/OpenUsage-$VERSION.md"
+          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "v$VERSION" "feed/OpenUsage-$VERSION.md"
 
       # Imports the Developer ID cert into a temporary keychain and adds it to the search list (cleaned up
       # automatically in a post step). Replaces a hand-rolled `security create-keychain`/`import` block.

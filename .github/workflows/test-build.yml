@@ -54,7 +54,7 @@ jobs:
           section=Unreleased
           grep -qxF "## v$BASE_VERSION" CHANGELOG.md && section="v$BASE_VERSION"
           mkdir -p test-feed
-          ./script/release_notes.sh "$section" "test-feed/OpenUsage-$VERSION.md"
+          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "$section" "test-feed/OpenUsage-$VERSION.md"
           echo "Release notes from the \"## $section\" section."
 
       - name: Import Developer ID certificate
