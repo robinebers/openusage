@@ -56,9 +56,7 @@ struct URLSessionHTTPClient: HTTPClient {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: request.timeout)
         urlRequest.httpMethod = request.method
         urlRequest.httpBody = request.body
-        for (key, value) in request.headers {
-            urlRequest.setValue(value, forHTTPHeaderField: key)
-        }
+        urlRequest.allHTTPHeaderFields = request.headers
 
         let start = ContinuousClock.now
         let (data, response) = try await Self.session.data(for: urlRequest)

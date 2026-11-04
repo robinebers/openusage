@@ -249,7 +249,7 @@ final class WidgetDataStoreTests: XCTestCase {
 
     func testCursorCreditsRenderAsUnboundedBalance() async {
         let provider = Provider(id: "cursor", kind: .cursor)
-        let descriptor = WidgetDescriptor.dollarBalance(
+        let descriptor = WidgetDescriptor.values(
             key: "credits",
             provider: provider,
             title: "Credits",

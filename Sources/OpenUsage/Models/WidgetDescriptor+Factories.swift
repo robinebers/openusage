@@ -10,7 +10,7 @@ extension WidgetDescriptor {
     ) -> WidgetDescriptor {
         var sample = WidgetData(title: title, kind: .percent, used: 0, limit: 100)
         sample.sessionStartSignal = sessionStartSignal
-        return make(key: key, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
+        return WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel ?? title, sample: sample)
     }
 
     static func boundedDollars(
@@ -21,8 +21,8 @@ extension WidgetDescriptor {
         limit: Double,
         valueWord: String? = nil
     ) -> WidgetDescriptor {
-        make(key: key, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, kind: .dollars, used: 0, limit: limit, unboundedValueWord: valueWord))
+        WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel ?? title,
+                         sample: WidgetData(title: title, kind: .dollars, used: 0, limit: limit, unboundedValueWord: valueWord))
     }
 
     static func boundedCount(
@@ -33,9 +33,9 @@ extension WidgetDescriptor {
         limit: Double,
         periodDurationMs: Int? = nil
     ) -> WidgetDescriptor {
-        make(key: key, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, kind: .count, used: 0, limit: limit,
-                                periodDurationMs: periodDurationMs))
+        WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel ?? title,
+                         sample: WidgetData(title: title, kind: .count, used: 0, limit: limit,
+                                                            periodDurationMs: periodDurationMs))
     }
 
     static func values(
@@ -49,18 +49,7 @@ extension WidgetDescriptor {
         var sample = WidgetData(title: title, kind: .dollars, used: 0, limit: nil,
                                 unboundedValueWord: valueWord)
         sample.showsResetExpiries = showsResetExpiries
-        return make(key: key, provider: provider, metricLabel: metricLabel ?? title, sample: sample)
-    }
-
-    static func dollarBalance(
-        key: String,
-        provider: Provider,
-        title: String,
-        metricLabel: String? = nil,
-        valueWord: String
-    ) -> WidgetDescriptor {
-        make(key: key, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, kind: .dollars, used: 0, limit: nil, unboundedValueWord: valueWord))
+        return WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel ?? title, sample: sample)
     }
 
     static func badge(
@@ -69,16 +58,7 @@ extension WidgetDescriptor {
         title: String,
         metricLabel: String? = nil
     ) -> WidgetDescriptor {
-        make(key: key, provider: provider, metricLabel: metricLabel ?? title,
-             sample: WidgetData(title: title, kind: .count, used: 0, limit: nil))
-    }
-
-    private static func make(
-        key: String,
-        provider: Provider,
-        metricLabel: String,
-        sample: WidgetData
-    ) -> WidgetDescriptor {
-        WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel, sample: sample)
+        WidgetDescriptor(provider: provider, key: key, metricLabel: metricLabel ?? title,
+                         sample: WidgetData(title: title, kind: .count, used: 0, limit: nil))
     }
 }

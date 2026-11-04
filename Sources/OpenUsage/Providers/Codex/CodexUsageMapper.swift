@@ -9,11 +9,7 @@ enum CodexUsageMapper {
         resetCredits: HTTPResponse? = nil,
         now: Date = Date()
     ) throws -> ProviderUsage {
-        try ProviderError.requireSuccess(response, kind: .codex)
-
-        guard let body = ProviderParse.jsonObject(response.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let body = try ProviderError.requireSuccessJSON(response, kind: .codex)
 
         var lines: [MetricLine] = []
         let rateLimit = body["rate_limit"] as? [String: Any]

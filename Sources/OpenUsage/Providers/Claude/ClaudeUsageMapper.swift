@@ -2,11 +2,7 @@ import Foundation
 
 enum ClaudeUsageMapper {
     static func mapUsageResponse(_ response: HTTPResponse) throws -> [MetricLine] {
-        try ProviderError.requireSuccess(response, kind: .claude)
-
-        guard let body = ProviderParse.jsonObject(response.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let body = try ProviderError.requireSuccessJSON(response, kind: .claude)
 
         var lines: [MetricLine] = []
         appendUsageWindow(body["five_hour"], label: "Session", periodDurationMs: MetricPeriod.sessionMs, to: &lines)
@@ -18,10 +14,7 @@ enum ClaudeUsageMapper {
     }
 
     static func mapResetGrantStatus(_ response: HTTPResponse) throws -> ClaudeResetGrantStatus? {
-        try ProviderError.requireSuccess(response, kind: .claude)
-        guard let body = ProviderParse.jsonObject(response.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let body = try ProviderError.requireSuccessJSON(response, kind: .claude)
         return ClaudeResetGrantStatus.parse(body["cedar_ember"])
     }
 

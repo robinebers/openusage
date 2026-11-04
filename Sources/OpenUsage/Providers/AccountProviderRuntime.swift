@@ -304,10 +304,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             tokens = try await refreshCursorTokens(tokens)
             usageResponse = try await client.fetchUsage(accessToken: tokens.accessToken)
         }
-        try ProviderError.requireSuccess(usageResponse, kind: .cursor)
-        guard let usage = ProviderParse.jsonObject(usageResponse.body) else {
-            throw ProviderError.invalidResponse
-        }
+        let usage = try ProviderError.requireSuccessJSON(usageResponse, kind: .cursor)
         return try await cursorUsage(usage, client: client, accessToken: tokens.accessToken)
     }
 

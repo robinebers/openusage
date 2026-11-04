@@ -80,17 +80,7 @@ struct CodexUsageClient: Sendable {
     }
 
     private static func resetCreditHeaders(accessToken: String, accountID: String?) -> [String: String] {
-        var headers = [
-            "Authorization": "Bearer \(accessToken)",
-            "Accept": "application/json",
-            "User-Agent": "OpenUsage",
-            "OpenAI-Beta": "codex-1",
-            "originator": "Codex Desktop"
-        ]
-        if let accountID, !accountID.isEmpty {
-            headers["ChatGPT-Account-Id"] = accountID
-        }
-        return headers
+        usageHeaders(accessToken: accessToken, accountID: accountID).merging(["OpenAI-Beta": "codex-1", "originator": "Codex Desktop"]) { $1 }
     }
 
     private static func usageHeaders(accessToken: String, accountID: String?) -> [String: String] {

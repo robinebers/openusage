@@ -112,14 +112,7 @@ struct OAuthTokens: Codable, Sendable, Equatable {
     var accessToken: String
     var refreshToken: String?
     var expiresAt: Date?
-    var extras: [String: String]
-
-    init(accessToken: String, refreshToken: String? = nil, expiresAt: Date? = nil, extras: [String: String] = [:]) {
-        self.accessToken = accessToken
-        self.refreshToken = refreshToken
-        self.expiresAt = expiresAt
-        self.extras = extras
-    }
+    var extras: [String: String] = [:]
 
     static let identityKey = "account_identity"
 

@@ -19,19 +19,13 @@ struct CodexHistorySource: UsageHistorySource {
         }
     }
 
-    static let utc: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        return calendar
-    }()
-
     var client: CodexUsageClient
     var accessToken: String
     var chatGPTAccountID: String?
     var cardID: String
     var report: Report
 
-    var calendar: Calendar { Self.utc }
+    var calendar: Calendar { .utc }
     var rereadInterval: TimeInterval? { 3600 }
 
     func read(_ days: [Date], asOf: Date, calendar: Calendar) async -> (days: [Date: UsageDay], rateLimitedFor: TimeInterval?) {

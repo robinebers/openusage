@@ -50,13 +50,8 @@ struct GrokLogin: ProviderLogin {
             http: http,
             prompt: prompt
         )
-        let claims = token.accessToken.jwtPayload(as: GrokIDClaims.self)
-        return (claims?.email ?? "Grok Account", .oauth(OAuthTokens(
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            expiresAt: token.expiry,
-            extras: (claims?.sub ?? claims?.email).map { [OAuthTokens.identityKey: $0] } ?? [:]
-        )))
+        let claims = ProviderParse.jwtPayloadData(token.accessToken).flatMap { try? JSONDecoder().decode(GrokIDClaims.self, from: $0) }
+        return (claims?.email ?? "Grok Account", .oauth(token.tokens(extras: (claims?.sub ?? claims?.email).map { [OAuthTokens.identityKey: $0] } ?? [:])))
     }
 }
 
@@ -231,7 +226,7 @@ private func deviceAuthorization(
         if let token = try? JSONDecoder().decode(OAuthTokenResponse.self, from: response.body) {
             return .complete(token)
         }
-        return switch LoginHTTP.jsonObject(response)["error"] {
+        return switch ProviderParse.jsonObject(response.body)?["error"] as? String {
         case "authorization_pending": .pending
         case "slow_down": .slowDown
         case "expired_token": .failed("\(provider) device sign-in expired.")

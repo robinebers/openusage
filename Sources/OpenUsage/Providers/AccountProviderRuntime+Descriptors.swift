@@ -57,7 +57,7 @@ extension AccountProviderRuntime {
                 .boundedCount(key: "requests", provider: provider, title: "Requests", limit: 500,
                               periodDurationMs: CursorUsageMapper.billingPeriodMs)
                     .exportingLimit("requests", unit: "requests"),
-                .dollarBalance(key: "credits", provider: provider, title: "Credits", valueWord: "left")
+                .values(key: "credits", provider: provider, title: "Credits", valueWord: "left")
                     .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .spend, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
@@ -102,7 +102,7 @@ extension AccountProviderRuntime {
                     .exportingLimit("daily", unit: "percent"),
                 .percent(key: "weekly", provider: provider, title: "Weekly", metricLabel: "Weekly quota")
                     .exportingLimit("weekly", unit: "percent"),
-                .dollarBalance(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
+                .values(key: "extra", provider: provider, title: "Extra Usage", metricLabel: "Extra usage balance", valueWord: "left")
                     .exportingLimit("extraUsageBalance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
             ]
         case .grok:
@@ -126,7 +126,7 @@ extension AccountProviderRuntime {
                     .exportingLimit("weekly", unit: "percent"),
                 .percent(key: "monthly", provider: provider, title: "Monthly")
                     .exportingLimit("monthly", unit: "percent"),
-                .dollarBalance(key: "purchasedCredits", provider: provider, title: "Extra Usage", metricLabel: "Purchased Credits", valueWord: "left")
+                .values(key: "purchasedCredits", provider: provider, title: "Extra Usage", metricLabel: "Purchased Credits", valueWord: "left")
                     .exportingLimit("purchasedCredits", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .usageValue, then: .tokens)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .usageValue, then: .tokens)),
@@ -144,7 +144,7 @@ extension AccountProviderRuntime {
             ]
         case .openrouter:
             [
-                .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "left")
+                .values(key: "balance", provider: provider, title: "Balance", valueWord: "left")
                     .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars)),
                 .history(key: "today", provider: provider, .window(.today, .spend)),
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend)),
