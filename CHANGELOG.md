@@ -12,6 +12,8 @@
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $
   ([#1425](https://github.com/robinebers/openusage/issues/1425)).
+- Cursor: Extra Usage reads "Team Spend" when its limit is the team's shared pool, so it no longer
+  looks like a personal cap. Personal limits still read Extra Usage.
 
 ## v0.8.0-beta.1
 

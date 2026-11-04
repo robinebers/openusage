@@ -83,7 +83,8 @@ days.
 
 - Sign in through cursor.com in your browser.
 - Extra Usage is on-demand usage and resets with the billing cycle. It hides when on-demand usage is
-  off (no spend limit, or a $0 one).
+  off (no spend limit, or a $0 one). When the limit is the team's shared pool and not yours, the row
+  reads Team Spend.
 - Credits reads `$0 left` when Cursor reports none.
 
 Today, Yesterday, and Last 30 Days show what Cursor charged and the tokens it reported, from the

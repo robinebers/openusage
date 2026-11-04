@@ -235,6 +235,7 @@ final class WidgetDataStore {
                ?? descriptor.unreportedValues.map({ .values(label: descriptor.metricLabel, values: $0) }),
            let data = resolve(line, descriptor: descriptor) {
             result = data
+            result.title = snapshot.lineTitles?[descriptor.metricLabel] ?? result.title
         } else {
             result = descriptor.sample
             result.hasData = false

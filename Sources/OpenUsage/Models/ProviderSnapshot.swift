@@ -7,6 +7,8 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     var lines: [MetricLine]
     /// Range details read with these lines, keyed by descriptor key. Older snapshots carry only lines.
     var usageBreakdowns: [String: UsageBreakdown]?
+    /// Row titles this reading renames, keyed by line label. Older snapshots carry none.
+    var lineTitles: [String: String]?
     var notice: String?
     var refreshedAt: Date
 
