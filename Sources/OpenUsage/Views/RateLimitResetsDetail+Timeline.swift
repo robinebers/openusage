@@ -41,7 +41,8 @@ extension RateLimitResetsDetail {
         struct Key: Hashable {
             let date: Date
             let ordinal: Int
-            var section = 0
+            /// The exact record a window entry claims; nil on the flat timeline, which claims by date.
+            var reset: ZAIReset?
         }
 
         var accessibilityLabel: String {
@@ -49,24 +50,21 @@ extension RateLimitResetsDetail {
         }
     }
 
-    /// One window's resets, kept in the given earliest-first order, beside the timeline entries that show them.
     struct Window: Equatable {
         let window: ZAIResetWindow
-        let section: Int
-        let resets: [ZAIReset]
         let entries: [Entry]
     }
 
+    /// Each window's resets on its own timeline, in the given earliest-first order.
     nonisolated static func windows(_ resets: [ZAIReset], now: Date = Date()) -> [Window] {
-        ZAIResetWindow.allCases.enumerated().compactMap { section, window in
+        ZAIResetWindow.allCases.compactMap { window in
             let resets = resets.filter { $0.window == window }
             guard !resets.isEmpty else { return nil }
-            let entries = entries(from: resets.map(\.expiresAt), now: now, section: section)
-            return Window(window: window, section: section, resets: resets, entries: entries)
+            return Window(window: window, entries: entries(from: resets.map(\.expiresAt), now: now, resets: resets))
         }
     }
 
-    nonisolated static func entries(from expiries: [Date], now: Date = Date(), section: Int = 0) -> [Entry] {
+    nonisolated static func entries(from expiries: [Date], now: Date = Date(), resets: [ZAIReset] = []) -> [Entry] {
         var seen: [Date: Int] = [:]
         return expiries.sorted().enumerated().map { index, date in
             let ordinal = seen[date, default: 0]
@@ -78,7 +76,7 @@ extension RateLimitResetsDetail {
                 id: index,
                 number: index + 1,
                 date: date,
-                key: Entry.Key(date: date, ordinal: ordinal, section: section),
+                key: Entry.Key(date: date, ordinal: ordinal, reset: resets.isEmpty ? nil : resets[index]),
                 severity: WidgetData.expirySeverity(secondsRemaining: date.timeIntervalSince(now)),
                 time: (imminent || absolute == nil) ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative

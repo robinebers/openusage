@@ -51,8 +51,11 @@ final class ZAIResetTests: XCTestCase {
     func testDetailListsEachWindowApartAndKeysEqualExpiriesApart() {
         let windows = RateLimitResetsDetail.windows([Self.session11, Self.weekly21, Self.session12], now: Self.now)
         XCTAssertEqual(windows.map(\.window), [.fiveHour, .week])
-        XCTAssertEqual(windows.map { $0.resets.map(\.recordID) }, [[11, 12], [21]])
+        XCTAssertEqual(windows.map { $0.entries.compactMap(\.key.reset?.recordID) }, [[11, 12], [21]])
         XCTAssertNotEqual(windows[0].entries[0].key, windows[1].entries[0].key, "a shared expiry must not make one key")
+        let replacement = ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt)
+        let replaced = RateLimitResetsDetail.windows([replacement, Self.weekly21, Self.session12], now: Self.now)
+        XCTAssertNotEqual(replaced[0].entries[0].key, windows[0].entries[0].key, "a confirm never carries over to another record")
     }
 
     func testUseRequestNamesTheExactRecordAndWindow() async throws {
@@ -96,30 +99,49 @@ final class ZAIResetTests: XCTestCase {
         }
     }
 
-    func testClaimSpendsTheConfirmedRecordOnceAndRereadsTheList() async throws {
-        let http = RoutingHTTPClient { Self.route($0) }
-        let runtime = try makeRuntime(http)
-        _ = await runtime.refresh()
-        let refreshed = expectation(description: "the post-claim refresh")
-        let service = try XCTUnwrap(runtime.resetClaimService {
-            defer { refreshed.fulfill() }
-            _ = await runtime.refresh()
-            return .refreshed
-        })
-        let sentBefore = http.requests.count
+    func testClaimSpendsTheConfirmedRecordOnceAndTheRowDropsIt() async throws {
+        let expiry = Self.zaiTime(Date().addingTimeInterval(2 * 86_400))
+        let claimed = TestSwitch(false)
+        let http = RoutingHTTPClient { request in
+            switch request.url {
+            case ZAIUsageClient.resetListURL:
+                let record = #"{"recordId":7,"available":\#(!claimed.value),"expireTime":"\#(expiry)"}"#
+                return Self.response(#"{"success":true,"data":{"weekResets":[\#(record)]}}"#)
+            case ZAIUsageClient.useResetURL:
+                claimed.value = true
+                return Self.response(#"{"success":true}"#)
+            default:
+                return Self.route(request)
+            }
+        }
+        let defaults = isolatedDefaults()
+        let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let account = accounts.add(kind: .zai, label: "Personal", credential: .apiKey("key"))
+        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
+        let row = try XCTUnwrap(AccountProviderRuntime.widgetDescriptors(for: account).last)
+        await container.dataStore.refresh(providerID: account.cardID)
+        XCTAssertEqual(container.dataStore.data(for: row).unboundedDetail, "1 available")
+        let service = try XCTUnwrap(container.resetClaim(for: account.cardID))
 
-        let outcome = await service.claim(Self.weekly21, requestID: "request-1")
-        await fulfillment(of: [refreshed], timeout: 5)
+        let outcome = await service.claim(try XCTUnwrap(service.windowResets.first), requestID: "request-1")
 
         XCTAssertEqual(outcome, .success)
-        let sent = http.requests.dropFirst(sentBefore).map(\.url)
-        XCTAssertEqual(sent.filter { $0 == ZAIUsageClient.useResetURL }.count, 1)
-        XCTAssertEqual(sent.filter { $0 == ZAIUsageClient.resetListURL }.count, 2, "checked before the claim, read again after it")
+        for _ in 0..<500 where container.dataStore.data(for: row).unboundedDetail != "0 available" {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(container.dataStore.data(for: row).unboundedDetail, "0 available", "the post-claim refresh rereads the list")
+        XCTAssertEqual(http.requests.filter { $0.url == ZAIUsageClient.useResetURL }.count, 1)
+    }
+
+    private nonisolated static func zaiTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     func testAStaleRecordIsNeverSpentInPlaceOfAnother() async throws {
-        let runtime = try makeRuntime(RoutingHTTPClient { Self.route($0) })
-        _ = await runtime.refresh()
         let stale = [
             ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt),
             Self.session12,

@@ -44,7 +44,7 @@ enum ZAIResetsMapper {
             guard let records = data[window.listKey] else { continue }
             guard let records = records as? [[String: Any]] else { throw ProviderError.invalidResponse }
             for record in records where (record["available"] as? Bool) == true {
-                guard let id = ProviderParse.number(record["recordId"]).flatMap(ProviderParse.int),
+                guard let id = record["recordId"] as? Int,
                       let expiresAt = (record["expireTime"] as? String).flatMap(expiry)
                 else {
                     throw ProviderError.invalidResponse

@@ -50,7 +50,7 @@ struct RateLimitResetsDetail: View {
                 bannerView(banner)
                     .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
             }
-            if !windows.isEmpty {
+            if !windowResets.isEmpty {
                 if let claiming, !windows.contains(where: { $0.entries.contains { $0.key == claiming } }) {
                     claimingRow().transition(.opacity)
                 }
@@ -247,7 +247,7 @@ struct RateLimitResetsDetail: View {
             Text("Use this reset?")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
-            Text(windowReset(for: entry)?.window.confirmDetail ?? confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
+            Text(entry.key.reset?.window.confirmDetail ?? confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -303,15 +303,11 @@ struct RateLimitResetsDetail: View {
     private static let flowAnimation: Animation = .snappy(duration: 0.25)
 
     private func canUse(_ entry: Entry) -> Bool {
-        windows.isEmpty ? claim != nil : claimWindowReset != nil && entry.id == 0
-    }
-
-    private func windowReset(for entry: Entry) -> ZAIReset? {
-        windows.first { $0.section == entry.key.section }?.resets[entry.id]
+        entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
     }
 
     private func beginConfirm(_ entry: Entry) {
-        if let reset = windowReset(for: entry) {
+        if let reset = entry.key.reset {
             if windowRequestIDs[reset.recordID] == nil { windowRequestIDs[reset.recordID] = UUID().uuidString }
         } else if redeemRequestIDs[entry.date] == nil {
             redeemRequestIDs[entry.date] = UUID().uuidString
@@ -332,7 +328,7 @@ struct RateLimitResetsDetail: View {
     }
 
     private func runClaim(_ entry: Entry) {
-        let reset = windowReset(for: entry)
+        let reset = entry.key.reset
         let send: () async -> ResetClaimOutcome
         if let reset, let claimWindowReset {
             let requestID = windowRequestIDs[reset.recordID] ?? UUID().uuidString
@@ -362,7 +358,7 @@ struct RateLimitResetsDetail: View {
         switch outcome {
         case .success:
             if !refreshed { markClaimed(date, record: record) }
-            nothingToReset = true
+            if record == nil { nothingToReset = true }
         case .nothingToReset:
             nothingToReset = true
         case .noCredit:

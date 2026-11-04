@@ -24,11 +24,10 @@ extension AccountProviderRuntime {
 
     /// Spends exactly the record the user confirmed, and only while it is still its window's earliest.
     /// Anything else answers `noCredit`, and the refresh after it shows the list to confirm again. A
-    /// request whose answer never arrives is not retried.
+    /// request whose answer never arrives is not retried. The post-claim refresh rereads the list.
     func claimZAIReset(_ reset: ZAIReset, requestID: String) async -> ResetClaimOutcome {
         let tag = LogTag.plugin("zai")
         let cardID = account.cardID
-        zaiResetsRead.forget()
         let apiKey: String
         let current: [ZAIReset]
         do {

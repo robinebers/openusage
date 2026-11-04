@@ -78,8 +78,9 @@ final class AppContainer {
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return nil }
+        let rereadsResets = runtime.account.kind == .zai
         return runtime.resetClaimService { [dataStore] in
-            await dataStore.refresh(providerID: providerID, force: true)
+            await dataStore.refresh(providerID: providerID, force: true, rereadHourly: rereadsResets)
         }
     }
 
