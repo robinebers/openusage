@@ -40,7 +40,7 @@ Each fires once per metric per reset window. Click one to open All Usage.
 
 - **Hide From Screen Share.** Shows the app icon instead of your usage while your screen is
   shared or recorded. Off by default.
-- **Help Make OpenUsage Better.** Sends optional daily provider-refresh summaries. The daily active
+- **Help Make OpenUsage Better.** Sends optional daily account counts by provider. The daily active
   ping and crash reports don't depend on it.
 
 See [Privacy](privacy.md).
