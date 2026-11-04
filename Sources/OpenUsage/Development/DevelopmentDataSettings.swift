@@ -6,7 +6,11 @@ struct DevelopmentDataSettings: View {
 
     var body: some View {
         Section {
-            Toggle("Sample Data", isOn: Binding(get: { mode.isOn }, set: mode.setSampleData))
+            // Swift 6.3.3 crashes lowering the actor-isolated method reference as this setter.
+            Toggle("Sample Data", isOn: Binding(
+                get: { mode.isOn },
+                set: { enabled in mode.setSampleData(enabled) }
+            ))
                 .disabled(mode.isSwitching)
         } header: {
             Text("Development")
