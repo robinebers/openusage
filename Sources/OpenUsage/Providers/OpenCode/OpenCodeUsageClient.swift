@@ -6,14 +6,6 @@ struct OpenCodeUsageClient: Sendable {
     var http: any HTTPClient
 
     func fetchUsage(apiKey: String) async throws -> HTTPResponse {
-        try await http.send(HTTPRequest(
-            method: "GET",
-            url: Self.usageURL,
-            headers: [
-                "Authorization": "Bearer \(apiKey)",
-                "Accept": "application/json"
-            ],
-            timeout: 15
-        ))
+        try await LoginHTTP.get(Self.usageURL, bearerToken: apiKey, using: http, headers: ["Accept": "application/json"])
     }
 }

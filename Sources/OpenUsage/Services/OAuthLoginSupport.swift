@@ -51,11 +51,6 @@ enum LoginHTTP {
         }
         return try JSONDecoder().decode(type, from: response.body)
     }
-
-    static func jsonObject(_ response: HTTPResponse) -> [String: String] {
-        guard let values = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any] else { return [:] }
-        return values.compactMapValues { $0 as? String }
-    }
 }
 
 struct OAuthTokenResponse: Decodable {
@@ -73,6 +68,10 @@ struct OAuthTokenResponse: Decodable {
 
     func grant(now: Date) -> OAuthGrant {
         OAuthGrant(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiresIn.map { now.addingTimeInterval($0) })
+    }
+
+    func tokens(extras: [String: String]) -> OAuthTokens {
+        OAuthTokens(accessToken: accessToken, refreshToken: refreshToken, expiresAt: expiry, extras: extras)
     }
 }
 
@@ -104,13 +103,6 @@ struct OAuthGrant: Sendable {
     var accessToken: String
     var refreshToken: String?
     var expiresAt: Date?
-}
-
-extension String {
-    func jwtPayload<T: Decodable>(as type: T.Type) -> T? {
-        guard let data = ProviderParse.jwtPayloadData(self) else { return nil }
-        return try? JSONDecoder().decode(type, from: data)
-    }
 }
 
 enum LoginError: LocalizedError, Sendable {

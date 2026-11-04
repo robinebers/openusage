@@ -52,15 +52,6 @@ struct OpenRouterUsageClient: Sendable {
         guard let url = URL(string: urlString) else {
             throw ProviderError.invalidResponse
         }
-
-        return try await http.send(HTTPRequest(
-            method: "GET",
-            url: url,
-            headers: [
-                "Authorization": "Bearer \(apiKey)",
-                "Accept": "application/json"
-            ],
-            timeout: 15
-        ))
+        return try await LoginHTTP.get(url, bearerToken: apiKey, using: http, headers: ["Accept": "application/json"])
     }
 }

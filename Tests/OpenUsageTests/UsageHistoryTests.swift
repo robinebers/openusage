@@ -66,7 +66,7 @@ final class UsageHistoryTests: XCTestCase {
     func testRestoredWindowsUseTheOriginalReportingDayAfterProviderMidnight() throws {
         let beforeUTC = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-31T23:59:00Z"))
         let afterUTC = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-11-01T00:01:00Z"))
-        let utc = CodexHistorySource.utc
+        let utc = Calendar.utc
         let format = Date.FormatStyle(date: .abbreviated, time: .omitted, timeZone: utc.timeZone)
         func restored(_ window: UsageWindow, calendar: Calendar) throws -> UsageBreakdown {
             let history = UsageHistory(calendar: calendar, asOf: beforeUTC, reported: [window: .zero([.tokens])])

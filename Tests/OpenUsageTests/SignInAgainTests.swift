@@ -211,7 +211,7 @@ final class PR1535DetailsTests: XCTestCase {
             let source = "{\"data\":[" + records.joined(separator: ",") + "]}"
             let report = try XCTUnwrap(CodexUsageReports.counts(Data(source.utf8)))
             let day = try XCTUnwrap(report.days["2026-10-30"])
-            let history = UsageHistory(calendar: CodexHistorySource.utc, asOf: date, days: [date: day])
+            let history = UsageHistory(calendar: Calendar.utc, asOf: date, days: [date: day])
             let details = try XCTUnwrap(UsageBreakdown(.today, in: history))
             XCTAssertEqual(details.totals[.turns], 4)
             XCTAssertEqual(details.totals[.tokens], 10)
@@ -228,7 +228,7 @@ final class CodexModelTotalsTests: XCTestCase {
         let report = try XCTUnwrap(CodexUsageReports.counts(Data(source.utf8)))
         let date = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-10-30T00:00:00Z"))
         let day = try XCTUnwrap(report.days["2026-10-30"])
-        let history = UsageHistory(calendar: CodexHistorySource.utc, asOf: date, days: [date: day])
+        let history = UsageHistory(calendar: Calendar.utc, asOf: date, days: [date: day])
         let details = try XCTUnwrap(UsageBreakdown(.today, in: history))
         XCTAssertEqual(details.models(by: .tokens).first?.tokens, 50)
     }

@@ -80,3 +80,11 @@ extension AccountProviderRuntime {
         return UsageHistory(calendar: calendar, asOf: asOf, days: ledger.days)
     }
 }
+
+extension Calendar {
+    static let utc: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+}
