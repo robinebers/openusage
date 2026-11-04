@@ -280,6 +280,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly"],
+            "muse": ["session", "weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["balance", "keyLimit"],

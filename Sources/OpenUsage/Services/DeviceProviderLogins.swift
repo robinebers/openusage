@@ -60,6 +60,32 @@ struct GrokLogin: ProviderLogin {
     }
 }
 
+/// Muse Code's device sign-in, under the Muse CLI's own public client: Meta registers no other clients.
+/// It sends no scope: the usage read needs none, and the device endpoint refuses `openid`. The sign-in
+/// returns a `dca:` token with no refresh token, and the account takes the email Muse reports for it.
+struct MuseLogin: ProviderLogin {
+    static let clientID = "1031625952748946"
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        let token = try await deviceAuthorization(
+            provider: "Meta",
+            startURL: URL(string: "https://auth.meta.com/oidc/device/authorization/")!,
+            tokenURL: URL(string: "https://auth.meta.com/oidc/device/token/")!,
+            clientID: Self.clientID,
+            scopes: nil,
+            deniedMessage: "Meta device sign-in was denied.",
+            http: http,
+            prompt: prompt
+        )
+        let email = try await MuseUsageClient(http: http).account(token: token.accessToken).email
+        return (email ?? ProviderKind.muse.displayName, .oauth(OAuthTokens(
+            accessToken: token.accessToken,
+            extras: email.map { [OAuthTokens.identityKey: "muse:\($0)"] } ?? [:]
+        )))
+    }
+}
+
 struct CursorLogin: ProviderLogin {
     var http: any HTTPClient = URLSessionHTTPClient()
 
@@ -170,6 +196,7 @@ enum ProviderLoginCatalog {
         case .copilot: CopilotLogin()
         case .devin: DevinLogin()
         case .grok: GrokLogin()
+        case .muse: MuseLogin()
         case .ollama, .opencodeGo, .openrouter, .zai: APIKeyLogin(kind: kind)
         }
     }
@@ -180,13 +207,15 @@ private func deviceAuthorization(
     startURL: URL,
     tokenURL: URL,
     clientID: String,
-    scopes: String,
+    scopes: String?,
     headers: [String: String] = [:],
     deniedMessage: String,
     http: any HTTPClient,
     prompt: @Sendable (LoginPrompt) async -> Void
 ) async throws -> OAuthTokenResponse {
-    let start = try await LoginHTTP.postForm(startURL, fields: ["client_id": clientID, "scope": scopes], using: http, headers: headers)
+    var fields = ["client_id": clientID]
+    fields["scope"] = scopes
+    let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
     guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
         throw LoginError.invalidResponse

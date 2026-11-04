@@ -20,6 +20,7 @@ How each provider signs in and what its card shows.
 | Copilot organization | Organization and token | Org Credits, Org Spend |
 | Devin | Browser (Windsurf), then a pasted token | Daily, Weekly, Extra Usage |
 | Grok | Device code (xAI) | Weekly, Extra Usage |
+| Muse Code | Device code (Meta) | Session, Weekly |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
 | OpenCode | API key | Session, Weekly, Monthly |
 | OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Key Limit, Budget, Free Requests |
@@ -40,6 +41,7 @@ did. The token is stored in the app's Keychain.
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
 | Devin | `openid profile email` | OpenUsage trades the token for the account's API key, the same key Windsurf's editor plugins use. |
 | Grok | `openid email offline_access grok-cli:access` | OpenUsage doesn't ask for `api:access`, which would let the token run Grok models. |
+| Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
 
 A narrower grant applies the next time you add an account. To get it for an existing account, remove
 the account and add it again. Claude is the exception: a refreshed Claude token carries only
@@ -128,6 +130,15 @@ beyond the included pool).
 - Weekly is the shared pool. Extra Usage shows the pay-as-you-go cap and hides when there is no cap
   or a $0 one.
 - A team account has no personal quota. Its card shows the plan and says so.
+
+## Muse Code
+
+- Sign in with a Meta device code. The account takes the email Muse reports.
+- The card shows the Muse Code plan, the 5-hour Session, and the Weekly limit.
+- Muse leaves out usage while the 5-hour window is idle, so the card keeps the last values it read.
+  A window whose reset has passed reads 0%.
+- A Meta account without a Muse Code subscription has no quota, and the card says so.
+- The sign-in has no renewal. When Meta stops accepting it, use **Sign In Again…**.
 
 ## Ollama
 

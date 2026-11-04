@@ -34,6 +34,7 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 - **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing
 - **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
 - **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
+- **[Muse Code](docs/providers.md#muse-code)**: session, weekly
 - **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
 - **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
 - **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
