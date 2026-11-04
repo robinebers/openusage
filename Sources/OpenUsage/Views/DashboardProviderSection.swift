@@ -158,7 +158,7 @@ struct AccountName: View {
                 .font(font)
                 .fixedSize()
         } else {
-            Text(PrivacyModeSetting.accountName(account.provider, isEnabled: privacyMode))
+            AccountNameText(provider: account.provider, privacyMode: privacyMode)
                 .font(font)
                 .lineLimit(1)
                 .truncationMode(account.provider.isNamedByEmail ? .middle : .tail)

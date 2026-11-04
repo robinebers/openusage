@@ -16,7 +16,7 @@ struct AccountListRow<Grip: View>: View {
                     .foregroundStyle(.primary)
                     .layoutPriority(1)
                 if provider.labelBesideName != nil {
-                    Text(PrivacyModeSetting.accountName(provider, isEnabled: privacyMode))
+                    AccountNameText(provider: provider, privacyMode: privacyMode)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)

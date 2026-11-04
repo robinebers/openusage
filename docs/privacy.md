@@ -24,6 +24,8 @@ account names and emails, account initials, hub addresses, sign-in codes and per
 details that may contain personal information. Provider names, plans, and usage stay visible. Copied
 usage pictures and new usage notifications use the same masking.
 
+Account names use a fixed placeholder unrelated to the saved name. Screen readers use “Hidden Account.”
+
 It is off by default and remembers your choice. Clicking or hovering over hidden text never reveals
 it; turn Privacy Mode off to see personal details again. Account renaming is unavailable while it is
 on. Saved accounts, credentials, and refreshes are unchanged.

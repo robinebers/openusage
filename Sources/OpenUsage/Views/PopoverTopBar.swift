@@ -151,7 +151,8 @@ private struct AccountTitle: View {
     var body: some View {
         Group {
             if privacyMode {
-                Text(PrivacyModeSetting.accountName(provider, isEnabled: true))
+                AccountNameText(provider: provider, privacyMode: true)
+                    .foregroundStyle(.secondary)
             } else if let edit = renaming.edit, edit.providerID == provider.id {
                 InlineRenameField(renaming: renaming, edit: edit)
                     .multilineTextAlignment(.center)

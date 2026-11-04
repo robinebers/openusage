@@ -102,7 +102,7 @@ struct PriorityBoardList: View {
                 Text(notice.provider.displayName)
                     .font(.system(size: 13, weight: .semibold))
                 if notice.provider.labelBesideName != nil {
-                    Text(PrivacyModeSetting.accountName(notice.provider, isEnabled: privacyMode))
+                    AccountNameText(provider: notice.provider, privacyMode: privacyMode)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .truncationMode(notice.provider.isNamedByEmail ? .middle : .tail)
@@ -208,7 +208,7 @@ struct PriorityBoardList: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(data.title)
                     .font(.system(size: 13, weight: .medium))
-                Text(PrivacyModeSetting.accountName(provider, isEnabled: privacyMode))
+                AccountNameText(provider: provider, privacyMode: privacyMode)
                     .accessibilityLabel(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -249,7 +249,7 @@ struct PriorityBoardList: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(item.data.title)
                     .font(.system(size: 13))
-                Text(PrivacyModeSetting.accountName(item.provider, isEnabled: privacyMode))
+                AccountNameText(provider: item.provider, privacyMode: privacyMode)
                     .accessibilityLabel(PrivacyModeSetting.fullName(item.provider, isEnabled: privacyMode))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
