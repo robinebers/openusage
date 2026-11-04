@@ -42,7 +42,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
                 ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
             return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
         }
-        let subtitles = ["This much left or less turns orange", "This much left or less turns red", "Will run out before it resets"]
+        let subtitles = ["Turns a limit orange", "Turns a limit red", "Will run out before it resets"]
         try await waitUntil { Set(subtitles).isSubset(of: texts(in: host)) }
         XCTAssertEqual(texts(in: host).filter(subtitles.contains), subtitles, "each Priority Limits row says what it does under its title")
     }

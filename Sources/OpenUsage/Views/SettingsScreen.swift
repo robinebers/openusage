@@ -95,9 +95,9 @@ struct SettingsScreen: View {
             SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
         }
         Section("Priority Limits") {
-            levelPicker("Warning", subtitle: "This much left or less turns orange", severity: .warning,
+            levelPicker("Warning", subtitle: "Turns a limit orange", severity: .warning,
                         selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
-            levelPicker("Critical", subtitle: "This much left or less turns red", severity: .critical,
+            levelPicker("Critical", subtitle: "Turns a limit red", severity: .critical,
                         selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
             Toggle(isOn: $dataStore.showsBurningFast) {
                 limitLabel("Burning Fast", subtitle: "Will run out before it resets") {
