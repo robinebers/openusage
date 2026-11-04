@@ -133,7 +133,7 @@ final class ProviderLoginTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case "/oauth2/device/code":
-                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","verification_uri_complete":"","expires_in":600,"interval":1}"#)
+                Self.response(#"{"device_code":"device","user_code":"GROK-CODE","verification_uri":"https://auth.x.ai/activate","verification_uri_complete":"https:/activate","expires_in":600,"interval":1}"#)
             case "/oauth2/token":
                 Self.response("""
                 {"access_token":"\(accessToken)","refresh_token":"grok-refresh","expires_in":3600}
