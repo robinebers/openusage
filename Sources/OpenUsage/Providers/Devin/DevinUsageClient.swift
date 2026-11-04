@@ -7,10 +7,6 @@ struct DevinUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchUserStatus(_ tokens: OAuthTokens) async throws -> HTTPResponse {
         let apiServerURL = tokens.extras[Self.apiServerURLKey].flatMap { URL(string: $0) } ?? Self.defaultAPIServerURL
         let body: [String: Any] = [

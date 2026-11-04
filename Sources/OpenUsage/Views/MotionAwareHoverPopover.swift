@@ -26,11 +26,7 @@ private struct MotionAwareHoverPopoverModifier<PopoverContent: View>: ViewModifi
     func body(content: Content) -> some View {
         if reduceAnimations {
             content.background {
-                ReducedMotionPopoverPresenter(
-                    isPresented: $isPresented,
-                    reduceAnimations: reduceAnimations,
-                    popoverContent: popoverContent
-                )
+                ReducedMotionPopoverPresenter(isPresented: $isPresented, popoverContent: popoverContent)
             }
         } else {
             content.popover(isPresented: $isPresented, arrowEdge: .top, content: popoverContent)
@@ -40,7 +36,6 @@ private struct MotionAwareHoverPopoverModifier<PopoverContent: View>: ViewModifi
 
 private struct ReducedMotionPopoverPresenter<PopoverContent: View>: NSViewRepresentable {
     @Binding var isPresented: Bool
-    let reduceAnimations: Bool
     @ViewBuilder let popoverContent: () -> PopoverContent
 
     func makeCoordinator() -> ReducedMotionPopoverController {
@@ -58,11 +53,7 @@ private struct ReducedMotionPopoverPresenter<PopoverContent: View>: NSViewRepres
 
     func updateNSView(_ nsView: PopoverAnchorView, context: Context) {
         context.coordinator.isPresented = $isPresented
-        context.coordinator.update(
-            content: AnyView(popoverContent()),
-            reduceAnimations: reduceAnimations,
-            anchor: nsView
-        )
+        context.coordinator.update(content: AnyView(popoverContent()), anchor: nsView)
     }
 
     static func dismantleNSView(_ nsView: PopoverAnchorView, coordinator: ReducedMotionPopoverController) {
@@ -106,8 +97,8 @@ final class ReducedMotionPopoverController: NSObject, NSPopoverDelegate {
         Self.live.add(self)
     }
 
-    func update(content: AnyView, reduceAnimations: Bool, anchor: NSView) {
-        host.rootView = AnyView(content.animationReduction(reduceAnimations))
+    func update(content: AnyView, anchor: NSView) {
+        host.rootView = AnyView(content.animationReduction(true))
         guard isPresented.wrappedValue else {
             synchronize(with: anchor)
             return

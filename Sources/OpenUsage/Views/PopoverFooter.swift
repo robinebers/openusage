@@ -8,7 +8,6 @@ struct PopoverFooter: View {
     @Environment(UpdaterController.self) private var updater
     @Environment(\.colorScheme) private var colorScheme
     let screen: PopoverScreen
-    let horizontalPadding: CGFloat
 
     @ViewBuilder
     var body: some View {
@@ -28,7 +27,7 @@ struct PopoverFooter: View {
             }
         }
         .frame(minHeight: 26)
-        .padding(.horizontal, horizontalPadding)
+        .padding(.horizontal, PanelMetrics.margin)
         .padding(.top, DashboardContentView.barGap)
         .padding(.bottom, PanelMetrics.margin)
         .frame(maxWidth: .infinity)

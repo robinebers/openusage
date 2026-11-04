@@ -39,7 +39,7 @@ final class UpdateControlsTests: QuietWindowTestCase {
     /// menu's tracking loop, so the menu closes itself on that loop's next pass.
     private func optionsMenuItems(updater: UpdaterController) async throws -> [NSMenuItem] {
         let container = testContainer()
-        let footer = PopoverFooter(screen: .dashboard, horizontalPadding: PanelMetrics.margin)
+        let footer = PopoverFooter(screen: .dashboard)
             .frame(width: PanelMetrics.width)
             .environment(container)
             .environment(container.layout)

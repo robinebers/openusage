@@ -266,7 +266,6 @@ private final class TooltipPresenter {
 @MainActor
 enum HoverTooltips {
     static func dismissAll() { TooltipPresenter.shared.dismissAll() }
-    static var visibleText: String? { TooltipPresenter.shared.shownText }
 }
 
 private final class NonKeyPanel: NSPanel {

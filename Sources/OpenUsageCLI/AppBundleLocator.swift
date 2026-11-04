@@ -6,13 +6,8 @@ struct AppBundleLocator: Sendable {
     let version: String?
 
     static func locate(
-        executableURL: URL = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0]),
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        executableURL: URL = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
     ) -> AppBundleLocator {
-        if let suite = environment["OPENUSAGE_DEFAULTS_SUITE"], !suite.isEmpty {
-            return AppBundleLocator(bundleIdentifier: suite, version: nil)
-        }
-
         if let appURL = ContainingAppBundle.url(for: executableURL),
            let info = NSDictionary(contentsOf: appURL.appendingPathComponent("Contents/Info.plist")),
            let bundleIdentifier = info["CFBundleIdentifier"] as? String {

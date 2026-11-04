@@ -22,7 +22,6 @@ struct DashboardView: View {
     /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
     /// view tree alive after the first visit so later screen switches don't rebuild those controls.
     private static let reorderSpace = "popoverReorderSpace"
-    private static let topBarHeight: CGFloat = 36
 
     var body: some View {
         @Bindable var popover = popover
@@ -30,7 +29,7 @@ struct DashboardView: View {
             .frame(width: PanelMetrics.width)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.panelBody)
-            .drivesPanelHeight(animatedHeight)
+            .modifier(PanelHeightModifier(height: animatedHeight))
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
                     ReorderLiftPreview(lift: reorderLift)
@@ -141,8 +140,6 @@ struct DashboardView: View {
     }
 
     private func resetTransientState() {
-        HoverTooltips.dismissAll()
-        HoverPopoverState.dismissAll()
         container.renaming.commit()
         popover.reset()
         reorderLift = nil
@@ -266,15 +263,11 @@ struct DashboardView: View {
             }
             .panelBars {
                 if includeChrome {
-                    PopoverTopBar(
-                        screen: screen,
-                        height: Self.topBarHeight,
-                        horizontalPadding: PanelMetrics.margin
-                    )
+                    PopoverTopBar(screen: screen)
                 }
             } bottom: {
                 if includeChrome {
-                    PopoverFooter(screen: screen, horizontalPadding: PanelMetrics.margin)
+                    PopoverFooter(screen: screen)
                 }
             }
     }

@@ -8,10 +8,6 @@ struct ZAIUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func fetchSubscription(apiKey: String) async throws -> HTTPResponse {
         try await get(Self.subscriptionURL, apiKey: apiKey)
     }
