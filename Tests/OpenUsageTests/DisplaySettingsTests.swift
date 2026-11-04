@@ -6,6 +6,8 @@ import XCTest
 @MainActor
 final class DisplaySettingsTests: QuietWindowTestCase {
     func testPriorityIconsLeadsTheDisplayTab() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
         let defaults = isolatedDefaults()
         let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         container.popover.screen = .settings
@@ -19,15 +21,18 @@ final class DisplaySettingsTests: QuietWindowTestCase {
             .environment(UpdaterController())
         let (window, host) = show(settings, size: CGSize(width: PanelMetrics.width, height: 900))
         defer { window.close() }
-        func popUps(in view: NSView) -> [NSPopUpButton] {
-            [view as? NSPopUpButton].compactMap { $0 } + view.subviews.flatMap(popUps)
+        func headingsAndPickers(in element: Any) -> [String] {
+            guard let node = element as? NSObject else { return [] }
+            let entry: String? = switch node.value(forKey: "accessibilityRole") as? String {
+            case "AXHeading": node.value(forKey: "accessibilityLabel") as? String
+            case NSAccessibility.Role.popUpButton.rawValue: node.value(forKey: "accessibilityValue") as? String
+            default: nil
+            }
+            return [entry].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(headingsAndPickers)
         }
-        try await waitUntil {
-            host.layoutSubtreeIfNeeded()
-            return popUps(in: host).count == 5
-        }
-        let topDown = popUps(in: host).sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
-        XCTAssertEqual(topDown.prefix(2).map(\.title), [container.dataStore.menuBarLimit.label, AppearanceSetting.system.label],
-                       "Show In Menu Bar, then Appearance's Theme")
+        try await waitUntil { headingsAndPickers(in: host).count >= 4 }
+        XCTAssertEqual(headingsAndPickers(in: host).prefix(4),
+                       ["Priority Icons", container.dataStore.menuBarLimit.label, "Appearance", AppearanceSetting.system.label],
+                       "Priority Icons and its Show In Menu Bar picker, then Appearance and its Theme picker")
     }
 }
