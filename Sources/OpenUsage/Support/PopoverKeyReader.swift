@@ -57,7 +57,7 @@ struct PopoverKeyReader: NSViewRepresentable {
                 let consumed = MainActor.assumeIsolated { () -> Bool in
                     guard let self, let reader = self.reader, let window = self.window, window.isVisible else { return false }
                     guard eventWindow === window else { return false }
-                    if window.firstResponder is NSText || ShortcutRecorderField.isRecordingActive {
+                    if window.firstResponder is NSText {
                         return false
                     }
                     if reader.onKey(key) { return true }

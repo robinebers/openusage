@@ -62,6 +62,31 @@ class MenuBarPanel: NSPanel {
         }
         super.sendEvent(event)
     }
+
+    /// Settings stays mounted offscreen after its first visit, where its shortcut recorder is disabled.
+    /// A disabled recorder still accepts focus, and then records the next key press as the global
+    /// shortcut, so the panel refuses to focus it.
+    override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+        if let recorder = responder as? KeyboardShortcuts.RecorderCocoa, !recorder.isEnabled { return false }
+        return super.makeFirstResponder(responder)
+    }
+
+    /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
+    /// Used/Left + reset toggles) doesn't keep the system focus ring lingering as a stray outline:
+    /// AppKit leaves the control first responder until focus moves, which a click on empty space or a
+    /// close otherwise never does. Skips a live text field, whose focus is the user's intent, but not the
+    /// shortcut recorder: AppKit can focus it without a click, and then it records the next key press.
+    func clearStrayFocus() {
+        guard focusedShortcutRecorder != nil || !(firstResponder is NSText) else { return }
+        makeFirstResponder(nil)
+    }
+}
+
+extension NSWindow {
+    /// The shortcut recorder whose field editor holds the keyboard, while one is recording.
+    var focusedShortcutRecorder: KeyboardShortcuts.RecorderCocoa? {
+        (firstResponder as? NSTextView)?.delegate as? KeyboardShortcuts.RecorderCocoa
+    }
 }
 
 /// Owns the menu-bar status item and the panel that shows the dashboard.
@@ -83,7 +108,7 @@ final class StatusItemController: NSObject {
         panel: panel,
         statusItem: statusItem,
         isMorphing: { [weak self] in self?.heightController.isMorphing ?? false },
-        onInsidePanelClick: { [weak self] in self?.clearStrayFocus() },
+        onInsidePanelClick: { [weak self] in self?.panel.clearStrayFocus() },
         onDismiss: { [weak self] in self?.hidePanel() }
     )
     private let host: NSHostingView<AnyView>
@@ -276,7 +301,7 @@ final class StatusItemController: NSObject {
         host.layoutSubtreeIfNeeded()
 
         panel.makeKeyAndOrderFront(nil)
-        clearStrayFocus()
+        panel.clearStrayFocus()
         button.highlight(true)
         outsideClickMonitor.start()
     }
@@ -285,24 +310,13 @@ final class StatusItemController: NSObject {
         HoverTooltips.dismissAll()
         HoverPopoverState.dismissAll()
         ReducedMotionPopoverController.dismissAll()
-        clearStrayFocus()
+        panel.clearStrayFocus()
         heightController.saveBeforeClosing()
         container.popover.popoverShown = false
         panel.orderOut(nil)
         outsideClickMonitor.stop()
         statusItem.button?.highlight(false)
         heightController.finishClosing()
-    }
-
-    /// Drops keyboard focus inside the panel so a clicked plain-styled control (a metric row's
-    /// Used/Left + reset toggles) doesn't keep the system focus ring lingering as a stray outline:
-    /// AppKit leaves the control first responder until focus moves, which a click on empty space or a
-    /// close otherwise never does. Skips a live text field / shortcut recorder, whose focus is the
-    /// user's intent — mirrors the `NSText` guard `PopoverKeyReader` uses for the same reason.
-    private func clearStrayFocus() {
-        guard !ShortcutRecorderField.isRecordingActive,
-              !(panel.firstResponder is NSText) else { return }
-        panel.makeFirstResponder(nil)
     }
 
 }

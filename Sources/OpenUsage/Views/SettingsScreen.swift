@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsScreen: View {
@@ -56,7 +57,8 @@ struct SettingsScreen: View {
             ))
             picker("Default Tab", selection: $defaultTab, options: DashboardTab.allCases.map { ($0, $0.label) })
             LabeledContent("Global Shortcut") {
-                ShortcutRecorderField(name: .togglePopover, isVisible: popover.screen == .settings)
+                KeyboardShortcuts.Recorder(for: .togglePopover)
+                    .disabled(popover.screen != .settings)
             }
         } footer: {
             if let errorMessage = launchAtLogin.errorMessage {
