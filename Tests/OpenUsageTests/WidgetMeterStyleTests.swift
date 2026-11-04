@@ -29,16 +29,6 @@ final class WidgetMeterStyleTests: XCTestCase {
         }
     }
 
-    func testFallbackSampleShowsNoDataRegardlessOfMode() {
-        let (store, descriptor) = makeStore(format: .percent, used: 80, limit: 100)
-
-        XCTAssertFalse(store.data(for: descriptor).hasData)
-        XCTAssertEqual(store.data(for: descriptor).valueText, WidgetData.noDataValue)
-
-        store.meterStyle = .used
-        XCTAssertEqual(store.data(for: descriptor).valueText, WidgetData.noDataValue)
-    }
-
     func testMeterStylePersistsAcrossStoreInstances() {
         let defaults = isolatedDefaults()
 

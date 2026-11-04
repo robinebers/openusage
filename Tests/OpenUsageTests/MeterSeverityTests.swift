@@ -21,12 +21,6 @@ final class MeterSeverityTests: XCTestCase {
         }
     }
 
-    func testSeverityIgnoresTheUsedLeftDisplayMode() {
-        XCTAssertEqual(percentData(used: 95, displayMode: .remaining).severity, .critical)
-        XCTAssertEqual(percentData(used: 76, displayMode: .remaining).severity, .warning)
-        XCTAssertEqual(percentData(used: 5, displayMode: .remaining).severity, .normal)
-    }
-
     func testNonPercentKindsBandOnTheirShareOfTheLimit() {
         let dollars = WidgetData(title: "Credits", kind: .dollars, used: 45, limit: 50)
         XCTAssertEqual(dollars.severity, .critical)

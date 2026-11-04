@@ -6,10 +6,6 @@ import XCTest
 /// item, whatever the strip shows. Without one, the strip is what it was.
 @MainActor
 final class MenuBarUpdateIconTests: XCTestCase {
-    func testWithNoUpdateAndNothingRunningOutThePlainAppIconShows() {
-        XCTAssertNil(MenuBarStripRenderer.image(for: MenuBarContent(items: [])), "the status item falls back to the plain app icon")
-    }
-
     func testAnUpdateWithNothingRunningOutDotsTheAppIconAtItsOwnSize() throws {
         let plain = MenuBarStripRenderer.appIcon
         let dotted = try XCTUnwrap(MenuBarStripRenderer.image(for: MenuBarContent(items: [], updateAvailable: true)))

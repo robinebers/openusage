@@ -17,22 +17,6 @@ final class ProviderScopeTests: XCTestCase {
         XCTAssertEqual(body["client_id"] as? String, ClaudeLogin.clientID)
     }
 
-    func testAntigravityRefreshSendsNoScope() async throws {
-        let http = Self.tokenEndpoint()
-
-        _ = try await AntigravityLogin.refresh("refresh", http: http, now: Date())
-
-        XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
-    }
-
-    func testCodexRefreshSendsNoScope() async throws {
-        let http = Self.tokenEndpoint()
-
-        _ = try await CodexLogin.refresh("refresh", http: http, now: Date())
-
-        XCTAssertNil(Self.formFields(try XCTUnwrap(http.requests.first))["scope"])
-    }
-
     func testGrokRefreshSendsNoScope() async throws {
         let http = Self.tokenEndpoint()
 

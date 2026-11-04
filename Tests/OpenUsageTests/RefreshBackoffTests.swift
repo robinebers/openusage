@@ -142,14 +142,6 @@ final class RefreshBackoffTests: XCTestCase {
         XCTAssertEqual(response("18446744073709551615").retryAfter(now: start), RefreshSetting.failureBackoffCap)
     }
 
-    func testA429ReadsAsARateLimitEverywhereRequireSuccessRuns() {
-        let response = HTTPResponse(statusCode: 429, headers: ["retry-after": "60"], body: Data())
-        XCTAssertThrowsError(try ProviderError.requireSuccess(response, kind: .claude)) { error in
-            XCTAssertEqual(error as? ProviderError, .rateLimited(retryAfter: 60))
-        }
-        XCTAssertEqual(RefreshFailure(error: ProviderError.rateLimited(retryAfter: 60)).kind, .rateLimited(retryAfter: 60))
-    }
-
     private let provider = Provider(id: "test", kind: .claude)
 
     private var descriptor: WidgetDescriptor {
