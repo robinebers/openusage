@@ -12,6 +12,10 @@
   Critical (red), for the colors, Running Out, the menu bar, and the alerts. The alerts are now named
   Warning and Critical.
 
+### Changed
+- Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of
+  staying under **Pinned** as an empty ring.
+
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $
   ([#1425](https://github.com/robinebers/openusage/issues/1425)).

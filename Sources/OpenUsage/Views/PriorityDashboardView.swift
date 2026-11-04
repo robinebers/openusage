@@ -121,7 +121,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Pinned")
             ForEach(board.pinned) { pin in
-                limitRow(pin.provider, pin.data, severity: pin.severity)
+                limitRow(pin.provider, pin.data, severity: .normal)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { pinMenu(pin.id, pinned: true) }
@@ -149,7 +149,7 @@ struct PriorityBoardList: View {
                 usedUpRow(item)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(item.id, pinned: false) }
+                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
             }
         }
         .opacity(0.5)

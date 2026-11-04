@@ -51,7 +51,7 @@ struct PriorityItem: Identifiable {
     let provider: Provider
     let line: DashboardLine
     let reason: Reason
-    /// The user pinned it. Only an item that is running out is listed while pinned, under Running Out instead of Pinned.
+    /// The user pinned it. A pinned item is listed under Running Out or Used Up instead of Pinned.
     let isPinned: Bool
 
     var id: String { line.id }
@@ -64,12 +64,10 @@ struct PriorityItem: Identifiable {
     }
 }
 
-/// A metric the user pinned to the top of Priority, listed there whatever its reading.
+/// A metric the user pinned to the top of Priority, listed there while it isn't running out or used up.
 struct PinnedMetric: Identifiable {
     let provider: Provider
     let line: DashboardLine
-    /// Its color as Priority would list it, so an empty balance stays red.
-    let severity: WidgetData.MeterSeverity
 
     var id: String { line.id }
     var data: WidgetData { line.data }
@@ -95,8 +93,8 @@ struct PriorityBoard {
         var id: String { provider.id }
     }
 
-    /// In dashboard order. A pinned metric that is running out is listed only under Running Out, and comes
-    /// back here once it isn't. A used-up one stays here and is never listed again under Used Up.
+    /// In dashboard order. A pinned metric that is running out or used up is listed only under Running Out
+    /// or Used Up, and comes back here once it isn't.
     let pinned: [PinnedMetric]
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
@@ -152,14 +150,11 @@ struct PriorityBoard {
         } else {
             .noReportedLimits
         }
-        let attention = ranked.filter { !$0.reason.isUsedUp }
-        let runningOut = Set(attention.map(\.id))
+        let listed = Set(ranked.map(\.id))
         return PriorityBoard(
-            pinned: lines.filter { pinnedIDs.contains($0.1.id) && !runningOut.contains($0.1.id) }.map { provider, line in
-                PinnedMetric(provider: provider, line: line, severity: PriorityItem.Reason(line, now: now)?.severity ?? .normal)
-            },
-            attention: attention,
-            usedUp: ranked.filter { $0.reason.isUsedUp && !$0.isPinned },
+            pinned: lines.filter { pinnedIDs.contains($0.1.id) && !listed.contains($0.1.id) }.map(PinnedMetric.init),
+            attention: ranked.filter { !$0.reason.isUsedUp },
+            usedUp: ranked.filter(\.reason.isUsedUp),
             notices: notices, waiting: waiting, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
         )
