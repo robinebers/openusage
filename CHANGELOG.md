@@ -20,6 +20,8 @@
 ### Changed
 - Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of
   staying under **Pinned** as an empty ring.
+- **Settings → General → Global Shortcut** uses the standard macOS shortcut recorder, and a usage
+  range with no data shows the provider's mark gently pulsing instead of breathing rings.
 
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $

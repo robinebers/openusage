@@ -101,7 +101,14 @@ struct UsageBreakdownContent: View {
         VStack(alignment: .leading, spacing: 6) {
             title
             VStack(spacing: 0) {
-                QuietRings(icon: provider.icon, side: 112, animates: animates)
+                ProviderIcon(id: provider.icon, side: 24, inset: 0.04)
+                    .phaseAnimator(animates ? [0.5, 0.2] : [0.5]) { mark, opacity in
+                        mark.opacity(opacity)
+                    } animation: { _ in
+                        .easeInOut(duration: 2.8)
+                    }
+                    .frame(height: 56)
+                    .accessibilityHidden(true)
                     .padding(.bottom, 12)
                 Text("\(provider.displayName) didn't report any data for this range.")
                     .font(.system(size: 13, weight: .semibold))
@@ -194,45 +201,6 @@ private struct UsageSummary: View {
                     .lineLimit(1)
             }
         }
-    }
-}
-
-/// A provider's mark in soft rings that breathe slowly, for a range with little or nothing to show.
-private struct QuietRings: View {
-    let icon: String
-    let side: CGFloat
-    let animates: Bool
-
-    @State private var breathing = false
-
-    var body: some View {
-        ZStack {
-            ring(0.78, opacity: 0.07, delay: 0.3)
-            ring(1, opacity: 0.04, delay: 0.6)
-            Circle()
-                .fill(.primary.opacity(0.04))
-                .frame(width: side * 0.54, height: side * 0.54)
-                .scaleEffect(breathing ? 1.04 : 1)
-                .animation(breath(delay: 0), value: breathing)
-            ProviderIcon(id: icon, side: side * 0.22, inset: 0.04)
-                .opacity(0.5)
-        }
-        .frame(width: side, height: side)
-        .accessibilityHidden(true)
-        .onAppear { breathing = animates }
-    }
-
-    private func ring(_ fraction: CGFloat, opacity: Double, delay: Double) -> some View {
-        Circle()
-            .stroke(.primary.opacity(opacity), lineWidth: 1)
-            .frame(width: side * fraction - 1, height: side * fraction - 1)
-            .scaleEffect(breathing || !animates ? 1 : 0.94)
-            .opacity(breathing || !animates ? 1 : 0.45)
-            .animation(breath(delay: delay), value: breathing)
-    }
-
-    private func breath(delay: Double) -> Animation? {
-        animates ? .easeInOut(duration: 2.8).repeatForever(autoreverses: true).delay(delay) : nil
     }
 }
 
