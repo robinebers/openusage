@@ -208,16 +208,21 @@ final class ClaudeResetClaimTests: XCTestCase {
     }
 
     func testNoClaimWithoutAClaimableGrant() async throws {
-        let http = makeHTTP(grants: #"{"eligible":false,"ineligible_reason":"tier","grants":[]}"#, claim: { _ in
-            XCTFail("must not claim")
-            return HTTPResponse(statusCode: 500, headers: [:], body: Data())
-        })
-        let runtime = try makeRuntime(http: http)
-        await prime(runtime)
+        for grants in [
+            #"{"eligible":false,"ineligible_reason":"tier","grants":[{"id":"g","resets_left":1}],"next_grant_id":"g"}"#,
+            #"{"eligible":true,"grants":[{"id":"g","resets_left":1}]}"#
+        ] {
+            let http = makeHTTP(grants: grants, claim: { _ in
+                XCTFail("must not claim")
+                return HTTPResponse(statusCode: 500, headers: [:], body: Data())
+            })
+            let runtime = try makeRuntime(http: http)
+            await prime(runtime)
 
-        XCTAssertEqual(runtime.resetClaimService { .refreshed }?.isClaimable, false)
-        let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
-        XCTAssertEqual(outcome, .noCredit)
+            XCTAssertEqual(runtime.resetClaimService { .refreshed }?.isClaimable, false, grants)
+            let outcome = await runtime.claimClaudeResetGrant(redeemRequestID: Self.requestID)
+            XCTAssertEqual(outcome, .noCredit, grants)
+        }
     }
 
     func testMalformedRequestIDIsRefusedBeforeSending() async throws {

@@ -6,9 +6,8 @@ import XCTest
 final class ClaudeResetGrantsTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_790_000_000)
 
-    private func resetsLine(_ json: String, status: Int = 200) throws -> MetricLine? {
-        let response = HTTPResponse(statusCode: status, headers: [:], body: Data(json.utf8))
-        return try ClaudeUsageMapper.mapResetGrantStatus(response)?.line(now: now)
+    private func resetsLine(_ json: String) throws -> MetricLine? {
+        try ClaudeUsageMapper.mapResetGrantStatus(.json(json))?.line(now: now)
     }
 
     private func countAndExpiries(_ line: MetricLine?) -> (Double?, [Date])? {
