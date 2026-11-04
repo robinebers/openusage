@@ -133,8 +133,10 @@ beyond the included pool).
 
 ## Muse Code
 
-- Sign in with a Meta device code. The account takes the email Muse reports.
+- Sign in with a Meta device code. The browser opens with the code filled in. The account takes the
+  email Muse reports.
 - The card shows the Muse Code plan, the 5-hour Session, and the Weekly limit.
+- Muse reports no usage until the plan's first prompt, so both limits read 0% until then.
 - Muse leaves out usage while the 5-hour window is idle, so the card keeps the last values it read.
   A window whose reset has passed reads 0%.
 - A Meta account without a Muse Code subscription has no quota, and the card says so.

@@ -217,7 +217,7 @@ private func deviceAuthorization(
     fields["scope"] = scopes
     let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
-    guard let verificationURL = URL(string: device.verificationURI), verificationURL.scheme == "https" else {
+    guard let verificationURL = URL(string: device.verificationURIComplete ?? device.verificationURI), verificationURL.scheme == "https" else {
         throw LoginError.invalidResponse
     }
     await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))
@@ -244,12 +244,14 @@ private struct DeviceCode: Decodable {
     let deviceCode: String
     let userCode: String
     let verificationURI: String
+    let verificationURIComplete: String?
     let expiresIn: Int
     let interval: TimeInterval?
     enum CodingKeys: String, CodingKey {
         case deviceCode = "device_code"
         case userCode = "user_code"
         case verificationURI = "verification_uri"
+        case verificationURIComplete = "verification_uri_complete"
         case expiresIn = "expires_in"
         case interval
     }

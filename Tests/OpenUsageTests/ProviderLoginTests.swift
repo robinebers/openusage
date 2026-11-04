@@ -163,7 +163,7 @@ final class ProviderLoginTests: XCTestCase {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
             case "/oidc/device/authorization":
-                Self.response(#"{"device_code":"device","user_code":"MUSE-CODE","verification_uri":"https://auth.meta.com/oauth/device/","expires_in":600,"interval":1}"#)
+                Self.response(#"{"device_code":"device","user_code":"MUSE-CODE","verification_uri":"https://auth.meta.com/oauth/device/","verification_uri_complete":"https://auth.meta.com/oauth/device/?code=MUSE-CODE","expires_in":600,"interval":1}"#)
             case "/oidc/device/token":
                 Self.response(#"{"access_token":"dca:muse-access","token_type":"Bearer"}"#)
             case "/muse-code/key":
@@ -185,6 +185,7 @@ final class ProviderLoginTests: XCTestCase {
             extras: [OAuthTokens.identityKey: "muse:muse@example.com"]
         )), "only the dca: token is stored, never the inference key the key read returns")
         XCTAssertEqual(prompt.value?.deviceCode?.userCode, "MUSE-CODE")
+        XCTAssertEqual(prompt.value?.deviceCode?.verificationURL, URL(string: "https://auth.meta.com/oauth/device/?code=MUSE-CODE"), "the browser opens with the code filled in")
         let start = try XCTUnwrap(http.requests.first { $0.url.path == "/oidc/device/authorization" })
         XCTAssertEqual(Self.formBody(start), ["client_id": MuseLogin.clientID], "no scope field at all")
         let token = try XCTUnwrap(http.requests.first { $0.url.path == "/oidc/device/token" })

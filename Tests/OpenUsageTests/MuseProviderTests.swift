@@ -85,11 +85,22 @@ final class MuseProviderTests: XCTestCase {
         _ = try await partial.runtime.refresh().get()
         partial.answer.value = Self.response(200, Self.body(usage: #"{"weekly":{"used_percent":20}}"#))
         let weeklyOnly = try await partial.runtime.refresh().get().lines
-        XCTAssertEqual(weeklyOnly, [.percent("Weekly", 20, periodMs: MetricPeriod.weekMs)], "a reported usage keeps nothing it left out")
+        XCTAssertEqual(weeklyOnly, [
+            .percent("Session", 0, periodMs: MetricPeriod.sessionMs),
+            .percent("Weekly", 20, periodMs: MetricPeriod.weekMs)
+        ], "a reported usage keeps nothing it left out")
+    }
 
-        let fresh = try self.harness(Self.response(200, Self.body()))
-        let unknown = try await fresh.runtime.refresh().get().lines
-        XCTAssertEqual(unknown, [], "nothing known and nothing reported")
+    func testAPlanNotUsedYetShowsSessionAndWeeklyAtZero() async throws {
+        let harness = try harness(Self.response(200, Self.body()))
+
+        let snapshot = try await harness.runtime.refresh().get()
+
+        XCTAssertEqual(snapshot.plan, "Power Usage")
+        XCTAssertEqual(snapshot.lines, [
+            .percent("Session", 0, periodMs: MetricPeriod.sessionMs),
+            .percent("Weekly", 0, periodMs: MetricPeriod.weekMs)
+        ], "Muse reports no usage before the first prompt")
     }
 
     func testUsageOverTheLimitIsKept() async throws {
@@ -97,7 +108,7 @@ final class MuseProviderTests: XCTestCase {
 
         let lines = try await harness.runtime.refresh().get().lines
 
-        XCTAssertEqual(lines, [.percent("Weekly", 130.5, resetsAt: Date(timeIntervalSince1970: 1_794_000_000), periodMs: MetricPeriod.weekMs)])
+        XCTAssertEqual(lines.last, .percent("Weekly", 130.5, resetsAt: Date(timeIntervalSince1970: 1_794_000_000), periodMs: MetricPeriod.weekMs))
     }
 
     func testAnAccountWithoutASubscriptionSaysSo() async throws {
