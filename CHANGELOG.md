@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.2
 
 ### Added
 - Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
