@@ -11,6 +11,7 @@ struct SettingsScreen: View {
     @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
     @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
+    @AppStorage(PaceMilestone.useItOrLoseIt.settingKey) private var useItOrLoseIt = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
@@ -42,7 +43,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if criticalAlert || warningAlert || closeToRunningOut { checkNotificationPermission() }
+                if criticalAlert || warningAlert || closeToRunningOut || useItOrLoseIt { checkNotificationPermission() }
             }
         }
     }
@@ -123,6 +124,7 @@ struct SettingsScreen: View {
             notificationToggle(.critical, isOn: $criticalAlert)
             notificationToggle(.warning, isOn: $warningAlert)
             notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
+            notificationToggle(.useItOrLoseIt, isOn: $useItOrLoseIt)
         } header: {
             Text("Notifications")
         } footer: {

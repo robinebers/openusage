@@ -30,6 +30,7 @@ final class QuotaNotificationEvaluator {
                 state: state,
                 severity: data.severity,
                 resetsAt: data.resetsAt,
+                unusedNearReset: PaceNotificationLogic.isUnusedNearReset(data, now: now),
                 previous: previous
             )
             var next = result.newState
@@ -37,7 +38,7 @@ final class QuotaNotificationEvaluator {
             var levelDelivered = false
             for milestone in result.fire {
                 // A drop past both levels sends the lowest one that's switched on, not both.
-                if levelDelivered, !milestone.isPace {
+                if levelDelivered, milestone.isLevel {
                     next.firedMilestones.insert(milestone)
                     continue
                 }
@@ -45,7 +46,8 @@ final class QuotaNotificationEvaluator {
                     ? await deliver(milestone, data: data, providerID: descriptor.providerID, providerName: providerName)
                     : false
                 if delivered {
-                    if milestone.isPace { paceDelivered = true } else { levelDelivered = true }
+                    if milestone.isPace { paceDelivered = true }
+                    if milestone.isLevel { levelDelivered = true }
                     next.firedMilestones.insert(milestone)
                 }
             }
@@ -53,7 +55,7 @@ final class QuotaNotificationEvaluator {
             if result.fire.contains(where: \.isPace) && !paceDelivered {
                 next.previousBucket = held.previousBucket
             }
-            if result.fire.contains(where: { !$0.isPace }) && !levelDelivered {
+            if result.fire.contains(where: \.isLevel) && !levelDelivered {
                 next.previousSeverity = held.previousSeverity
             }
             if !result.fire.isEmpty {
