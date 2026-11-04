@@ -154,6 +154,17 @@ final class StatusItemController: NSObject {
         panel.onDismiss = { [weak self] in
             self?.hidePanel()
         }
+        configureNotifications()
+
+        heightController.installBridge()
+
+        AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
+    }
+
+    private func configureNotifications() {
+        #if OPENUSAGE_DEVELOPMENT
+        guard !container.isSampleData else { return }
+        #endif
         AppNotifications.shared.registerAsDelegate { [weak self] in
             guard let self else { return }
             container.popover.screen = .dashboard
@@ -166,9 +177,6 @@ final class StatusItemController: NSObject {
             }
         }
 
-        heightController.installBridge()
-
-        AppLog.info(.statusItem, "Status item ready (button: \(self.statusItem.button != nil), shortcut: \(KeyboardShortcuts.getShortcut(for: .togglePopover)?.description ?? "none"))")
     }
 
     private func configurePanel() {

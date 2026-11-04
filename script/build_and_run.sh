@@ -10,10 +10,13 @@ set -euo pipefail
 #     com.robinebers.openusage below;
 #   - ships no Sparkle feed, so it never checks for or installs updates (test updates with a real
 #     signed + notarized release build — that's the only honest way).
+#   - includes the development-only Sample Data switch and a signed sibling demo app. Production
+#     release builds never receive the compile flag or the sibling app.
 #
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
+#        BUNDLE_ID          defaults to com.robinebers.openusage.dev; other identities omit demo code
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -21,6 +24,16 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+NORMAL_DEV_BUNDLE_ID="com.robinebers.openusage.dev"
+DEMO_BUNDLE_ID="com.robinebers.openusage.dev.demo"
+REQUESTED_BUNDLE_ID="$BUNDLE_ID"
+DEVELOPMENT_BUILD=false
+case "$BUNDLE_ID" in
+  "$NORMAL_DEV_BUNDLE_ID"|"$DEMO_BUNDLE_ID")
+    DEVELOPMENT_BUILD=true
+    BUNDLE_ID="$NORMAL_DEV_BUNDLE_ID"
+    ;;
+esac
 MIN_SYSTEM_VERSION="15.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,16 +48,35 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$TARGET_NAME"
+DEMO_APP_BUNDLE="$DIST_DIR/OpenUsage Demo.app"
+DEMO_APP_BINARY="$DEMO_APP_BUNDLE/Contents/MacOS/$TARGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 
-# Stop only the dev build staged here, never an installed OpenUsage with the same executable name.
-pkill -f "^$APP_BINARY" >/dev/null 2>&1 || true
+# Match the executable path, not a regular expression or the shared process name. This never stops
+# an installed OpenUsage or a build from another checkout.
+stop_staged_app() {
+  local binary="$1"
+  local pid
+  for pid in $(pgrep -x "$TARGET_NAME" || true); do
+    if [ "$(ps -o comm= -p "$pid" 2>/dev/null)" = "$binary" ]; then
+      kill "$pid" 2>/dev/null || true
+    fi
+  done
+}
+stop_staged_app "$APP_BINARY"
+if "$DEVELOPMENT_BUILD"; then stop_staged_app "$DEMO_APP_BINARY"; fi
 
 echo "==> swift build ($CONFIG)"
-swift build -c "$CONFIG"
-BUILD_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+BUILD_ARGS=(-c "$CONFIG")
+BUILD_ARTIFACTS="$ROOT_DIR/.build/artifacts"
+if "$DEVELOPMENT_BUILD"; then
+  BUILD_ARGS+=(--scratch-path "$ROOT_DIR/.build/development" -Xswiftc -DOPENUSAGE_DEVELOPMENT)
+  BUILD_ARTIFACTS="$ROOT_DIR/.build/development/artifacts"
+fi
+swift build "${BUILD_ARGS[@]}"
+BUILD_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$TARGET_NAME"
 BUILD_CLI_BINARY="$BUILD_DIR/openusage-cli"
 
@@ -152,7 +184,7 @@ fi
 # Embed + sign Sparkle.framework before sealing the app. The executable links Sparkle, so without the
 # embedded framework the build would fail to launch — even though the updater stays dormant here (no
 # SUFeedURL in the Info.plist above; see UpdaterController).
-"$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime"
+"$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime" "$BUILD_ARTIFACTS"
 
 if [ -n "$CODESIGN_IDENTITY" ]; then
   /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$CLI_BINARY" >/dev/null
@@ -168,24 +200,55 @@ else
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
 fi
 
+if "$DEVELOPMENT_BUILD"; then
+  echo "==> staging $DEMO_APP_BUNDLE"
+  rm -rf "$DEMO_APP_BUNDLE"
+  ditto "$APP_BUNDLE" "$DEMO_APP_BUNDLE"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $DEMO_BUNDLE_ID" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  if [ -n "$CODESIGN_IDENTITY" ]; then
+    /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+      --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+  else
+    /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+  fi
+fi
+
+LAUNCH_BUNDLE="$APP_BUNDLE"
+LAUNCH_BINARY="$APP_BINARY"
+LAUNCH_DISPLAY="$APP_DISPLAY"
+LAUNCH_BUNDLE_ID="$BUNDLE_ID"
+if [ "$REQUESTED_BUNDLE_ID" = "$DEMO_BUNDLE_ID" ]; then
+  LAUNCH_BUNDLE="$DEMO_APP_BUNDLE"
+  LAUNCH_BINARY="$DEMO_APP_BINARY"
+  LAUNCH_DISPLAY="OpenUsage Demo"
+  LAUNCH_BUNDLE_ID="$DEMO_BUNDLE_ID"
+fi
+
 launch_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  if [ "$LAUNCH_BUNDLE_ID" = "$DEMO_BUNDLE_ID" ]; then
+    /usr/bin/open -n "$LAUNCH_BUNDLE" --args --demo-data
+  else
+    /usr/bin/open -n "$LAUNCH_BUNDLE"
+  fi
 }
 
 # Every build with this bundle id shares one single-instance lock, so the copy launched here hands off
 # to one already running from another folder and quits.
 confirm_launch() {
   sleep 1
-  pgrep -f "^$APP_BINARY" >/dev/null && return
-  for pid in $(pgrep -x "$TARGET_NAME"); do
-    running="$(ps -o comm= -p "$pid")"
+  local pid running
+  for pid in $(pgrep -x "$TARGET_NAME" || true); do
+    running="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
+    [ "$running" = "$LAUNCH_BINARY" ] && return
     running="${running%/Contents/MacOS/$TARGET_NAME}"
-    if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$BUNDLE_ID" ]; then
-      echo "error: dist/$APP_DISPLAY.app quit because another $BUNDLE_ID build is running: $running" >&2
+    if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$LAUNCH_BUNDLE_ID" ]; then
+      echo "error: dist/$LAUNCH_DISPLAY.app quit because another $LAUNCH_BUNDLE_ID build is running: $running" >&2
       exit 1
     fi
   done
-  echo "error: dist/$APP_DISPLAY.app is not running" >&2
+  echo "error: dist/$LAUNCH_DISPLAY.app is not running" >&2
   exit 1
 }
 
@@ -193,7 +256,7 @@ case "$MODE" in
   run|verify)
     launch_app
     confirm_launch
-    echo "==> launched $APP_DISPLAY (dist/$APP_DISPLAY.app)"
+    echo "==> launched $LAUNCH_DISPLAY (dist/$LAUNCH_DISPLAY.app)"
     ;;
   build)
     : # build + stage + sign only

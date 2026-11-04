@@ -36,10 +36,15 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
-            .sheet(isPresented: $popover.isAddingAccount, onDismiss: { popover.signingInAgainProviderID = nil }) {
+            .sheet(isPresented: accountSheetPresentation, onDismiss: { popover.signingInAgainProviderID = nil }) {
                 AddAccountSheet(flow: AddAccountFlow(
                     store: container.accounts,
-                    connectHub: { url, key in try await container.hubs.connect(url: url, key: key) },
+                    connectHub: { url, key in
+                        #if OPENUSAGE_DEVELOPMENT
+                        try container.requireAccountConnections()
+                        #endif
+                        try await container.hubs.connect(url: url, key: key)
+                    },
                     replaceCredential: { credential, id in try await container.signInAgain(credential, for: id) },
                     signingInAgainTo: popover.signingInAgainProviderID.flatMap(container.accounts.account(cardID:))
                 ))
@@ -146,6 +151,18 @@ struct DashboardView: View {
         animatedHeight = 0
         didEstablishHeight = false
         dashboardScrollPosition.scrollTo(edge: .top)
+    }
+
+    private var accountSheetPresentation: Binding<Bool> {
+        Binding(
+            get: {
+                #if OPENUSAGE_DEVELOPMENT
+                if container.isSampleData { return false }
+                #endif
+                return popover.isAddingAccount
+            },
+            set: { popover.isAddingAccount = $0 }
+        )
     }
 
     /// Why an offset and not a SwiftUI `.transition`: the cards' fill is translucent `.quaternary`

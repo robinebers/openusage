@@ -97,6 +97,11 @@ script/test_quiet.sh        # run the tests without them taking the keyboard or 
 `script/test_quiet.sh` takes `swift test` arguments such as `--filter`. The dev app has its own
 bundle identifier, so it runs beside an installed OpenUsage. See [debugging](docs/debugging.md).
 
+To explore the UI without signing in, turn on **Settings → Advanced → Development → Sample Data**
+in the local dev app. It restarts with sample accounts for every provider, then resets them at each
+demo launch. [Sample Data](docs/debugging.md#sample-data-development-only) is compiled out of releases
+and downloaded Test Build DMGs.
+
 To learn the code, read the [architecture overview](docs/architecture.md),
 [adding a provider](docs/adding-a-provider.md), and [AGENTS.md](AGENTS.md).
 

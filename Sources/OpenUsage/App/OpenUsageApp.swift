@@ -30,15 +30,33 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         NSApp.disableRelaunchOnLogin()
+        #if OPENUSAGE_DEVELOPMENT
+        do {
+            if try DemoSession.requested(bundleIdentifier: Bundle.main.bundleIdentifier, arguments: ProcessInfo.processInfo.arguments) {
+                let container = try DemoSession.makeContainer(defaults: .standard, resetDomain: DevelopmentDataMode.demoBundleID)
+                AppearanceSetting.applyCurrent()
+                start(container)
+                return
+            }
+        } catch {
+            NSApp.presentError(error)
+            NSApp.terminate(nil)
+            return
+        }
+        #endif
         AppearanceSetting.applyCurrent()
         let container = AppContainer(telemetry: PostHogTelemetrySink(), telemetryDefaults: TelemetryRecorder.suite)
+        start(container)
+        Task { await APIKeyV1Files.importOnce(into: container.accounts) }
+        updater.start()
+    }
+
+    private func start(_ container: AppContainer) {
         self.container = container
         container.startRefreshing()
-        Task { await APIKeyV1Files.importOnce(into: container.accounts) }
         statusItemController = StatusItemController(container: container, updater: updater)
         let launchDurationMS = Int((ProcessInfo.processInfo.systemUptime - processStartedAt) * 1_000)
         AppLog.info(.lifecycle, "launch to status item ready: \(launchDurationMS) ms")
-        updater.start()
     }
 
     public func applicationWillTerminate(_ notification: Notification) {

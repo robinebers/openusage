@@ -14,6 +14,26 @@
 - Only one dev build runs at a time. If one from another folder is running, `run` and `verify` fail
   and print its path.
 
+## Sample Data (Development Only)
+
+The local build script stages `dist/OpenUsage.app` and `dist/OpenUsage Demo.app`. In the normal dev
+app, turn on **Settings → Advanced → Development → Sample Data**. The switch restarts in the isolated
+demo app, with 15 sample accounts covering all 12 providers, an organization, and a hub. Turn it off
+to restart the normal dev app with its existing accounts and settings.
+
+- The demo uses `com.robinebers.openusage.dev.demo` and memory-only credential vaults. It never reads
+  or changes the normal dev app's or installed app's accounts, settings, or Keychain items.
+- Refresh, rename, reorder, hide, pin, and remove work on sample data. The demo's accounts, layout,
+  and settings reset at each demo launch.
+- The demo makes no provider or hub API calls and does not sign in, send telemetry, or run updates.
+  Notifications, credential changes, and system integration controls are unavailable.
+- The script passes `OPENUSAGE_DEVELOPMENT` only for local development identities. Production builds
+  exclude the fixtures, switch, and activation code. Releases and the downloaded Test Build DMGs do
+  not include Sample Data.
+
+Rebuild with `./script/build_and_run.sh verify` if either app is missing. The switch starts the other
+app before quitting the current one; a launch failure leaves the current app running.
+
 ## Read the logs
 
 OpenUsage logs through unified logging under the subsystem `OpenUsage`, with categories such as
@@ -36,6 +56,7 @@ log show --last 2h --predicate 'subsystem == "OpenUsage" AND category == "refres
 ```sh
 script/test_quiet.sh
 script/test_quiet.sh --filter CursorTokenRefreshTests
+script/test_quiet.sh -Xswiftc -DOPENUSAGE_DEVELOPMENT --filter 'DevelopmentDemoTests|DevelopmentDataModeTests'
 ```
 
 The script runs the suite niced, keeps it from taking the keyboard or the screen, and fails the run if
