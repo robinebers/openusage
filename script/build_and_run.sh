@@ -37,7 +37,6 @@ APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$TARGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
-RESOURCE_BUNDLE_NAME="${TARGET_NAME}_${TARGET_NAME}.bundle"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 
 # Stop only the dev build staged here, never an installed OpenUsage with the same executable name.
@@ -191,7 +190,7 @@ confirm_launch() {
 }
 
 case "$MODE" in
-  run)
+  run|verify)
     launch_app
     confirm_launch
     echo "==> launched $APP_DISPLAY (dist/$APP_DISPLAY.app)"
@@ -202,11 +201,6 @@ case "$MODE" in
   logs)
     launch_app
     /usr/bin/log stream --info --style compact --predicate "process == \"$TARGET_NAME\""
-    ;;
-  verify)
-    launch_app
-    confirm_launch
-    echo "==> running"
     ;;
   *)
     echo "usage: $0 [run|build|logs|verify]" >&2
