@@ -46,6 +46,8 @@ All off by default. Turning the first one on asks macOS for permission.
 - **Warning.** A limit drops to its Warning level or less left (30% by default).
 - **Will Run Out.** A limit may run out before its reset. After it fires, it waits until the limit's
   pace eases to 90% of the limit before it can fire again.
+- **Use It or Lose It.** A limit resets within 24 hours with over 50% left. Only for windows longer
+  than a day, such as weekly and monthly limits, never the 5-hour session or a dollar spending cap.
 
 Each fires once per metric per reset window. Click one to open All Usage.
 
