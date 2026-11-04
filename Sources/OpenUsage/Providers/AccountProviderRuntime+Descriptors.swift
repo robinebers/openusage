@@ -156,7 +156,8 @@ extension AccountProviderRuntime {
                 .percent(key: "weekly", provider: provider, title: "Weekly")
                     .exportingLimit("weekly", unit: "percent"),
                 .boundedCount(key: "webSearches", provider: provider, title: "Web Searches", limit: 0)
-                    .exportingLimit("webSearches", unit: "searches")
+                    .exportingLimit("webSearches", unit: "searches"),
+                rateLimitResets(key: "rateLimitResets", provider: provider)
             ]
         }
     }

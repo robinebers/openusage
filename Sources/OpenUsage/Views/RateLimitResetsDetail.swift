@@ -14,6 +14,9 @@ struct RateLimitResetsDetail: View {
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
     var confirmDetail: String?
+    /// Resets listed per window instead of on one timeline; only each window's earliest can be used.
+    var windowResets: [ZAIReset] = []
+    var claimWindowReset: ((_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
 
     @State private var claimedCounts: [Date: Int] = [:]
     @State private var expiriesVersion = 0
@@ -21,6 +24,8 @@ struct RateLimitResetsDetail: View {
     @State private var claiming: Entry.Key?
     @State private var hovered: Entry.Key?
     @State private var redeemRequestIDs: [Date: String] = [:]
+    @State private var windowRequestIDs: [Int: String] = [:]
+    @State private var claimedRecords: Set<Int> = []
     @State private var banner: Banner?
     @State private var nothingToReset = false
 
@@ -35,13 +40,29 @@ struct RateLimitResetsDetail: View {
         )
     }
 
+    private var windows: [Window] {
+        Self.windows(windowResets.filter { !claimedRecords.contains($0.recordID) })
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let banner {
                 bannerView(banner)
                     .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
             }
-            if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
+            if !windowResets.isEmpty {
+                if let claiming, !windows.contains(where: { $0.entries.contains { $0.key == claiming } }) {
+                    claimingRow().transition(.opacity)
+                }
+                ForEach(windows, id: \.window) { window in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(window.window.title)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        timeline(window.entries)
+                    }
+                }
+            } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
                 if case .timeline(let entries) = content {
                     timeline(entries)
@@ -69,7 +90,15 @@ struct RateLimitResetsDetail: View {
         .onChange(of: expiries) { _, newValue in
             expiriesVersion += 1
             claimedCounts = [:]
-            if let confirming, !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
+            if let confirming, confirming.reset == nil, !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
+                cancelConfirm()
+            }
+        }
+        .onChange(of: windowResets) { _, newValue in
+            expiriesVersion += 1
+            claimedRecords = []
+            if let confirming, confirming.reset != nil,
+               !Self.windows(newValue).contains(where: { $0.entries.contains { $0.key == confirming } }) {
                 cancelConfirm()
             }
         }
@@ -196,7 +225,7 @@ struct RateLimitResetsDetail: View {
     @ViewBuilder
     private func trailing(_ entry: Entry) -> some View {
         Group {
-            if claim != nil, showsActions || hovered == entry.key, !claimInProgress {
+            if canUse(entry), showsActions || hovered == entry.key, !claimInProgress {
                 Button("Use") { beginConfirm(entry) }
                     .controlSize(.small)
                     .disabled(nothingToReset)
@@ -219,7 +248,7 @@ struct RateLimitResetsDetail: View {
             Text("Use this reset?")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
-            Text(confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
+            Text(entry.key.reset?.window.confirmDetail ?? confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -274,8 +303,14 @@ struct RateLimitResetsDetail: View {
 
     private static let flowAnimation: Animation = .snappy(duration: 0.25)
 
+    private func canUse(_ entry: Entry) -> Bool {
+        entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
+    }
+
     private func beginConfirm(_ entry: Entry) {
-        if redeemRequestIDs[entry.date] == nil {
+        if let reset = entry.key.reset {
+            if windowRequestIDs[reset.recordID] == nil { windowRequestIDs[reset.recordID] = UUID().uuidString }
+        } else if redeemRequestIDs[entry.date] == nil {
             redeemRequestIDs[entry.date] = UUID().uuidString
         }
         withAnimation(Self.flowAnimation) {
@@ -294,36 +329,49 @@ struct RateLimitResetsDetail: View {
     }
 
     private func runClaim(_ entry: Entry) {
-        guard let claim else { return }
-        let redeemRequestID = redeemRequestIDs[entry.date] ?? UUID().uuidString
+        let reset = entry.key.reset
+        let send: () async -> ResetClaimOutcome
+        if let reset, let claimWindowReset {
+            let requestID = windowRequestIDs[reset.recordID] ?? UUID().uuidString
+            send = { await claimWindowReset(reset, requestID) }
+        } else if let claim {
+            let redeemRequestID = redeemRequestIDs[entry.date] ?? UUID().uuidString
+            send = { await claim(entry.date, redeemRequestID) }
+        } else {
+            return
+        }
         withAnimation(Self.flowAnimation) {
             confirming = nil
             claiming = entry.key
         }
         let versionAtClaim = expiriesVersion
         Task {
-            let outcome = await claim(entry.date, redeemRequestID)
+            let outcome = await send()
             withAnimation(Self.flowAnimation) {
                 claiming = nil
-                apply(outcome, for: entry.date, refreshed: expiriesVersion != versionAtClaim)
+                apply(outcome, for: entry.date, record: reset?.recordID, refreshed: expiriesVersion != versionAtClaim)
             }
             onPinChange?(false)
         }
     }
 
-    private func apply(_ outcome: ResetClaimOutcome, for date: Date, refreshed: Bool) {
+    private func apply(_ outcome: ResetClaimOutcome, for date: Date, record: Int?, refreshed: Bool) {
         switch outcome {
         case .success:
-            if !refreshed { claimedCounts[date, default: 0] += 1 }
-            nothingToReset = true
+            if !refreshed { markClaimed(date, record: record) }
+            if record == nil { nothingToReset = true }
         case .nothingToReset:
             nothingToReset = true
         case .noCredit:
-            if !refreshed { claimedCounts[date, default: 0] += 1 }
+            if !refreshed { markClaimed(date, record: record) }
         case .unconfirmed, .unavailableNow, .failed:
             break
         }
         banner = Self.banner(for: outcome)
+    }
+
+    private func markClaimed(_ date: Date, record: Int?) {
+        if let record { claimedRecords.insert(record) } else { claimedCounts[date, default: 0] += 1 }
     }
 
     static func banner(for outcome: ResetClaimOutcome, now: Date = Date()) -> Banner {

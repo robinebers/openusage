@@ -103,7 +103,7 @@ account's right-click menu.
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `balance`, `keyLimit` |
-| Z.ai | `session`, `weekly`, `webSearches` |
+| Z.ai | `session`, `weekly`, `webSearches`, `rateLimitResets` |
 
 - ChatGPT `credits` is `0` when the balance is empty, and absent when ChatGPT reports no balance.
 - Antigravity `argonWeekly` is the Gemini 4 Argon weekly quota, absent when the account has none.

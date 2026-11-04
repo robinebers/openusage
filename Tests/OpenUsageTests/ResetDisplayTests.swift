@@ -82,7 +82,7 @@ final class ResetDisplayTests: XCTestCase {
     }
 
     @MainActor
-    func testResetsRowIsWiredOnlyOnClaudeAndCodexAccounts() {
+    func testResetsRowIsWiredOnlyOnClaudeCodexAndZAIAccounts() {
         let runtimes = ProviderKind.allCases.map {
             AccountProviderRuntime(account: Account(kind: $0, label: "Work"), vault: InMemoryCredentialVault())
         }
@@ -90,7 +90,7 @@ final class ResetDisplayTests: XCTestCase {
             runtime.widgetDescriptors.filter { $0.sample.showsResetExpiries }
         }
 
-        XCTAssertEqual(resetsRows.map(\.id), runtimes.filter { [.claude, .codex].contains($0.account.kind) }
+        XCTAssertEqual(resetsRows.map(\.id), runtimes.filter { [.claude, .codex, .zai].contains($0.account.kind) }
             .map { "\($0.account.cardID).rateLimitResets" })
         XCTAssertTrue(resetsRows.allSatisfy { $0.metricLabel == "Rate Limit Resets" })
     }

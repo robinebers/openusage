@@ -23,7 +23,7 @@ How each provider signs in and what its card shows.
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
 | OpenCode | API key | Session, Weekly, Monthly |
 | OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Key Limit, Budget, Free Requests |
-| Z.ai | API key | Session, Weekly, Web Searches |
+| Z.ai | API key | Session, Weekly, Web Searches, Rate Limit Resets |
 
 ## What you grant
 
@@ -175,6 +175,8 @@ The right-click menu adds a **Credits** link.
 - Paste an API key from the [Z.ai key list](https://z.ai/manage-apikey/apikey-list).
 - The card shows the GLM Coding Plan session and weekly windows and the web-search quota.
 - A key without a GLM Coding Plan has no quota, and the card says so.
+- **Limit Resets** counts the banked Session and Weekly resets. Click the count to see them by window.
+  **Use** spends the earliest of a window.
 - The right-click menu adds an **API Keys** link.
 
 ## Errors

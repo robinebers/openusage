@@ -58,12 +58,24 @@ struct ResetClaimService {
     let accountID: String
     let isClaimable: Bool
     let confirmDetail: String?
-    let claimReset: @MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome
+    let claimReset: (@MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
     let refreshAccount: @MainActor () async -> WidgetDataStore.RefreshOutcome
+    /// Resets that each refill one window (Z.ai), earliest first, claimed by their exact record.
+    var windowResets: [ZAIReset] = []
+    var claimWindowReset: (@MainActor (_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
 
     /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
-        let outcome = await claimReset(expiry, redeemRequestID)
+        guard let claimReset else { return .noCredit }
+        return settle(await claimReset(expiry, redeemRequestID))
+    }
+
+    func claim(_ reset: ZAIReset, requestID: String) async -> ResetClaimOutcome {
+        guard let claimWindowReset else { return .noCredit }
+        return settle(await claimWindowReset(reset, requestID))
+    }
+
+    private func settle(_ outcome: ResetClaimOutcome) -> ResetClaimOutcome {
         if case .failed = outcome { return outcome }
         Task { await refreshAfterClaim() }
         return outcome

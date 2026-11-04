@@ -100,7 +100,11 @@ struct DashboardLiveRow: View {
                     await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
                 } : nil
             },
-            confirmDetail: resetClaim?.confirmDetail
+            confirmDetail: resetClaim?.confirmDetail,
+            windowResets: resetClaim?.windowResets ?? [],
+            claimWindowReset: resetClaim.map { service in
+                { reset, requestID in await service.claim(reset, requestID: requestID) }
+            }
         )
     }
 }
