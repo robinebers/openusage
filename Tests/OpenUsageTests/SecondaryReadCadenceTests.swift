@@ -80,6 +80,16 @@ final class SecondaryReadCadenceTests: XCTestCase {
         XCTAssertEqual(counts.total, 13)
     }
 
+    func testZAIReadsTheResetListHourly() async throws {
+        let quota = #"{"data":{"limits":[{"type":"CREDIT_LIMIT","unit":3,"number":5,"percentage":10}]},"success":true}"#
+        let counts = try await hourOfRefreshes(.zai, credential: .apiKey("key")) { request in
+            Self.ok(request.url == ZAIUsageClient.quotaURL ? quota : #"{"success":true,"data":{}}"#)
+        }
+        XCTAssertEqual(counts.perHour[ZAIUsageClient.quotaURL.path], 12)
+        XCTAssertEqual(counts.perHour[ZAIUsageClient.resetListURL.path], 1)
+        XCTAssertEqual(counts.nextHour[ZAIUsageClient.resetListURL.path], 1)
+    }
+
     func testCursorReadsThePlanAndTheMembershipHourly() async throws {
         let counts = try await hourOfRefreshes(.cursor, credential: cursorCredential) { request in
             Self.cursor(request, membership: "pro", usage: "{\(Self.cursorPools)}")

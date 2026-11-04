@@ -283,7 +283,7 @@ final class LimitsEnvelopeTests: XCTestCase {
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["balance", "keyLimit"],
-            "zai": ["session", "weekly", "webSearches"]
+            "zai": ["session", "weekly", "webSearches", "rateLimitResets"]
         ]
 
         XCTAssertEqual(actual, expected)

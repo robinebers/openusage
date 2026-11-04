@@ -37,7 +37,7 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 - **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
 - **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
 - **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
-- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches
+- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches, rate-limit resets
 - **[CLIProxyAPI hubs](docs/cliproxyapi.md)**: every Claude, ChatGPT, Antigravity, Devin, and Grok login on
   a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server
 

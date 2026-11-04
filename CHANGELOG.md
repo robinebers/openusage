@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
+  resets apart, earliest first, and **Use** spends the earliest of a window
+  ([#1427](https://github.com/robinebers/openusage/issues/1427)).
+
 ## v0.8.0-beta.1
 
 **Upgrading from 0.7.x:** add your accounts again from the **Accounts** screen. OpenUsage no longer

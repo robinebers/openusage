@@ -10,6 +10,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     var planRead = SecondaryRead<String>()
     var planBodyRead = SecondaryRead<Data>()
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
+    var zaiResetsRead = SecondaryRead<[ZAIReset]>()
     var cursorMembershipRead = SecondaryRead<String>()
     let usageLedger = UsageLedger()
     let codexCreditsLedger = UsageLedger()
@@ -58,6 +59,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         planRead.forget()
         planBodyRead.forget()
         codexResetCreditsRead.forget()
+        zaiResetsRead.forget()
         cursorMembershipRead.forget()
         usageLedger.forgetLastRead()
         codexCreditsLedger.forgetLastRead()
@@ -94,7 +96,17 @@ final class AccountProviderRuntime: ProviderRuntime {
                 },
                 refreshAccount: refreshAccount
             )
-        case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai:
+        case .zai:
+            return ResetClaimService(
+                accountID: account.cardID,
+                isClaimable: false,
+                confirmDetail: nil,
+                claimReset: nil,
+                refreshAccount: refreshAccount,
+                windowResets: unexpiredZAIResets ?? [],
+                claimWindowReset: { [self] reset, requestID in await claimZAIReset(reset, requestID: requestID) }
+            )
+        case .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter:
             return nil
         }
     }
@@ -343,7 +355,11 @@ final class AccountProviderRuntime: ProviderRuntime {
         if planBodyRead.isDue(at: now()) {
             planBodyRead.record(successBody(try? await client.fetchSubscription(apiKey: key)), at: now())
         }
-        return try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
+        var usage = try ZAIUsageMapper.map(quotaBody: quota.body, subscriptionBody: planBodyRead.value)
+        if let resets = await zaiResets(apiKey: key) {
+            usage.lines.append(ZAIResetsMapper.line(resets))
+        }
+        return usage
     }
 
     private func successBody(_ response: HTTPResponse?) -> Data? {

@@ -41,6 +41,7 @@ extension RateLimitResetsDetail {
         struct Key: Hashable {
             let date: Date
             let ordinal: Int
+            var section = 0
         }
 
         var accessibilityLabel: String {
@@ -48,7 +49,24 @@ extension RateLimitResetsDetail {
         }
     }
 
-    nonisolated static func entries(from expiries: [Date], now: Date = Date()) -> [Entry] {
+    /// One window's resets, kept in the given earliest-first order, beside the timeline entries that show them.
+    struct Window: Equatable {
+        let window: ZAIResetWindow
+        let section: Int
+        let resets: [ZAIReset]
+        let entries: [Entry]
+    }
+
+    nonisolated static func windows(_ resets: [ZAIReset], now: Date = Date()) -> [Window] {
+        ZAIResetWindow.allCases.enumerated().compactMap { section, window in
+            let resets = resets.filter { $0.window == window }
+            guard !resets.isEmpty else { return nil }
+            let entries = entries(from: resets.map(\.expiresAt), now: now, section: section)
+            return Window(window: window, section: section, resets: resets, entries: entries)
+        }
+    }
+
+    nonisolated static func entries(from expiries: [Date], now: Date = Date(), section: Int = 0) -> [Entry] {
         var seen: [Date: Int] = [:]
         return expiries.sorted().enumerated().map { index, date in
             let ordinal = seen[date, default: 0]
@@ -60,7 +78,7 @@ extension RateLimitResetsDetail {
                 id: index,
                 number: index + 1,
                 date: date,
-                key: Entry.Key(date: date, ordinal: ordinal),
+                key: Entry.Key(date: date, ordinal: ordinal, section: section),
                 severity: WidgetData.expirySeverity(secondsRemaining: date.timeIntervalSince(now)),
                 time: (imminent || absolute == nil) ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative
