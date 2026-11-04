@@ -72,9 +72,8 @@ struct CodexLogin: ProviderLogin {
         let device = try LoginHTTP.decode(CodexDeviceStart.self, from: start)
         let verifyURL = URL(string: "https://auth.openai.com/codex/device")!
         await prompt(.deviceCode(userCode: device.userCode, verificationURL: verifyURL))
-        let interval = ProviderParse.jsonObject(start.body)?["interval"]
-        let pollInterval = (interval as? String).map { TimeInterval($0) ?? 5 } ?? ProviderParse.number(interval) ?? 5
-        let deviceToken: CodexDeviceToken = try await DeviceCodePoller.poll(interval: pollInterval, expiresIn: 900) { [http] in
+        let interval = ProviderParse.number(ProviderParse.jsonObject(start.body)?["interval"]) ?? 5
+        let deviceToken: CodexDeviceToken = try await DeviceCodePoller.poll(interval: interval, expiresIn: 900) { [http] in
             let url = URL(string: "https://auth.openai.com/api/accounts/deviceauth/token")!
             let response = try await LoginHTTP.postJSON(url, fields: [
                 "device_auth_id": device.deviceAuthID,
@@ -83,10 +82,9 @@ struct CodexLogin: ProviderLogin {
             if (200..<300).contains(response.statusCode) {
                 return .complete(try LoginHTTP.decode(CodexDeviceToken.self, from: response))
             }
+            if response.statusCode == 403 || response.statusCode == 404 { return .pending }
             let error = ProviderParse.jsonObject(response.body)?["error"] as? String ?? ""
-            if response.statusCode == 403 || response.statusCode == 404 || error == "deviceauth_authorization_pending" {
-                return .pending
-            }
+            if error == "deviceauth_authorization_pending" { return .pending }
             if error == "slow_down" { return .slowDown }
             return .failed(error == "expired_token" ? "Device sign-in expired." : "Device sign-in failed.")
         }
