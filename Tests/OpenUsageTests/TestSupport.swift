@@ -179,6 +179,34 @@ final class InMemoryCredentialVault: CredentialVault, @unchecked Sendable {
     }
 }
 
+final class FailingVault: CredentialVault, @unchecked Sendable {
+    let loadError = TestSwitch<(any Error)?>(nil)
+    let saveError = TestSwitch<(any Error)?>(nil)
+    let updateError = TestSwitch<(any Error)?>(nil)
+    let deleteError = TestSwitch<(any Error)?>(nil)
+    private let stored = InMemoryCredentialVault()
+
+    func load(_ id: UUID) throws -> AccountCredential? {
+        if let error = loadError.value { throw error }
+        return try stored.load(id)
+    }
+
+    func save(_ credential: AccountCredential, for id: UUID) throws {
+        if let error = saveError.value { throw error }
+        try stored.save(credential, for: id)
+    }
+
+    func update(_ credential: AccountCredential, for id: UUID) throws {
+        if let error = updateError.value { throw error }
+        try stored.update(credential, for: id)
+    }
+
+    func delete(_ id: UUID) throws {
+        if let error = deleteError.value { throw error }
+        try stored.delete(id)
+    }
+}
+
 /// A stored account list with a Claude account and an entry of a kind this build does not have, with a
 /// field this build does not know, as a build with another provider would save it.
 enum StoredAccountList {

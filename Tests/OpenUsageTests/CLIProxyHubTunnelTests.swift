@@ -22,8 +22,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
             let result = await runtime.refresh()
             XCTAssertNil(result.failure, "\(runtime.account.kind): \(result.failure?.message ?? "")")
         }
-        let claudeResult = await runtimes[0].refresh()
-        let claude = try XCTUnwrap(claudeResult.success)
+        let claude = try await runtimes[0].refresh().get()
         XCTAssertFalse(claude.lines.isEmpty, "the Claude mapper read the tunnelled answer")
 
         let calls = try http.requests.map(Self.apiCall)
@@ -51,8 +50,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(runtimes.map(\.account.kind), [.antigravity, .devin, .grok])
 
         for runtime in runtimes {
-            let result = await runtime.refresh()
-            let snapshot = try XCTUnwrap(result.success, "\(runtime.account.kind): \(result.failure?.message ?? "")")
+            let snapshot = try await runtime.refresh().get()
             XCTAssertFalse(snapshot.lines.isEmpty, "\(runtime.account.kind) mapped the tunnelled answer")
         }
         let calls = try http.requests.map(Self.apiCall)
@@ -180,8 +178,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let http = Self.hub { url, _ in (200, url == ClaudeUsageClient.profileURL.absoluteString ? profile : Self.claudeUsage, [:]) }
         let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
 
-        let first = await runtimes[0].refresh()
-        let snapshot = try XCTUnwrap(first.success)
+        let snapshot = try await runtimes[0].refresh().get()
         XCTAssertEqual(snapshot.plan, "Ultra")
         let profileCalls = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
         XCTAssertEqual(profileCalls.map(\.authIndex), ["index-a"])
@@ -191,7 +188,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let again = try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }
         XCTAssertEqual(again.count, 1, "the slot doesn't read the profile again within the hour")
         let next = await runtimes[0].refresh()
-        XCTAssertEqual(next.success?.plan, "Ultra")
+        XCTAssertEqual(try next.get().plan, "Ultra")
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
@@ -231,7 +228,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
 
     func testConnectingSavesNothingUntilTheHubAcceptsTheKey() async throws {
         let http = Self.hub(key: "right-key") { _, _ in (200, "{}", [:]) }
-        let store = AccountStore(defaults: isolatedDefaults(), vault: RecordingVault(), hubKeys: InMemoryHubKeyVault())
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
         let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: gate), isEnabled: true)
 
         do {
@@ -261,7 +258,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
     private func makeRuntimes(
         http: any HTTPClient, logins: [HubLogin], key: String = "mgmt-key"
     ) throws -> ([AccountProviderRuntime], AccountStore, CLIProxyHub) {
-        let vault = RecordingVault()
+        let vault = InMemoryCredentialVault()
         let store = AccountStore(defaults: isolatedDefaults(), vault: vault, hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: Self.hubURL)
         try store.addHub(hub, key: key)
@@ -320,11 +317,5 @@ final class CLIProxyHubTunnelTests: XCTestCase {
     nonisolated private static func envelope(_ status: Int, _ body: String, headers: [String: [String]] = [:]) -> HTTPResponse {
         let envelope: [String: Any] = ["status_code": status, "header": headers.merging(["Content-Type": ["application/json"]]) { a, _ in a }, "body": body]
         return HTTPResponse(statusCode: 200, headers: [:], body: try! JSONSerialization.data(withJSONObject: envelope))
-    }
-}
-
-private extension Result where Success == ProviderSnapshot, Failure == RefreshFailure {
-    var success: ProviderSnapshot? {
-        if case .success(let snapshot) = self { snapshot } else { nil }
     }
 }

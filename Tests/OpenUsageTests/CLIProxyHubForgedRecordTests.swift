@@ -33,5 +33,12 @@ final class CLIProxyHubForgedRecordTests: XCTestCase {
 
         XCTAssertTrue(http.requests.contains { $0.url.host() == "openrouter.ai" }, "the direct account still refreshes")
         XCTAssertEqual(Set(http.requests.compactMap { $0.url.host() }), ["openrouter.ai"], "nothing goes to a hub or through a tunnel")
+        XCTAssertEqual(
+            container.hubs.status(of: forgedHub.id),
+            .failed("The management key for the CLIProxyAPI hub at attacker.example is missing. Replace it in Accounts.")
+        )
+        accounts.removeHub(forgedHub.id)
+        XCTAssertEqual(try vault.load(direct.id), .apiKey("sk-or-direct-secret"), "removing the hub leaves the account's sign-in")
+        XCTAssertEqual(accounts.accounts.map(\.id), [direct.id])
     }
 }

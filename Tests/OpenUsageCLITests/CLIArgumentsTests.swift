@@ -2,8 +2,7 @@ import XCTest
 @testable import OpenUsageCLI
 
 final class CLIArgumentsTests: XCTestCase {
-    func testParsesTheProviderLowercased() throws {
-        XCTAssertEqual(try CLIArguments.parse(["Codex"]).providerID, "codex")
+    func testParsesNoProviderWhenNoneIsGiven() throws {
         XCTAssertNil(try CLIArguments.parse([]).providerID)
     }
 

@@ -239,11 +239,4 @@ final class AccountChangeTests: XCTestCase {
             ? OpenRouterFixtures.response(200, OpenRouterFixtures.standardKey)
             : OpenRouterFixtures.response(403, OpenRouterFixtures.forbidden)
     }
-
-    private func waitUntil(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 where !condition() {
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        XCTAssertTrue(condition())
-    }
 }
