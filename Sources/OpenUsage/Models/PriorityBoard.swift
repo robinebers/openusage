@@ -3,12 +3,15 @@ import Foundation
 /// A limit on the board and why it is there.
 struct PriorityItem: Identifiable {
     enum Reason: Equatable {
-        /// Listed for what's left, the same rule that colors its bar. Time only orders the list.
+        /// Listed for what's left, the same rule that colors its bar.
         case low(WidgetData.MeterSeverity, remaining: Double, runway: TimeInterval?)
+        /// Listed with plenty left because it would run out before it resets at the current pace.
+        case burningFast(runway: TimeInterval)
         case usedUp(resetsAt: Date?)
         case emptyBalance
 
-        init?(_ line: DashboardLine, now: Date) {
+        /// `burningFast` is nil while Settings leaves limits burning fast off the list.
+        init?(_ line: DashboardLine, now: Date, burningFast: BurningFast?) {
             let data = line.data
             if line.descriptor.balance(in: data)?.number == 0 {
                 self = .emptyBalance
@@ -19,13 +22,18 @@ struct PriorityItem: Identifiable {
                 self = .usedUp(resetsAt: data.resetsAt)
                 return
             }
-            guard data.severity != .normal else { return nil }
-            self = .low(data.severity, remaining: data.remainingFraction, runway: data.runway(now: now))
+            if data.severity != .normal {
+                self = .low(data.severity, remaining: data.remainingFraction, runway: data.runway(now: now))
+                return
+            }
+            guard burningFast?.contains(line, now: now) == true, let runway = data.runway(now: now) else { return nil }
+            self = .burningFast(runway: runway)
         }
 
         var severity: WidgetData.MeterSeverity {
             switch self {
             case .low(let severity, _, _): severity
+            case .burningFast: .normal
             case .usedUp, .emptyBalance: .critical
             }
         }
@@ -33,14 +41,14 @@ struct PriorityItem: Identifiable {
         fileprivate var isUsedUp: Bool {
             switch self {
             case .usedUp, .emptyBalance: true
-            case .low: false
+            case .low, .burningFast: false
             }
         }
 
         /// Sorts ascending: what runs out soonest first, then what has no pace to tell by, by what's left.
         fileprivate var rank: (tier: Int, closeness: Double) {
             switch self {
-            case .low(_, _, let runway?): (0, runway)
+            case .low(_, _, let runway?), .burningFast(let runway): (0, runway)
             case .low(_, let remaining, nil): (1, remaining)
             case .usedUp(let resetsAt): (2, resetsAt?.timeIntervalSinceReferenceDate ?? .infinity)
             case .emptyBalance: (2, .infinity)
@@ -56,6 +64,15 @@ struct PriorityItem: Identifiable {
 
     var id: String { line.id }
     var data: WidgetData { line.data }
+
+    /// The line under the amount of a limit listed only for burning fast, in place of its reset. A limit still
+    /// listed while its pace eases would run out after its reset, so it shows the reset instead.
+    func runOutText(now: Date) -> String? {
+        guard case .burningFast(let runway) = reason, let resetsAt = data.resetsAt,
+              runway < resetsAt.timeIntervalSince(now), let duration = Formatters.compactDuration(runway)
+        else { return nil }
+        return "Out in \(duration)"
+    }
 
     /// The trailing text of a Used Up row: the time until it resets, or for a balance, which has no reset, its amount.
     func usedUpNote(now: Date) -> String? {
@@ -105,22 +122,25 @@ struct PriorityBoard {
     /// Every account reported and nothing, pinned or not, is running out.
     let showsClearRow: Bool
 
-    /// Multiple running-low limits can change places as their windows age, even without a new reading.
+    /// Multiple running-low limits can change places as their windows age, even without a new reading, and a
+    /// limit burning fast can slow off the list.
     func requiresRankingClock(at now: Date) -> Bool {
-        attention.count > 1 && attention.contains { item in
+        if attention.contains(where: { if case .burningFast = $0.reason { true } else { false } }) { return true }
+        return attention.count > 1 && attention.contains { item in
             guard let reset = item.data.resetsAt, let period = item.data.periodDurationMs else { return false }
             return reset > now && period > 0
         }
     }
 
-    /// `accounts` is in the user's saved order, which breaks every tie.
+    /// `accounts` is in the user's saved order, which breaks every tie. `burningFast` is nil while Settings
+    /// leaves limits burning fast off the list.
     static func make(
-        accounts: [DashboardAccount], pinned pinnedIDs: Set<String> = [], now: Date,
+        accounts: [DashboardAccount], pinned pinnedIDs: Set<String> = [], burningFast: BurningFast? = nil, now: Date,
         status: (DashboardAccount) -> ReadStatus = { $0.lines.contains(where: \.data.hasData) ? .current : .waiting }
     ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
-            PriorityItem.Reason(line, now: now).map {
+            PriorityItem.Reason(line, now: now, burningFast: burningFast).map {
                 PriorityItem(provider: provider, line: line, reason: $0, isPinned: pinnedIDs.contains(line.id))
             }
         }
@@ -167,7 +187,9 @@ struct PriorityBoard {
 extension WidgetDataStore {
     func priorityBoard(in groups: [ProviderMetrics], pinned: Set<String> = [], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
         let accounts = accounts(in: groups)
-        return PriorityBoard.make(accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, now: now) { account in
+        return PriorityBoard.make(
+            accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, burningFast: burningFast, now: now
+        ) { account in
             if let message = self.problem(for: account.id) {
                 // A provider's notice can itself contain account details. Share only the status.
                 return .unavailable(hidingEmails ? "Current usage unavailable." : message)

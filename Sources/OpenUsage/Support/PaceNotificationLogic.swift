@@ -99,9 +99,8 @@ enum PaceNotificationLogic {
         if currentBucket != .untracked {
             let previousBucket = next.previousBucket
             if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.closeToRunningOut) }
-            if currentBucket < previousBucket, currentBucket <= .close {
-                next.firedMilestones.remove(.closeToRunningOut)
-            }
+            // Re-arms only once the pace eases to 90% of the limit, where Priority stops listing it as burning fast.
+            if currentBucket == .healthy { next.firedMilestones.remove(.closeToRunningOut) }
             next.previousBucket = currentBucket
         }
 

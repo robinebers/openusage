@@ -19,6 +19,8 @@ Alerts, and Advanced. Changes apply at once.
 - **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
   70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
+- **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
+  before it resets at your current pace, however much it has left. On by default.
 
 They always count what's left, even with Show Usage As set to Used, and they also pick which limits
 the menu bar shows and when the Warning and Critical notifications fire. Critical always stays under
@@ -42,7 +44,8 @@ All off by default. Turning the first one on asks macOS for permission.
 
 - **Critical.** A limit drops to its Critical level or less left (10% by default).
 - **Warning.** A limit drops to its Warning level or less left (30% by default).
-- **Will Run Out.** A limit may run out before its reset.
+- **Will Run Out.** A limit may run out before its reset. After it fires, it waits until the limit's
+  pace eases to 90% of the limit before it can fire again.
 
 Each fires once per metric per reset window. Click one to open All Usage.
 

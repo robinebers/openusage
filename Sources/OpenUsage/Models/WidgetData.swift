@@ -60,7 +60,7 @@ struct WidgetData: Hashable {
         case normal, warning, critical
     }
 
-    /// A limit's color, and whether Priority lists it, from what's left alone. Time plays no part.
+    /// A limit's color, and whether Priority lists it as running low, from what's left alone. Time plays no part.
     var severity: MeterSeverity {
         guard hasData, let limit, limit > 0 else { return .normal }
         let percentLeft = Int((remainingFraction * 100).rounded())
