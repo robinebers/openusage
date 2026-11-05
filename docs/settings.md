@@ -21,6 +21,9 @@ Alerts, and Advanced. Changes apply at once.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
 - **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
   before it resets at your current pace, however much it has left. On by default.
+- **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
+  with over 50% left, the same rule as the alert of that name. It never shows in the menu bar. On by
+  default, and separate from the alert.
 
 They always count what's left, even with Show Usage As set to Used, and they also pick which limits
 the menu bar shows and when the Warning and Critical notifications fire. Critical always stays under
