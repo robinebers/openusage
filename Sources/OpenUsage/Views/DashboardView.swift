@@ -84,7 +84,6 @@ struct DashboardView: View {
                 if screen == .accounts { Task { await container.hubs.syncDue(maxAge: 60) } }
             }
             .onChange(of: popover.customizeProviderID) { reorderLift = nil }
-            .onChange(of: container.privacyMode.isEnabled) { reorderLift = nil }
             // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
             // then spring to the incoming one on the next runloop tick. Deferring the animation one
             // tick is what makes it animate — setting 0 then 1 in the same closure collapses to a

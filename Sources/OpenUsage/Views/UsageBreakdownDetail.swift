@@ -14,7 +14,6 @@ struct UsageBreakdownDetail: View {
     var onHoverChange: (Bool) -> Void
 
     @AppStorage(ModelFigure.key) private var figure = ModelFigure.cost
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     @State private var copied = false
 
     static let width: CGFloat = 288
@@ -60,7 +59,7 @@ struct UsageBreakdownDetail: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Breakdown Unavailable")
                             .font(.callout.weight(.medium))
-                        Text(PrivacyModeSetting.message(status.notice ?? status.staleness ?? "Refresh to load the details for this range.", isEnabled: privacyMode))
+                        Text(status.notice ?? status.staleness ?? "Refresh to load the details for this range.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

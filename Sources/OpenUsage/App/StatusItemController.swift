@@ -116,7 +116,6 @@ final class StatusItemController: NSObject {
         let host = NSHostingView(
             rootView: AnyView(
                 DashboardView()
-                    .defaultAppStorage(container.privacyModeDefaults)
                     .reduceAnimationsWhenRequested()
                     .environment(container)
                     .environment(container.layout)
@@ -207,14 +206,7 @@ final class StatusItemController: NSObject {
         let (accounts, burningFast, limit, updateAvailable) = withObservationTracking {
             let limit = container.hideFromScreenShare.isConcealing ? .iconOnly : container.dataStore.menuBarLimit
             let accounts = limit == .iconOnly ? [] : container.dataStore.accounts(in: container.layout.displayGroups)
-            let masked = accounts.map { account in
-                DashboardAccount(
-                    provider: PrivacyModeSetting.provider(account.provider, isEnabled: container.privacyMode.isEnabled),
-                    lines: account.lines,
-                    waitingMetricIDs: account.waitingMetricIDs
-                )
-            }
-            return (masked, container.dataStore.burningFast, limit, updater.availableUpdateVersion != nil)
+            return (accounts, container.dataStore.burningFast, limit, updater.availableUpdateVersion != nil)
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(50))

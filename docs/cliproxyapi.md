@@ -47,8 +47,6 @@ API key and Cursor's usage reads need OpenUsage's own sign-in.
 Each hub has a row under the accounts. A warning sign means the last read failed. The hub's page
 shows the last error, its accounts, and how many logins aren't supported yet.
 
-[Privacy Mode](privacy.md#privacy-mode) hides hub addresses, account names, and personal error details.
-
 - **Replace Management Key…** tests the new key before saving it. A refused key keeps the old one.
 - **Remove Hub…** deletes the hub's accounts and key from this Mac. Nothing changes on the hub.
 

@@ -6,14 +6,13 @@ struct ShareCardView: View {
     let family: DashboardFamily
     var plans: [String: String] = [:]
     let appearance: ColorScheme
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     static let width: CGFloat = 360
     static let inset: CGFloat = 16
 
     var body: some View {
         ShareCardFrame(appearance: appearance) {
-            DashboardProviderSection(family: privacyMode ? family : family.hidingEmails) { account in
+            DashboardProviderSection(family: family.hidingEmails) { account in
                 DashboardAccountRows(account: account, plan: plans[account.id], hasSiblingAccounts: family.accounts.count > 1)
             }
         }

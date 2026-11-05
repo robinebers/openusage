@@ -37,8 +37,6 @@ To add the logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom o
 Click the name on the account's page, double-click it on the dashboard, or choose **Rename** from
 its right-click menu. Return saves and Esc cancels.
 
-[Privacy Mode](privacy.md#privacy-mode) hides account names and disables renaming until you turn it off.
-
 ## Hide, pin, and order metrics
 
 An account's page has a switch, a pin, and a drag handle for each metric. See

@@ -4,7 +4,6 @@ import SwiftUI
 /// decides which logins exist, and each supported one appears as an account once the hub answers.
 struct HubConnectStep: View {
     @Bindable var flow: AddAccountFlow
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let cancel: () -> Void
 
     var body: some View {
@@ -16,14 +15,8 @@ struct HubConnectStep: View {
         )
         Form {
             Section {
-                Group {
-                    if privacyMode {
-                        SecureField("URL", text: $flow.hubURL, prompt: Text("https://hub.example.com"))
-                    } else {
-                        TextField("URL", text: $flow.hubURL, prompt: Text("https://hub.example.com"))
-                    }
-                }
-                .onSubmit { flow.connect() }
+                TextField("URL", text: $flow.hubURL, prompt: Text("https://hub.example.com"))
+                    .onSubmit { flow.connect() }
                 SecureField("Management Key", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.connect() }
             } footer: {

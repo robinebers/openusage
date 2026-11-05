@@ -7,7 +7,6 @@ struct HubDetailView: View {
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     @State private var isConfirmingRemoval = false
 
     var body: some View {
@@ -63,7 +62,7 @@ struct HubDetailView: View {
         }
         .buttonStyle(.plain)
         .confirmationDialog(
-            "Remove the Hub at \(PrivacyModeSetting.host(hub.host, isEnabled: privacyMode))?",
+            "Remove the Hub at \(hub.host)?",
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {

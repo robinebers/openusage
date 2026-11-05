@@ -8,7 +8,6 @@ struct WidgetGroupedListView: View {
     @Environment(AccountRenameStore.self) private var renaming
     @Environment(PopoverState.self) private var popover
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
 
@@ -70,7 +69,7 @@ struct WidgetGroupedListView: View {
         }
         .contextMenu {
             DashboardMenu(
-                sections: accountMenu(account, status: accountStatus.notice ?? accountStatus.staleness),
+                sections: DashboardMenus.account(account, status: accountStatus.notice ?? accountStatus.staleness),
                 perform: perform
             )
         }
@@ -96,24 +95,12 @@ struct WidgetGroupedListView: View {
             .contextMenu {
                 DashboardMenu(
                     sections: [[DashboardMenus.pin(line.id, pinned: layout.isMetricPinned(line.id))]]
-                        + accountMenu(account, status: status.notice ?? status.staleness),
+                        + DashboardMenus.account(account, status: status.notice ?? status.staleness),
                     perform: perform
                 )
             }
             .reorderFrame(id: line.id, in: .named(reorderSpaceName))
         }
-    }
-
-    private func accountMenu(_ account: DashboardAccount, status: String?) -> DashboardMenus.Sections {
-        DashboardMenus.account(
-            account,
-            status: status.map { PrivacyModeSetting.message($0, isEnabled: privacyMode) }
-        ).map { section in
-            section.filter { item in
-                if case .rename? = item.command { return !privacyMode }
-                return true
-            }
-        }.filter { !$0.isEmpty }
     }
 
     private func perform(_ command: DashboardCommand) {
@@ -125,7 +112,6 @@ struct WidgetGroupedListView: View {
         case .open(let url):
             NSWorkspace.shared.open(url)
         case .rename(let accountID):
-            guard !privacyMode else { return }
             renaming.begin(accountID)
         case .editAccount(let accountID):
             popover.openAccounts(accountID)

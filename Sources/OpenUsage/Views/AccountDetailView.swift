@@ -5,7 +5,6 @@ struct AccountDetailView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let providerID: String
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
@@ -20,7 +19,7 @@ struct AccountDetailView: View {
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
                 if let host = provider.hubHost {
                     metricsCard
-                    infoRow(icon: CLIProxyHub.markID, "Managed by \(PrivacyModeSetting.host(host, isEnabled: privacyMode))")
+                    infoRow(icon: CLIProxyHub.markID, "Managed by \(host)")
                 } else {
                     if let problem = dataStore.problem(for: providerID) {
                         ProblemCard(message: problem)
@@ -30,7 +29,7 @@ struct AccountDetailView: View {
                     }
                     metricsCard
                     if let domain = provider.domain {
-                        infoRow(icon: provider.icon, PrivacyModeSetting.message("Signed in at \(domain)", isEnabled: privacyMode))
+                        infoRow(icon: provider.icon, "Signed in at \(domain)")
                     }
                     VStack(spacing: 0) {
                         if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
@@ -160,7 +159,7 @@ struct AccountDetailView: View {
         }
         .buttonStyle(.plain)
         .confirmationDialog(
-            "Remove \(PrivacyModeSetting.fullName(provider, isEnabled: privacyMode))?",
+            "Remove \(provider.fullName)?",
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
@@ -183,12 +182,11 @@ struct AccountDetailView: View {
 
 /// Why an account or a hub needs the user, at the top of its page.
 struct ProblemCard: View {
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let message: String
 
     var body: some View {
         Label {
-            Text(PrivacyModeSetting.message(message, isEnabled: privacyMode))
+            Text(message)
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")

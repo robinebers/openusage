@@ -13,15 +13,13 @@ final class AccountRenameStore {
     var draft = ""
     @ObservationIgnored private var serial = 0
     @ObservationIgnored private let accounts: AccountStore
-    @ObservationIgnored private let canRename: () -> Bool
 
-    init(accounts: AccountStore, canRename: @escaping () -> Bool = { true }) {
+    init(accounts: AccountStore) {
         self.accounts = accounts
-        self.canRename = canRename
     }
 
     func begin(_ providerID: String) {
-        guard canRename(), let account = accounts.account(cardID: providerID) else { return }
+        guard let account = accounts.account(cardID: providerID) else { return }
         commit()
         serial += 1
         edit = Edit(providerID: providerID, serial: serial)
@@ -30,7 +28,6 @@ final class AccountRenameStore {
 
     func commit(_ edit: Edit? = nil) {
         guard let open = close(edit) else { return }
-        guard canRename() else { draft = ""; return }
         let label = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !label.isEmpty,
               let account = accounts.account(cardID: open.providerID),
@@ -39,7 +36,7 @@ final class AccountRenameStore {
     }
 
     func cancel(_ edit: Edit? = nil) {
-        if close(edit) != nil { draft = "" }
+        close(edit)
     }
 
     @discardableResult

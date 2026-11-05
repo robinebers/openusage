@@ -10,7 +10,6 @@ final class AppContainer {
     let renaming: AccountRenameStore
     let popover = PopoverState()
     let hideFromScreenShare: HideFromScreenShareSetting
-    let privacyMode: PrivacyModeSetting
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
     @ObservationIgnored private var providers: [AccountProviderRuntime]
@@ -21,8 +20,6 @@ final class AppContainer {
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let hubGate = CLIProxyHubGate()
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
-
-    var privacyModeDefaults: UserDefaults { defaults }
 
     init(
         accounts: AccountStore = AccountStore(),
@@ -35,8 +32,6 @@ final class AppContainer {
         self.http = http
         self.defaults = defaults
         self.hideFromScreenShare = HideFromScreenShareSetting(defaults: defaults)
-        let privacyMode = PrivacyModeSetting(defaults: defaults)
-        self.privacyMode = privacyMode
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let providers = ProviderCatalog.make(
@@ -54,7 +49,7 @@ final class AppContainer {
         self.providers = providers
         self.layout = layout
         self.dataStore = dataStore
-        self.renaming = AccountRenameStore(accounts: accounts, canRename: { !privacyMode.isEnabled })
+        self.renaming = AccountRenameStore(accounts: accounts)
         self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
         let telemetry = TelemetryRecorder(
             sink: sink,
@@ -68,13 +63,6 @@ final class AppContainer {
         )
         self.telemetry = telemetry
         accounts.didChange = { [weak self] in self?.syncAccounts() }
-        privacyMode.didChange = { [weak self] in
-            guard let self else { return }
-            if self.privacyMode.isEnabled { self.renaming.cancel() }
-            HoverTooltips.dismissAll()
-            HoverPopoverState.dismissAll()
-            ReducedMotionPopoverController.dismissAll()
-        }
     }
 
     deinit {
@@ -159,10 +147,7 @@ final class AppContainer {
                     data: dataStore.data(for:),
                     isOn: { [defaults] in defaults.bool(forKey: $0.settingKey) },
                     now: Date(),
-                    providerName: { [layout, privacyMode] id in
-                        guard let provider = layout.provider(id: id) else { return "OpenUsage" }
-                        return PrivacyModeSetting.fullName(provider, isEnabled: privacyMode.isEnabled)
-                    }
+                    providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
                 )
                 telemetry.tick()
                 let next = ContinuousClock.now + .seconds(RefreshSetting.interval)

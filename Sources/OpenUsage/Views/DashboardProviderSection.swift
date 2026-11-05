@@ -75,7 +75,6 @@ struct DashboardAccountCaption: View {
     var hasSiblingAccounts = false
 
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     /// A sole default-named account sits under its provider's name. Siblings need separate drag handles.
     private var showsName: Bool {
@@ -96,17 +95,11 @@ struct DashboardAccountCaption: View {
                     .foregroundStyle(.secondary)
             }
             if let domain = account.provider.domain {
-                Group {
-                    if privacyMode {
-                        PrivacyPlaceholderText(placeholder: "q7m4r8.ghe.com", accessibilityLabel: "Hidden Domain")
-                    } else {
-                        Text(domain)
-                    }
-                }
-                .font(DashboardGrid.captionFont)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                Text(domain)
+                    .font(DashboardGrid.captionFont)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)
@@ -157,21 +150,18 @@ struct AccountName: View {
     let font: Font
 
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     var body: some View {
-        if !privacyMode, let renaming, let edit = renaming.edit, edit.providerID == account.id {
+        if let renaming, let edit = renaming.edit, edit.providerID == account.id {
             InlineRenameField(renaming: renaming, edit: edit)
                 .font(font)
                 .fixedSize()
         } else {
-            AccountNameText(provider: account.provider, privacyMode: privacyMode)
+            Text(account.name)
                 .font(font)
                 .lineLimit(1)
                 .truncationMode(account.provider.isNamedByEmail ? .middle : .tail)
-                .onTapGesture(count: 2) {
-                    if !privacyMode { renaming?.begin(account.id) }
-                }
+                .onTapGesture(count: 2) { renaming?.begin(account.id) }
         }
     }
 }
@@ -185,31 +175,22 @@ struct AccountStatus {
 
     var isShowing: Bool { refreshing || notice != nil || staleness != nil }
 
-    @MainActor
+    @MainActor @ViewBuilder
     var glyph: some View {
-        AccountStatusGlyph(status: self)
-    }
-}
-
-private struct AccountStatusGlyph: View {
-    let status: AccountStatus
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
-
-    var body: some View {
-        if status.refreshing {
+        if refreshing {
             MotionAwareProgressView(controlSize: .mini)
                 .accessibilityLabel("Refreshing")
-        } else if let notice = status.notice {
-            Button { status.onFix?() } label: {
+        } else if let notice {
+            Button { onFix?() } label: {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(Theme.notice)
             }
             .buttonStyle(.plain)
-            .disabled(status.onFix == nil)
-            .hoverTooltip(PrivacyModeSetting.message(notice, isEnabled: privacyMode))
-            .accessibilityLabel(PrivacyModeSetting.message(notice, isEnabled: privacyMode))
-        } else if let staleness = status.staleness {
+            .disabled(onFix == nil)
+            .hoverTooltip(notice)
+            .accessibilityLabel(notice)
+        } else if let staleness {
             Image(systemName: "clock")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.tertiary)

@@ -6,13 +6,12 @@ struct CLIProxyHubRow: View {
     let hub: CLIProxyHub
     let onOpen: () -> Void
     @Environment(AppContainer.self) private var container
-    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
     var body: some View {
         HStack(spacing: 10) {
             HStack(spacing: 8) {
                 ProviderIcon(id: CLIProxyHub.markID, side: 18)
-                Text(PrivacyModeSetting.host(hub.host, isEnabled: privacyMode))
+                Text(hub.host)
                     .foregroundStyle(.primary)
                     .truncationMode(.middle)
                     .layoutPriority(1)
@@ -22,7 +21,7 @@ struct CLIProxyHubRow: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(Theme.notice)
-                        .accessibilityLabel(PrivacyModeSetting.message(message, isEnabled: privacyMode))
+                        .accessibilityLabel(message)
                 }
                 Spacer(minLength: 0)
             }
@@ -39,7 +38,7 @@ struct CLIProxyHubRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Open the CLIProxyAPI Hub at \(PrivacyModeSetting.host(hub.host, isEnabled: privacyMode))")
+            .accessibilityLabel("Open the CLIProxyAPI Hub at \(hub.host)")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, PanelMetrics.controlRowPadding)

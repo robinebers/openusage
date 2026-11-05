@@ -149,9 +149,7 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var advancedTab: some View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
-        @Bindable var privacyMode = container.privacyMode
         Section {
-            Toggle("Privacy Mode", isOn: $privacyMode.isEnabled)
             Toggle("Hide From Screen Share", isOn: $hideFromScreenShare.isEnabled)
             Toggle("Help Make OpenUsage Better", isOn: Binding(
                 get: { container.telemetry.isEnabled },
@@ -161,7 +159,6 @@ struct SettingsScreen: View {
             Text("Privacy")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                SettingsNote("Privacy Mode hides account names, emails, hub addresses and sign-in details. Turn it off to show them again.")
                 SettingsNote("While your screen is shared or recorded, the menu bar shows the app icon instead of your usage.")
                 SettingsNote("Share additional anonymous usage stats that tell the team where to improve.")
             }
@@ -184,11 +181,11 @@ struct SettingsScreen: View {
             VStack(alignment: .leading, spacing: 4) {
                 SettingsNote("Adds a global `openusage` command that prints the usage the app last fetched.")
                 if commandLineTool.status == .conflict {
-                    SettingsNote(PrivacyModeSetting.message("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isEnabled: privacyMode.isEnabled), isWarning: true)
+                    SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isWarning: true)
                 } else if let errorMessage = commandLineTool.errorMessage {
-                    SettingsNote(PrivacyModeSetting.message(errorMessage, isEnabled: privacyMode.isEnabled), isWarning: true)
+                    SettingsNote(errorMessage, isWarning: true)
                 } else if case .linkedToAnotherCopy = commandLineTool.status {
-                    SettingsNote(PrivacyModeSetting.message("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.", isEnabled: privacyMode.isEnabled))
+                    SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
                 }
             }
         }
