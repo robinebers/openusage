@@ -97,7 +97,7 @@ final class WidgetDataStore {
         )
         self.showsBurningFast = defaults.object(forKey: Self.priorityBurningFastKey) as? Bool ?? true
         self.showsUseItOrLoseIt = defaults.object(forKey: Self.priorityUseItOrLoseItKey) as? Bool ?? true
-        self.showsPaceMarks = defaults.object(forKey: Self.paceMarksKey) as? Bool ?? true
+        self.showsPaceMarks = defaults.object(forKey: Self.paceMarksKey) as? Bool ?? false
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }

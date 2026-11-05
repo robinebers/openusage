@@ -17,31 +17,29 @@ struct LevelIndicator: View {
     private static let shortestFill: CGFloat = 4
 
     var body: some View {
-        ZStack {
-            if drawsAsShapes {
-                shapes
-            } else {
-                ProgressView(value: min(max(fill, 0), 1))
-                    .progressViewStyle(.linear)
-                    .tint(Theme.severityColor(severity))
-                    .accessibilityHidden(true)
-            }
-            if let paceMark {
-                GeometryReader { proxy in
-                    let center = CGPoint(x: proxy.size.width * paceMark, y: proxy.size.height / 2)
-                    Capsule()
-                        .frame(width: 4, height: 14)
-                        .position(center)
-                        .blendMode(.destinationOut)
+        level
+            .overlay {
+                if let paceMark {
                     Capsule()
                         .fill(Theme.paceMark)
                         .frame(width: 2, height: 12)
-                        .position(center)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .visualEffect { content, proxy in content.offset(x: proxy.size.width * paceMark - 1) }
+                        .accessibilityHidden(true)
                 }
-                .accessibilityHidden(true)
             }
+    }
+
+    @ViewBuilder
+    private var level: some View {
+        if drawsAsShapes {
+            shapes
+        } else {
+            ProgressView(value: min(max(fill, 0), 1))
+                .progressViewStyle(.linear)
+                .tint(Theme.severityColor(severity))
+                .accessibilityHidden(true)
         }
-        .compositingGroup()
     }
 
     private var shapes: some View {

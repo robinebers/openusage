@@ -72,7 +72,7 @@ final class PaceMarkTests: XCTestCase {
         XCTAssertNil(limit(used: 100, displayMode: .used).dashboardRow(now: now).paceMark)
     }
 
-    func testTheSwitchDefaultsToOnTurnsMarksOffOnBothTabsAndSurvivesARelaunch() {
+    func testTheSwitchDefaultsToOffTurnsMarksOnAndOffOnBothTabsAndSurvivesARelaunch() {
         let descriptor = WidgetDescriptor.percent(key: "weekly", provider: personal, title: "Weekly")
         let group = ProviderMetrics(provider: personal, metrics: [descriptor])
         let defaults = isolatedDefaults()
@@ -87,13 +87,17 @@ final class PaceMarkTests: XCTestCase {
         func allUsageMarks() -> [Double?] { store.accounts(in: [group]).flatMap(\.lines).map { $0.data.dashboardRow(now: now).paceMark } }
         func priorityMarks() -> [Double?] { store.priorityBoard(in: [group], now: now).attention.map { $0.data.paceMark(now: now) } }
 
-        XCTAssertTrue(store.showsPaceMarks)
+        XCTAssertFalse(store.showsPaceMarks)
+        XCTAssertEqual(allUsageMarks(), [nil])
+        XCTAssertEqual(priorityMarks(), [nil], "the limit is listed under Running Out without a mark")
+
+        store.showsPaceMarks = true
         XCTAssertEqual(allUsageMarks(), [0.5])
-        XCTAssertEqual(priorityMarks(), [0.5], "the limit is listed under Running Out with its mark")
+        XCTAssertEqual(priorityMarks(), [0.5])
+        XCTAssertTrue(WidgetDataStore.forTesting([], defaults: defaults).showsPaceMarks, "the switch survives a relaunch")
 
         store.showsPaceMarks = false
         XCTAssertEqual(allUsageMarks(), [nil])
         XCTAssertEqual(priorityMarks(), [nil])
-        XCTAssertFalse(WidgetDataStore.forTesting([], defaults: defaults).showsPaceMarks, "the switch survives a relaunch")
     }
 }
