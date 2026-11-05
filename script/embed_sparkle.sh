@@ -21,12 +21,11 @@ EXTRA_FLAGS="${4:-}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACTS_DIR="${5:-$ROOT_DIR/.build/artifacts}"
-[ -d "$ARTIFACTS_DIR" ] || { echo "Sparkle artifacts not found under $ARTIFACTS_DIR — run 'swift build' first." >&2; exit 1; }
 
 # Prefer the universal macOS slice; fall back to whatever Sparkle.framework exists in the artifacts.
-SPARKLE_FW="$(/usr/bin/find "$ARTIFACTS_DIR" -type d -name "Sparkle.framework" -path "*macos*" -print -quit)"
+SPARKLE_FW="$(/usr/bin/find "$ARTIFACTS_DIR" -type d -name "Sparkle.framework" -path "*macos*" 2>/dev/null | head -n1)"
 if [ -z "$SPARKLE_FW" ]; then
-  SPARKLE_FW="$(/usr/bin/find "$ARTIFACTS_DIR" -type d -name "Sparkle.framework" -print -quit)"
+  SPARKLE_FW="$(/usr/bin/find "$ARTIFACTS_DIR" -type d -name "Sparkle.framework" 2>/dev/null | head -n1)"
 fi
 if [ -z "$SPARKLE_FW" ]; then
   echo "Sparkle.framework not found under $ARTIFACTS_DIR — run 'swift build' first." >&2

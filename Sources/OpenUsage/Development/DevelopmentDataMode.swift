@@ -8,7 +8,6 @@ import Observation
 final class DevelopmentDataMode {
     static let normalBundleID = "com.robinebers.openusage.dev"
     static let demoBundleID = "com.robinebers.openusage.dev.demo"
-    static let demoArgument = "--demo-data"
 
     let isAvailable: Bool
     let isOn: Bool
@@ -17,14 +16,14 @@ final class DevelopmentDataMode {
 
     @ObservationIgnored private let bundleURL: URL
     @ObservationIgnored private let identifierOfBundle: @MainActor (URL) -> String?
-    @ObservationIgnored private let openApplication: @MainActor (URL, [String]) async throws -> Void
+    @ObservationIgnored private let openApplication: @MainActor (URL) async throws -> Void
     @ObservationIgnored private let terminate: @MainActor () -> Void
 
     init(
         bundleIdentifier: String? = Bundle.main.bundleIdentifier,
         bundleURL: URL = Bundle.main.bundleURL,
         identifierOfBundle: @escaping @MainActor (URL) -> String? = { Bundle(url: $0)?.bundleIdentifier },
-        openApplication: @escaping @MainActor (URL, [String]) async throws -> Void = DevelopmentDataMode.openApplication,
+        openApplication: @escaping @MainActor (URL) async throws -> Void = DevelopmentDataMode.openApplication,
         terminate: @escaping @MainActor () -> Void = { NSApplication.shared.terminate(nil) }
     ) {
         isAvailable = bundleIdentifier == Self.normalBundleID || bundleIdentifier == Self.demoBundleID
@@ -57,7 +56,7 @@ final class DevelopmentDataMode {
             return
         }
         do {
-            try await openApplication(destination, enabled ? [Self.demoArgument] : [])
+            try await openApplication(destination)
             terminate()
         } catch {
             AppLog.error(.lifecycle, "cannot switch development data mode: \(error.localizedDescription)")
@@ -70,9 +69,8 @@ final class DevelopmentDataMode {
         AppLog.error(.lifecycle, message)
     }
 
-    private static func openApplication(at url: URL, arguments: [String]) async throws {
+    private static func openApplication(at url: URL) async throws {
         let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = arguments
         configuration.activates = false
         configuration.createsNewApplicationInstance = false
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in

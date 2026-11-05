@@ -26,8 +26,7 @@ demo app. Turn it off to restart the normal dev app with its existing accounts a
   Lose It, and account notice. Resets fall between the next hour and the next week.
 - **Reshuffle**, under Development in the demo app, swaps in a new seed's accounts without a restart.
 - To reproduce a seed, launch the demo with it:
-  `DEMO_SEED=4242 BUNDLE_ID=com.robinebers.openusage.dev.demo ./script/build_and_run.sh`, or
-  `open "dist/OpenUsage Demo.app" --args --demo-data -DemoSeed 4242`.
+  `open "dist/OpenUsage Demo.app" --args -DemoSeed 4242`.
 - The demo uses `com.robinebers.openusage.dev.demo` and memory-only credential vaults. Its accounts,
   layout, and settings reset at each launch. It never reads or changes the normal dev app's or the
   installed app's accounts, settings, or Keychain items.

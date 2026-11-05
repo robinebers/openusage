@@ -7,36 +7,17 @@ import XCTest
 final class DevelopmentDemoTests: XCTestCase {
     private let now = Date()
 
-    func testSampleLaunchRequiresTheDemoIdentityAndExplicitArgument() throws {
-        XCTAssertTrue(try DemoSession.requested(
-            bundleIdentifier: DevelopmentDataMode.demoBundleID,
-            arguments: ["OpenUsage", DevelopmentDataMode.demoArgument]
-        ))
-        XCTAssertFalse(try DemoSession.requested(
-            bundleIdentifier: DevelopmentDataMode.normalBundleID, arguments: ["OpenUsage"]
-        ))
-        XCTAssertFalse(try DemoSession.requested(bundleIdentifier: "com.robinebers.openusage", arguments: ["OpenUsage"]))
-        for identity in [DevelopmentDataMode.normalBundleID, "com.robinebers.openusage", "unknown", nil] {
-            XCTAssertThrowsError(try DemoSession.requested(
-                bundleIdentifier: identity, arguments: ["OpenUsage", DevelopmentDataMode.demoArgument]
-            ))
-        }
-        XCTAssertThrowsError(try DemoSession.requested(
-            bundleIdentifier: DevelopmentDataMode.demoBundleID, arguments: ["OpenUsage"]
-        ))
-    }
-
     func testTheSameSeedShowsTheSameDashboard() async throws {
-        let first = try await dashboard(seed: 4242)
-        let again = try await dashboard(seed: 4242)
+        let first = await dashboard(seed: 4242)
+        let again = await dashboard(seed: 4242)
         XCTAssertEqual(again, first)
-        let other = try await dashboard(seed: 4243)
+        let other = await dashboard(seed: 4243)
         XCTAssertNotEqual(other, first, "another seed must draw other data")
     }
 
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {
         for seed in Array(1...30) + [DemoSession.seeds.upperBound] {
-            let container = try await makeContainer(seed: seed)
+            let container = await makeContainer(seed: seed)
             let accounts = container.dataStore.accounts(in: container.layout.displayGroups)
             XCTAssertEqual(Set(accounts.map(\.provider.kind)), Set(ProviderKind.allCases), "seed \(seed)")
             XCTAssertTrue(accounts.contains { $0.provider.accountName.count > 30 }, "seed \(seed) has no long name")
@@ -59,15 +40,15 @@ final class DevelopmentDemoTests: XCTestCase {
         }
     }
 
-    func testAPinnedSeedIsReadAfterTheDemoDomainResets() throws {
+    func testAPinnedSeedIsReadAfterTheDemoDomainResets() {
         let defaults = makeDefaults()
         defaults.register(defaults: [DemoSession.seedKey: "4242"])
-        let container = try DemoSession.makeContainer(defaults: defaults, now: now)
+        let container = DemoSession.makeContainer(defaults: defaults, now: now)
         XCTAssertEqual(container.demo?.seed, 4242)
     }
 
     func testReshuffleReplacesEveryAccountInPlace() async throws {
-        let container = try await makeContainer(seed: 7)
+        let container = await makeContainer(seed: 7)
         let demo = try XCTUnwrap(container.demo)
         let store = container.dataStore
         let layout = container.layout
@@ -85,7 +66,7 @@ final class DevelopmentDemoTests: XCTestCase {
     }
 
     func testRefreshKeepsServingTheSamples() async throws {
-        let container = try await makeContainer(seed: 11)
+        let container = await makeContainer(seed: 11)
         let ids = container.accounts.accounts.map(\.cardID)
         let shown = shown(in: container)
 
@@ -100,7 +81,7 @@ final class DevelopmentDemoTests: XCTestCase {
     }
 
     func testRenameAndRemovalStayInsideTheSampleContainer() async throws {
-        let container = try await makeContainer(seed: 12)
+        let container = await makeContainer(seed: 12)
         let saved = try XCTUnwrap(container.accounts.accounts.first)
         let store = container.dataStore
         let before = try XCTUnwrap(shown(in: container).first { $0.name == saved.label })
@@ -116,7 +97,7 @@ final class DevelopmentDemoTests: XCTestCase {
     }
 
     func testAnAccountAddedInTheDemoGetsASampleReading() async throws {
-        let container = try await makeContainer(seed: 13)
+        let container = await makeContainer(seed: 13)
         let added = container.accounts.add(kind: .openrouter, label: "Added Later", credential: .apiKey("sample"))
 
         let outcome = await container.dataStore.refresh(providerID: added.cardID, force: true)
@@ -126,7 +107,7 @@ final class DevelopmentDemoTests: XCTestCase {
     }
 
     func testRealSignInAndResetPathsLeaveSamplesAlone() async throws {
-        let container = try await makeContainer(seed: 14)
+        let container = await makeContainer(seed: 14)
         let account = try XCTUnwrap(container.accounts.accounts.first)
         let saved = try container.accounts.credential(for: account.id)
 
@@ -140,13 +121,13 @@ final class DevelopmentDemoTests: XCTestCase {
         let defaults = makeDefaults()
         let unrelated = isolatedDefaults()
         unrelated.set("keep-real-state", forKey: "sentinel")
-        let first = try DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
+        let first = DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
         let original = first.accounts.accounts.map(\.label)
         let account = try XCTUnwrap(first.accounts.accounts.first)
         first.accounts.rename(account.id, to: "Temporary Name")
         defaults.set("temporary-setting", forKey: "demo-edit")
 
-        let restarted = try DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
+        let restarted = DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
 
         XCTAssertEqual(restarted.accounts.accounts.map(\.label), original)
         XCTAssertNil(defaults.string(forKey: "demo-edit"))
@@ -173,8 +154,8 @@ final class DevelopmentDemoTests: XCTestCase {
         let rows: [DashboardRowModel]
     }
 
-    private func dashboard(seed: Int) async throws -> [Shown] {
-        shown(in: try await makeContainer(seed: seed))
+    private func dashboard(seed: Int) async -> [Shown] {
+        shown(in: await makeContainer(seed: seed))
     }
 
     private func shown(in container: AppContainer) -> [Shown] {
@@ -187,8 +168,8 @@ final class DevelopmentDemoTests: XCTestCase {
         }
     }
 
-    private func makeContainer(seed: Int) async throws -> AppContainer {
-        let container = try DemoSession.makeContainer(defaults: makeDefaults(), seed: seed, now: now)
+    private func makeContainer(seed: Int) async -> AppContainer {
+        let container = DemoSession.makeContainer(defaults: makeDefaults(), seed: seed, now: now)
         await refresh(container)
         return container
     }

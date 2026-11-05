@@ -9,14 +9,14 @@ final class DevelopmentDataModeTests: XCTestCase {
 
     func testSwitchingToSampleDataOpensTheDemoBeforeTerminatingTheCurrentApp() async {
         let held = HeldResponse()
-        var launches: [(URL, [String])] = []
+        var launches: [URL] = []
         var terminations = 0
         let mode = DevelopmentDataMode(
             bundleIdentifier: DevelopmentDataMode.normalBundleID,
             bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
             identifierOfBundle: { _ in DevelopmentDataMode.demoBundleID },
-            openApplication: { url, arguments in
-                launches.append((url, arguments))
+            openApplication: { url in
+                launches.append(url)
                 await held.hold()
             },
             terminate: { terminations += 1 }
@@ -29,8 +29,7 @@ final class DevelopmentDataModeTests: XCTestCase {
 
         XCTAssertTrue(mode.isSwitching)
         XCTAssertEqual(launches.count, 1)
-        XCTAssertEqual(launches.first?.0, appDirectory.appendingPathComponent("OpenUsage Demo.app", isDirectory: true))
-        XCTAssertEqual(launches.first?.1, [DevelopmentDataMode.demoArgument])
+        XCTAssertEqual(launches.first, appDirectory.appendingPathComponent("OpenUsage Demo.app", isDirectory: true))
         XCTAssertEqual(terminations, 0, "the current app must survive until its replacement opens")
 
         await held.release()
@@ -42,13 +41,13 @@ final class DevelopmentDataModeTests: XCTestCase {
     }
 
     func testSwitchingOffReturnsToTheNormalDevelopmentAppWithoutADemoArgument() async {
-        var launches: [(URL, [String])] = []
+        var launches: [URL] = []
         var terminations = 0
         let mode = DevelopmentDataMode(
             bundleIdentifier: DevelopmentDataMode.demoBundleID,
             bundleURL: appDirectory.appendingPathComponent("OpenUsage Demo.app", isDirectory: true),
             identifierOfBundle: { _ in DevelopmentDataMode.normalBundleID },
-            openApplication: { launches.append(($0, $1)) },
+            openApplication: { launches.append($0) },
             terminate: { terminations += 1 }
         )
 
@@ -56,8 +55,7 @@ final class DevelopmentDataModeTests: XCTestCase {
         await mode.switchToSampleData(false)
 
         XCTAssertEqual(launches.count, 1)
-        XCTAssertEqual(launches.first?.0, appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true))
-        XCTAssertEqual(launches.first?.1, [])
+        XCTAssertEqual(launches.first, appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true))
         XCTAssertEqual(terminations, 1)
         XCTAssertNil(mode.errorMessage)
     }
@@ -70,7 +68,7 @@ final class DevelopmentDataModeTests: XCTestCase {
                 bundleIdentifier: DevelopmentDataMode.normalBundleID,
                 bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
                 identifierOfBundle: { _ in destinationID },
-                openApplication: { _, _ in launches += 1 },
+                openApplication: { _ in launches += 1 },
                 terminate: { terminations += 1 }
             )
 
@@ -90,7 +88,7 @@ final class DevelopmentDataModeTests: XCTestCase {
             bundleIdentifier: DevelopmentDataMode.normalBundleID,
             bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
             identifierOfBundle: { _ in DevelopmentDataMode.demoBundleID },
-            openApplication: { _, _ in
+            openApplication: { _ in
                 launches += 1
                 throw LaunchFailure.refused
             },
@@ -114,7 +112,7 @@ final class DevelopmentDataModeTests: XCTestCase {
                 bundleIdentifier: sourceID,
                 bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
                 identifierOfBundle: { _ in DevelopmentDataMode.demoBundleID },
-                openApplication: { _, _ in launches += 1 },
+                openApplication: { _ in launches += 1 },
                 terminate: { terminations += 1 }
             )
 
@@ -136,7 +134,7 @@ final class DevelopmentDataModeTests: XCTestCase {
             bundleIdentifier: DevelopmentDataMode.normalBundleID,
             bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
             identifierOfBundle: { _ in DevelopmentDataMode.demoBundleID },
-            openApplication: { _, _ in
+            openApplication: { _ in
                 launches += 1
                 await held.hold()
             },
@@ -163,7 +161,7 @@ final class DevelopmentDataModeTests: XCTestCase {
                 bundleIdentifier: sourceID,
                 bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
                 identifierOfBundle: { _ in nil },
-                openApplication: { _, _ in launches += 1 },
+                openApplication: { _ in launches += 1 },
                 terminate: { terminations += 1 }
             )
 
@@ -182,7 +180,7 @@ final class DevelopmentDataModeTests: XCTestCase {
             bundleIdentifier: DevelopmentDataMode.normalBundleID,
             bundleURL: appDirectory.appendingPathComponent("OpenUsage.app", isDirectory: true),
             identifierOfBundle: { _ in DevelopmentDataMode.demoBundleID },
-            openApplication: { _, _ in launches += 1 },
+            openApplication: { _ in launches += 1 },
             terminate: { terminations += 1 }
         )
 

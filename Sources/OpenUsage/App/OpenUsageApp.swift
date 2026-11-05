@@ -31,18 +31,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.disableRelaunchOnLogin()
         #if OPENUSAGE_DEVELOPMENT
-        do {
-            if try DemoSession.requested(bundleIdentifier: Bundle.main.bundleIdentifier, arguments: ProcessInfo.processInfo.arguments) {
-                let container = try DemoSession.makeContainer(defaults: .standard)
-                AppearanceSetting.applyCurrent()
-                self.container = container
-                container.startRefreshing()
-                statusItemController = StatusItemController(container: container, updater: updater)
-                return
-            }
-        } catch {
-            NSApp.presentError(error)
-            NSApp.terminate(nil)
+        if Bundle.main.bundleIdentifier == DevelopmentDataMode.demoBundleID {
+            let container = DemoSession.makeContainer(defaults: .standard)
+            AppearanceSetting.applyCurrent()
+            self.container = container
+            container.startRefreshing()
+            statusItemController = StatusItemController(container: container, updater: updater)
             return
         }
         #endif

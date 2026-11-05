@@ -17,7 +17,6 @@ set -euo pipefail
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
 #        BUNDLE_ID          defaults to com.robinebers.openusage.dev; other identities omit demo code
-#        DEMO_SEED          pins the demo app's sample data seed
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -25,16 +24,9 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
-NORMAL_DEV_BUNDLE_ID="com.robinebers.openusage.dev"
 DEMO_BUNDLE_ID="com.robinebers.openusage.dev.demo"
-REQUESTED_BUNDLE_ID="$BUNDLE_ID"
 DEVELOPMENT_BUILD=false
-case "$BUNDLE_ID" in
-  "$NORMAL_DEV_BUNDLE_ID"|"$DEMO_BUNDLE_ID")
-    DEVELOPMENT_BUILD=true
-    BUNDLE_ID="$NORMAL_DEV_BUNDLE_ID"
-    ;;
-esac
+[ "$BUNDLE_ID" = "com.robinebers.openusage.dev" ] && DEVELOPMENT_BUILD=true
 MIN_SYSTEM_VERSION="15.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -206,39 +198,24 @@ if "$DEVELOPMENT_BUILD"; then
   fi
 fi
 
-LAUNCH_BUNDLE="$APP_BUNDLE"
-LAUNCH_BINARY="$APP_BINARY"
-LAUNCH_DISPLAY="$APP_DISPLAY"
-LAUNCH_BUNDLE_ID="$BUNDLE_ID"
-if [ "$REQUESTED_BUNDLE_ID" = "$DEMO_BUNDLE_ID" ]; then
-  LAUNCH_BUNDLE="$DEMO_APP_BUNDLE"
-  LAUNCH_BINARY="$DEMO_APP_BINARY"
-  LAUNCH_DISPLAY="OpenUsage Demo"
-  LAUNCH_BUNDLE_ID="$DEMO_BUNDLE_ID"
-fi
-
 launch_app() {
-  if [ "$LAUNCH_BUNDLE_ID" = "$DEMO_BUNDLE_ID" ]; then
-    /usr/bin/open -n "$LAUNCH_BUNDLE" --args --demo-data ${DEMO_SEED:+-DemoSeed "$DEMO_SEED"}
-  else
-    /usr/bin/open -n "$LAUNCH_BUNDLE"
-  fi
+  /usr/bin/open -n "$APP_BUNDLE"
 }
 
 # Every build with this bundle id shares one single-instance lock, so the copy launched here hands off
 # to one already running from another folder and quits.
 confirm_launch() {
   sleep 1
-  pgrep -f "^$LAUNCH_BINARY" >/dev/null && return
+  pgrep -f "^$APP_BINARY" >/dev/null && return
   for pid in $(pgrep -x "$TARGET_NAME"); do
     running="$(ps -o comm= -p "$pid")"
     running="${running%/Contents/MacOS/$TARGET_NAME}"
-    if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$LAUNCH_BUNDLE_ID" ]; then
-      echo "error: dist/$LAUNCH_DISPLAY.app quit because another $LAUNCH_BUNDLE_ID build is running: $running" >&2
+    if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$BUNDLE_ID" ]; then
+      echo "error: dist/$APP_DISPLAY.app quit because another $BUNDLE_ID build is running: $running" >&2
       exit 1
     fi
   done
-  echo "error: dist/$LAUNCH_DISPLAY.app is not running" >&2
+  echo "error: dist/$APP_DISPLAY.app is not running" >&2
   exit 1
 }
 
@@ -246,7 +223,7 @@ case "$MODE" in
   run|verify)
     launch_app
     confirm_launch
-    echo "==> launched $LAUNCH_DISPLAY (dist/$LAUNCH_DISPLAY.app)"
+    echo "==> launched $APP_DISPLAY (dist/$APP_DISPLAY.app)"
     ;;
   build)
     : # build + stage + sign only

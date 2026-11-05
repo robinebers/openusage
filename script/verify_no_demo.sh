@@ -34,8 +34,6 @@ for binary in "$@"; do
     '\$s9OpenUsage[0-9]+(Demo|DevelopmentData)' \
     "$inspection_dir/symbols"
   assert_no_matches "$binary" 'data or controls' -Fqx \
-    -e 'OPENUSAGE_DEVELOPMENT_DEMO_FIXTURE_V1' \
-    -e '--demo-data' \
     -e 'com.robinebers.openusage.dev.demo' \
     -e 'Sample Data' \
     -e 'Demo Data' \
