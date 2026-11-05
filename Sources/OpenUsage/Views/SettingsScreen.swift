@@ -125,6 +125,10 @@ struct SettingsScreen: View {
         Section("Usage") {
             picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
             picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
+            Toggle(isOn: $dataStore.showsPaceMarks) {
+                Text("Pace Marks")
+                Text("Where usage would be at an even pace")
+            }
         }
     }
 

@@ -31,6 +31,8 @@ Priority shows only what needs you, most urgent first.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.
   **Fix** opens the account's page with the reason and how to fix it.
 
+Each limit's ring carries the same pace mark as its bar in All Usage, clockwise from 12 o'clock.
+
 Ties keep your dashboard order. If no account has a limit to monitor, **No Reported Limits** links
 to All Usage.
 
@@ -54,6 +56,10 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 - Countdowns update every 30 seconds.
 - Hover over a bar to see where your current pace lands at reset. The same pace drives the
   [notifications](settings.md).
+- A tick on the bar marks where it would be by now at an even pace through the window: under Used
+  at the share of the window that has passed, under Left at the rest. It moves with the clock. A limit
+  gets no mark without a reset window, before 1% of the window (and a minute) has passed, before its
+  session has started, or once it's used up. **Settings → Display → Pace Marks** turns the marks off.
 
 ### Resets
 

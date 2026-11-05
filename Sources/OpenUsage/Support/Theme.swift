@@ -39,6 +39,7 @@ enum Theme {
     static let cardFill = Color(nsColor: .quaternarySystemFill)
     static let hairline = adaptive(light: NSColor(white: 0, alpha: 0.05), dark: NSColor(white: 1, alpha: 0.06))
     static let meterTrack = adaptive(light: NSColor(white: 0, alpha: 0.09), dark: NSColor(white: 1, alpha: 0.12))
+    static let paceMark = adaptive(light: NSColor(white: 38 / 255, alpha: 1), dark: NSColor(white: 242 / 255, alpha: 1))
     static let skeleton = adaptive(light: NSColor(white: 0, alpha: 0.075), dark: NSColor(white: 1, alpha: 0.086))
 
     static let controlFill = adaptive(light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.1))

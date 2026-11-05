@@ -18,6 +18,7 @@ final class WidgetDataStore {
     private static let priorityCriticalKey = "priorityCritical"
     private static let priorityBurningFastKey = "priorityBurningFast"
     private static let priorityUseItOrLoseItKey = "priorityUseItOrLoseIt"
+    private static let paceMarksKey = "paceMarks"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
@@ -59,6 +60,11 @@ final class WidgetDataStore {
         didSet { defaults.set(showsUseItOrLoseIt, forKey: Self.priorityUseItOrLoseItKey) }
     }
 
+    /// Bars and Priority's rings mark where usage would be at an even pace through the window.
+    var showsPaceMarks: Bool {
+        didSet { defaults.set(showsPaceMarks, forKey: Self.paceMarksKey) }
+    }
+
     /// The limits that were burning fast at their last reading, with their window's reset. See `BurningFast`.
     private(set) var burningFastWindows: [String: Date] = [:]
 
@@ -91,6 +97,7 @@ final class WidgetDataStore {
         )
         self.showsBurningFast = defaults.object(forKey: Self.priorityBurningFastKey) as? Bool ?? true
         self.showsUseItOrLoseIt = defaults.object(forKey: Self.priorityUseItOrLoseItKey) as? Bool ?? true
+        self.showsPaceMarks = defaults.object(forKey: Self.paceMarksKey) as? Bool ?? true
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -289,6 +296,7 @@ final class WidgetDataStore {
         result.displayMode = meterStyle
         result.priorityLimits = priorityLimits
         result.resetDisplayMode = resetDisplayMode
+        result.showsPaceMarks = showsPaceMarks
         return result
     }
 
