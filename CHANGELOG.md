@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- The menu bar shows the same limits as Priority: Running Out, then Used Up, then Pinned, up to
+  **Show In Menu Bar**. Pin a metric to always show it
+  ([#1611](https://github.com/robinebers/openusage/issues/1611)).
+
 ## v0.8.0-beta.3
 
 ### Added

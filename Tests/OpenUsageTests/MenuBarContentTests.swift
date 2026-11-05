@@ -20,8 +20,8 @@ final class MenuBarContentTests: XCTestCase {
         })
     }
 
-    private func content(_ limit: MenuBarLimit, _ accounts: DashboardAccount...) -> MenuBarContent {
-        MenuBarContentBuilder.build(board: PriorityBoard.make(accounts: accounts, now: now), limit: limit)
+    private func content(_ limit: MenuBarLimit, pinned: Set<String> = [], _ accounts: DashboardAccount...) -> MenuBarContent {
+        MenuBarContentBuilder.build(board: PriorityBoard.make(accounts: accounts, pinned: pinned, now: now), limit: limit)
     }
 
     private func sevenLimits() -> DashboardAccount {
@@ -72,11 +72,78 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(strip, MenuBarContent(items: []))
     }
 
-    func testUsedUpLimitsNeverShowAndNeverCountTowardTheOverflow() {
-        let strip = content(.upToOne, account(personal, limit("Spent", used: 100), limit("Spent Too", used: 100),
-                                              limit("Low", used: 95), limit("Lower", used: 90)))
-        XCTAssertEqual(strip.items.map(\.shortLabel), ["Low"])
-        XCTAssertEqual(strip.overflow, 1, "only Lower waits; Spent and Spent Too aren't running out")
+    func testUsedUpLimitsShowAfterRunningOutAndCountTowardTheOverflow() {
+        let accounts = account(personal, limit("Spent", used: 100), limit("Spent Too", used: 100),
+                               limit("Low", used: 95), limit("Lower", used: 90))
+        let one = content(.upToOne, accounts)
+        XCTAssertEqual(one.items.map(\.shortLabel), ["Low"])
+        XCTAssertEqual(one.overflow, 3)
+
+        let five = content(.upToFive, accounts)
+        XCTAssertEqual(five.items.map(\.shortLabel), ["Low", "Lower", "Spent", "Spent Too"])
+        XCTAssertEqual(five.items.map(\.value), ["95%", "90%", "100%", "100%"])
+        XCTAssertEqual(five.overflow, 0)
+
+        var left = limit("Spent", used: 100)
+        left.displayMode = .remaining
+        XCTAssertEqual(content(.upToOne, account(personal, left)).items.map(\.value), ["0%"])
+    }
+
+    func testPinnedLimitsShowWithNothingRunningOut() {
+        let strip = content(.upToThree, pinned: ["claude@1.Weekly", "codex@1.Session"],
+                            account(personal, limit("Session", used: 10), limit("Weekly", used: 40)),
+                            account(chatGPT, limit("Session", used: 20)))
+        XCTAssertEqual(strip.items.map(\.id), ["claude@1.Weekly", "codex@1.Session"])
+        XCTAssertEqual(strip.items.map(\.value), ["40%", "20%"])
+        XCTAssertEqual(strip.overflow, 0)
+    }
+
+    func testAPinnedMetricWithoutALimitShowsItsAmount() {
+        let provider = Provider(id: "openrouter", kind: .openrouter)
+        let descriptor = WidgetDescriptor.values(key: "balance", provider: provider, title: "Balance")
+        var data = descriptor.sample
+        data.values = [MetricValue(number: 12, kind: .dollars)]
+        let account = DashboardAccount(provider: provider, lines: [DashboardLine(descriptor: descriptor, data: data)])
+        let board = PriorityBoard.make(accounts: [account], pinned: [descriptor.id], now: now)
+
+        XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToOne).items.map(\.value), ["$12"])
+    }
+
+    func testRunningOutAndUsedUpComeBeforePinsAndPinsCountTowardTheOverflow() {
+        let accounts = account(personal, limit("Pin A", used: 10), limit("Spent", used: 100),
+                               limit("Pin B", used: 20), limit("Low", used: 95))
+        let pins: Set<String> = ["claude@1.Pin A", "claude@1.Pin B"]
+
+        let three = content(.upToThree, pinned: pins, accounts)
+        XCTAssertEqual(three.items.map(\.shortLabel), ["Low", "Spent", "Pin A"])
+        XCTAssertEqual(three.overflow, 1, "Pin B waits")
+
+        let one = content(.upToOne, pinned: pins, accounts)
+        XCTAssertEqual(one.items.map(\.shortLabel), ["Low"])
+        XCTAssertEqual(one.overflow, 3)
+    }
+
+    func testAPinnedLimitThatIsRunningOutShowsOnceAsRunningOut() {
+        let strip = content(.upToFive, pinned: ["claude@1.Low", "claude@1.Quiet"],
+                            account(personal, limit("Quiet", used: 10), limit("Low", used: 95)))
+        XCTAssertEqual(strip.items.map(\.shortLabel), ["Low", "Quiet"])
+        XCTAssertEqual(strip.overflow, 0)
+    }
+
+    func testUseItOrLoseItLimitsStayOut() {
+        var weekly = limit("Weekly", used: 20)
+        weekly.resetsAt = now.addingTimeInterval(6 * 3600)
+        weekly.periodDurationMs = 7 * 24 * 3600 * 1000
+        let board = PriorityBoard.make(accounts: [account(personal, weekly)], useItOrLoseIt: true, now: now)
+
+        XCTAssertEqual(board.useItOrLoseIt.map(\.id), ["claude@1.Weekly"])
+        XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToFive), MenuBarContent(items: []))
+    }
+
+    func testNoAccountsShowTheAppIconEvenWithPins() {
+        let strip = content(.upToThree, pinned: ["claude@1.Weekly"])
+        XCTAssertEqual(strip, MenuBarContent(items: []))
+        XCTAssertNil(MenuBarStripRenderer.image(for: strip), "the status item falls back to the app icon")
     }
 
     func testEveryItemNamesItsLimitAndCarriesItsValue() {

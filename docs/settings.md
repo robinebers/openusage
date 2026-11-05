@@ -11,8 +11,8 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 
 ## Priority
 
-- **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
-  first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
+- **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits: running out, then used
+  up, then pinned. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 - **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
   70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
@@ -23,7 +23,7 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
   default, and separate from the alert.
 
 Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
-pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
+pick which limits the menu bar shows as running out and when the Warning and Critical notifications fire. Critical
 always stays under Warning: moving one onto the other pushes the other 5% along.
 
 ## Appearance

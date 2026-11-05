@@ -3,7 +3,7 @@
 Track your AI coding subscriptions from the macOS menu bar.
 
 OpenUsage shows how much of each AI plan you've used: session and weekly limits, credits, and
-balances, all in one panel. The limits closest to running out sit right in the menu bar.
+balances, all in one panel. Your pinned limits and the ones closest to running out sit right in the menu bar.
 
 | | Light | Dark |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 
 ## Features
 
-- **Menu bar.** The limits closest to running out, at a glance.
+- **Menu bar.** Your pinned limits and the ones running out, at a glance.
 - **Priority.** What's running low, what's used up, and which accounts need you.
 - **All Usage.** Every account and limit in one place, with resets, your pace, and an optional mark
   where an even pace would be.

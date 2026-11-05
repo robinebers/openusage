@@ -100,6 +100,10 @@ struct WidgetData: Hashable {
     }
 
     var menuBarValue: String {
+        if let valueTextOverride { return valueTextOverride }
+        if let first = values.first {
+            return MetricFormatter.number(first.number, kind: first.kind, style: .tray, currencyCode: first.currencyCode)
+        }
         if kind == .percent, let limit, limit > 0 {
             return MetricFormatter.number(displayedValue / limit * 100, kind: .percent, style: .tray)
         }

@@ -29,17 +29,19 @@ enum MenuBarContentBuilder {
 
     static func build(board: PriorityBoard, limit: MenuBarLimit) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        let shown = board.attention.prefix(limit.count).map { item in
-            let label = item.data.title
+        // Running Out and Used Up come before Pinned, so a pin never pushes an urgent limit past the cap.
+        let lines = (board.attention + board.usedUp).map { ($0.provider, $0.line) } + board.pinned.map { ($0.provider, $0.line) }
+        let shown = lines.prefix(limit.count).map { provider, line in
+            let label = line.data.title
             return MenuBarContent.Item(
-                id: item.id,
-                provider: item.provider,
+                id: line.id,
+                provider: provider,
                 label: label,
                 shortLabel: shortLabel(label),
-                value: item.data.menuBarValue
+                value: line.data.menuBarValue
             )
         }
-        return MenuBarContent(items: shown, overflow: board.attention.count - shown.count)
+        return MenuBarContent(items: shown, overflow: lines.count - shown.count)
     }
 
     static func shortLabel(_ label: String) -> String {

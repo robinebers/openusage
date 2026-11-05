@@ -249,8 +249,8 @@ struct SettingsScreen: View {
     }
 }
 
-/// Sample icons at the number the setting picks, so every choice looks different whatever is running
-/// out right now. Shrunk to sit in a row however many it holds.
+/// Sample icons at the number the setting picks, so every choice looks different whatever is pinned or
+/// running out right now. Shrunk to sit in a row however many it holds.
 struct PriorityIconsPreview: View {
     @Environment(WidgetDataStore.self) private var dataStore
 
