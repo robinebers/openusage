@@ -139,9 +139,7 @@ struct SettingsScreen: View {
             Text("Notifications")
         } footer: {
             if notificationsDenied {
-                Text("Notifications are off for OpenUsage in [System Settings](x-apple.systempreferences:com.apple.Notifications-Settings.extension).")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.notice)
+                NotificationSettingsNote()
             }
         }
     }

@@ -43,6 +43,8 @@ Click a limit's amount or reset on the dashboard to flip either one.
 ## Notifications
 
 All off by default. Turning the first one on asks macOS for permission.
+If notifications are off for OpenUsage, click **System Settings** in the notice to open
+**Notifications → OpenUsage** and allow them. The OpenUsage panel closes when System Settings opens.
 
 - **Critical.** A limit drops to its Critical level or less left (10% by default).
 - **Warning.** A limit drops to its Warning level or less left (30% by default).
