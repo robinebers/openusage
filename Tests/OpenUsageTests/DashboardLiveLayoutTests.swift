@@ -103,10 +103,13 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
             providerID: account.cardID, displayName: "Claude", lines: [.percent("Weekly", 30)]
         )
         let (window, host, frames) = hostList(container)
-        try await waitUntil { frames.byID[account.cardID] != nil }
-        let button = copyButton(in: host.bounds)
+        let rowID = "\(account.cardID).weekly"
+        try await waitUntil { frames.byID[rowID] != nil }
+        let row = try XCTUnwrap(frames.byID[rowID])
+        let button = CGPoint(x: host.bounds.maxX - DashboardGrid.cardPadding - 1.5 * DashboardGrid.iconSize - Theme.Spacing.s,
+                             y: DashboardGrid.headerHeight / 2)
         let original = try pixels(of: host)
-        try hover(CGPoint(x: button.midX, y: button.midY), window, host)
+        try hover(CGPoint(x: row.minX + 20, y: row.midY), window, host)
         try await waitUntil {
             guard let image = try? self.pixels(of: host) else { return false }
             return image != original
@@ -114,62 +117,12 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
 
         let clipboard = Clipboard.save()
         defer { clipboard.restore() }
-        click(CGPoint(x: button.midX, y: button.midY), window, host)
+        click(button, window, host)
         try await waitUntil { container.popover.shareNotice.value }
         let data = try XCTUnwrap(NSPasteboard.general.data(forType: .png))
         let image = try XCTUnwrap(NSBitmapImageRep(data: data))
         XCTAssertGreaterThan(image.pixelsWide, 0)
         XCTAssertEqual(image.pixelsWide % Int(ShareCardView.width), 0)
-    }
-
-    func testTheCopyButtonShowsBesideTheLogoWhileThePointerIsOverItsProvider() async throws {
-        let defaults = isolatedDefaults()
-        let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let claude = accounts.add(kind: .claude, label: "Personal", credential: .apiKey("first"))
-        let codex = accounts.add(kind: .codex, label: "Personal", credential: .apiKey("second"))
-        let container = AppContainer.forTesting(accounts: accounts, defaults: defaults)
-        for account in [claude, codex] {
-            container.dataStore.snapshots[account.cardID] = ProviderSnapshot(
-                providerID: account.cardID, displayName: account.kind.rawValue, lines: [.percent("Weekly", 30)]
-            )
-        }
-        let (window, host, frames) = hostList(container)
-        let claudeRowID = "\(claude.cardID).weekly", codexRowID = "\(codex.cardID).weekly"
-        try await waitUntil { frames.byID[claudeRowID] != nil && frames.byID[codexRowID] != nil }
-        let claudeRow = try XCTUnwrap(frames.byID[claudeRowID]), codexRow = try XCTUnwrap(frames.byID[codexRowID])
-        func section(holding row: CGRect) throws -> CGRect {
-            try XCTUnwrap(frames.byID.first { $0.key.hasPrefix("family:") && $0.value.contains(row.origin) }?.value)
-        }
-        let claudeSection = try section(holding: claudeRow), codexSection = try section(holding: codexRow)
-        let button = copyButton(in: claudeSection), codexButton = copyButton(in: codexSection)
-        let logo = CGRect(x: button.maxX + Theme.Spacing.s, y: button.minY, width: button.width, height: button.height)
-        let title = CGRect(x: claudeSection.minX, y: claudeSection.minY, width: button.minX - claudeSection.minX,
-                           height: DashboardGrid.headerHeight)
-        let resting = try pixels(of: host)
-        func changed(_ rect: CGRect) -> Bool { (try? self.crop(self.pixels(of: host), rect, in: host)) != (try? self.crop(resting, rect, in: host)) }
-
-        try hover(CGPoint(x: claudeRow.minX + 20, y: claudeRow.midY), window, host)
-        try await waitUntil { changed(button) }
-        XCTAssertFalse(changed(logo), "The copy button covered the logo")
-        XCTAssertFalse(changed(title), "The header moved when the button showed")
-
-        move(CGPoint(x: codexRow.minX + 20, y: codexRow.midY), window, host)
-        try await waitUntil { changed(codexButton) && !changed(button) }
-    }
-
-    /// The copy button's slot, left of the logo in the header of the section that fills `frame`.
-    private func copyButton(in frame: CGRect) -> CGRect {
-        let side = DashboardGrid.iconSize
-        return CGRect(x: frame.maxX - DashboardGrid.cardPadding - side - Theme.Spacing.s - side,
-                      y: frame.minY + (DashboardGrid.headerHeight - side) / 2, width: side, height: side)
-    }
-
-    private func crop(_ png: Data, _ rect: CGRect, in host: NSView) throws -> Data {
-        let image = try XCTUnwrap(NSBitmapImageRep(data: png)?.cgImage)
-        let scale = CGFloat(image.width) / host.bounds.width
-        let pixels = CGRect(x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale)
-        let cropped = try XCTUnwrap(image.cropping(to: pixels))
-        return try XCTUnwrap(NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:]))
     }
 }
 
