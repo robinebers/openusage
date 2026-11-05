@@ -54,7 +54,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
   where an even pace would be.
 - **Your layout.** Pin the metrics you care about, hide the rest, and drag everything into your order.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
-- **Share.** Copy a picture of your usage to the clipboard.
+- **Share.** Copy a picture of your usage to the clipboard, with email account names blurred.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
   it unused.
 - **Priority limits.** Choose how much left turns a limit orange or red, see limits you're burning
