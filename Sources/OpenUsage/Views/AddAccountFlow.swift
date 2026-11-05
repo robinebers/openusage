@@ -108,11 +108,8 @@ final class AddAccountFlow {
 
     /// Back to the Domain step, keeping what was typed.
     func changeDomain() {
-        cancel()
         gitHubDomain = nil
-        prompt = nil
         errorMessage = nil
-        isWorking = false
     }
 
     func chooseHub() {

@@ -18,7 +18,6 @@ struct CopilotLogin: ProviderLogin {
         }
     }
 
-    /// The same user id on two domains is two accounts, so an enterprise identity names its domain.
     private func signIn(prompt: @Sendable (LoginPrompt) async -> Void) async throws -> (label: String, credential: AccountCredential) {
         let token = try await deviceAuthorization(
             provider: "GitHub",
@@ -40,19 +39,20 @@ struct CopilotLogin: ProviderLogin {
         let userID = user.id.map(String.init) ?? user.login
         var identity = "github:\(userID)"
         if case .enterprise(let host) = domain {
-            try await requireSeat(token: token.accessToken, login: user.login, host: host)
+            try await requireSeat(token: token.accessToken, login: user.login)
+            // The same user id on two domains is two accounts.
             identity = "github:\(host):\(userID)"
         }
         return (user.login, .oauth(OAuthTokens(accessToken: token.accessToken, extras: [OAuthTokens.identityKey: identity])))
     }
 
     /// An enterprise sign-in reads usage once, so an account without a Copilot seat is never added.
-    private func requireSeat(token: String, login: String, host: String) async throws {
+    private func requireSeat(token: String, login: String) async throws {
         let usage = try await CopilotUsageClient(http: http).fetchUsage(token: token, domain: domain)
         guard !(200..<300).contains(usage.statusCode) else { return }
-        AppLog.warn(LogTag.auth("copilot"), "seat check on \(host) failed with HTTP \(usage.statusCode)")
+        AppLog.warn(LogTag.auth("copilot"), "seat check on \(domain.host) failed with HTTP \(usage.statusCode)")
         if ProviderError.isAuthFailure(usage) || usage.statusCode == 404 {
-            throw ProviderError.unavailable("\(login) has no Copilot seat on \(host). Ask your GitHub admin for one, then try again.")
+            throw ProviderError.unavailable("\(login) has no Copilot seat on \(domain.host). Ask your GitHub admin for one, then try again.")
         }
         throw ProviderError.failed(usage)
     }
