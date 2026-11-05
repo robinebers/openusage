@@ -22,6 +22,11 @@ extension QuietWindowTestCase {
         send(.mouseMoved, at: point, window, host)
     }
 
+    /// Moves a pointer that is already over the host, as from one card to another.
+    func move(_ point: CGPoint, _ window: NSWindow, _ host: NSView) {
+        host.mouseMoved(with: event(.mouseMoved, at: point, window, host))
+    }
+
     func click(_ point: CGPoint, _ window: NSWindow, _ host: NSView) {
         send(.leftMouseDown, at: point, window, host)
         send(.leftMouseUp, at: point, window, host)

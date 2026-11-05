@@ -2,12 +2,14 @@ import SwiftUI
 
 struct DashboardProviderSection<Header: View, Account: View>: View {
     let family: DashboardFamily
-    @ViewBuilder var header: Header
+    @ViewBuilder var header: (_ isHovered: Bool) -> Header
     @ViewBuilder var account: (DashboardAccount) -> Account
+
+    @State private var isHovered = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: DashboardGrid.headerGap) {
-            header
+            header(isHovered)
             VStack(alignment: .leading, spacing: DashboardGrid.accountSpacing) {
                 ForEach(family.accounts) { account($0) }
             }
@@ -17,20 +19,22 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .cardSurface()
         }
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }
 
 extension DashboardProviderSection where Header == DashboardProviderHeader {
     init(family: DashboardFamily, @ViewBuilder account: @escaping (DashboardAccount) -> Account) {
-        self.init(family: family, header: { DashboardProviderHeader(family: family) }, account: account)
+        self.init(family: family, header: { _ in DashboardProviderHeader(family: family) }, account: account)
     }
 }
 
 struct DashboardProviderHeader: View {
     let family: DashboardFamily
+    var isRevealed = false
     var onCopyScreenshot: (() -> Bool)?
 
-    @State private var isHovered = false
     @State private var copied = false
 
     private var provider: Provider { family.provider }
@@ -41,31 +45,22 @@ struct DashboardProviderHeader: View {
                 .font(DashboardGrid.headerFont)
                 .lineLimit(1)
             Spacer(minLength: DashboardGrid.columnGap)
-            logoOrCopy
+            if let onCopyScreenshot {
+                CopyFeedbackButton(
+                    accessibilityLabel: "Copy \(provider.displayName) Screenshot",
+                    isRevealed: isRevealed,
+                    copied: $copied,
+                    action: onCopyScreenshot
+                )
+                .padding(.trailing, Theme.Spacing.s)
+            }
+            ProviderIcon(id: provider.icon, side: DashboardGrid.iconSize, inset: 0.04)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, DashboardGrid.cardPadding)
         .frame(height: DashboardGrid.headerHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-    }
-
-    private var logoOrCopy: some View {
-        ZStack(alignment: .trailing) {
-            ProviderIcon(id: provider.icon, side: DashboardGrid.iconSize, inset: 0.04)
-                .opacity(onCopyScreenshot != nil && (isHovered || copied) ? 0 : 1)
-                .accessibilityHidden(true)
-            if let onCopyScreenshot {
-                CopyFeedbackButton(
-                    accessibilityLabel: "Copy \(provider.displayName) Screenshot",
-                    isRevealed: isHovered,
-                    copied: $copied,
-                    action: onCopyScreenshot
-                )
-            }
-        }
-        .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
-        .animation(.easeOut(duration: 0.12), value: isHovered || copied)
     }
 }
 

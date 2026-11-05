@@ -16,6 +16,8 @@
 
 ### Changed
 - **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.
+- All Usage shows a provider's copy button beside its logo while the pointer is anywhere over its
+  card, instead of in place of the logo.
 
 ## v0.8.0-beta.2
 
