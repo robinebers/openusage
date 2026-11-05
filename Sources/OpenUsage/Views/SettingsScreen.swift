@@ -93,14 +93,14 @@ struct SettingsScreen: View {
             PriorityIconsPreview()
             picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
         } header: {
-            Text("Priority Icons")
+            Text("Priority")
         } footer: {
             SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
         }
-        Section("Priority Limits") {
-            levelPicker("Warning", subtitle: "Turns a limit orange", severity: .warning,
+        Section {
+            levelPicker("Warning", subtitle: "When a limit turns into a priority", severity: .warning,
                         selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
-            levelPicker("Critical", subtitle: "Turns a limit red", severity: .critical,
+            levelPicker("Critical", subtitle: "When a limit turns critically low", severity: .critical,
                         selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
             Toggle(isOn: $dataStore.showsBurningFast) {
                 limitLabel("Burning Fast", subtitle: "Will run out before it resets") {
@@ -215,7 +215,7 @@ struct SettingsScreen: View {
         }
     }
 
-    /// A Priority Limits row's label: its mark, then its title over what it does.
+    /// A Priority limit row's label: its mark, then its title over what it does.
     private func limitLabel(_ title: String, subtitle: String, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 8) {
             mark().frame(width: 8)

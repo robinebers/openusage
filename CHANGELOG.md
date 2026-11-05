@@ -3,9 +3,12 @@
 ## Unreleased
 
 ### Added
-- **Use It or Lose It** under Priority Limits lists a weekly or monthly limit that resets within 24
-  hours with over 50% left in its own Priority section, soonest reset first, with when it resets. It
-  uses the same rule as the alert and stays out of the menu bar. On by default.
+- **Use It or Lose It** under **Settings → Display → Priority** lists a weekly or monthly limit that
+  resets within 24 hours with over 50% left in its own Priority section, soonest reset first, with
+  when it resets. It uses the same rule as the alert and stays out of the menu bar. On by default.
+
+### Changed
+- **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.
 
 ## v0.8.0-beta.2
 

@@ -15,9 +15,9 @@ Priority shows only what needs you, most urgent first.
   out moves to Running Out until it recovers, one that's used up moves to Used Up until it resets,
   and one listed under Use It or Lose It moves there until it resets.
 - **Running Out** lists every limit at or under its Warning level (30% left by default, set in
-  [Priority Limits](settings.md#priority-limits)). With **Burning Fast** on, it also lists a limit
-  that would run out before it resets at your current pace, however much it has left, with the time
-  it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
+  [Settings → Display → Priority](settings.md#priority)). With **Burning Fast** on, it also lists a
+  limit that would run out before it resets at your current pace, however much it has left, with the
+  time it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
   90% of the limit. What would run out soonest at your current pace comes first, then limits with no
   pace, least left first.
 - **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
