@@ -6,6 +6,7 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
     @ViewBuilder var account: (DashboardAccount) -> Account
 
     @State private var isHovered = false
+    @Environment(PopoverState.self) private var popover: PopoverState?
 
     var body: some View {
         VStack(alignment: .leading, spacing: DashboardGrid.headerGap) {
@@ -21,6 +22,9 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
         }
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        .onChange(of: popover?.popoverShown) { _, shown in
+            if shown == false { isHovered = false }
+        }
     }
 }
 
