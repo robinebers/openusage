@@ -115,6 +115,34 @@ final class AccountNameTextTests: QuietWindowTestCase {
         XCTAssertEqual(accounts.account(cardID: saved.cardID)?.label, saved.label)
     }
 
+    func testPrivateEnterpriseDomainsDoNotChangeTheCopiedCardPixels() throws {
+        let domains = ["a.ghe.com", "private-company.ghe.com"]
+        func image(domain: String, privacyMode: Bool) throws -> Data {
+            let defaults = isolatedDefaults()
+            defaults.set(privacyMode, forKey: PrivacyModeSetting.key)
+            let provider = Provider(id: "copilot@private", kind: .copilot, accountLabel: "Work", domain: domain)
+            let data = WidgetData(title: "Premium Requests", kind: .percent, used: 30, limit: 100)
+            let descriptor = WidgetDescriptor(provider: provider, key: "premium", metricLabel: data.title, sample: data)
+            let account = DashboardAccount(provider: provider, lines: [DashboardLine(descriptor: descriptor, data: data)])
+            let family = DashboardFamily(id: "copilot", provider: provider, accounts: [account])
+            let view = ShareCardView(family: family, plans: [provider.id: "Enterprise"], appearance: .light)
+                .defaultAppStorage(defaults)
+            return try XCTUnwrap(ShareCardRenderer.png(for: view))
+        }
+
+        let first = try rgbaPixels(in: image(domain: domains[0], privacyMode: true))
+        let second = try rgbaPixels(in: image(domain: domains[1], privacyMode: true))
+        XCTAssertEqual(first.size, second.size)
+        let differences = zip(first.pixels, second.pixels).map { abs(Int($0) - Int($1)) }
+        // Allow the same small blur-rendering rounding noise as the account-name comparison above.
+        XCTAssertLessThanOrEqual(differences.max() ?? 0, 2, "the copied picture must contain no domain-dependent pixels")
+        XCTAssertLessThan(Double(differences.reduce(0, +)) / Double(differences.count), 0.1)
+
+        let visibleFirst = try rgbaPixels(in: image(domain: domains[0], privacyMode: false))
+        let visibleSecond = try rgbaPixels(in: image(domain: domains[1], privacyMode: false))
+        XCTAssertNotEqual(visibleFirst.pixels, visibleSecond.pixels, "turning Privacy Mode off must render each original domain")
+    }
+
     private func enableAccessibility() {
         NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
         addTeardownBlock { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }

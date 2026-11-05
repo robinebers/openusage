@@ -75,6 +75,9 @@ struct DashboardAccountCaption: View {
     var hasSiblingAccounts = false
 
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
+
+    private var visibleDomain: String? { privacyMode ? nil : account.provider.domain }
 
     /// A sole default-named account sits under its provider's name. Siblings need separate drag handles.
     private var showsName: Bool {
@@ -83,7 +86,7 @@ struct DashboardAccountCaption: View {
 
     @ViewBuilder
     var body: some View {
-        if showsName || account.provider.domain != nil || plan != nil || status.isShowing {
+        if showsName || visibleDomain != nil || plan != nil || status.isShowing {
             caption.padding(.bottom, DashboardGrid.captionGap)
         }
     }
@@ -94,7 +97,7 @@ struct DashboardAccountCaption: View {
                 AccountNameLabel(account: account, font: DashboardGrid.captionFont)
                     .foregroundStyle(.secondary)
             }
-            if let domain = account.provider.domain {
+            if let domain = visibleDomain {
                 Text(domain)
                     .font(DashboardGrid.captionFont)
                     .foregroundStyle(.tertiary)

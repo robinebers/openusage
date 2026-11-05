@@ -60,6 +60,37 @@ final class PrivacyModeTests: QuietWindowTestCase {
         XCTAssertEqual(provider.accountLabel, "Private Customer Project", "sharing changes presentation, not the provider")
     }
 
+    func testEnterpriseDomainIsMaskedInTheDashboardCaptionAndRestoredWhenPrivacyModeIsOff() async throws {
+        let provider = Provider(id: "copilot@private", kind: .copilot, accountLabel: "Work", domain: "private-company.ghe.com")
+        let view = DashboardAccountRows(account: makeAccount(provider), plan: "Enterprise")
+        try await assertDomainIsMaskedAndRestored(in: view, domain: provider.domain!)
+        XCTAssertEqual(provider.domain, "private-company.ghe.com")
+    }
+
+    func testEnterpriseDomainIsMaskedInCopiedCardContentAndRestoredWhenPrivacyModeIsOff() async throws {
+        let provider = Provider(id: "copilot@private", kind: .copilot, accountLabel: "Work", domain: "private-company.ghe.com")
+        let family = DashboardFamily(id: "copilot", provider: provider, accounts: [makeAccount(provider)])
+        let view = ShareCardView(family: family, plans: [provider.id: "Enterprise"], appearance: .light)
+        try await assertDomainIsMaskedAndRestored(in: view, domain: provider.domain!)
+        XCTAssertEqual(family.accounts.first?.provider.domain, "private-company.ghe.com")
+    }
+
+    private func assertDomainIsMaskedAndRestored<Content: View>(in view: Content, domain: String) async throws {
+        enableAccessibility()
+        let defaults = isolatedDefaults()
+        let host = show(view.defaultAppStorage(defaults), size: CGSize(width: ShareCardView.width, height: 300)).host
+        try await waitUntil { self.accessibilityText(in: host).contains(domain) }
+
+        defaults.set(true, forKey: PrivacyModeSetting.key)
+        try await waitUntil {
+            let text = self.accessibilityText(in: host)
+            return text.contains("Session") && text.contains("Enterprise") && !text.contains(domain)
+        }
+
+        defaults.set(false, forKey: PrivacyModeSetting.key)
+        try await waitUntil { self.accessibilityText(in: host).contains(domain) }
+    }
+
     func testHubHostIsMaskedInItsRowAndOpenButton() async throws {
         enableAccessibility()
         let defaults = isolatedDefaults()
