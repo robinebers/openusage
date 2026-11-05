@@ -5,7 +5,8 @@ import XCTest
 
 @MainActor
 final class HoverTooltipTests: QuietWindowTestCase {
-    /// Hovers a view carrying `text` as its tooltip and returns the tooltip's frame once it shows.
+    /// Hovers a view carrying `text` as its tooltip and returns the tooltip's frame once it shows. The tooltip
+    /// panel is made transparent during its reveal delay, so it never shows on a screen.
     private func shownTooltip(_ text: String) async throws -> NSRect {
         let (window, host) = show(Color.clear.frame(width: 120, height: 40).hoverTooltip(text))
         defer {
@@ -13,10 +14,14 @@ final class HoverTooltipTests: QuietWindowTestCase {
             window.close()
         }
         let level = NSWindow.Level.popUpMenu.rawValue + 1
-        func tooltip() -> NSWindow? { NSApp.windows.first { $0.level.rawValue == level && $0.isVisible } }
+        func panel() -> NSWindow? { NSApp.windows.first { $0.level.rawValue == level } }
         try hover(CGPoint(x: 60, y: 20), window, host)
-        try await waitUntil { tooltip() != nil }
-        return try XCTUnwrap(tooltip()).frame
+        try await waitUntil { panel() != nil }
+        let tooltip = try XCTUnwrap(panel())
+        XCTAssertFalse(tooltip.isVisible, "the tooltip waits before it shows")
+        tooltip.alphaValue = 0
+        try await waitUntil { tooltip.isVisible }
+        return tooltip.frame
     }
 
     private func oneLineWidth(_ text: String) -> CGFloat {
