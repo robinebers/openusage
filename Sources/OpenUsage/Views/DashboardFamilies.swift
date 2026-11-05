@@ -4,8 +4,6 @@ struct DashboardFamily: Identifiable {
     let id: String
     let provider: Provider
     var accounts: [DashboardAccount]
-
-    /// The family's account when it has just the one, which then has no caption of its own.
 }
 
 struct DashboardAccount: Identifiable {

@@ -29,7 +29,6 @@ struct DashboardView: View {
             .frame(width: PanelMetrics.width)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.panelBody)
-            .environment(\.concealsEmails, container.hideFromScreenShare.isConcealing)
             .modifier(PanelHeightModifier(height: animatedHeight))
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
@@ -37,6 +36,7 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
+            .environment(\.concealsEmails, container.hideFromScreenShare.isConcealing)
             .sheet(isPresented: $popover.isAddingAccount, onDismiss: { popover.signingInAgainProviderID = nil }) {
                 AddAccountSheet(flow: AddAccountFlow(
                     store: container.accounts,
