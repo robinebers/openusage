@@ -30,7 +30,7 @@ struct AccountDetailView: View {
                     }
                     metricsCard
                     if let domain = provider.domain {
-                        infoRow(icon: provider.icon, "Signed in at \(domain)")
+                        infoRow(icon: provider.icon, PrivacyModeSetting.message("Signed in at \(domain)", isEnabled: privacyMode))
                     }
                     VStack(spacing: 0) {
                         if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {

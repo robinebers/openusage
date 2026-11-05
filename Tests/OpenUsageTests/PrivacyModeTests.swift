@@ -120,7 +120,7 @@ final class PrivacyModeTests: QuietWindowTestCase {
             defaults.set(enabled, forKey: PrivacyModeSetting.key)
             let flow = AddAccountFlow(
                 store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }
-            ) { _, _, _ in
+            ) { _, _, _, _ in
                 PrivacyPromptLogin(prompt: .browser(URL(string: "https://example.com/authorize")!, acceptsPastedCode: true))
             }
             addTeardownBlock { flow.cancel() }
@@ -140,7 +140,7 @@ final class PrivacyModeTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let flow = AddAccountFlow(
             store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }
-        ) { _, _, _ in
+        ) { _, _, _, _ in
             PrivacyPromptLogin(prompt: .deviceCode(userCode: "ABCD-1234", verificationURL: URL(string: "https://example.com/device")!))
         }
         addTeardownBlock { flow.cancel() }
@@ -160,7 +160,7 @@ final class PrivacyModeTests: QuietWindowTestCase {
     }
 
     func testPersonalSignInInputsUseSecureFieldsInPrivacyMode() async throws {
-        for input in ["name", "organization", "hub"] {
+        for input in ["name", "organization", "hub", "domain"] {
             let defaults = isolatedDefaults()
             defaults.set(true, forKey: PrivacyModeSetting.key)
             let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()))
@@ -175,6 +175,11 @@ final class PrivacyModeTests: QuietWindowTestCase {
                 flow.choose(.organizationToken)
                 secret = "private-organization"
                 flow.organization = secret
+            case "domain":
+                flow.choose(.copilot)
+                flow.choose(.oauth)
+                secret = "private-company.ghe.com"
+                flow.domain = secret
             default:
                 flow.chooseHub()
                 secret = "https://private-hub.example.com"
@@ -186,6 +191,58 @@ final class PrivacyModeTests: QuietWindowTestCase {
             let field = try XCTUnwrap(textFields(in: host).first { $0.stringValue == secret })
             XCTAssertTrue(field is NSSecureTextField, "\(input) must not be drawn as plain text")
         }
+    }
+
+    func testEnterpriseDomainIsHiddenInAccountDetailsAndRestoredWhenPrivacyModeIsOff() async throws {
+        enableAccessibility()
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let domain = "private-company.ghe.com"
+        let saved = store.add(kind: .copilot, label: "Private Account", domain: domain, credential: .oauth(OAuthTokens(accessToken: "token")))
+        let container = AppContainer.forTesting(accounts: store, defaults: defaults)
+        let view = AccountDetailView(providerID: saved.cardID, reorderSpaceName: "reorder", reorderLift: .constant(nil), frameStore: ReorderFrameStore())
+            .defaultAppStorage(defaults)
+            .environment(container)
+            .environment(container.layout)
+            .environment(container.popover)
+            .environment(container.dataStore)
+        let host = show(view, size: CGSize(width: 420, height: 500)).host
+        try await waitUntil { self.accessibilityText(in: host).contains(domain) }
+
+        defaults.set(true, forKey: PrivacyModeSetting.key)
+        try await waitUntil {
+            let text = self.accessibilityText(in: host)
+            return text.contains("Details are hidden") && !text.contains(domain)
+        }
+        XCTAssertEqual(store.account(cardID: saved.cardID)?.domain, domain)
+
+        defaults.set(false, forKey: PrivacyModeSetting.key)
+        try await waitUntil { self.accessibilityText(in: host).contains(domain) }
+    }
+
+    func testEnterpriseDevicePromptHidesTheDomainWhileKeepingTheSignIn() async throws {
+        enableAccessibility()
+        let defaults = isolatedDefaults()
+        let flow = AddAccountFlow(
+            store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { _ in }
+        ) { _, _, _, _ in
+            PrivacyPromptLogin(prompt: .deviceCode(userCode: "ABCD-1234", verificationURL: URL(string: "https://private-company.ghe.com/login/device")!))
+        }
+        addTeardownBlock { flow.cancel() }
+        flow.choose(.copilot)
+        flow.choose(.oauth)
+        flow.domain = "private-company.ghe.com"
+        flow.continueToSignIn()
+        try await waitUntil { flow.prompt != nil }
+        let host = show(AddAccountSheet(flow: flow).defaultAppStorage(defaults), in: .titled).host
+        try await waitUntil { self.accessibilityText(in: host).contains("private-company.ghe.com") }
+
+        defaults.set(true, forKey: PrivacyModeSetting.key)
+        try await waitUntil {
+            let text = self.accessibilityText(in: host)
+            return text.contains("Copy Code") && !text.contains("private-company.ghe.com") && !text.contains("ABCD-1234")
+        }
+        XCTAssertEqual(flow.gitHubDomain?.saved, "private-company.ghe.com")
     }
 
     private func makeAccount(_ provider: Provider) -> DashboardAccount {

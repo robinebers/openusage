@@ -168,7 +168,7 @@ private struct BrowserSignInStep: View {
     }
 
     private var message: String {
-        let enterpriseDomain = flow.gitHubDomain?.saved
+        let enterpriseDomain = privacyMode ? nil : flow.gitHubDomain?.saved
         return switch flow.prompt {
         case .deviceCode:
             enterpriseDomain.map { "Open \($0)/login/device in your browser and enter this code." }
@@ -300,6 +300,7 @@ private struct APIKeyStep: View {
 /// Copilot's first sign-in step: blank signs in at github.com, or a company's GHE.com domain.
 private struct GitHubDomainStep: View {
     @Bindable var flow: AddAccountFlow
+    @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
     let provider: ProviderKind
     let cancel: () -> Void
 
@@ -311,8 +312,14 @@ private struct GitHubDomainStep: View {
         )
         Form {
             Section {
-                TextField("Domain", text: $flow.domain, prompt: Text("github.com"))
-                    .onSubmit { flow.continueToSignIn() }
+                Group {
+                    if privacyMode {
+                        SecureField("Domain", text: $flow.domain, prompt: Text("github.com"))
+                    } else {
+                        TextField("Domain", text: $flow.domain, prompt: Text("github.com"))
+                    }
+                }
+                .onSubmit { flow.continueToSignIn() }
             } footer: {
                 Group {
                     if let errorMessage = flow.errorMessage {

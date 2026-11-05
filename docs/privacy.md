@@ -20,9 +20,9 @@ only the provider APIs those accounts need.
 ## Privacy Mode
 
 Turn on **Privacy Mode** under **Settings → Advanced → Privacy** before taking screenshots. It hides
-account names and emails, account initials, hub addresses, sign-in codes and personal input, and error
-details that may contain personal information. Provider names, plans, and usage stay visible. Copied
-usage pictures and new usage notifications use the same masking.
+account names and emails, account initials, hub addresses, enterprise domains, sign-in codes and personal
+input, and error details that may contain personal information. Provider names, plans, and usage stay
+visible. Copied usage pictures and new usage notifications use the same masking.
 
 Account names use a fixed placeholder unrelated to the saved name. Screen readers use “Hidden Account.”
 
