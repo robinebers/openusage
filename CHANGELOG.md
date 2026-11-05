@@ -3,8 +3,8 @@
 ## Unreleased
 
 ### Changed
-- **Hide From Screen Share** now also blurs account names that are email addresses in the panel while
-  your screen is shared or recorded, and copied usage pictures blur them instead of leaving them out
+- **Hide From Screen Share** now also blurs account names in the panel while your screen is shared or
+  recorded. Copied usage pictures always blur account names, where they used to leave emails out
   ([#1599](https://github.com/robinebers/openusage/pull/1599)).
 
 ## v0.8.0-beta.3

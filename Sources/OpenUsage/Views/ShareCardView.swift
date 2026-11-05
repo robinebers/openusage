@@ -73,7 +73,7 @@ private struct ShareCardFrame<Content: View>: View {
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
         .environment(\.drawsLevelsAsShapes, true)
-        .environment(\.concealsEmails, true)
+        .environment(\.concealsAccountNames, true)
         .environment(\.colorScheme, appearance)
     }
 

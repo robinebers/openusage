@@ -105,7 +105,7 @@ struct PriorityBoardList: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .truncationMode(notice.provider.isNamedByEmail ? .middle : .tail)
-                        .concealingEmail(of: notice.provider)
+                        .concealingAccountName(of: notice.provider)
                 }
             }
             .lineLimit(1)
@@ -213,7 +213,7 @@ struct PriorityBoardList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(provider.isNamedByEmail ? .middle : .tail)
-                    .concealingEmail(of: provider)
+                    .concealingAccountName(of: provider)
             }
             .lineLimit(1)
             Spacer(minLength: 0)
@@ -255,7 +255,7 @@ struct PriorityBoardList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
-                    .concealingEmail(of: item.provider)
+                    .concealingAccountName(of: item.provider)
             }
             .lineLimit(1)
             Spacer(minLength: 0)

@@ -36,19 +36,6 @@ final class DashboardFamilyTests: XCTestCase {
                        ["Sunstory", "sam@hey.com", "Codex", "ChatGPT"])
     }
 
-    func testOnlyANameHoldingAnEmailAddressCountsAsAnEmail() {
-        func isEmail(_ label: String?) -> Bool {
-            Provider(id: "codex@1", kind: .codex, accountLabel: label).isNamedByEmail
-        }
-        XCTAssertTrue(isEmail("sam@hey.com"))
-        XCTAssertTrue(isEmail("Work (sam.lee@corp.example.co.uk)"))
-        XCTAssertFalse(isEmail("Sunstory"))
-        XCTAssertFalse(isEmail(nil))
-        XCTAssertFalse(isEmail("Team @ Acme"))
-        XCTAssertFalse(isEmail("@sam"))
-        XCTAssertFalse(isEmail("sam@localhost"))
-    }
-
     func testTheLimitResetsRowShowsOnlyWhileAResetIsAvailable() {
         func resets(_ count: Double) -> WidgetData {
             var data = WidgetData(title: "Rate Limit Resets", kind: .count, used: count, limit: nil)

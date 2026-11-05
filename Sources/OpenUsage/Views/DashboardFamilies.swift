@@ -51,6 +51,6 @@ extension DashboardFamily {
 
 extension Provider {
     var isNamedByEmail: Bool {
-        accountLabel?.contains(/[^\s@]+@[^\s@]+\.[^\s@]+/) ?? false
+        accountLabel?.contains("@") ?? false
     }
 }

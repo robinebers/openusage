@@ -155,7 +155,7 @@ private struct AccountTitle: View {
                 renaming.begin(provider.id)
             } label: {
                 Text(provider.accountName)
-                    .concealingEmail(of: provider)
+                    .concealingAccountName(of: provider)
                     .hoverHighlight(isHovered)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)

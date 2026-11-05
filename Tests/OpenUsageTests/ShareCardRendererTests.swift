@@ -6,8 +6,8 @@ import XCTest
 
 @MainActor
 final class ShareCardRendererTests: XCTestCase {
-    func testCopiedCardsBlurAnEmailNameInItsRowAndKeepACustomName() throws {
-        func cards(label: String) throws -> [NSBitmapImageRep] {
+    func testCopiedCardsBlurEveryAccountNameInItsRow() throws {
+        func cards(label: String?) throws -> [NSBitmapImageRep] {
             var provider = MockData.claude
             provider.accountLabel = label
             let lines = MockData.descriptors(for: provider.id).map { DashboardLine(descriptor: $0, data: $0.sample) }
@@ -19,34 +19,36 @@ final class ShareCardRendererTests: XCTestCase {
             ].map { try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: $0)))) }
         }
 
-        let email = try cards(label: "private@example.com")
-        let named = try cards(label: "Sunstory Studio")
-        for (email, named) in zip(email, named) {
-            XCTAssertEqual(email.pixelsHigh, named.pixelsHigh, "the email keeps its row, blurred")
-            let blurred = try recognizedText(in: try XCTUnwrap(email.cgImage)).lowercased()
-            XCTAssertFalse(blurred.contains("example"), blurred)
-            XCTAssertFalse(blurred.contains("private"), blurred)
-            let custom = try recognizedText(in: try XCTUnwrap(named.cgImage)).lowercased()
-            XCTAssertTrue(custom.contains("sunstory"), custom)
+        let unnamed = try cards(label: nil)
+        for label in ["private@example.com", "Sunstory Studio"] {
+            for (card, plain) in zip(try cards(label: label), unnamed) {
+                let text = try recognizedText(in: try XCTUnwrap(card.cgImage)).lowercased()
+                for word in label.lowercased().split(whereSeparator: { "@. ".contains($0) }) where word.count > 3 {
+                    XCTAssertFalse(text.contains(word), "\(label) reads: \(text)")
+                }
+                XCTAssertTrue(text.contains("session"), text)
+                XCTAssertGreaterThanOrEqual(card.pixelsHigh, plain.pixelsHigh, "the name keeps its row, blurred")
+            }
         }
     }
 
-    func testThePanelBlursOnlyAnEmailNameAndOnlyWhileConcealing() throws {
+    func testThePanelBlursEveryAccountNameOnlyWhileConcealing() throws {
         func reads(_ label: String, concealing: Bool) throws -> String {
             let row = AccountListRow(provider: Provider(id: "codex@1", kind: .codex, accountLabel: label), grip: { EmptyView() })
                 .frame(width: ShareCardView.width)
                 .background(.white)
                 .environment(\.colorScheme, .light)
-                .environment(\.concealsEmails, concealing)
+                .environment(\.concealsAccountNames, concealing)
             let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: row))))
             return try recognizedText(in: try XCTUnwrap(bitmap.cgImage)).lowercased()
         }
 
-        XCTAssertTrue(try reads("private@example.com", concealing: false).contains("example.com"))
-        let concealed = try reads("private@example.com", concealing: true)
-        XCTAssertFalse(concealed.contains("example"), concealed)
-        XCTAssertTrue(concealed.contains("chatgpt"), "only the name blurs: \(concealed)")
-        XCTAssertTrue(try reads("Sunstory Studio", concealing: true).contains("sunstory"))
+        for (label, word) in [("private@example.com", "example"), ("Sunstory Studio", "sunstory")] {
+            XCTAssertTrue(try reads(label, concealing: false).contains(word), "nothing blurs without a capture")
+            let concealed = try reads(label, concealing: true)
+            XCTAssertFalse(concealed.contains(word), concealed)
+            XCTAssertTrue(concealed.contains("chatgpt"), "the provider's name stays readable: \(concealed)")
+        }
     }
 
     func testEveryShareImageEndsInATintedBandWithTheTagline() throws {

@@ -161,7 +161,7 @@ struct AccountName: View {
                 .font(font)
                 .lineLimit(1)
                 .truncationMode(account.provider.isNamedByEmail ? .middle : .tail)
-                .concealingEmail(of: account.provider)
+                .concealingAccountName(of: account.provider)
                 .onTapGesture(count: 2) { renaming?.begin(account.id) }
         }
     }
