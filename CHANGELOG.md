@@ -22,6 +22,8 @@
 - Priority always lists **Used Up** last.
 - The panel footer shows the OpenUsage version again, over **Next update in …**, as in 0.7.
 - The usage history popover's empty message wraps onto lines of even width.
+- All Usage shows a provider's copy button beside its logo while the pointer is anywhere over its
+  card, instead of in place of the logo.
 
 ## v0.8.0-beta.2
 

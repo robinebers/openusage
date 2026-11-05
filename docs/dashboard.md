@@ -118,8 +118,9 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 
 ## Share
 
-Click a provider's logo, or choose **Share Screenshot**, to copy a PNG of its card. On one account
-in a card of several, it copies only that account. Emails are left out.
+Hover over a provider's card and click the copy button beside its logo, or choose **Share
+Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
+account. Emails are left out.
 
 ## Update banner
 
