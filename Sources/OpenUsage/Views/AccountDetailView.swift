@@ -19,7 +19,7 @@ struct AccountDetailView: View {
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
                 if let host = provider.hubHost {
                     metricsCard
-                    managedRow(host)
+                    infoRow(icon: CLIProxyHub.markID, "Managed by \(host)")
                 } else {
                     if let problem = dataStore.problem(for: providerID) {
                         ProblemCard(message: problem)
@@ -28,6 +28,9 @@ struct AccountDetailView: View {
                         }
                     }
                     metricsCard
+                    if let domain = provider.domain {
+                        infoRow(icon: provider.icon, "Signed in at \(domain)")
+                    }
                     VStack(spacing: 0) {
                         if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
                             ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
@@ -111,11 +114,12 @@ struct AccountDetailView: View {
         }
     }
 
-    /// A hub's login is added, signed in, and removed on the hub, so its page offers none of that here.
-    private func managedRow(_ host: String) -> some View {
+    /// Where the account lives: a hub's login is added, signed in, and removed on the hub, so its page
+    /// offers none of that here, and a Copilot enterprise account names the GHE.com domain it signs in at.
+    private func infoRow(icon: String, _ text: String) -> some View {
         HStack(spacing: 8) {
-            ProviderIcon(id: CLIProxyHub.markID, side: 16, inset: 0)
-            Text("Managed by \(host)")
+            ProviderIcon(id: icon, side: 16, inset: 0)
+            Text(text)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)

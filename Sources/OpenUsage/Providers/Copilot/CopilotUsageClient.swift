@@ -4,18 +4,12 @@ import Foundation
 /// official Copilot client sends; `Authorization` uses the `token` scheme (not `Bearer`), which is what
 /// `/copilot_internal/user` accepts.
 struct CopilotUsageClient: Sendable {
-    static let usageURL = "https://api.github.com/copilot_internal/user"
-
     var http: any HTTPClient
 
-    func fetchUsage(token: String) async throws -> HTTPResponse {
-        guard let url = URL(string: Self.usageURL) else {
-            throw ProviderError.invalidResponse
-        }
-
-        return try await http.send(HTTPRequest(
+    func fetchUsage(token: String, domain: GitHubDomain) async throws -> HTTPResponse {
+        try await http.send(HTTPRequest(
             method: "GET",
-            url: url,
+            url: domain.apiURL("/copilot_internal/user"),
             headers: [
                 "Authorization": "token \(token)",
                 "Accept": "application/json",

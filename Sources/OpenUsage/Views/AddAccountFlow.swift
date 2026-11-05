@@ -23,12 +23,18 @@ final class AddAccountFlow {
     var accountName = ""
     var pastedCode = ""
     var organization = ""
+    /// The address typed into Copilot's Domain step.
+    var domain = "" {
+        didSet { if isEnteringDomain, domain != oldValue { errorMessage = nil } }
+    }
     var hubURL = "" {
         didSet { if hubURL != oldValue { errorMessage = nil } }
     }
     private(set) var isConnectingHub = false
     private(set) var provider: ProviderKind?
     private(set) var method: ProviderAuthMethod?
+    /// Where a Copilot sign-in goes, once its Domain step is done or the account being signed in again saved it.
+    private(set) var gitHubDomain: GitHubDomain?
     private(set) var prompt: LoginPrompt?
     private(set) var isWorking = false
     private(set) var errorMessage: String?
@@ -36,7 +42,7 @@ final class AddAccountFlow {
 
     private let store: AccountStore
     private let openURL: (URL) -> Void
-    private let login: (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin
+    private let login: (ProviderKind, ProviderAuthMethod, String, GitHubDomain) -> any ProviderLogin
     private let connectHub: @MainActor (String, String) async throws -> Void
     private let replaceCredential: @MainActor (AccountCredential, String) async throws -> Void
     private let accountSignedInAgain: Account?
@@ -48,7 +54,7 @@ final class AddAccountFlow {
     init(
         store: AccountStore,
         openURL: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) },
-        login: @escaping (ProviderKind, ProviderAuthMethod, String) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:),
+        login: @escaping (ProviderKind, ProviderAuthMethod, String, GitHubDomain) -> any ProviderLogin = ProviderLoginCatalog.login(for:method:organization:domain:),
         connectHub: @escaping @MainActor (String, String) async throws -> Void = { _, _ in },
         replaceCredential: @escaping @MainActor (AccountCredential, String) async throws -> Void = { _, _ in },
         signingInAgainTo account: Account? = nil
@@ -63,6 +69,7 @@ final class AddAccountFlow {
             selection = .provider(account.kind)
             provider = account.kind
             method = account.authMethod
+            gitHubDomain = GitHubDomain(saved: account.domain)
         }
     }
 
@@ -73,6 +80,9 @@ final class AddAccountFlow {
     var hasPastedCode: Bool { !pastedCode.trimmed.isEmpty }
     var canSubmitCode: Bool { hasPastedCode && codeInput != nil }
     var isCodeSubmitted: Bool { isWorking && prompt != nil && codeInput == nil }
+    /// Copilot's own sign-in first asks for the domain: blank for github.com, or a GHE.com address.
+    var isEnteringDomain: Bool { provider == .copilot && method == .oauth && gitHubDomain == nil }
+    var canChangeDomain: Bool { provider == .copilot && method == .oauth && !isSigningInAgain }
 
     func choose(_ kind: ProviderKind) {
         selection = .provider(kind)
@@ -82,7 +92,24 @@ final class AddAccountFlow {
 
     func choose(_ method: ProviderAuthMethod) {
         self.method = method
-        if method == .oauth { signIn() }
+        if method == .oauth, !isEnteringDomain { signIn() }
+    }
+
+    func continueToSignIn() {
+        guard let parsed = GitHubDomain(parsing: domain) else {
+            AppLog.warn(LogTag.auth("copilot"), "the entered domain is not a GHE.com address")
+            errorMessage = GitHubDomain.invalidMessage
+            return
+        }
+        errorMessage = nil
+        gitHubDomain = parsed
+        signIn()
+    }
+
+    /// Back to the Domain step, keeping what was typed.
+    func changeDomain() {
+        gitHubDomain = nil
+        errorMessage = nil
     }
 
     func chooseHub() {
@@ -153,12 +180,14 @@ final class AddAccountFlow {
         isConnectingHub = false
         hubURL = ""
         method = nil
+        gitHubDomain = nil
         prompt = nil
         errorMessage = nil
         isWorking = false
         apiKey = ""
         accountName = ""
         organization = ""
+        domain = ""
         pastedCode = ""
     }
 
@@ -175,7 +204,8 @@ final class AddAccountFlow {
         errorMessage = nil
         isWorking = true
         let organization = method == .organizationToken ? self.organization.trimmed : nil
-        let login = login(kind, method, organization ?? "")
+        let gitHubDomain = gitHubDomain
+        let login = login(kind, method, organization ?? "", gitHubDomain ?? .github)
         task = Task {
             do {
                 let result = try await login.login(
@@ -188,7 +218,7 @@ final class AddAccountFlow {
                     guard !Task.isCancelled else { return }
                     finish()
                 } else {
-                    try save(result, for: kind, organization: organization)
+                    try save(result, for: kind, organization: organization, domain: gitHubDomain?.saved)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
@@ -206,11 +236,14 @@ final class AddAccountFlow {
         }
     }
 
-    private func save(_ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?) throws {
+    private func save(
+        _ result: (label: String, credential: AccountCredential), for kind: ProviderKind, organization: String?, domain: String?
+    ) throws {
         try store.checkForDuplicate(result.credential, kind: kind, organization: organization)
         let name = accountName.trimmed
         let account = store.add(
-            kind: kind, label: name.isEmpty ? result.label : name, organization: organization, credential: result.credential
+            kind: kind, label: name.isEmpty ? result.label : name, organization: organization, domain: domain,
+            credential: result.credential
         )
         guard store.accounts.contains(where: { $0.id == account.id }) else {
             return fail(store.lastError ?? "The account could not be saved.")

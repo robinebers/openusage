@@ -7,7 +7,7 @@ final class AddAccountFlowTests: XCTestCase {
     func testFailedSignInCanBeRetriedAndAddsTheAccount() async throws {
         let store = makeStore()
         var attempts = 0
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in
             attempts += 1
             return attempts == 1
                 ? StubLogin { _ in throw LoginError.invalidCode }
@@ -32,7 +32,7 @@ final class AddAccountFlowTests: XCTestCase {
         let flow = AddAccountFlow(
             store: store,
             openURL: { _ in },
-            login: { _, _, _ in StubLogin { _ in ("someone@example.com", .oauth(OAuthTokens(accessToken: "new"))) } },
+            login: { _, _, _, _ in StubLogin { _ in ("someone@example.com", .oauth(OAuthTokens(accessToken: "new"))) } },
             replaceCredential: { replaced.append(($0, $1)) },
             signingInAgainTo: account
         )
@@ -50,7 +50,7 @@ final class AddAccountFlowTests: XCTestCase {
         let vault = InMemoryCredentialVault()
         let store = makeStore(vault: vault)
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
         XCTAssertFalse(flow.isWorking)
         XCTAssertFalse(flow.canAddKey)
@@ -68,7 +68,7 @@ final class AddAccountFlowTests: XCTestCase {
     func testARejectedAPIKeyIsNotAdded() async throws {
         let store = makeStore()
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 401, headers: [:], body: Data()) }
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
 
         flow.apiKey = "sk-or-typo"
@@ -83,7 +83,7 @@ final class AddAccountFlowTests: XCTestCase {
         let vault = InMemoryCredentialVault()
         let store = makeStore(vault: vault)
         var started: [(ProviderAuthMethod, String)] = []
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, method, organization in
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, method, organization, _ in
             started.append((method, organization))
             return StubLogin { input in
                 var iterator = input.makeAsyncIterator()
@@ -115,7 +115,7 @@ final class AddAccountFlowTests: XCTestCase {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         let cancelled = CancellationFlag()
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in
             StubLogin(prompt: .browser(url, acceptsPastedCode: true)) { _ in
                 do {
                     try await Task.sleep(for: .seconds(30))
@@ -154,7 +154,7 @@ final class AddAccountFlowTests: XCTestCase {
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         var opened: [URL] = []
         var attempts = 0
-        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _, _ in
             attempts += 1
             switch attempts {
             case 1: return StubLogin(prompt: .browser(url, acceptsPastedCode: false)) { _ in throw LoginError.invalidCode }
@@ -179,7 +179,7 @@ final class AddAccountFlowTests: XCTestCase {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/show-auth-token"))
         var opened: [URL] = []
-        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _, _ in
             StubLogin(prompt: .browserToken(url)) { input in
                 var iterator = input.makeAsyncIterator()
                 return ("token:\(await iterator.next() ?? "")", .oauth(OAuthTokens(accessToken: "key")))
@@ -200,7 +200,7 @@ final class AddAccountFlowTests: XCTestCase {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/device"))
         var opened: [URL] = []
-        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { opened.append($0) }) { _, _, _, _ in
             StubLogin(prompt: .deviceCode(userCode: "ABCD-EFGH", verificationURL: url)) { _ in
                 try await Task.sleep(for: .seconds(30))
                 return ("late", .oauth(OAuthTokens(accessToken: "access")))
@@ -236,7 +236,7 @@ final class AddAccountFlowTests: XCTestCase {
     func testAddKeyWhileSavingStartsNoSecondSave() async throws {
         let store = makeStore()
         var started = 0
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in
             started += 1
             return StubLogin { _ in
                 try await Task.sleep(for: .milliseconds(100))

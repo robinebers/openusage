@@ -31,7 +31,7 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 - **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
 - **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
 - **[Antigravity](docs/providers.md#antigravity)**: Gemini and Claude quotas
-- **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing
+- **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing, GitHub Enterprise on GHE.com
 - **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
 - **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
 - **[Muse Code](docs/providers.md#muse-code)**: session, weekly
