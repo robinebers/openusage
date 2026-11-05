@@ -247,7 +247,7 @@ final class WidgetBridgeCoordinatorTests: XCTestCase {
     func testObservesAccountAddRenameAndRemovalThroughTheCurrentContainer() async throws {
         let defaults = isolatedDefaults()
         let accounts = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let http = FakeHTTPClient(response: HTTPResponse(statusCode: 400, headers: [:], body: Data()))
+        let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 400, headers: [:], body: Data()) }
         let container = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
         let store = MemoryBridgeStore()
         let coordinator = WidgetBridgeCoordinator(
@@ -306,7 +306,7 @@ private final class Fixture {
 
     init(defaults: UserDefaults) {
         session = .percent(key: "session", provider: provider, title: "Session", sessionStartSignal: .zeroUsage)
-        balance = .dollarBalance(key: "balance", provider: provider, title: "Balance", valueWord: "available")
+        balance = .values(key: "balance", provider: provider, title: "Balance", valueWord: "available")
         resets = .values(key: "resets", provider: provider, title: "Resets", showsResetExpiries: true)
         let descriptors = [session, balance, resets]
         snapshot = ProviderSnapshot(
