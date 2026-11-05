@@ -6,6 +6,9 @@
 - **Use It or Lose It** under **Settings → Display → Priority** lists a weekly or monthly limit that
   resets within 24 hours with over 50% left in its own Priority section, soonest reset first, with
   when it resets. It uses the same rule as the alert and stays out of the menu bar. On by default.
+- Copilot signs in on your company's GitHub Enterprise domain on GHE.com: leave the new Domain step
+  blank for github.com, or enter an address like `octocorp.ghe.com`
+  ([#1602](https://github.com/robinebers/openusage/issues/1602)).
 
 ### Changed
 - **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.

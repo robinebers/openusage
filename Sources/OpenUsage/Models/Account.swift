@@ -83,6 +83,9 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     /// A Copilot organization account carries the login whose billing its token reads; every other
     /// account has none.
     let organization: String?
+    /// A Copilot account signed in on GitHub Enterprise Cloud carries its GHE.com domain; a github.com
+    /// account, like every other account, has none.
+    let domain: String?
     /// An account mirrored from a CLIProxyAPI hub carries where its login lives there; every other
     /// account has none.
     var hub: HubLink?
@@ -97,12 +100,14 @@ struct Account: Codable, Identifiable, Hashable, Sendable {
     }
 
     init(
-        id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, hub: HubLink? = nil, addedAt: Date = Date()
+        id: UUID = UUID(), kind: ProviderKind, label: String, organization: String? = nil, domain: String? = nil,
+        hub: HubLink? = nil, addedAt: Date = Date()
     ) {
         self.id = id
         self.kind = kind
         self.label = label
         self.organization = organization
+        self.domain = domain
         self.hub = hub
         self.addedAt = addedAt
     }

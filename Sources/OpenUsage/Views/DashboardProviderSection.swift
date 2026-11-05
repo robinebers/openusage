@@ -84,7 +84,7 @@ struct DashboardAccountCaption: View {
 
     @ViewBuilder
     var body: some View {
-        if showsName || plan != nil || status.isShowing {
+        if showsName || account.provider.domain != nil || plan != nil || status.isShowing {
             caption.padding(.bottom, DashboardGrid.captionGap)
         }
     }
@@ -94,6 +94,13 @@ struct DashboardAccountCaption: View {
             if showsName {
                 AccountNameLabel(account: account, font: DashboardGrid.captionFont)
                     .foregroundStyle(.secondary)
+            }
+            if let domain = account.provider.domain {
+                Text(domain)
+                    .font(DashboardGrid.captionFont)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)

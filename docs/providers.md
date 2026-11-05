@@ -16,7 +16,7 @@ How each provider signs in and what its card shows.
 | ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits, Today, Yesterday, Last 30 Days |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
-| Copilot | Device code (GitHub) | Credits, Extra Usage, Chat, Completions |
+| Copilot | Device code (GitHub or GHE.com) | Credits, Extra Usage, Chat, Completions |
 | Copilot organization | Organization and token | Org Credits, Org Spend |
 | Devin | Browser (Windsurf), then a pasted token | Daily, Weekly, Extra Usage |
 | Grok | Device code (xAI) | Weekly, Extra Usage |
@@ -109,7 +109,13 @@ How the history is read:
 
 ## Copilot
 
-- Sign in with a GitHub device code.
+- Sign in with a GitHub device code. The sign-in first asks for a domain: leave it blank for
+  github.com, or enter your company's GitHub Enterprise address on GHE.com, such as
+  `octocorp.ghe.com`. A pasted link works, and a bare name like `octocorp` means
+  `octocorp.ghe.com`. Self-hosted GitHub Enterprise Server isn't supported.
+- A GHE.com sign-in checks your Copilot seat once and isn't added without one. The account shows its
+  domain on the dashboard and **Signed in at** its domain on its page. **Sign In Again…** keeps the
+  domain.
 - Extra Usage hides when the plan doesn't allow it.
 
 To see an organization's billing, add it as its own account. Choose Copilot, then **Organization
