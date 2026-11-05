@@ -10,8 +10,6 @@ final class DevelopmentDataMode {
     static let demoBundleID = "com.robinebers.openusage.dev.demo"
     static let demoArgument = "--demo-data"
 
-    static var isSampleData: Bool { Bundle.main.bundleIdentifier == demoBundleID }
-
     let isAvailable: Bool
     let isOn: Bool
     private(set) var isSwitching = false

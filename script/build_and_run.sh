@@ -17,6 +17,7 @@ set -euo pipefail
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        CONFIG             "release" (default) or "debug"
 #        BUNDLE_ID          defaults to com.robinebers.openusage.dev; other identities omit demo code
+#        DEMO_SEED          pins the demo app's sample data seed
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -54,19 +55,9 @@ CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 
-# Match the executable path, not a regular expression or the shared process name. This never stops
-# an installed OpenUsage or a build from another checkout.
-stop_staged_app() {
-  local binary="$1"
-  local pid
-  for pid in $(pgrep -x "$TARGET_NAME" || true); do
-    if [ "$(ps -o comm= -p "$pid" 2>/dev/null)" = "$binary" ]; then
-      kill "$pid" 2>/dev/null || true
-    fi
-  done
-}
-stop_staged_app "$APP_BINARY"
-if "$DEVELOPMENT_BUILD"; then stop_staged_app "$DEMO_APP_BINARY"; fi
+# Stop only the dev builds staged here, never an installed OpenUsage with the same executable name.
+pkill -f "^$APP_BINARY" >/dev/null 2>&1 || true
+if "$DEVELOPMENT_BUILD"; then pkill -f "^$DEMO_APP_BINARY" >/dev/null 2>&1 || true; fi
 
 echo "==> swift build ($CONFIG)"
 BUILD_ARGS=(-c "$CONFIG")
@@ -228,7 +219,7 @@ fi
 
 launch_app() {
   if [ "$LAUNCH_BUNDLE_ID" = "$DEMO_BUNDLE_ID" ]; then
-    /usr/bin/open -n "$LAUNCH_BUNDLE" --args --demo-data
+    /usr/bin/open -n "$LAUNCH_BUNDLE" --args --demo-data ${DEMO_SEED:+-DemoSeed "$DEMO_SEED"}
   else
     /usr/bin/open -n "$LAUNCH_BUNDLE"
   fi
@@ -238,10 +229,9 @@ launch_app() {
 # to one already running from another folder and quits.
 confirm_launch() {
   sleep 1
-  local pid running
-  for pid in $(pgrep -x "$TARGET_NAME" || true); do
-    running="$(ps -o comm= -p "$pid" 2>/dev/null || true)"
-    [ "$running" = "$LAUNCH_BINARY" ] && return
+  pgrep -f "^$LAUNCH_BINARY" >/dev/null && return
+  for pid in $(pgrep -x "$TARGET_NAME"); do
+    running="$(ps -o comm= -p "$pid")"
     running="${running%/Contents/MacOS/$TARGET_NAME}"
     if [ "$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$running/Contents/Info.plist" 2>/dev/null)" = "$LAUNCH_BUNDLE_ID" ]; then
       echo "error: dist/$LAUNCH_DISPLAY.app quit because another $LAUNCH_BUNDLE_ID build is running: $running" >&2

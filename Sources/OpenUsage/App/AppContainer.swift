@@ -18,15 +18,13 @@ final class AppContainer {
     @ObservationIgnored private let makeRuntimes: RuntimeFactory
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
-    #if OPENUSAGE_DEVELOPMENT
-    let isSampleData: Bool
-    #endif
-
-    @ObservationIgnored private let http: any HTTPClient
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let hubGate = CLIProxyHubGate()
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
+    #if OPENUSAGE_DEVELOPMENT
+    @ObservationIgnored var demo: DemoSession?
+    #endif
 
     init(
         accounts: AccountStore = AccountStore(),
@@ -34,25 +32,18 @@ final class AppContainer {
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
         telemetryDefaults: UserDefaults,
-        runtimeFactory: RuntimeFactory? = nil,
-        hubsEnabled: Bool = CLIProxyHub.isEnabled
+        runtimeFactory: RuntimeFactory? = nil
     ) {
         self.accounts = accounts
-        self.http = http
         self.defaults = defaults
-        #if OPENUSAGE_DEVELOPMENT
-        // Only the isolated fixture factory supplies a runtime factory in development builds.
-        self.isSampleData = runtimeFactory != nil
-        #endif
         self.hideFromScreenShare = HideFromScreenShareSetting(defaults: defaults)
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let hubGate = self.hubGate
         let makeRuntimes: RuntimeFactory = runtimeFactory ?? { currentAccounts, existing in
             ProviderCatalog.make(
-                accounts: currentAccounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys,
-                http: http, hubGate: hubGate, claudeSessions: claudeSessions,
-                reusing: existing.compactMap { $0 as? AccountProviderRuntime }
+                accounts: currentAccounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys, http: http, hubGate: hubGate,
+                claudeSessions: claudeSessions, reusing: existing.compactMap { $0 as? AccountProviderRuntime }
             )
         }
         self.makeRuntimes = makeRuntimes
@@ -69,7 +60,7 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
-        self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate), isEnabled: hubsEnabled)
+        self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,
@@ -104,9 +95,6 @@ final class AppContainer {
 
     /// Keeps the account, its name and its place: only the sign-in changes, once its usage read works.
     func replaceCredential(_ credential: AccountCredential, for providerID: String) async throws {
-        #if OPENUSAGE_DEVELOPMENT
-        try requireAccountConnections()
-        #endif
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return }
         let account = runtime.account
         if case .oauth = credential, let signedIn = credential.identity,
@@ -129,7 +117,7 @@ final class AppContainer {
         await runtime.stopRenewals()
         do {
             try Task.checkCancellation()
-            guard let index = providers.firstIndex(where: { $0.provider.id == account.cardID }) else { return }
+            guard let index = providers.firstIndex(where: { $0.provider.id == providerID }) else { return }
             guard providers[index] === runtime else {
                 throw ProviderError.unavailable("This account’s sign-in changed while OpenUsage was checking it. Try again.")
             }
@@ -153,9 +141,6 @@ final class AppContainer {
 
     /// Saves a hub's new management key once the hub accepts it, then refreshes the hub's accounts.
     func replaceHubKey(_ key: String, for hubID: UUID) async throws {
-        #if OPENUSAGE_DEVELOPMENT
-        try requireAccountConnections()
-        #endif
         try await hubs.replaceKey(key, for: hubID)
         let ids = Set(accounts.accounts(onHub: hubID).map(\.cardID))
         await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
@@ -165,13 +150,16 @@ final class AppContainer {
         guard refreshTask == nil else { return }
         refreshTask = Task {
             while !Task.isCancelled {
-                #if OPENUSAGE_DEVELOPMENT
-                if !isSampleData { await hubs.syncDue() }
-                #else
                 await hubs.syncDue()
-                #endif
                 await dataStore.refreshAll()
-                await refreshExternalServices()
+                await quotaNotifications.evaluate(
+                    layout.visibleDescriptors,
+                    data: dataStore.data(for:),
+                    isOn: { [defaults] in defaults.bool(forKey: $0.settingKey) },
+                    now: Date(),
+                    providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
+                )
+                telemetry.tick()
                 let next = ContinuousClock.now + .seconds(RefreshSetting.interval)
                 try? await Task.sleep(until: next - .seconds(RefreshSetting.interval / 2), clock: .continuous)
                 guard !Task.isCancelled else { return }
@@ -180,29 +168,6 @@ final class AppContainer {
             }
         }
     }
-
-    private func refreshExternalServices() async {
-        #if OPENUSAGE_DEVELOPMENT
-        guard !isSampleData else { return }
-        #endif
-        await quotaNotifications.evaluate(
-            layout.visibleDescriptors,
-            data: dataStore.data(for:),
-            isOn: { [defaults] in defaults.bool(forKey: $0.settingKey) },
-            now: Date(),
-            providerName: { [layout] id in layout.provider(id: id)?.fullName ?? id }
-        )
-        telemetry.tick()
-    }
-
-    #if OPENUSAGE_DEVELOPMENT
-    func requireAccountConnections() throws {
-        guard !isSampleData else {
-            AppLog.error(.auth, "account connection blocked in sample data")
-            throw ProviderError.unavailable("Account connections are unavailable while Sample Data is on.")
-        }
-    }
-    #endif
 
     private func syncAccounts() {
         let previous = providers.map { ObjectIdentifier($0) }

@@ -74,14 +74,6 @@ See [Privacy](privacy.md).
 - **Log Level.** Error, Warning, Info (default), or Debug. Choose Debug while you reproduce a
   problem. See [Debugging](debugging.md).
 
-## Development (Local Builds Only)
-
-- **Sample Data.** Restarts in a separate demo app with sample accounts for every provider. Turn it
-  off to return to the normal dev app. Demo changes reset at each launch.
-
-This section appears under Advanced only in local development builds. Releases and downloaded Test
-Build DMGs exclude it. See [Sample Data](debugging.md#sample-data-development-only).
-
 ## Updates
 
 - **Check Automatically.** Checks about once an hour and shows **Update Available** on the

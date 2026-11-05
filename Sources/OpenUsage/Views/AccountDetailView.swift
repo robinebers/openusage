@@ -34,9 +34,6 @@ struct AccountDetailView: View {
                     VStack(spacing: 0) {
                         if let field = container.accounts.account(cardID: providerID).flatMap(Self.replacedField) {
                             ReplaceKeyRow(field: field) { try await container.replaceKey($0, for: providerID) }
-                                #if OPENUSAGE_DEVELOPMENT
-                                .disabled(container.isSampleData)
-                                #endif
                         }
                         removeAccountRow(provider)
                     }
@@ -147,9 +144,6 @@ struct AccountDetailView: View {
         }
         .buttonStyle(.plain)
         .cardSurface()
-        #if OPENUSAGE_DEVELOPMENT
-        .disabled(container.isSampleData)
-        #endif
     }
 
     private func removeAccountRow(_ provider: Provider) -> some View {

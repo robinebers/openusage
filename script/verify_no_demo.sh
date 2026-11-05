@@ -31,7 +31,7 @@ for binary in "$@"; do
   /usr/bin/nm "$binary" > "$inspection_dir/symbols"
   /usr/bin/strings -a "$binary" > "$inspection_dir/strings"
   assert_no_matches "$binary" symbols -Eq \
-    '\$s9OpenUsage.*(DemoFixtures|DemoProviderRuntime|DemoSession|DevelopmentDataMode|DevelopmentDataSettings|DemoHTTPClient|DemoCredentialVault|DemoHubKeyVault|DemoTelemetrySink)' \
+    '\$s9OpenUsage[0-9]+(Demo|DevelopmentData)' \
     "$inspection_dir/symbols"
   assert_no_matches "$binary" 'data or controls' -Fqx \
     -e 'OPENUSAGE_DEVELOPMENT_DEMO_FIXTURE_V1' \

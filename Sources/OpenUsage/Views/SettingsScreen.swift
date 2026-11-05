@@ -14,11 +14,8 @@ struct SettingsScreen: View {
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
     @AppStorage(PaceMilestone.useItOrLoseIt.settingKey) private var useItOrLoseIt = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
-    @State private var launchAtLogin: LaunchAtLoginSetting?
-    @State private var commandLineTool: CommandLineToolInstaller?
-    #if OPENUSAGE_DEVELOPMENT
-    @State private var developmentDataMode = DevelopmentDataMode()
-    #endif
+    @State private var launchAtLogin = LaunchAtLoginSetting()
+    @State private var commandLineTool = CommandLineToolInstaller()
     @State private var notificationsDenied = false
     @State private var scrollPosition = ScrollPosition(edge: .top)
 
@@ -45,12 +42,8 @@ struct SettingsScreen: View {
         .onChange(of: popover.screen, initial: true) { _, screen in
             if screen == .settings {
                 scrollPosition.scrollTo(edge: .top)
-                if allowsSystemChanges {
-                    if launchAtLogin == nil { launchAtLogin = LaunchAtLoginSetting() }
-                    if commandLineTool == nil { commandLineTool = CommandLineToolInstaller() }
-                    launchAtLogin?.refreshStatus()
-                    commandLineTool?.refreshStatus()
-                }
+                launchAtLogin.refreshStatus()
+                commandLineTool.refreshStatus()
                 if criticalAlert || warningAlert || closeToRunningOut || useItOrLoseIt { checkNotificationPermission() }
             }
         }
@@ -60,22 +53,16 @@ struct SettingsScreen: View {
     private var generalTab: some View {
         Section {
             Toggle("Launch at Login", isOn: Binding(
-                get: { launchAtLogin?.isEnabled ?? false },
-                set: { enabled in
-                    guard allowsSystemChanges else { return }
-                    if launchAtLogin == nil { launchAtLogin = LaunchAtLoginSetting() }
-                    launchAtLogin?.update(to: enabled)
-                }
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.update(to: $0) }
             ))
-            .disabled(!allowsSystemChanges)
             picker("Default Tab", selection: $defaultTab, options: DashboardTab.allCases.map { ($0, $0.label) })
             LabeledContent("Global Shortcut") {
                 KeyboardShortcuts.Recorder(for: .togglePopover)
-                    .disabled(popover.screen != .settings || !allowsSystemChanges)
+                    .disabled(popover.screen != .settings)
             }
-            .disabled(!allowsSystemChanges)
         } footer: {
-            if let errorMessage = launchAtLogin?.errorMessage {
+            if let errorMessage = launchAtLogin.errorMessage {
                 SettingsNote(errorMessage, isWarning: true)
             }
         }
@@ -93,14 +80,10 @@ struct SettingsScreen: View {
                 .disabled(!updater.isActive)
             HStack {
                 Spacer(minLength: 0)
-                Button("Check for Updates…") {
-                    guard allowsSystemChanges else { return }
-                    updater.checkForUpdates()
-                }
+                Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
             }
         }
-        .disabled(!allowsSystemChanges)
     }
 
     @ViewBuilder
@@ -161,27 +144,20 @@ struct SettingsScreen: View {
                     .foregroundStyle(Theme.notice)
             }
         }
-        .disabled(!allowsSystemChanges)
     }
 
     @ViewBuilder
     private var advancedTab: some View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
         #if OPENUSAGE_DEVELOPMENT
-        if developmentDataMode.isAvailable {
-            DevelopmentDataSettings(mode: developmentDataMode)
-        }
+        DevelopmentDataSettings()
         #endif
         Section {
             Toggle("Hide From Screen Share", isOn: $hideFromScreenShare.isEnabled)
             Toggle("Help Make OpenUsage Better", isOn: Binding(
                 get: { container.telemetry.isEnabled },
-                set: {
-                    guard allowsSystemChanges else { return }
-                    container.telemetry.setEnabled($0)
-                }
+                set: { container.telemetry.setEnabled($0) }
             ))
-            .disabled(!allowsSystemChanges)
         } header: {
             Text("Privacy")
         } footer: {
@@ -192,23 +168,12 @@ struct SettingsScreen: View {
         }
         Section {
             LabeledContent("Terminal Helper") {
-                if let commandLineTool {
-                    switch commandLineTool.status {
-                    case .installed:
-                        Button("Uninstall") {
-                            guard allowsSystemChanges else { return }
-                            commandLineTool.uninstall()
-                        }
-                    case .notInstalled, .linkedToAnotherCopy:
-                        Button("Install…") {
-                            guard allowsSystemChanges else { return }
-                            commandLineTool.install()
-                        }
-                    case .conflict:
-                        Text("Unavailable")
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
+                switch commandLineTool.status {
+                case .installed:
+                    Button("Uninstall") { commandLineTool.uninstall() }
+                case .notInstalled, .linkedToAnotherCopy:
+                    Button("Install…") { commandLineTool.install() }
+                case .conflict:
                     Text("Unavailable")
                         .foregroundStyle(.secondary)
                 }
@@ -218,16 +183,15 @@ struct SettingsScreen: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 SettingsNote("Adds a global `openusage` command that prints the usage the app last fetched.")
-                if let commandLineTool, commandLineTool.status == .conflict {
+                if commandLineTool.status == .conflict {
                     SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isWarning: true)
-                } else if let errorMessage = commandLineTool?.errorMessage {
+                } else if let errorMessage = commandLineTool.errorMessage {
                     SettingsNote(errorMessage, isWarning: true)
-                } else if let commandLineTool, case .linkedToAnotherCopy = commandLineTool.status {
+                } else if case .linkedToAnotherCopy = commandLineTool.status {
                     SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
                 }
             }
         }
-        .disabled(!allowsSystemChanges)
         Section {
             picker("Log Level", selection: $logLevel, options: LogLevelSetting.allCases.map { ($0, $0.label) })
         } header: {
@@ -284,16 +248,7 @@ struct SettingsScreen: View {
     }
 
     private func checkNotificationPermission() {
-        guard allowsSystemChanges else { return }
         Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization() }
-    }
-
-    private var allowsSystemChanges: Bool {
-        #if OPENUSAGE_DEVELOPMENT
-        !container.isSampleData
-        #else
-        true
-        #endif
     }
 }
 

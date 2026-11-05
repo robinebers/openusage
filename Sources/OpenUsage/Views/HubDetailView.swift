@@ -41,9 +41,6 @@ struct HubDetailView: View {
                 }
                 VStack(spacing: 0) {
                     ReplaceKeyRow(field: "Management Key") { try await container.replaceHubKey($0, for: hubID) }
-                        #if OPENUSAGE_DEVELOPMENT
-                        .disabled(container.isSampleData)
-                        #endif
                     removeRow(hub, accountCount: mirrored.count)
                 }
                 .cardSurface()

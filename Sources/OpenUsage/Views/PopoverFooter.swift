@@ -2,9 +2,6 @@ import AppKit
 import SwiftUI
 
 struct PopoverFooter: View {
-    #if OPENUSAGE_DEVELOPMENT
-    @Environment(AppContainer.self) private var container
-    #endif
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(LayoutStore.self) private var layout
@@ -19,11 +16,7 @@ struct PopoverFooter: View {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
                     #if OPENUSAGE_DEVELOPMENT
-                    if container.isSampleData {
-                        Text("Demo Data")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
+                    DemoDataLabel()
                     #endif
                     Spacer(minLength: 8)
                     if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
@@ -58,9 +51,6 @@ struct PopoverFooter: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        #if OPENUSAGE_DEVELOPMENT
-        .disabled(container.isSampleData)
-        #endif
     }
 
     private var liveBoard: PriorityBoard {

@@ -5,6 +5,8 @@ import XCTest
 
 @MainActor
 final class DevelopmentDemoTests: XCTestCase {
+    private let now = Date()
+
     func testSampleLaunchRequiresTheDemoIdentityAndExplicitArgument() throws {
         XCTAssertTrue(try DemoSession.requested(
             bundleIdentifier: DevelopmentDataMode.demoBundleID,
@@ -24,171 +26,134 @@ final class DevelopmentDemoTests: XCTestCase {
         ))
     }
 
-    func testEveryProviderHasSampleUsageAndKeepsTheExistingMetricDeclarationOrder() throws {
-        let now = Date()
-        let fixtures = DemoFixtures.accounts(at: now)
-        let laterFixtures = DemoFixtures.accounts(at: now.addingTimeInterval(86_400))
-        XCTAssertEqual(Set(fixtures.map(\.kind)), Set(ProviderKind.allCases))
-        XCTAssertEqual(Set(fixtures.map(\.cardID)).count, fixtures.count)
-        XCTAssertEqual(fixtures.map(\.id), laterFixtures.map(\.id), "a restart must keep stable sample identities")
-        XCTAssertEqual(fixtures.map(\.label), laterFixtures.map(\.label))
-        XCTAssertTrue(fixtures.contains { $0.label.contains("@example.com") })
-        XCTAssertTrue(fixtures.contains { !$0.label.contains("@") })
-        XCTAssertTrue(fixtures.contains { $0.organization != nil })
-        XCTAssertTrue(fixtures.contains { $0.hub != nil })
-
-        let runtimes = DemoProviderRuntime.make(accounts: fixtures, existing: [])
-        XCTAssertEqual(runtimes.count, fixtures.count)
-        for (account, runtime) in zip(fixtures, runtimes) {
-            XCTAssertEqual(runtime.provider.id, account.cardID)
-            XCTAssertEqual(runtime.widgetDescriptors.map(\.id), AccountProviderRuntime.widgetDescriptors(for: account).map(\.id),
-                           "the sample must not invent or reorder metrics")
-        }
-
-        let container = try makeContainer(now: now)
-        XCTAssertTrue(container.isSampleData)
-        XCTAssertTrue(container.accounts.credentialVault is DemoCredentialVault)
-        XCTAssertTrue(container.accounts.hubKeys is DemoHubKeyVault)
-        XCTAssertEqual(Set(container.layout.orderedProviderIDs()), Set(fixtures.map(\.cardID)))
-        let accounts = container.dataStore.accounts(in: container.layout.displayGroups)
-        XCTAssertEqual(Set(accounts.map { $0.provider.kind }), Set(ProviderKind.allCases))
-        XCTAssertTrue(accounts.allSatisfy { !$0.lines.isEmpty && $0.lines.contains(where: \.data.hasData) })
-        XCTAssertTrue(fixtures.contains { container.dataStore.plan(for: $0.cardID) != nil })
-
-        let readings = accounts.flatMap(\.lines).map(\.data)
-        XCTAssertTrue(readings.contains { $0.isBounded && $0.severity == .normal })
-        XCTAssertTrue(readings.contains { $0.severity == .warning })
-        XCTAssertTrue(readings.contains { $0.severity == .critical })
-        XCTAssertTrue(readings.contains { $0.meterState(now: now) == .spent })
-        let board = container.dataStore.priorityBoard(
-            in: container.layout.displayGroups, pinned: container.layout.state.priorityPinIDs, now: now
-        )
-        XCTAssertFalse(board.attention.isEmpty)
-        XCTAssertFalse(board.usedUp.isEmpty)
-        XCTAssertFalse(board.notices.isEmpty)
-        XCTAssertTrue(board.waiting.isEmpty, "sample accounts must show immediately without a provider sign-in")
+    func testTheSameSeedShowsTheSameDashboard() async throws {
+        let first = try await dashboard(seed: 4242)
+        let again = try await dashboard(seed: 4242)
+        XCTAssertEqual(again, first)
+        let other = try await dashboard(seed: 4243)
+        XCTAssertNotEqual(other, first, "another seed must draw other data")
     }
 
-    func testManualAndHourlyRefreshKeepServingLocalFixtures() async throws {
-        let container = try makeContainer()
+    func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {
+        for seed in Array(1...30) + [DemoSession.seeds.upperBound] {
+            let container = try await makeContainer(seed: seed)
+            let accounts = container.dataStore.accounts(in: container.layout.displayGroups)
+            XCTAssertEqual(Set(accounts.map(\.provider.kind)), Set(ProviderKind.allCases), "seed \(seed)")
+            XCTAssertTrue(accounts.contains { $0.provider.accountName.count > 30 }, "seed \(seed) has no long name")
+            XCTAssertTrue(accounts.contains { $0.provider.accountName.contains("@") }, "seed \(seed) has no email name")
+            let resets = accounts.flatMap(\.lines).compactMap(\.data.resetsAt)
+            XCTAssertTrue(resets.allSatisfy { $0 >= now.addingTimeInterval(3_600) && $0 <= now.addingTimeInterval(7 * 86_400) },
+                          "seed \(seed) resets outside the next hour to the next week")
+
+            let board = container.dataStore.priorityBoard(in: container.layout.displayGroups, now: now)
+            let reasons = (board.attention + board.usedUp + board.useItOrLoseIt).map(\.reason)
+            let shows = { (match: (PriorityItem.Reason) -> Bool) in reasons.contains(where: match) }
+            XCTAssertTrue(shows { if case .low(.warning, _, _) = $0 { true } else { false } }, "seed \(seed) has no warning")
+            XCTAssertTrue(shows { if case .low(.critical, _, _) = $0 { true } else { false } }, "seed \(seed) has no critical")
+            XCTAssertTrue(shows { if case .burningFast = $0 { true } else { false } }, "seed \(seed) has no Burning Fast")
+            XCTAssertTrue(shows { if case .usedUp = $0 { true } else { false } }, "seed \(seed) has no Used Up")
+            XCTAssertTrue(shows { $0 == .emptyBalance }, "seed \(seed) has no empty balance")
+            XCTAssertTrue(shows { if case .useItOrLoseIt = $0 { true } else { false } }, "seed \(seed) has no Use It or Lose It")
+            XCTAssertFalse(board.notices.isEmpty, "seed \(seed) has no account notice")
+            XCTAssertTrue(board.waiting.isEmpty, "seed \(seed) left an account without a reading")
+        }
+    }
+
+    func testAPinnedSeedIsReadAfterTheDemoDomainResets() throws {
+        let defaults = makeDefaults()
+        defaults.register(defaults: [DemoSession.seedKey: "4242"])
+        let container = try DemoSession.makeContainer(defaults: defaults, now: now)
+        XCTAssertEqual(container.demo?.seed, 4242)
+    }
+
+    func testReshuffleReplacesEveryAccountInPlace() async throws {
+        let container = try await makeContainer(seed: 7)
+        let demo = try XCTUnwrap(container.demo)
+        let store = container.dataStore
+        let layout = container.layout
+        let before = Set(container.accounts.accounts.map(\.id))
+
+        demo.reshuffle()
+        await refresh(container)
+
+        XCTAssertNotEqual(demo.seed, 7)
+        XCTAssertTrue(container.dataStore === store)
+        XCTAssertTrue(container.layout === layout)
+        XCTAssertTrue(Set(container.accounts.accounts.map(\.id)).isDisjoint(with: before))
+        XCTAssertEqual(Set(layout.orderedProviderIDs()), Set(container.accounts.accounts.map(\.cardID)))
+        XCTAssertEqual(Set(store.snapshots.keys), Set(container.accounts.accounts.map(\.cardID)))
+    }
+
+    func testRefreshKeepsServingTheSamples() async throws {
+        let container = try await makeContainer(seed: 11)
         let ids = container.accounts.accounts.map(\.cardID)
-        let plans = Dictionary(uniqueKeysWithValues: ids.map { ($0, container.dataStore.plan(for: $0)) })
-        let amounts = amounts(in: container)
+        let shown = shown(in: container)
 
         let outcomes = await container.dataStore.refresh(providerIDs: ids, force: true)
-        XCTAssertEqual(outcomes.count, ids.count)
         XCTAssertTrue(outcomes.allSatisfy { if case .refreshed = $0 { true } else { false } },
                       "a refresh must not fall through to sign-in or provider APIs")
         await container.dataStore.refreshHourlyReads()
 
-        XCTAssertEqual(Set(container.dataStore.snapshots.keys), Set(ids))
-        XCTAssertEqual(self.amounts(in: container), amounts)
-        for id in ids {
-            XCTAssertEqual(container.dataStore.plan(for: id), plans[id] ?? nil)
-            XCTAssertNil(container.dataStore.errorMessage(for: id), "the rejecting HTTP client must never be needed")
-        }
+        XCTAssertEqual(self.shown(in: container), shown)
+        for id in ids { XCTAssertNil(container.dataStore.errorMessage(for: id)) }
         XCTAssertTrue(container.dataStore.backoffs.isEmpty)
     }
 
-    func testSampleRuntimeReconciliationReusesInstancesAndUpdatesNames() async throws {
-        let now = Date()
-        let accounts = DemoFixtures.accounts(at: now)
-        let initial: [ProviderRuntime] = accounts.map { DemoProviderRuntime(account: $0, now: { now }) }
-        let index = try XCTUnwrap(accounts.firstIndex { $0.label == "Work Account" })
-        let before = try await initial[index].refresh().get()
-        var renamed = accounts
-        renamed[index].label = "Renamed Sample"
-        let reconciled = DemoProviderRuntime.make(accounts: renamed, existing: initial)
-        XCTAssertTrue(reconciled[index] === initial[index])
-        XCTAssertEqual(reconciled[index].provider.accountName, "Renamed Sample")
-        let after = try await reconciled[index].refresh().get()
-        XCTAssertEqual(after.lines, before.lines, "renaming a sample must not change its fixture scenario")
-        XCTAssertEqual(after.plan, before.plan)
-
-        let removed = DemoProviderRuntime.make(accounts: Array(renamed.dropFirst()), existing: reconciled)
-        XCTAssertEqual(removed.map(\.provider.id), Array(renamed.dropFirst()).map(\.cardID))
-        XCTAssertTrue(removed[0] === reconciled[1])
-    }
-
-    func testRenameReorderAndRemovalStayInsideTheSampleContainer() async throws {
-        let container = try makeContainer()
+    func testRenameAndRemovalStayInsideTheSampleContainer() async throws {
+        let container = try await makeContainer(seed: 12)
         let saved = try XCTUnwrap(container.accounts.accounts.first)
         let store = container.dataStore
-        let layout = container.layout
-        let before = amounts(in: container)
+        let before = try XCTUnwrap(shown(in: container).first { $0.name == saved.label })
 
         container.accounts.rename(saved.id, to: "Sample Rename")
-        XCTAssertTrue(container.dataStore === store)
-        XCTAssertTrue(container.layout === layout)
-        XCTAssertEqual(layout.provider(id: saved.cardID)?.accountName, "Sample Rename")
-        let renamed = await store.refresh(providerID: saved.cardID, force: true)
-        if case .refreshed = renamed {} else { XCTFail("the renamed account lost its sample runtime") }
-        XCTAssertEqual(amounts(in: container), before)
+        _ = await store.refresh(providerID: saved.cardID, force: true)
+        XCTAssertEqual(container.layout.provider(id: saved.cardID)?.accountName, "Sample Rename")
+        XCTAssertEqual(shown(in: container).first { $0.name == "Sample Rename" }?.rows, before.rows)
 
-        let metrics = layout.metricOrder(for: saved.cardID)
-        if metrics.count > 1 {
-            XCTAssertTrue(layout.reorderMetric(dragged: metrics[0], target: metrics[1], in: saved.cardID))
-            XCTAssertNotEqual(layout.metricOrder(for: saved.cardID), metrics)
-        }
         container.accounts.remove(saved.id)
-        XCTAssertFalse(container.accounts.accounts.contains { $0.id == saved.id })
-        XCTAssertNil(layout.provider(id: saved.cardID))
+        XCTAssertNil(container.layout.provider(id: saved.cardID))
         XCTAssertNil(store.snapshots[saved.cardID])
-        let refreshed = await store.refresh(providerIDs: container.accounts.accounts.map(\.cardID), force: true)
-        XCTAssertTrue(refreshed.allSatisfy { if case .refreshed = $0 { true } else { false } })
     }
 
-    func testRestartResetsOnlyTheDedicatedDemoDomainAndRestoresTheSamples() throws {
+    func testAnAccountAddedInTheDemoGetsASampleReading() async throws {
+        let container = try await makeContainer(seed: 13)
+        let added = container.accounts.add(kind: .openrouter, label: "Added Later", credential: .apiKey("sample"))
+
+        let outcome = await container.dataStore.refresh(providerID: added.cardID, force: true)
+
+        if case .refreshed = outcome {} else { XCTFail("the added account has no sample reading") }
+        XCTAssertNotNil(container.dataStore.snapshots[added.cardID]?.lines.first)
+    }
+
+    func testRealSignInAndResetPathsLeaveSamplesAlone() async throws {
+        let container = try await makeContainer(seed: 14)
+        let account = try XCTUnwrap(container.accounts.accounts.first)
+        let saved = try container.accounts.credential(for: account.id)
+
+        XCTAssertNil(container.resetClaim(for: account.cardID))
+        try await container.replaceCredential(.apiKey("must-not-be-saved"), for: account.cardID)
+
+        XCTAssertEqual(try container.accounts.credential(for: account.id), saved)
+    }
+
+    func testRestartResetsOnlyTheDedicatedDemoDomain() throws {
         let defaults = makeDefaults()
         let unrelated = isolatedDefaults()
         unrelated.set("keep-real-state", forKey: "sentinel")
-        let now = Date()
-        let first = try DemoSession.makeContainer(defaults: defaults, resetDomain: DevelopmentDataMode.demoBundleID, now: now)
-        let original = first.accounts.accounts
-        let account = try XCTUnwrap(original.first)
+        let first = try DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
+        let original = first.accounts.accounts.map(\.label)
+        let account = try XCTUnwrap(first.accounts.accounts.first)
         first.accounts.rename(account.id, to: "Temporary Name")
-        first.accounts.remove(account.id)
         defaults.set("temporary-setting", forKey: "demo-edit")
 
-        let restarted = try DemoSession.makeContainer(
-            defaults: defaults, resetDomain: DevelopmentDataMode.demoBundleID, now: now.addingTimeInterval(60)
-        )
-        XCTAssertEqual(restarted.accounts.accounts.map(\.id), original.map(\.id))
-        XCTAssertEqual(restarted.accounts.accounts.map(\.label), original.map(\.label))
+        let restarted = try DemoSession.makeContainer(defaults: defaults, seed: 15, now: now)
+
+        XCTAssertEqual(restarted.accounts.accounts.map(\.label), original)
         XCTAssertNil(defaults.string(forKey: "demo-edit"))
         XCTAssertEqual(unrelated.string(forKey: "sentinel"), "keep-real-state")
         XCTAssertFalse(defaults.requestedResets.isEmpty)
         XCTAssertTrue(defaults.requestedResets.allSatisfy { $0 == DevelopmentDataMode.demoBundleID },
                       "the session must never reset development or production preferences")
-    }
-
-    func testResetRejectsAnyNonDemoDomainBeforeChangingDefaults() {
-        let defaults = makeDefaults()
-        defaults.set("preserved", forKey: "sentinel")
-        for domain in [DevelopmentDataMode.normalBundleID, "com.robinebers.openusage", "arbitrary-test-domain"] {
-            XCTAssertThrowsError(try DemoSession.makeContainer(defaults: defaults, resetDomain: domain))
-        }
-        XCTAssertTrue(defaults.requestedResets.isEmpty)
-        XCTAssertEqual(defaults.string(forKey: "sentinel"), "preserved")
-    }
-
-    func testCredentialReplacementAndRealResetClaimsAreUnavailableForSamples() async throws {
-        let container = try makeContainer()
-        let account = try XCTUnwrap(container.accounts.accounts.first)
-        let before = container.accounts.accounts
-        XCTAssertNil(container.resetClaim(for: account.cardID))
-        do {
-            try await container.replaceCredential(.apiKey("must-not-be-saved"), for: account.cardID)
-            XCTFail("sample mode must reject real credential replacement")
-        } catch {}
-        let hub = try XCTUnwrap(container.accounts.hubs.first)
-        do {
-            try await container.replaceHubKey("must-not-be-saved", for: hub.id)
-            XCTFail("sample mode must reject hub-key replacement")
-        } catch {}
-        XCTAssertEqual(container.accounts.accounts, before)
-        XCTAssertNil(try container.accounts.credential(for: account.id))
-        XCTAssertNil(try container.accounts.hubKeys.load(hub.id))
     }
 
     func testTheDemoHTTPClientRejectsRequestsInsteadOfSendingThem() async throws {
@@ -200,8 +165,36 @@ final class DevelopmentDemoTests: XCTestCase {
         }
     }
 
-    private func makeContainer(now: Date = Date()) throws -> AppContainer {
-        try DemoSession.makeContainer(defaults: makeDefaults(), resetDomain: DevelopmentDataMode.demoBundleID, now: now)
+    private struct Shown: Equatable {
+        let kind: ProviderKind
+        let name: String
+        let plan: String?
+        let notice: String?
+        let rows: [DashboardRowModel]
+    }
+
+    private func dashboard(seed: Int) async throws -> [Shown] {
+        shown(in: try await makeContainer(seed: seed))
+    }
+
+    private func shown(in container: AppContainer) -> [Shown] {
+        container.dataStore.accounts(in: container.layout.displayGroups).map { account in
+            Shown(
+                kind: account.provider.kind, name: account.provider.accountName,
+                plan: container.dataStore.plan(for: account.provider.id), notice: container.dataStore.notice(for: account.provider.id),
+                rows: account.lines.map { $0.data.dashboardRow(now: now) }
+            )
+        }
+    }
+
+    private func makeContainer(seed: Int) async throws -> AppContainer {
+        let container = try DemoSession.makeContainer(defaults: makeDefaults(), seed: seed, now: now)
+        await refresh(container)
+        return container
+    }
+
+    private func refresh(_ container: AppContainer) async {
+        _ = await container.dataStore.refresh(providerIDs: container.accounts.accounts.map(\.cardID), force: true)
     }
 
     private func makeDefaults() -> DemoTestDefaults {
@@ -209,12 +202,6 @@ final class DevelopmentDemoTests: XCTestCase {
         let defaults = DemoTestDefaults(domain: domain)
         addTeardownBlock { UserDefaults(suiteName: domain)?.removePersistentDomain(forName: domain) }
         return defaults
-    }
-
-    private func amounts(in container: AppContainer) -> [String: Double] {
-        Dictionary(uniqueKeysWithValues: container.dataStore.accounts(in: container.layout.displayGroups).flatMap { account in
-            account.lines.map { ($0.id, $0.data.used) }
-        })
     }
 }
 

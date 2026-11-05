@@ -18,21 +18,23 @@
 
 The local build script stages `dist/OpenUsage.app` and `dist/OpenUsage Demo.app`. In the normal dev
 app, turn on **Settings → Advanced → Development → Sample Data**. The switch restarts in the isolated
-demo app, with 15 sample accounts covering all 12 providers, an organization, and a hub. Turn it off
-to restart the normal dev app with its existing accounts and settings.
+demo app. Turn it off to restart the normal dev app with its existing accounts and settings.
 
-- The demo uses `com.robinebers.openusage.dev.demo` and memory-only credential vaults. It never reads
-  or changes the normal dev app's or installed app's accounts, settings, or Keychain items.
-- Refresh, rename, reorder, hide, pin, and remove work on sample data. The demo's accounts, layout,
-  and settings reset at each demo launch.
-- The demo makes no provider or hub API calls and does not sign in, send telemetry, or run updates.
-  Notifications, credential changes, and system integration controls are unavailable.
-- The script passes `OPENUSAGE_DEVELOPMENT` only for local development identities. Production builds
-  exclude the fixtures, switch, and activation code. Releases and the downloaded Test Build DMGs do
-  not include Sample Data.
-
-Rebuild with `./script/build_and_run.sh verify` if either app is missing. The switch starts the other
-app before quitting the current one; a launch failure leaves the current app running.
+- Each launch draws a random seed, shown beside **Demo Data** in the footer. The seed picks every
+  provider's account count and names, which limits show, their usage, and their resets.
+- Every seed shows at least one Warning, Critical, Burning Fast, Used Up, empty balance, Use It or
+  Lose It, and account notice. Resets fall between the next hour and the next week.
+- **Reshuffle**, under Development in the demo app, swaps in a new seed's accounts without a restart.
+- To reproduce a seed, launch the demo with it:
+  `DEMO_SEED=4242 BUNDLE_ID=com.robinebers.openusage.dev.demo ./script/build_and_run.sh`, or
+  `open "dist/OpenUsage Demo.app" --args --demo-data -DemoSeed 4242`.
+- The demo uses `com.robinebers.openusage.dev.demo` and memory-only credential vaults. Its accounts,
+  layout, and settings reset at each launch. It never reads or changes the normal dev app's or the
+  installed app's accounts, settings, or Keychain items.
+- Usage reads and hub calls are blocked, and telemetry is off. Add Account still runs the provider's
+  real sign-in; the new account then shows sample usage.
+- The script passes `OPENUSAGE_DEVELOPMENT` only for local development identities. Releases and the
+  downloaded Test Build DMGs do not include Sample Data, and CI checks that release binaries don't.
 
 ## Read the logs
 
