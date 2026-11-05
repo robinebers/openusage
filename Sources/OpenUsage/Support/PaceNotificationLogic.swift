@@ -16,10 +16,10 @@ extension PaceMilestone {
 
     var isLevel: Bool { self == .critical || self == .warning }
 
-    func settingSubtitle(_ limits: PriorityLimits) -> String {
+    var settingSubtitle: String {
         switch self {
-        case .critical: return "A limit drops to \(limits.critical)% or less left"
-        case .warning: return "A limit drops to \(limits.warning)% or less left"
+        case .critical: return "Alert when a limit drops critically low"
+        case .warning: return "Alert when a limit requires your attention"
         case .closeToRunningOut: return "A limit may run out before its reset"
         case .useItOrLoseIt: return "Over 50% left a day before its reset"
         }

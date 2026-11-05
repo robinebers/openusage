@@ -164,6 +164,39 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         XCTAssertTrue(inked(shot, from: check - 32, to: check - 20), "no header between Pinned and All Clear")
     }
 
+    /// Used Up is the least important section, so it comes last, after Running Out, Use It or Lose It, and Needs Attention.
+    func testUsedUpIsAlwaysTheLastSection() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
+        let now = Date()
+        let claude = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")
+        let chatGPT = Provider(id: "codex@1", kind: .codex, accountLabel: "ChatGPT")
+        let cursor = Provider(id: "cursor@1", kind: .cursor, accountLabel: "Work")
+        func line(_ provider: Provider, _ title: String, used: Double, resetsIn: TimeInterval) -> DashboardLine {
+            var data = WidgetData(title: title, kind: .percent, used: used, limit: 100)
+            data.resetsAt = now.addingTimeInterval(resetsIn)
+            data.periodDurationMs = MetricPeriod.weekMs
+            return DashboardLine(descriptor: WidgetDescriptor(provider: provider, key: title, metricLabel: title, sample: data), data: data)
+        }
+        let board = PriorityBoard.make(accounts: [
+            DashboardAccount(provider: claude, lines: [line(claude, "Weekly", used: 100, resetsIn: 3600),
+                                                       line(claude, "Opus", used: 95, resetsIn: 3 * 86400)]),
+            DashboardAccount(provider: chatGPT, lines: [line(chatGPT, "Weekly", used: 10, resetsIn: 6 * 3600)]),
+            DashboardAccount(provider: cursor, lines: []),
+        ], useItOrLoseIt: true, now: now) { $0.provider.id == cursor.id ? .unavailable("Sign in again.") : .current }
+        XCTAssertEqual([board.attention.count, board.useItOrLoseIt.count, board.notices.count, board.usedUp.count], [1, 1, 1, 1])
+
+        let (window, host) = show(PriorityBoardList(board: board, now: now).frame(width: PanelMetrics.width - 2 * PanelMetrics.margin))
+        defer { window.close() }
+        func headings(in element: Any) -> [String] {
+            guard let node = element as? NSObject else { return [] }
+            let heading = node.value(forKey: "accessibilityRole") as? String == "AXHeading" ? node.value(forKey: "accessibilityLabel") as? String : nil
+            return [heading].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(headings)
+        }
+        try await waitUntil { headings(in: host).count >= 4 }
+        XCTAssertEqual(headings(in: host), ["Running Out", "Use It or Lose It", "Needs Attention", "Used Up"])
+    }
+
     /// A skeleton takes the space of the rows that replace it, so nothing around it moves when a reading lands.
     func testSkeletonRowsAreTheHeightOfTheRowsThatReplaceThem() {
         let claude = Provider(id: "claude@1", kind: .claude, accountLabel: "Personal")

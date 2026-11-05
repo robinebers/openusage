@@ -1,7 +1,7 @@
 # Settings
 
 Open Settings from the panel's **⋯** menu or press **⌘,**. It has four tabs: General, Display,
-Alerts, and Advanced. Changes apply at once.
+Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to see what it does.
 
 ## General
 

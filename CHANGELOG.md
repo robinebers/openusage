@@ -16,6 +16,12 @@
 
 ### Changed
 - **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.
+- Settings explains each setting in an ⓘ tooltip beside its name instead of a second line, and the
+  Warning and Critical alerts now read "Alert when a limit requires your attention" and "Alert when
+  a limit drops critically low".
+- Priority always lists **Used Up** last.
+- The panel footer shows the OpenUsage version again, over **Next update in …**, as in 0.7.
+- Tooltips and the usage history popover's empty message wrap onto lines of even width.
 
 ## v0.8.0-beta.2
 

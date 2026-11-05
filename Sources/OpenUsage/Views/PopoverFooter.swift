@@ -14,7 +14,7 @@ struct PopoverFooter: View {
         Group {
             if screen == .dashboard {
                 HStack(alignment: .center, spacing: 8) {
-                    if !layout.displayGroups.isEmpty { nextUpdateButton }
+                    footerIdentity
                     Spacer(minLength: 8)
                     if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
                     optionsMenu
@@ -130,6 +130,16 @@ struct PopoverFooter: View {
         )
     }
 
+    /// The version over the refresh countdown, as 0.7 showed them.
+    private var footerIdentity: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("OpenUsage \(AppInfo.version)")
+            if !layout.displayGroups.isEmpty { nextUpdateButton }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    }
+
     private var nextUpdateButton: some View {
         Button {
             refreshNow()
@@ -137,8 +147,6 @@ struct PopoverFooter: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 HStack(spacing: 5) {
                     Text(updateStatusText(now: context.date))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
                         .monospacedDigit()
                         .contentTransition(.numericText())
                     if isUpdating {

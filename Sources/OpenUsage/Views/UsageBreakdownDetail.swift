@@ -110,10 +110,11 @@ struct UsageBreakdownContent: View {
                     .frame(height: 56)
                     .accessibilityHidden(true)
                     .padding(.bottom, 12)
-                Text("\(provider.displayName) didn't report any data for this range.")
-                    .font(.system(size: 13, weight: .semibold))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                BalancedLines {
+                    Text("\(provider.displayName) didn't report any data for this range.")
+                        .font(.system(size: 13, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                }
             }
             .frame(maxWidth: .infinity)
             .padding(.top, 8)
