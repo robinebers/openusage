@@ -100,6 +100,7 @@ struct WidgetData: Hashable {
     }
 
     var menuBarValue: String {
+        guard hasData else { return Self.noDataValue }
         if let valueTextOverride { return valueTextOverride }
         if let first = values.first {
             return MetricFormatter.number(first.number, kind: first.kind, style: .tray, currencyCode: first.currencyCode)

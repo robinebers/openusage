@@ -109,6 +109,13 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToOne).items.map(\.value), ["$12"])
     }
 
+    func testAPinnedLimitWithoutAReadingShowsADashAsItsRowDoes() {
+        var weekly = limit("Weekly", used: 0)
+        weekly.hasData = false
+        let strip = content(.upToOne, pinned: ["claude@1.Weekly"], account(personal, weekly))
+        XCTAssertEqual(strip.items.map(\.value), [WidgetData.noDataValue])
+    }
+
     func testRunningOutAndUsedUpComeBeforePinsAndPinsCountTowardTheOverflow() {
         let accounts = account(personal, limit("Pin A", used: 10), limit("Spent", used: 100),
                                limit("Pin B", used: 20), limit("Low", used: 95))
