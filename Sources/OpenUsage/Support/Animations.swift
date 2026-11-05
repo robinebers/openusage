@@ -3,6 +3,8 @@ import SwiftUI
 enum Motion {
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.80)
     static let modeSwitch = Animation.easeInOut(duration: 0.18)
+    /// AppKit's default animation pace, for screen slides, page pushes, and the segment thumb.
+    static let navigation = Animation.easeInOut(duration: 0.25)
 
     /// The single transaction policy behind Reduce Motion. `disablesAnimations` prevents inner
     /// `.animation` modifiers from restoring motion after this root policy clears an explicit animation.

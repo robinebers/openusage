@@ -77,11 +77,11 @@ final class PopoverState {
     @discardableResult
     func back() -> Bool {
         if customizeProviderID != nil {
-            withAnimation(Motion.spring) { customizeProviderID = nil }
+            withAnimation(Motion.navigation) { customizeProviderID = nil }
             return true
         }
         if customizeHubID != nil {
-            withAnimation(Motion.spring) { customizeHubID = nil }
+            withAnimation(Motion.navigation) { customizeHubID = nil }
             return true
         }
         guard screen != .dashboard else { return false }

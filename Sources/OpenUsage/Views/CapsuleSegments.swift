@@ -18,12 +18,13 @@ struct CapsuleSegments<Value: Hashable>: View {
         .padding(2)
         .frame(height: height)
         .background(Theme.controlFill, in: Capsule())
+        .animation(reduceAnimations ? nil : Motion.navigation, value: selection)
     }
 
     private func segment(_ value: Value, label: String) -> some View {
         let isSelected = selection == value
         return Button {
-            withAnimation(reduceAnimations ? nil : Motion.spring) { selection = value }
+            selection = value
         } label: {
             Text(label)
                 .font(.system(size: fontSize, weight: isSelected ? .medium : .regular))

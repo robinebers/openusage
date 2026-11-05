@@ -44,6 +44,41 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         }
     }
 
+    /// A tab switch resizes the panel in one step, like a native window. It used to spring the panel
+    /// through every height in between for about 0.6 s.
+    func testATabSwitchResizesThePanelInOneStep() async throws {
+        let hosted = try await openWithController(accounts: ["Personal", "Work", "Team"])
+        try await waitUntil { self.fitsContent(hosted) }
+        let from = hosted.popover.dashboardTab
+        let to: DashboardTab = from == .priority ? .allUsage : .priority
+        let start = hosted.panel.frame.height
+        let heights = ResizeLog(hosted.panel)
+
+        let segmentWidth = (PanelMetrics.width - 2 * PanelMetrics.margin) / 2
+        let index = CGFloat(DashboardTab.allCases.firstIndex(of: to) ?? 0)
+        click(CGPoint(x: PanelMetrics.margin + segmentWidth * (index + 0.5), y: PanelMetrics.margin + 14), hosted.panel, hosted.host)
+        try await waitUntil { hosted.popover.dashboardTab == to && abs(hosted.panel.frame.height - start) > 1 }
+        try await Task.sleep(for: .milliseconds(700))
+        try await waitUntil { self.fitsContent(hosted) }
+
+        // One step, plus one more when the test accounts' refresh fails meanwhile and reshapes Priority.
+        XCTAssertLessThanOrEqual(heights.values.count, 2, "the panel animated through \(heights.values)")
+    }
+
+    /// A screen switch slides at AppKit's 0.25 s pace and drops the outgoing screen when it ends. The
+    /// old spring kept both screens up for about 0.6 s, with a wobble at the end.
+    func testAScreenSlideEndsAtTheNavigationPace() async throws {
+        let hosted = try await openWithController(accounts: ["Personal"])
+        try await waitUntil { self.fitsContent(hosted) }
+
+        let started = ContinuousClock.now
+        hosted.popover.toggle(.accounts)
+        try await waitUntil { scrollViews(in: hosted.host).count == 2 }
+        try await waitUntil { scrollViews(in: hosted.host).count == 1 }
+
+        XCTAssertLessThan(ContinuousClock.now - started, .milliseconds(450))
+    }
+
     private func fitsContent(_ hosted: HostedPopover) -> Bool {
         guard let height = contentHeight(hosted.host) else { return false }
         return abs(hosted.panel.frame.height - height) <= 1
@@ -70,5 +105,24 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         XCTAssertEqual(hosted.panel.frame.maxY, (button.minY - PanelGeometry.topGap).rounded(.down))
         XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(hosted.panel.frame) })
         return hosted
+    }
+}
+
+@MainActor
+private final class ResizeLog {
+    private(set) var values: [CGFloat] = []
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
+
+    init(_ window: NSWindow) {
+        observer = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: window, queue: nil) { [weak self, weak window] _ in
+            MainActor.assumeIsolated {
+                guard let window else { return }
+                self?.values.append(window.frame.height)
+            }
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
     }
 }

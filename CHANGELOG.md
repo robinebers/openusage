@@ -24,6 +24,9 @@
 - The usage history popover's empty message wraps onto lines of even width.
 - All Usage shows a provider's copy button beside its logo while the pointer is anywhere over its
   card, instead of in place of the logo.
+- Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
+  Priority and All Usage shows the new tab at once
+  ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
 
 ## v0.8.0-beta.2
 
