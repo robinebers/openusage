@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.3
 
 ### Added
 - **Use It or Lose It** under **Settings → Display → Priority** lists a weekly or monthly limit that
