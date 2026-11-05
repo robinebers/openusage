@@ -136,7 +136,7 @@ struct PriorityBoard {
     /// Limits with over half left that reset within a day, soonest reset first. Never in the menu bar.
     let useItOrLoseIt: [PriorityItem]
     let notices: [AccountNotice]
-    /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest, above Used Up.
+    /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest.
     let waiting: [Provider]
     let summary: Summary
     /// Every account reported and nothing, pinned or not, is running out.

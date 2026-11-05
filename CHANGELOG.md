@@ -21,7 +21,7 @@
   a limit drops critically low".
 - Priority always lists **Used Up** last.
 - The panel footer shows the OpenUsage version again, over **Next update in …**, as in 0.7.
-- Tooltips and the usage history popover's empty message wrap onto lines of even width.
+- The usage history popover's empty message wraps onto lines of even width.
 
 ## v0.8.0-beta.2
 
