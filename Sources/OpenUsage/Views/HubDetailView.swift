@@ -25,7 +25,7 @@ struct HubDetailView: View {
                             VStack(spacing: 0) {
                                 ForEach(providers) { provider in
                                     AccountListRow(provider: provider, grip: { EmptyView() }) {
-                                        withAnimation(Motion.spring) { popover.customizeProviderID = provider.id }
+                                        withAnimation(Motion.navigation) { popover.customizeProviderID = provider.id }
                                     }
                                 }
                             }
@@ -69,7 +69,7 @@ struct HubDetailView: View {
             Button("Remove Hub and \(CLIProxyHub.count(accountCount, "Account"))", role: .destructive) {
                 container.hubs.remove(hubID)
                 if !container.accounts.hubs.contains(where: { $0.id == hubID }) {
-                    withAnimation(Motion.spring) { popover.customizeHubID = nil }
+                    withAnimation(Motion.navigation) { popover.customizeHubID = nil }
                 }
             }
         } message: {
