@@ -60,6 +60,26 @@ final class PrivacyModeTests: QuietWindowTestCase {
         XCTAssertEqual(provider.accountLabel, "Private Customer Project", "sharing changes presentation, not the provider")
     }
 
+    func testCopiedEmailAccountsKeepTheBlurredPlaceholderWhilePrivacyModeIsOn() async throws {
+        enableAccessibility()
+        let defaults = isolatedDefaults()
+        let provider = Provider(id: "copilot@private", kind: .copilot, accountLabel: "private@example.com")
+        let family = DashboardFamily(id: "copilot", provider: provider, accounts: [makeAccount(provider)])
+        let view = ShareCardView(family: family, appearance: .light).defaultAppStorage(defaults)
+        let host = show(view, size: CGSize(width: ShareCardView.width, height: 300)).host
+        try await waitUntil { self.accessibilityText(in: host).contains("Session") }
+        XCTAssertFalse(accessibilityText(in: host).contains("private@example.com"), "copied cards omit email names when Privacy Mode is off")
+
+        defaults.set(true, forKey: PrivacyModeSetting.key)
+        try await waitUntil { self.accessibilityText(in: host).contains("Hidden Account") }
+        XCTAssertFalse(accessibilityText(in: host).contains("private@example.com"))
+
+        defaults.set(false, forKey: PrivacyModeSetting.key)
+        try await waitUntil { !self.accessibilityText(in: host).contains("Hidden Account") }
+        XCTAssertFalse(accessibilityText(in: host).contains("private@example.com"))
+        XCTAssertEqual(provider.accountLabel, "private@example.com")
+    }
+
     func testEnterpriseDomainIsMaskedInTheDashboardCaptionAndRestoredWhenPrivacyModeIsOff() async throws {
         let provider = Provider(id: "copilot@private", kind: .copilot, accountLabel: "Work", domain: "private-company.ghe.com")
         let view = DashboardAccountRows(account: makeAccount(provider), plan: "Enterprise")
@@ -84,7 +104,7 @@ final class PrivacyModeTests: QuietWindowTestCase {
         defaults.set(true, forKey: PrivacyModeSetting.key)
         try await waitUntil {
             let text = self.accessibilityText(in: host)
-            return text.contains("Session") && text.contains("Enterprise") && !text.contains(domain)
+            return text.contains("Session") && text.contains("Enterprise") && text.contains("Hidden Domain") && !text.contains(domain)
         }
 
         defaults.set(false, forKey: PrivacyModeSetting.key)

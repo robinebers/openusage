@@ -55,9 +55,9 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 - **Your layout.** Pin the metrics you care about, hide the rest, and drag everything into your order.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
 - **Share.** Copy a picture of your usage to the clipboard.
-- **[Privacy Mode](docs/privacy.md#privacy-mode).** Replace personal account names with a safe placeholder
-  and hide sign-in details and enterprise domains, including in copied usage pictures. Real usage stays
-  visible.
+- **[Privacy Mode](docs/privacy.md#privacy-mode).** Use blurred placeholders for personal account names
+  and enterprise domains on dashboard cards and copied usage pictures. Hide personal sign-in details
+  while keeping real usage visible.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
   it unused.
 - **Priority limits.** Choose how much left turns a limit orange or red, see limits you're burning

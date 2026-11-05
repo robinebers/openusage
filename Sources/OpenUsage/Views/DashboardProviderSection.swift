@@ -77,8 +77,6 @@ struct DashboardAccountCaption: View {
     @Environment(AccountRenameStore.self) private var renaming: AccountRenameStore?
     @AppStorage(PrivacyModeSetting.key) private var privacyMode = false
 
-    private var visibleDomain: String? { privacyMode ? nil : account.provider.domain }
-
     /// A sole default-named account sits under its provider's name. Siblings need separate drag handles.
     private var showsName: Bool {
         hasSiblingAccounts || account.provider.labelBesideName != nil || renaming?.edit?.providerID == account.id
@@ -86,7 +84,7 @@ struct DashboardAccountCaption: View {
 
     @ViewBuilder
     var body: some View {
-        if showsName || visibleDomain != nil || plan != nil || status.isShowing {
+        if showsName || account.provider.domain != nil || plan != nil || status.isShowing {
             caption.padding(.bottom, DashboardGrid.captionGap)
         }
     }
@@ -97,12 +95,18 @@ struct DashboardAccountCaption: View {
                 AccountNameLabel(account: account, font: DashboardGrid.captionFont)
                     .foregroundStyle(.secondary)
             }
-            if let domain = visibleDomain {
-                Text(domain)
-                    .font(DashboardGrid.captionFont)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if let domain = account.provider.domain {
+                Group {
+                    if privacyMode {
+                        PrivacyPlaceholderText(placeholder: "q7m4r8.ghe.com", accessibilityLabel: "Hidden Domain")
+                    } else {
+                        Text(domain)
+                    }
+                }
+                .font(DashboardGrid.captionFont)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             }
             status.glyph
             Spacer(minLength: DashboardGrid.columnGap)

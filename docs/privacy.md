@@ -22,10 +22,11 @@ only the provider APIs those accounts need.
 Turn on **Privacy Mode** under **Settings → Advanced → Privacy** before taking screenshots. It hides
 account names and emails, account initials, hub addresses, enterprise domains, sign-in codes and personal
 input, and error details that may contain personal information. Provider names, plans, and usage stay
-visible. Enterprise domains stay hidden on dashboard cards and copied usage pictures too. New usage
-notifications use the same masking.
+visible. New usage notifications conceal personal details too.
 
-Account names use a fixed placeholder unrelated to the saved name. Screen readers use “Hidden Account.”
+Account names and dashboard enterprise domains use fixed blurred placeholders unrelated to the saved
+text. Copied usage pictures keep these placeholders, including for email-named accounts. Screen readers
+use “Hidden Account” and “Hidden Domain.”
 
 It is off by default and remembers your choice. Clicking or hovering over hidden text never reveals
 it; turn Privacy Mode off to see personal details again. Account renaming is unavailable while it is
