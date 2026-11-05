@@ -24,7 +24,7 @@ final class DashboardFamilyTests: XCTestCase {
         XCTAssertEqual(families[0].accounts.map { $0.lines.map(\.descriptor.key) }, [["session", "fable"], ["fable"]])
     }
 
-    func testEachCaptionNamesItsAccountAndTheImageLeavesEmailsOut() {
+    func testEachCaptionNamesItsAccount() {
         func family(_ accounts: [Provider]) -> DashboardFamily {
             DashboardFamily(id: "codex", provider: accounts[0], accounts: accounts.map { DashboardAccount(provider: $0, lines: []) })
         }
@@ -34,8 +34,19 @@ final class DashboardFamilyTests: XCTestCase {
         XCTAssertEqual(family([codex("Sunstory")]).accounts.map(\.name), ["Sunstory"])
         XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com"), codex("Codex"), codex(nil)]).accounts.map(\.name),
                        ["Sunstory", "sam@hey.com", "Codex", "ChatGPT"])
-        XCTAssertEqual(family([codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["ChatGPT"])
-        XCTAssertEqual(family([codex("Sunstory"), codex("sam@hey.com")]).hidingEmails.accounts.map(\.name), ["Sunstory", "ChatGPT"])
+    }
+
+    func testOnlyANameHoldingAnEmailAddressCountsAsAnEmail() {
+        func isEmail(_ label: String?) -> Bool {
+            Provider(id: "codex@1", kind: .codex, accountLabel: label).isNamedByEmail
+        }
+        XCTAssertTrue(isEmail("sam@hey.com"))
+        XCTAssertTrue(isEmail("Work (sam.lee@corp.example.co.uk)"))
+        XCTAssertFalse(isEmail("Sunstory"))
+        XCTAssertFalse(isEmail(nil))
+        XCTAssertFalse(isEmail("Team @ Acme"))
+        XCTAssertFalse(isEmail("@sam"))
+        XCTAssertFalse(isEmail("sam@localhost"))
     }
 
     func testTheLimitResetsRowShowsOnlyWhileAResetIsAvailable() {

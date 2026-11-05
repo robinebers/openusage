@@ -29,6 +29,7 @@ struct DashboardView: View {
             .frame(width: PanelMetrics.width)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.panelBody)
+            .environment(\.concealsEmails, container.hideFromScreenShare.isConcealing)
             .modifier(PanelHeightModifier(height: animatedHeight))
             .overlay(alignment: .topLeading) {
                 if let reorderLift {

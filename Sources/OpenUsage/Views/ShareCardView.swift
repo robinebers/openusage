@@ -12,7 +12,7 @@ struct ShareCardView: View {
 
     var body: some View {
         ShareCardFrame(appearance: appearance) {
-            DashboardProviderSection(family: family.hidingEmails) { account in
+            DashboardProviderSection(family: family) { account in
                 DashboardAccountRows(account: account, plan: plans[account.id], hasSiblingAccounts: family.accounts.count > 1)
             }
         }
@@ -73,6 +73,7 @@ private struct ShareCardFrame<Content: View>: View {
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
         .environment(\.drawsLevelsAsShapes, true)
+        .environment(\.concealsEmails, true)
         .environment(\.colorScheme, appearance)
     }
 

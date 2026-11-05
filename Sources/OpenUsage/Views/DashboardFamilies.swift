@@ -6,13 +6,6 @@ struct DashboardFamily: Identifiable {
     var accounts: [DashboardAccount]
 
     /// The family's account when it has just the one, which then has no caption of its own.
-
-    var hidingEmails: DashboardFamily {
-        DashboardFamily(
-            id: id, provider: provider.hidingEmail,
-            accounts: accounts.map(\.hidingEmail)
-        )
-    }
 }
 
 struct DashboardAccount: Identifiable {
@@ -23,9 +16,6 @@ struct DashboardAccount: Identifiable {
 
     var id: String { provider.id }
     var name: String { provider.accountName }
-    var hidingEmail: DashboardAccount {
-        DashboardAccount(provider: provider.hidingEmail, lines: lines, waitingMetricIDs: waitingMetricIDs)
-    }
 }
 
 struct DashboardLine: Identifiable {
@@ -63,11 +53,6 @@ extension DashboardFamily {
 
 extension Provider {
     var isNamedByEmail: Bool {
-        accountLabel?.contains("@") ?? false
-    }
-
-    var hidingEmail: Provider {
-        guard isNamedByEmail else { return self }
-        var copy = self; copy.accountLabel = nil; return copy
+        accountLabel?.contains(/[^\s@]+@[^\s@]+\.[^\s@]+/) ?? false
     }
 }

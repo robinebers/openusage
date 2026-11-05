@@ -6,27 +6,47 @@ import XCTest
 
 @MainActor
 final class ShareCardRendererTests: XCTestCase {
-    func testProviderScreenshotRedactsEmailButIncludesACustomName() throws {
-        func png(label: String?) throws -> Data {
+    func testCopiedCardsBlurAnEmailNameInItsRowAndKeepACustomName() throws {
+        func cards(label: String) throws -> [NSBitmapImageRep] {
             var provider = MockData.claude
             provider.accountLabel = label
             let lines = MockData.descriptors(for: provider.id).map { DashboardLine(descriptor: $0, data: $0.sample) }
-            let account = DashboardAccount(provider: provider, lines: lines)
-            let family = DashboardFamily(id: provider.id, provider: provider, accounts: [account])
-            let card = ShareCardView(family: family, appearance: .light)
-            return try XCTUnwrap(ShareCardRenderer.png(for: card))
+            let family = DashboardFamily(id: provider.id, provider: provider, accounts: [DashboardAccount(provider: provider, lines: lines)])
+            let board = PriorityBoard.make(accounts: family.accounts, pinned: Set(lines.prefix(1).map(\.id)), now: Date())
+            return try [
+                AnyView(ShareCardView(family: family, appearance: .light)),
+                AnyView(PriorityShareCard(board: board, now: Date(), appearance: .light)),
+            ].map { try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: $0)))) }
         }
 
-        let redacted = try png(label: "private@example.com")
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: redacted))
-        // Without a plan the caption exists only when the account's name is printed.
-        let unnamed = try XCTUnwrap(NSBitmapImageRep(data: try png(label: nil)))
-        let named = try XCTUnwrap(NSBitmapImageRep(data: try png(label: "Work")))
-        XCTAssertEqual(bitmap.pixelsHigh, unnamed.pixelsHigh)
-        XCTAssertGreaterThan(named.pixelsHigh, bitmap.pixelsHigh)
-        XCTAssertGreaterThanOrEqual(bitmap.pixelsWide, Int(ShareCardView.width))
-        XCTAssertGreaterThan(bitmap.pixelsHigh, 0)
-        XCTAssertTrue(redacted.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        let email = try cards(label: "private@example.com")
+        let named = try cards(label: "Sunstory Studio")
+        for (email, named) in zip(email, named) {
+            XCTAssertEqual(email.pixelsHigh, named.pixelsHigh, "the email keeps its row, blurred")
+            let blurred = try recognizedText(in: try XCTUnwrap(email.cgImage)).lowercased()
+            XCTAssertFalse(blurred.contains("example"), blurred)
+            XCTAssertFalse(blurred.contains("private"), blurred)
+            let custom = try recognizedText(in: try XCTUnwrap(named.cgImage)).lowercased()
+            XCTAssertTrue(custom.contains("sunstory"), custom)
+        }
+    }
+
+    func testThePanelBlursOnlyAnEmailNameAndOnlyWhileConcealing() throws {
+        func reads(_ label: String, concealing: Bool) throws -> String {
+            let row = AccountListRow(provider: Provider(id: "codex@1", kind: .codex, accountLabel: label), grip: { EmptyView() })
+                .frame(width: ShareCardView.width)
+                .background(.white)
+                .environment(\.colorScheme, .light)
+                .environment(\.concealsEmails, concealing)
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: row))))
+            return try recognizedText(in: try XCTUnwrap(bitmap.cgImage)).lowercased()
+        }
+
+        XCTAssertTrue(try reads("private@example.com", concealing: false).contains("example.com"))
+        let concealed = try reads("private@example.com", concealing: true)
+        XCTAssertFalse(concealed.contains("example"), concealed)
+        XCTAssertTrue(concealed.contains("chatgpt"), "only the name blurs: \(concealed)")
+        XCTAssertTrue(try reads("Sunstory Studio", concealing: true).contains("sunstory"))
     }
 
     func testEveryShareImageEndsInATintedBandWithTheTagline() throws {
