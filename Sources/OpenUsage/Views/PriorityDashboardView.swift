@@ -38,6 +38,7 @@ struct PriorityBoardList: View {
             if !board.pinned.isEmpty { pinnedSection }
             summary
             if !board.waiting.isEmpty { waitingSection }
+            if !board.usedUp.isEmpty { usedUpSection }
         }
     }
 
@@ -58,7 +59,6 @@ struct PriorityBoardList: View {
         case .allClear, .listed:
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if !board.attention.isEmpty || board.showsClearRow { attentionSection }
-                if !board.usedUp.isEmpty { usedUpSection }
                 if !board.useItOrLoseIt.isEmpty { useItOrLoseItSection }
                 if !board.notices.isEmpty { accountNotices }
             }

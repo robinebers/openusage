@@ -23,6 +23,31 @@ final class UsageBreakdownDetailTests: XCTestCase {
         XCTAssertLessThanOrEqual(needed, UsageBreakdownDetail.width - 2 * UsageBreakdownDetail.padding)
     }
 
+    /// A centered message too long for one line wraps onto lines of about equal width, not a long line and a lone word.
+    func testTheEmptyMessageWrapsOntoBalancedLines() throws {
+        let provider = Provider(id: "openrouter", kind: .openrouter)
+        let detail = UsageBreakdownDetail(
+            content: .reported(try breakdown([.credits: 0])), provider: provider, animates: false,
+            onCopy: { _, _ in false }, onHoverChange: { _ in }
+        )
+        .background(Color.white)
+        .environment(\.colorScheme, .light)
+        let renderer = ImageRenderer(content: detail)
+        renderer.scale = 2
+        let rep = NSBitmapImageRep(cgImage: try XCTUnwrap(renderer.cgImage))
+        let leading = Int((UsageBreakdownDetail.padding + 4) * renderer.scale)
+        let widest = (0..<rep.pixelsHigh).compactMap { y -> Int? in
+            let inked = (0..<rep.pixelsWide).filter { x in rep.colorAt(x: x, y: y)!.usingColorSpace(.deviceRGB)!.brightnessComponent < 0.5 }
+            guard let first = inked.first, let last = inked.last, first > leading else { return nil }
+            return last - first
+        }.max() ?? 0
+
+        let message = "\(provider.displayName) didn't report any data for this range."
+        let oneLine = NSHostingView(rootView: Text(message).font(.system(size: 13, weight: .semibold)).fixedSize()).fittingSize.width
+        XCTAssertGreaterThan(oneLine, UsageBreakdownDetail.width - 2 * UsageBreakdownDetail.padding, "the message needs two lines")
+        XCTAssertLessThan(CGFloat(widest) / renderer.scale, oneLine / 2 + 24, "its longest line is about half the message")
+    }
+
     func testOnlyARangeOfZerosIsEmpty() throws {
         let zeros = try breakdown([.credits: 0, .tokens: 0])
         XCTAssertTrue(zeros.isEmpty)

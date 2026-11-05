@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OpenUsage
 
@@ -21,6 +22,18 @@ final class PaceMarkTests: XCTestCase {
         XCTAssertEqual(used, 0.25, accuracy: 1e-9)
         let left = try XCTUnwrap(limit(used: 60, displayMode: .remaining).dashboardRow(now: now).paceMark)
         XCTAssertEqual(left, 0.75, accuracy: 1e-9)
+    }
+
+    /// As in 0.7, the tick is drawn at about half the strength of the text, in light and in dark.
+    func testTheMarkIsDrawnAtAboutHalfStrength() {
+        for scheme in [ColorScheme.light, .dark] {
+            var environment = EnvironmentValues()
+            environment.colorScheme = scheme
+            let mark = Theme.paceMark.resolve(in: environment)
+            let text = Color.primary.resolve(in: environment)
+            XCTAssertEqual(Double(mark.opacity / text.opacity), 0.55, accuracy: 0.01, "\(scheme)")
+            XCTAssertEqual([mark.red, mark.green, mark.blue], [text.red, text.green, text.blue], "\(scheme)")
+        }
     }
 
     func testTheMarkMovesWithTheClock() throws {

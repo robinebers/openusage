@@ -20,8 +20,6 @@ Priority shows only what needs you, most urgent first.
   time it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
   90% of the limit. What would run out soonest at your current pace comes first, then limits with no
   pace, least left first.
-- **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
-  credits, shows here only at exactly zero.
 - **Use It or Lose It** lists, with the setting of that name on, a limit that resets within 24 hours
   with over 50% left, the same rule as the alert. Only windows longer than a day count, never the
   5-hour session or a dollar spending cap. Each shows when it resets, like `Resets in 18h`, soonest
@@ -30,6 +28,8 @@ Priority shows only what needs you, most urgent first.
   running low. It waits for accounts that haven't reported yet.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.
   **Fix** opens the account's page with the reason and how to fix it.
+- **Used Up** always comes last. It lists what has run out, soonest reset first. A balance with no
+  limit, such as Cursor credits, shows here only at exactly zero.
 
 With Pace Marks on, each limit's ring carries the same pace mark as its bar in All Usage, clockwise
 from 12 o'clock.
@@ -130,7 +130,9 @@ cards. **Install Update** opens the update window, and ✕ hides the card until 
 
 ## Footer
 
-- **Next update in …** counts down to the next refresh. Click it or press **⌘R** to refresh now.
+- **OpenUsage** and the version, like `OpenUsage 0.8.0`, sit over **Next update in …**, which counts
+  down to the next refresh. Click it or press **⌘R** to refresh now. A dev build shows its commit,
+  like `dev (abc1234)`.
 - On Priority, a button copies the tab as a PNG with emails hidden.
 - The **⋯** menu has **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
   **About OpenUsage**, and **Quit OpenUsage**.

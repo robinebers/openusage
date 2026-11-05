@@ -212,35 +212,14 @@ private final class TooltipPresenter {
         panel.orderFrontRegardless()
     }
 
-    /// Lays the bubble out at its natural single-line size, then — only when that would run wider than
-    /// `maxTooltipWidth` — re-lays it wrapped, so a long tooltip breaks onto multiple lines instead of
-    /// stretching off-screen while short ones keep their snug single-line size. Wrapped text is
-    /// laid out at the narrowest width that still fits the same number of lines as the max-width layout
-    /// (found by binary search on the measured height): lines come out roughly equal length and a lone
-    /// orphan word can't hang on the last line — the closest SwiftUI gets to CSS `text-wrap: pretty`
-    /// (there's no public `Text` API for it). A handful of extra layout passes, only at reveal time.
-    /// Leaves `host.rootView` holding whichever bubble it settled on, which is the one shown.
+    /// Lays the bubble out at its natural size: one line when it fits in `maxTooltipWidth`, otherwise
+    /// wrapped onto balanced lines (`BalancedLines`), so a long tooltip breaks onto lines of roughly
+    /// equal length instead of stretching off-screen or leaving a lone word on the last line. Leaves
+    /// `host.rootView` holding the bubble that's shown.
     private func measuredSize(for target: Target) -> CGSize {
-        func fit(maxTextWidth: CGFloat?) -> CGSize {
-            host.rootView = AnyView(TooltipBubble(text: target.text, maxTextWidth: maxTextWidth))
-            host.layoutSubtreeIfNeeded()
-            return host.fittingSize
-        }
-        let natural = fit(maxTextWidth: nil)
-        guard natural.width > maxTooltipWidth else { return natural }
-        let maxTextWidth = maxTooltipWidth - 2 * TooltipBubble.horizontalPadding
-        let wrapped = fit(maxTextWidth: maxTextWidth)
-        var tooNarrow: CGFloat = 0
-        var fits = maxTextWidth
-        while fits - tooNarrow > 1 {
-            let mid = (tooNarrow + fits) / 2
-            if fit(maxTextWidth: mid).height > wrapped.height {
-                tooNarrow = mid
-            } else {
-                fits = mid
-            }
-        }
-        return fit(maxTextWidth: fits.rounded(.up))
+        host.rootView = AnyView(TooltipBubble(text: target.text, maxTextWidth: maxTooltipWidth - 2 * TooltipBubble.horizontalPadding))
+        host.layoutSubtreeIfNeeded()
+        return host.fittingSize
     }
 
     private func origin(for size: CGSize, anchor: NSRect) -> NSPoint {
@@ -275,7 +254,7 @@ private final class NonKeyPanel: NSPanel {
 
 private struct TooltipBubble: View {
     let text: String
-    let maxTextWidth: CGFloat?
+    let maxTextWidth: CGFloat
 
     static let horizontalPadding: CGFloat = 8
 
@@ -288,17 +267,13 @@ private struct TooltipBubble: View {
             .overlay { shape.strokeBorder(.separator, lineWidth: 0.5) }
     }
 
-    @ViewBuilder
     private var label: some View {
-        let content = Text(text)
-            .font(.system(size: 12))
-            .foregroundStyle(.primary)
-            .multilineTextAlignment(.center)
-        if let maxTextWidth {
-            content.frame(width: maxTextWidth, alignment: .center)
-                .fixedSize(horizontal: false, vertical: true)
-        } else {
-            content.fixedSize()
+        BalancedLines(maxWidth: maxTextWidth) {
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
         }
+        .fixedSize()
     }
 }
