@@ -35,6 +35,13 @@ Usage history:
 The last values are saved on disk and shown at launch. They stay fresh for 5 minutes, across a
 relaunch too.
 
+macOS widgets receive a display-only copy of the latest fetched values and time. Changed values,
+names, shown metrics or order request a redraw together. When only the fetch time changes, OpenUsage
+requests a redraw at most once every 15 minutes. Widgets never fetch providers themselves.
+WidgetKit controls when the changed values appear; if the app
+stops running, widgets keep their last values and mark them outdated after 30 minutes. See
+[macOS widgets](macos-widgets.md).
+
 ## When a fetch fails
 
 A failed refresh keeps the last good values. The account shows under **Needs Attention** in

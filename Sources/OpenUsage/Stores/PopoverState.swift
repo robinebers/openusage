@@ -61,6 +61,8 @@ final class PopoverState {
     /// The CLIProxyAPI hub whose page Accounts shows. An account opened from it goes back to it.
     var customizeHubID: UUID?
     var isAddingAccount = false
+    private(set) var dashboardFocusProviderID: String?
+    private(set) var dashboardFocusRequestID = 0
     /// The account the Add Account sheet signs in again, in place of adding a new one.
     var signingInAgainProviderID: String?
     var dashboardTab = DashboardTab.priority
@@ -115,5 +117,26 @@ final class PopoverState {
         if screen != .dashboard { screen = .dashboard }
         settingsTab = .general
         shareNotice.clear()
+        dashboardFocusProviderID = nil
+    }
+
+    func openWidgetAccount(_ providerID: String?, hasVisibleMetrics: Bool) {
+        dashboardFocusProviderID = nil
+        isAddingAccount = false
+        if let providerID, !hasVisibleMetrics {
+            openAccounts(providerID)
+        } else {
+            if providerID != nil { dashboardTab = .allUsage }
+            screen = .dashboard
+            if let providerID {
+                dashboardFocusProviderID = providerID
+                dashboardFocusRequestID &+= 1
+            }
+        }
+    }
+
+    func acknowledgeDashboardFocus(requestID: Int) {
+        guard requestID == dashboardFocusRequestID else { return }
+        dashboardFocusProviderID = nil
     }
 }

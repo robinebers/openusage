@@ -17,10 +17,15 @@ only the provider APIs those accounts need.
 - A [proxy](proxy.md) password stays in your `~/.openusage/config.json`. OpenUsage reads it but never
   writes or logs it.
 
+The [macOS widgets](macos-widgets.md) read a separate local copy of account names and display-ready
+usage from an App Group shared with the app. That copy contains no credentials or detailed errors.
+Removing an account removes its shared values too. Widget data never goes to the analytics service.
+
 ## Screen sharing
 
 **Settings → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead of your
-usage while your screen is shared or recorded. It is off by default and doesn't hide the panel.
+usage while your screen is shared or recorded. It is off by default and doesn't hide the panel
+or macOS widgets.
 
 ## Anonymous telemetry
 

@@ -26,6 +26,10 @@ node_modules/
 *.xcresult
 .build-test/
 
+# The widget project resolves the root package's dependencies but builds only
+# OpenUsageWidgetSupport, which uses none of them; the root Package.resolved is the one lockfile.
+OpenUsageWidgets.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+
 # Local appcast / Sparkle feed output
 feed/
 appcast.xml
