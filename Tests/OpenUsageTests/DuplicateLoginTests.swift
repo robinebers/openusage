@@ -63,12 +63,12 @@ final class DuplicateLoginTests: XCTestCase {
             HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"accessToken":"\#(token)","refreshToken":"r","authId":"auth0|user_abc"}"#.utf8))
         }
         let store = makeStore()
-        let first = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
+        let first = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in CursorLogin(http: http) }
         first.choose(.cursor)
         try await waitUntil { first.isFinished }
         XCTAssertEqual(store.accounts.map(\.label), ["Cursor Account"])
 
-        let again = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in CursorLogin(http: http) }
+        let again = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in CursorLogin(http: http) }
         again.choose(.cursor)
         try await waitUntil { again.errorMessage != nil }
 
@@ -102,7 +102,7 @@ final class DuplicateLoginTests: XCTestCase {
         store.add(kind: .openrouter, label: "Personal", credential: .apiKey("sk-or-1"))
 
         let http = RoutingHTTPClient { _ in HTTPResponse(statusCode: 200, headers: [:], body: Data(OpenRouterFixtures.standardKey.utf8)) }
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _ in APIKeyLogin(kind: kind, http: http) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, _, _, _ in APIKeyLogin(kind: kind, http: http) }
         flow.choose(.openrouter)
         flow.apiKey = " sk-or-1 "
         flow.addKey()
@@ -126,7 +126,7 @@ final class DuplicateLoginTests: XCTestCase {
     }
 
     private func flow(_ store: AccountStore, credential: @escaping @Sendable () -> AccountCredential) -> AddAccountFlow {
-        AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in IdentityLogin(credential: credential) }
+        AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in IdentityLogin(credential: credential) }
     }
 
     /// Every sign-in is issued a new API key, so only the account's identity can tell it was added before.
@@ -137,7 +137,7 @@ final class DuplicateLoginTests: XCTestCase {
                 : #"{"userStatus":{"email":"rob@example.com","teamId":"\#(team)"}}"#
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))
         }
-        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in DevinLogin(http: http) }
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in DevinLogin(http: http) }
         flow.choose(.devin)
         try await waitUntil { flow.prompt != nil }
         flow.pastedCode = "one-time-token"

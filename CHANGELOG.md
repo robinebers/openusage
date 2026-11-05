@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.3
+
+### Added
+- **Use It or Lose It** under **Settings → Display → Priority** lists a weekly or monthly limit that
+  resets within 24 hours with over 50% left in its own Priority section, soonest reset first, with
+  when it resets. It uses the same rule as the alert and stays out of the menu bar. On by default.
+- Copilot signs in on your company's GitHub Enterprise domain on GHE.com: leave the new Domain step
+  blank for github.com, or enter an address like `octocorp.ghe.com`
+  ([#1602](https://github.com/robinebers/openusage/issues/1602)).
+- **Pace marks** are back, answering the pace marks request in
+  [#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6634518518): with
+  **Settings → Display → Pace Marks** on, a tick on each All Usage bar and Priority ring shows where
+  usage would be at an even pace through the window. Off by default.
+
+### Changed
+- **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.
+- Settings explains each setting in an ⓘ tooltip beside its name instead of a second line, and the
+  Warning and Critical alerts now read "Alert when a limit requires your attention" and "Alert when
+  a limit drops critically low".
+- Priority always lists **Used Up** last.
+- The panel footer shows the OpenUsage version again, over **Next update in …**, as in 0.7.
+- The usage history popover's empty message wraps onto lines of even width.
+- All Usage shows a provider's copy button beside its logo while the pointer is anywhere over its
+  card, instead of in place of the logo.
+
+## v0.8.0-beta.2
 
 ### Added
 - Z.ai accounts show a **Limit Resets** row for banked resets. Its details list Session and Weekly
@@ -14,10 +39,14 @@
 - **Burning Fast** under Priority Limits lists a limit that would run out before it resets at your
   current pace, however much it has left, under Running Out and in the menu bar, with when it would
   run out ([#1574](https://github.com/robinebers/openusage/issues/1574)). On by default.
+- **Use It or Lose It** notification: a weekly or monthly limit resets within 24 hours with over 50%
+  left ([#1593](https://github.com/robinebers/openusage/issues/1593)). Off by default.
 
 ### Changed
 - Priority: a pinned limit or balance that's used up moves to **Used Up** until it resets, instead of
   staying under **Pinned** as an empty ring.
+- **Settings → General → Global Shortcut** uses the standard macOS shortcut recorder, and a usage
+  range with no data shows the provider's mark gently pulsing instead of breathing rings.
 
 ### Fixed
 - Claude's Extra Usage shows the account's billing currency, such as €, instead of always $

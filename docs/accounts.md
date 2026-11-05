@@ -7,7 +7,8 @@ on the dashboard.
 
 1. Click **Add New Account**.
 2. Pick a provider. Copilot first asks for **Sign In with GitHub** (your own seat) or
-   **Organization Billing** (an organization's credits and spend).
+   **Organization Billing** (an organization's credits and spend). **Sign In with GitHub** then asks
+   for a domain: leave it blank for github.com, or enter your company's GHE.com address.
 3. Finish the sign-in:
 
 | Sign-in | Providers | What to do |
@@ -28,7 +29,8 @@ To add the logins of a CLIProxyAPI server, click **CLIProxyAPI** at the bottom o
 - An account takes the email or name the provider reports. API-key accounts other than Ollama
   are named after the provider, such as "OpenRouter Account".
 - A sign-in or key you already use isn't added twice.
-- A Claude account or Devin email in two organizations counts as two accounts.
+- A Claude account or Devin email in two organizations counts as two accounts, and so does a GitHub
+  user on github.com and on a GHE.com domain.
 
 ## Rename an account
 
@@ -60,5 +62,5 @@ databases, or environment variables.
 ## Sign in again
 
 When a sign-in expires, click **Sign In Again…** on the account's page. The account keeps its
-name, place, and settings. In Priority, **Fix** on an account under **Needs Attention** opens
+name, place, and settings. A Copilot account on GHE.com signs in again at its own domain. In Priority, **Fix** on an account under **Needs Attention** opens
 that page.

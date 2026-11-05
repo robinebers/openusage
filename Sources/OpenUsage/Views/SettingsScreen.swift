@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsScreen: View {
@@ -11,6 +12,7 @@ struct SettingsScreen: View {
     @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
     @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
     @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
+    @AppStorage(PaceMilestone.useItOrLoseIt.settingKey) private var useItOrLoseIt = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
     @State private var commandLineTool = CommandLineToolInstaller()
@@ -42,7 +44,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if criticalAlert || warningAlert || closeToRunningOut { checkNotificationPermission() }
+                if criticalAlert || warningAlert || closeToRunningOut || useItOrLoseIt { checkNotificationPermission() }
             }
         }
     }
@@ -56,7 +58,8 @@ struct SettingsScreen: View {
             ))
             picker("Default Tab", selection: $defaultTab, options: DashboardTab.allCases.map { ($0, $0.label) })
             LabeledContent("Global Shortcut") {
-                ShortcutRecorderField(name: .togglePopover, isVisible: popover.screen == .settings)
+                KeyboardShortcuts.Recorder(for: .togglePopover)
+                    .disabled(popover.screen != .settings)
             }
         } footer: {
             if let errorMessage = launchAtLogin.errorMessage {
@@ -90,20 +93,25 @@ struct SettingsScreen: View {
             PriorityIconsPreview()
             picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
         } header: {
-            Text("Priority Icons")
-        } footer: {
-            SettingsNote("OpenUsage intelligently displays the usage icons at risk of running out and that require your attention.")
+            Text("Priority")
         }
-        Section("Priority Limits") {
-            levelPicker("Warning", subtitle: "Turns a limit orange", severity: .warning,
+        Section {
+            levelPicker("Warning", info: "When a limit turns into a priority", severity: .warning,
                         selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
-            levelPicker("Critical", subtitle: "Turns a limit red", severity: .critical,
+            levelPicker("Critical", info: "When a limit turns critically low", severity: .critical,
                         selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
             Toggle(isOn: $dataStore.showsBurningFast) {
-                limitLabel("Burning Fast", subtitle: "Will run out before it resets") {
+                limitLabel("Burning Fast", info: "Will run out before it resets") {
                     Image(systemName: "flame.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(Theme.severityColor(.warning))
+                }
+            }
+            Toggle(isOn: $dataStore.showsUseItOrLoseIt) {
+                limitLabel("Use It or Lose It", info: PaceMilestone.useItOrLoseIt.settingSubtitle) {
+                    Image(systemName: "hourglass.tophalf.filled")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.severityColor(.normal))
                 }
             }
         }
@@ -115,6 +123,9 @@ struct SettingsScreen: View {
         Section("Usage") {
             picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
             picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
+            Toggle(isOn: $dataStore.showsPaceMarks) {
+                titled("Pace Marks", info: "Where usage would be at an even pace")
+            }
         }
     }
 
@@ -123,6 +134,7 @@ struct SettingsScreen: View {
             notificationToggle(.critical, isOn: $criticalAlert)
             notificationToggle(.warning, isOn: $warningAlert)
             notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
+            notificationToggle(.useItOrLoseIt, isOn: $useItOrLoseIt)
         } header: {
             Text("Notifications")
         } footer: {
@@ -193,34 +205,39 @@ struct SettingsScreen: View {
     }
 
     private func levelPicker(
-        _ title: String, subtitle: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
+        _ title: String, info: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
     ) -> some View {
         Picker(selection: selection) {
             ForEach(options, id: \.self) { Text("\($0)% left").tag($0) }
         } label: {
-            limitLabel(title, subtitle: subtitle) {
+            limitLabel(title, info: info) {
                 Circle().fill(Theme.severityColor(severity)).frame(width: 8, height: 8)
             }
         }
     }
 
-    /// A Priority Limits row's label: its mark, then its title over what it does.
-    private func limitLabel(_ title: String, subtitle: String, @ViewBuilder mark: () -> some View) -> some View {
+    /// A Priority limit row's label: its mark, then its title with what it does behind an info icon.
+    private func limitLabel(_ title: String, info: String, @ViewBuilder mark: () -> some View) -> some View {
         HStack(spacing: 8) {
             mark().frame(width: 8)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
+            titled(title, info: info)
+        }
+    }
+
+    /// A row's title followed by an info icon that shows what the row does on hover.
+    private func titled(_ title: String, info: String) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+            Image(systemName: "info.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .hoverTooltip(info)
         }
     }
 
     private func notificationToggle(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
         Toggle(isOn: isOn) {
-            Text(milestone.notificationTitle)
-            Text(milestone.settingSubtitle(dataStore.priorityLimits))
+            titled(milestone.notificationTitle, info: milestone.settingSubtitle)
         }
         .onChange(of: isOn.wrappedValue) { _, enabled in
             if enabled { checkNotificationPermission() }

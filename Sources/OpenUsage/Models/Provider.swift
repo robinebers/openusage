@@ -5,6 +5,8 @@ struct Provider: Identifiable, Hashable {
     let kind: ProviderKind
     var accountLabel: String? = nil
     var organization: String? = nil
+    /// The GHE.com domain a Copilot account signs in at; github.com accounts have none.
+    var domain: String? = nil
     /// The host of the CLIProxyAPI hub an account is mirrored from.
     var hubHost: String? = nil
     /// The account's initials on its menu bar mark. `WidgetRegistry` sets it for every account of a kind with several.

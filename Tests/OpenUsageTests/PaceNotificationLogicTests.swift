@@ -18,6 +18,7 @@ final class PaceNotificationLogicTests: XCTestCase {
             state: state,
             severity: WidgetData(title: "Weekly", kind: .percent, used: (1 - fraction) * 100, limit: 100).severity,
             resetsAt: resetsAt ?? reset,
+            unusedNearReset: false,
             previous: previous
         )
     }

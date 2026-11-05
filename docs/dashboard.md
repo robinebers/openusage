@@ -12,20 +12,27 @@ The panel that opens from the menu bar icon. It has two tabs, Priority and All U
 Priority shows only what needs you, most urgent first.
 
 - **Pinned** comes first, with every pinned metric that has data. A pinned metric that's running
-  out moves to Running Out until it recovers, and one that's used up moves to Used Up until it
-  resets.
+  out moves to Running Out until it recovers, one that's used up moves to Used Up until it resets,
+  and one listed under Use It or Lose It moves there until it resets.
 - **Running Out** lists every limit at or under its Warning level (30% left by default, set in
-  [Priority Limits](settings.md#priority-limits)). With **Burning Fast** on, it also lists a limit
-  that would run out before it resets at your current pace, however much it has left, with the time
-  it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
+  [Settings → Display → Priority](settings.md#priority)). With **Burning Fast** on, it also lists a
+  limit that would run out before it resets at your current pace, however much it has left, with the
+  time it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
   90% of the limit. What would run out soonest at your current pace comes first, then limits with no
   pace, least left first.
-- **Used Up** lists what has run out, soonest reset first. A balance with no limit, such as Cursor
-  credits, shows here only at exactly zero.
+- **Use It or Lose It** lists, with the setting of that name on, a limit that resets within 24 hours
+  with over 50% left, the same rule as the alert. Only windows longer than a day count, never the
+  5-hour session or a dollar spending cap. Each shows when it resets, like `Resets in 18h`, soonest
+  first. These limits never show in the menu bar.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is
   running low. It waits for accounts that haven't reported yet.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.
   **Fix** opens the account's page with the reason and how to fix it.
+- **Used Up** always comes last. It lists what has run out, soonest reset first. A balance with no
+  limit, such as Cursor credits, shows here only at exactly zero.
+
+With Pace Marks on, each limit's ring carries the same pace mark as its bar in All Usage, clockwise
+from 12 o'clock.
 
 Ties keep your dashboard order. If no account has a limit to monitor, **No Reported Limits** links
 to All Usage.
@@ -50,6 +57,11 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 - Countdowns update every 30 seconds.
 - Hover over a bar to see where your current pace lands at reset. The same pace drives the
   [notifications](settings.md).
+- A tick on the bar marks where it would be by now at an even pace through the window: under Used
+  at the share of the window that has passed, under Left at the rest. It moves with the clock. A limit
+  gets no mark without a reset window, before 1% of the window (and a minute) has passed, before its
+  session has started, or once it's used up. The marks show with **Settings → Display → Pace Marks**
+  on, which is off by default.
 
 ### Resets
 
@@ -106,8 +118,9 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 
 ## Share
 
-Click a provider's logo, or choose **Share Screenshot**, to copy a PNG of its card. On one account
-in a card of several, it copies only that account. Emails are left out.
+Hover over a provider's card and click the copy button beside its logo, or choose **Share
+Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
+account. Emails are left out.
 
 ## Update banner
 
@@ -117,7 +130,9 @@ cards. **Install Update** opens the update window, and ✕ hides the card until 
 
 ## Footer
 
-- **Next update in …** counts down to the next refresh. Click it or press **⌘R** to refresh now.
+- **OpenUsage** and the version, like `OpenUsage 0.8.0`, sit over **Next update in …**, which counts
+  down to the next refresh. Click it or press **⌘R** to refresh now. A dev build shows its commit,
+  like `dev (abc1234)`.
 - On Priority, a button copies the tab as a PNG with emails hidden.
 - The **⋯** menu has **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
   **About OpenUsage**, and **Quit OpenUsage**.

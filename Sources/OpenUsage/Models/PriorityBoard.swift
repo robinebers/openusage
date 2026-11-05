@@ -9,9 +9,14 @@ struct PriorityItem: Identifiable {
         case burningFast(runway: TimeInterval)
         case usedUp(resetsAt: Date?)
         case emptyBalance
+        /// Listed with over half left because it resets within a day, the same rule as the Use It or Lose It alert.
+        case useItOrLoseIt(resetsAt: Date)
 
-        /// `burningFast` is nil while Settings leaves limits burning fast off the list.
-        init?(_ line: DashboardLine, now: Date, burningFast: BurningFast?) {
+        enum Section { case runningOut, usedUp, useItOrLoseIt }
+
+        /// `burningFast` is nil while Settings leaves limits burning fast off the list, and `useItOrLoseIt` is
+        /// false while it leaves limits about to reset unused off.
+        init?(_ line: DashboardLine, now: Date, burningFast: BurningFast?, useItOrLoseIt: Bool) {
             let data = line.data
             if line.descriptor.balance(in: data)?.number == 0 {
                 self = .emptyBalance
@@ -26,22 +31,27 @@ struct PriorityItem: Identifiable {
                 self = .low(data.severity, remaining: data.remainingFraction, runway: data.runway(now: now))
                 return
             }
-            guard burningFast?.contains(line, now: now) == true, let runway = data.runway(now: now) else { return nil }
-            self = .burningFast(runway: runway)
+            if burningFast?.contains(line, now: now) == true, let runway = data.runway(now: now) {
+                self = .burningFast(runway: runway)
+                return
+            }
+            guard useItOrLoseIt, PaceNotificationLogic.isUnusedNearReset(data, now: now), let resetsAt = data.resetsAt else { return nil }
+            self = .useItOrLoseIt(resetsAt: resetsAt)
         }
 
         var severity: WidgetData.MeterSeverity {
             switch self {
             case .low(let severity, _, _): severity
-            case .burningFast: .normal
+            case .burningFast, .useItOrLoseIt: .normal
             case .usedUp, .emptyBalance: .critical
             }
         }
 
-        fileprivate var isUsedUp: Bool {
+        fileprivate var section: Section {
             switch self {
-            case .usedUp, .emptyBalance: true
-            case .low, .burningFast: false
+            case .low, .burningFast: .runningOut
+            case .usedUp, .emptyBalance: .usedUp
+            case .useItOrLoseIt: .useItOrLoseIt
             }
         }
 
@@ -52,6 +62,7 @@ struct PriorityItem: Identifiable {
             case .low(_, let remaining, nil): (1, remaining)
             case .usedUp(let resetsAt): (2, resetsAt?.timeIntervalSinceReferenceDate ?? .infinity)
             case .emptyBalance: (2, .infinity)
+            case .useItOrLoseIt(let resetsAt): (3, resetsAt.timeIntervalSinceReferenceDate)
             }
         }
     }
@@ -59,7 +70,7 @@ struct PriorityItem: Identifiable {
     let provider: Provider
     let line: DashboardLine
     let reason: Reason
-    /// The user pinned it. A pinned item is listed under Running Out or Used Up instead of Pinned.
+    /// The user pinned it. A pinned item is listed under Running Out, Used Up, or Use It or Lose It instead of Pinned.
     let isPinned: Bool
 
     var id: String { line.id }
@@ -74,6 +85,13 @@ struct PriorityItem: Identifiable {
         return "Out in \(duration)"
     }
 
+    /// The line under the amount of a limit listed to use before it resets, in place of its reset.
+    func resetsInText(now: Date) -> String? {
+        guard case .useItOrLoseIt(let resetsAt) = reason, let duration = Formatters.compactDuration(resetsAt.timeIntervalSince(now))
+        else { return nil }
+        return "Resets in \(duration)"
+    }
+
     /// The trailing text of a Used Up row: the time until it resets, or for a balance, which has no reset, its amount.
     func usedUpNote(now: Date) -> String? {
         guard case .emptyBalance = reason else { return data.compactResetText(now: now) }
@@ -81,7 +99,7 @@ struct PriorityItem: Identifiable {
     }
 }
 
-/// A metric the user pinned to the top of Priority, listed there while it isn't running out or used up.
+/// A metric the user pinned to the top of Priority, listed there while no other section lists it.
 struct PinnedMetric: Identifiable {
     let provider: Provider
     let line: DashboardLine
@@ -110,11 +128,13 @@ struct PriorityBoard {
         var id: String { provider.id }
     }
 
-    /// In dashboard order. A pinned metric that is running out or used up is listed only under Running Out
-    /// or Used Up, and comes back here once it isn't.
+    /// In dashboard order. A pinned metric another section lists is listed only there, and comes back here
+    /// once it isn't.
     let pinned: [PinnedMetric]
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
+    /// Limits with over half left that reset within a day, soonest reset first. Never in the menu bar.
+    let useItOrLoseIt: [PriorityItem]
     let notices: [AccountNotice]
     /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest.
     let waiting: [Provider]
@@ -133,14 +153,15 @@ struct PriorityBoard {
     }
 
     /// `accounts` is in the user's saved order, which breaks every tie. `burningFast` is nil while Settings
-    /// leaves limits burning fast off the list.
+    /// leaves limits burning fast off the list, and `useItOrLoseIt` is false while it leaves that section off.
     static func make(
-        accounts: [DashboardAccount], pinned pinnedIDs: Set<String> = [], burningFast: BurningFast? = nil, now: Date,
+        accounts: [DashboardAccount], pinned pinnedIDs: Set<String> = [], burningFast: BurningFast? = nil,
+        useItOrLoseIt: Bool = false, now: Date,
         status: (DashboardAccount) -> ReadStatus = { $0.lines.contains(where: \.data.hasData) ? .current : .waiting }
     ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
-            PriorityItem.Reason(line, now: now, burningFast: burningFast).map {
+            PriorityItem.Reason(line, now: now, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt).map {
                 PriorityItem(provider: provider, line: line, reason: $0, isPinned: pinnedIDs.contains(line.id))
             }
         }
@@ -173,10 +194,11 @@ struct PriorityBoard {
         let listed = Set(ranked.map(\.id))
         return PriorityBoard(
             pinned: lines.filter { pinnedIDs.contains($0.1.id) && !listed.contains($0.1.id) }.map(PinnedMetric.init),
-            attention: ranked.filter { !$0.reason.isUsedUp },
-            usedUp: ranked.filter(\.reason.isUsedUp),
+            attention: ranked.filter { $0.reason.section == .runningOut },
+            usedUp: ranked.filter { $0.reason.section == .usedUp },
+            useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt },
             notices: notices, waiting: waiting, summary: summary,
-            showsClearRow: !awaitingUsage && notices.isEmpty && ranked.allSatisfy(\.reason.isUsedUp)
+            showsClearRow: !awaitingUsage && notices.isEmpty && !ranked.contains { $0.reason.section == .runningOut }
         )
     }
 
@@ -188,7 +210,8 @@ extension WidgetDataStore {
     func priorityBoard(in groups: [ProviderMetrics], pinned: Set<String> = [], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
         let accounts = accounts(in: groups)
         return PriorityBoard.make(
-            accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, burningFast: burningFast, now: now
+            accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, burningFast: burningFast,
+            useItOrLoseIt: showsUseItOrLoseIt, now: now
         ) { account in
             if let message = self.problem(for: account.id) {
                 // A provider's notice can itself contain account details. Share only the status.

@@ -38,6 +38,7 @@ struct PriorityBoardList: View {
             if !board.pinned.isEmpty { pinnedSection }
             summary
             if !board.waiting.isEmpty { waitingSection }
+            if !board.usedUp.isEmpty { usedUpSection }
         }
     }
 
@@ -58,7 +59,7 @@ struct PriorityBoardList: View {
         case .allClear, .listed:
             VStack(alignment: .leading, spacing: PanelMetrics.margin) {
                 if !board.attention.isEmpty || board.showsClearRow { attentionSection }
-                if !board.usedUp.isEmpty { usedUpSection }
+                if !board.useItOrLoseIt.isEmpty { useItOrLoseItSection }
                 if !board.notices.isEmpty { accountNotices }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,7 +135,8 @@ struct PriorityBoardList: View {
             sectionLabel("Running Out")
             if board.attention.isEmpty { clearRow }
             ForEach(board.attention) { item in
-                limitRow(item.provider, item.data, severity: item.reason.severity, runOut: item.runOutText(now: now))
+                limitRow(item.provider, item.data, severity: item.reason.severity,
+                         callout: item.runOutText(now: now).map { ($0, Theme.severityTextColor(.warning)) })
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
@@ -153,6 +155,19 @@ struct PriorityBoardList: View {
             }
         }
         .opacity(0.5)
+    }
+
+    private var useItOrLoseItSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("Use It or Lose It")
+            ForEach(board.useItOrLoseIt) { item in
+                limitRow(item.provider, item.data, severity: item.reason.severity,
+                         callout: item.resetsInText(now: now).map { ($0, Theme.severityTextColor(.normal)) })
+                    .padding(.horizontal, 4)
+                    .contentShape(Rectangle())
+                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
+            }
+        }
     }
 
     @ViewBuilder
@@ -182,10 +197,13 @@ struct PriorityBoardList: View {
         }
     }
 
-    /// `runOut` takes the reset's place on a limit listed only for burning fast.
-    private func limitRow(_ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity, runOut: String? = nil) -> some View {
+    /// `callout` takes the reset's place: when a limit listed only for burning fast runs out, or when one listed to
+    /// use it or lose it resets.
+    private func limitRow(
+        _ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity, callout: (text: String, color: Color)? = nil
+    ) -> some View {
         HStack(spacing: 10) {
-            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon)
+            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon, paceMark: data.paceMark(now: now))
             VStack(alignment: .leading, spacing: 1) {
                 Text(data.title)
                     .font(.system(size: 13, weight: .medium))
@@ -203,10 +221,10 @@ struct PriorityBoardList: View {
                         .font(.system(size: 13, weight: .medium))
                         .monospacedDigit()
                 }
-                if let runOut {
-                    Text(runOut)
+                if let callout {
+                    Text(callout.text)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.severityTextColor(.warning))
+                        .foregroundStyle(callout.color)
                         .monospacedDigit()
                 } else if let reset = data.compactResetText(now: now) {
                     toggling(onToggleResetDisplay) {
@@ -301,11 +319,13 @@ struct PriorityBoardList: View {
     }
 }
 
-/// A limit's bar as a ring around its provider's mark, filling the same way under Used or Left.
+/// A limit's bar as a ring around its provider's mark, filling the same way under Used or Left, with a tick
+/// where it would be at an even pace.
 private struct PriorityGauge: View {
     let fraction: Double
     let severity: WidgetData.MeterSeverity
     let icon: String
+    let paceMark: Double?
 
     private static let lineWidth: CGFloat = 3
 
@@ -319,9 +339,33 @@ private struct PriorityGauge: View {
                 .trim(from: 0, to: fraction)
                 .stroke(Theme.severityColor(severity), style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+            if let paceMark {
+                PaceTick(mark: paceMark)
+                    .stroke(style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .blendMode(.destinationOut)
+                PaceTick(mark: paceMark)
+                    .stroke(Theme.paceMark, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            }
             ProviderIcon(id: icon, side: 16, inset: 0.04)
         }
+        .compositingGroup()
         .frame(width: 32, height: 32)
         .accessibilityHidden(true)
+    }
+}
+
+/// A short stroke across the ring's track, clockwise from 12 o'clock by `mark` of a turn.
+private struct PaceTick: Shape {
+    let mark: Double
+
+    func path(in rect: CGRect) -> Path {
+        let angle = mark * 2 * .pi
+        func point(_ radius: CGFloat) -> CGPoint {
+            CGPoint(x: rect.midX + radius * sin(angle), y: rect.midY - radius * cos(angle))
+        }
+        var path = Path()
+        path.move(to: point(rect.width / 2 - 4.25))
+        path.addLine(to: point(rect.width / 2 + 0.75))
+        return path
     }
 }

@@ -5,13 +5,24 @@ struct CopilotLogin: ProviderLogin {
     /// The scope Copilot's own sign-in asks for, known to read `/copilot_internal/user`. GitHub's `/user`
     /// names the account with any token; whether the quota read works with no scope at all is unverified.
     static let scopes = "read:user"
+    var domain = GitHubDomain.github
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        do {
+            return try await signIn(prompt: prompt)
+        } catch let error as URLError {
+            guard case .enterprise(let host) = domain else { throw error }
+            AppLog.warn(LogTag.auth("copilot"), "could not reach \(host): URLError \(error.code.rawValue)")
+            throw ProviderError.unavailable("Couldn’t reach \(host). Check the address and your connection.")
+        }
+    }
+
+    private func signIn(prompt: @Sendable (LoginPrompt) async -> Void) async throws -> (label: String, credential: AccountCredential) {
         let token = try await deviceAuthorization(
             provider: "GitHub",
-            startURL: URL(string: "https://github.com/login/device/code")!,
-            tokenURL: URL(string: "https://github.com/login/oauth/access_token")!,
+            startURL: domain.webURL("/login/device/code"),
+            tokenURL: domain.webURL("/login/oauth/access_token"),
             clientID: Self.clientID,
             scopes: Self.scopes,
             headers: ["User-Agent": "OpenUsage"],
@@ -19,17 +30,31 @@ struct CopilotLogin: ProviderLogin {
             http: http,
             prompt: prompt
         )
-        let profileURL = URL(string: "https://api.github.com/user")!
-        let profile = try await LoginHTTP.get(profileURL, bearerToken: token.accessToken, using: http, headers: [
+        let profile = try await LoginHTTP.get(domain.apiURL("/user"), bearerToken: token.accessToken, using: http, headers: [
             "Accept": "application/vnd.github+json",
             "User-Agent": "OpenUsage",
             "X-GitHub-Api-Version": "2022-11-28"
         ])
         let user = try LoginHTTP.decode(GitHubUser.self, from: profile)
-        return (user.login, .oauth(OAuthTokens(
-            accessToken: token.accessToken,
-            extras: [OAuthTokens.identityKey: user.id.map { "github:\($0)" } ?? "github:\(user.login)"]
-        )))
+        let userID = user.id.map(String.init) ?? user.login
+        var identity = "github:\(userID)"
+        if case .enterprise(let host) = domain {
+            try await requireSeat(token: token.accessToken, login: user.login)
+            // The same user id on two domains is two accounts.
+            identity = "github:\(host):\(userID)"
+        }
+        return (user.login, .oauth(OAuthTokens(accessToken: token.accessToken, extras: [OAuthTokens.identityKey: identity])))
+    }
+
+    /// An enterprise sign-in reads usage once, so an account without a Copilot seat is never added.
+    private func requireSeat(token: String, login: String) async throws {
+        let usage = try await CopilotUsageClient(http: http).fetchUsage(token: token, domain: domain)
+        guard !(200..<300).contains(usage.statusCode) else { return }
+        AppLog.warn(LogTag.auth("copilot"), "seat check on \(domain.host) failed with HTTP \(usage.statusCode)")
+        if ProviderError.isAuthFailure(usage) || usage.statusCode == 404 {
+            throw ProviderError.unavailable("\(login) has no Copilot seat on \(domain.host). Ask your GitHub admin for one, then try again.")
+        }
+        throw ProviderError.failed(usage)
     }
 }
 
@@ -181,14 +206,14 @@ struct CopilotOrganizationLogin: ProviderLogin {
 }
 
 enum ProviderLoginCatalog {
-    static func login(for kind: ProviderKind, method: ProviderAuthMethod, organization: String) -> any ProviderLogin {
+    static func login(for kind: ProviderKind, method: ProviderAuthMethod, organization: String, domain: GitHubDomain) -> any ProviderLogin {
         if method == .organizationToken { return CopilotOrganizationLogin(organization: organization) }
         return switch kind {
         case .claude: ClaudeLogin()
         case .codex: CodexLogin()
         case .cursor: CursorLogin()
         case .antigravity: AntigravityLogin()
-        case .copilot: CopilotLogin()
+        case .copilot: CopilotLogin(domain: domain)
         case .devin: DevinLogin()
         case .grok: GrokLogin()
         case .muse: MuseLogin()

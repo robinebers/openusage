@@ -51,13 +51,12 @@ struct WidgetGroupedListView: View {
     }
 
     private func section(_ family: DashboardFamily) -> some View {
-        DashboardProviderSection(family: family) {
-            DashboardProviderHeader(family: family, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
+        DashboardProviderSection(family: family) { isHovered in
+            DashboardProviderHeader(family: family, isRevealed: isHovered, onCopyScreenshot: { shareScreenshot(family.accounts.map(\.id)) })
             .highPriorityGesture(familyDragGesture(for: family))
         } account: { account in
             accountSection(account, in: family)
         }
-        .contentShape(Rectangle())
     }
 
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {

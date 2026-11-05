@@ -16,6 +16,7 @@ struct AddAccountSheet: View {
             } else if let provider = flow.provider {
                 switch flow.method {
                 case nil: MethodChoiceStep(flow: flow, provider: provider, cancel: { flow.back() })
+                case .oauth where flow.isEnteringDomain: GitHubDomainStep(flow: flow, provider: provider, cancel: { flow.back() })
                 case .oauth: BrowserSignInStep(flow: flow, provider: provider, cancel: { flow.isSigningInAgain ? dismiss() : flow.back() })
                 case .apiKey(let keyPage): APIKeyStep(flow: flow, provider: provider, keyPage: keyPage, cancel: { flow.back() })
                 case .organizationToken: OrganizationTokenStep(flow: flow, provider: provider, cancel: { flow.back() })
@@ -166,10 +167,14 @@ private struct BrowserSignInStep: View {
     }
 
     private var message: String {
-        switch flow.prompt {
-        case .deviceCode: "Open the verification page in your browser and enter this code."
+        let enterpriseDomain = flow.gitHubDomain?.saved
+        return switch flow.prompt {
+        case .deviceCode:
+            enterpriseDomain.map { "Open \($0)/login/device in your browser and enter this code." }
+                ?? "Open the verification page in your browser and enter this code."
         case .browserToken: "Continue in your browser, then paste the token it shows here."
-        case .browser, nil: "Continue in your browser. This sheet closes when you’re signed in."
+        case .browser: "Continue in your browser. This sheet closes when you’re signed in."
+        case nil: enterpriseDomain.map { "Signing in at \($0)." } ?? "Continue in your browser. This sheet closes when you’re signed in."
         }
     }
 
@@ -227,7 +232,10 @@ private struct BrowserSignInStep: View {
     }
 
     private var secondaryAction: SheetAction {
-        switch flow.prompt {
+        if flow.errorMessage != nil, flow.canChangeDomain {
+            return SheetAction(title: "Change Domain") { flow.changeDomain() }
+        }
+        return switch flow.prompt {
         case .browser(let url, _), .browserToken(let url): SheetAction(title: "Copy Link") { copy(url.absoluteString) }
         case .deviceCode(let userCode, _): SheetAction(title: "Copy Code") { copy(userCode) }
         case nil: SheetAction(title: "Copy Link", isDisabled: true) {}
@@ -274,6 +282,43 @@ private struct APIKeyStep: View {
         SheetButtons(
             secondary: SheetAction(title: "Cancel", shortcut: .cancelAction, action: cancel),
             primary: SheetAction(title: "Add Account", isDisabled: !flow.canAddKey) { flow.addKey() }
+        )
+        .padding(.bottom, 20)
+    }
+}
+
+/// Copilot's first sign-in step: blank signs in at github.com, or a company's GHE.com domain.
+private struct GitHubDomainStep: View {
+    @Bindable var flow: AddAccountFlow
+    let provider: ProviderKind
+    let cancel: () -> Void
+
+    var body: some View {
+        SheetHeader(
+            provider: provider,
+            title: "Sign In to \(provider.displayName)",
+            message: "Leave the domain blank for GitHub.com, or enter your company’s GitHub Enterprise address."
+        )
+        Form {
+            Section {
+                TextField("Domain", text: $flow.domain, prompt: Text("github.com"))
+                    .onSubmit { flow.continueToSignIn() }
+            } footer: {
+                Group {
+                    if let errorMessage = flow.errorMessage {
+                        ErrorText(errorMessage)
+                    } else {
+                        Text("Only needed for GitHub Enterprise on GHE.com.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.footnote)
+            }
+        }
+        .inlineGroupedForm()
+        SheetButtons(
+            secondary: SheetAction(title: "Cancel", shortcut: .cancelAction, action: cancel),
+            primary: SheetAction(title: "Continue") { flow.continueToSignIn() }
         )
         .padding(.bottom, 20)
     }

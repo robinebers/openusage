@@ -70,7 +70,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     static func provider(for account: Account) -> Provider {
         Provider(
             id: account.cardID, kind: account.kind, accountLabel: account.label, organization: account.organization,
-            hubHost: account.hub?.host
+            domain: account.domain, hubHost: account.hub?.host
         )
     }
 
@@ -263,7 +263,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             return ProviderUsage(plan: nil, lines: try await CopilotUsageClient(http: http).organizationUsage(organization, token: token))
         }
         guard case .oauth(let tokens) = credential else { throw ProviderError.invalidResponse }
-        let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken)
+        let response = try await CopilotUsageClient(http: http).fetchUsage(token: tokens.accessToken, domain: GitHubDomain(saved: account.domain))
         try ProviderError.requireSuccess(response, kind: .copilot)
         return try CopilotUsageMapper.map(response)
     }

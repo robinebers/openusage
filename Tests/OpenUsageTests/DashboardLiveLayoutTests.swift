@@ -103,11 +103,14 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
             providerID: account.cardID, displayName: "Claude", lines: [.percent("Weekly", 30)]
         )
         let (window, host, frames) = hostList(container)
-        try await waitUntil { frames.byID[account.cardID] != nil }
-        let button = CGPoint(x: host.bounds.maxX - DashboardGrid.cardPadding - DashboardGrid.iconSize / 2,
+        let rowID = "\(account.cardID).weekly"
+        try await waitUntil { frames.byID[rowID] != nil }
+        let row = try XCTUnwrap(frames.byID[rowID])
+        let button = CGPoint(x: host.bounds.maxX - DashboardGrid.cardPadding - 1.5 * DashboardGrid.iconSize - Theme.Spacing.s,
                              y: DashboardGrid.headerHeight / 2)
+        container.popover.popoverShown = true
         let original = try pixels(of: host)
-        try hover(button, window, host)
+        try hover(CGPoint(x: row.minX + 20, y: row.midY), window, host)
         try await waitUntil {
             guard let image = try? self.pixels(of: host) else { return false }
             return image != original
@@ -121,6 +124,9 @@ final class DashboardLiveLayoutTests: QuietWindowTestCase {
         let image = try XCTUnwrap(NSBitmapImageRep(data: data))
         XCTAssertGreaterThan(image.pixelsWide, 0)
         XCTAssertEqual(image.pixelsWide % Int(ShareCardView.width), 0)
+
+        container.popover.popoverShown = false
+        try await waitUntil(timeout: .seconds(4)) { (try? self.pixels(of: host)) == original }
     }
 }
 

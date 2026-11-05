@@ -1,7 +1,7 @@
 # Settings
 
 Open Settings from the panel's **⋯** menu or press **⌘,**. It has four tabs: General, Display,
-Alerts, and Advanced. Changes apply at once.
+Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to see what it does.
 
 ## General
 
@@ -9,22 +9,22 @@ Alerts, and Advanced. Changes apply at once.
 - **Default Tab.** Priority or All Usage, the tab the panel opens to.
 - **Global Shortcut.** Opens and closes the panel from any app. Click the field and press the keys.
 
-## Priority icons
+## Priority
 
 - **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
   first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
-
-## Priority limits
-
 - **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
   70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
 - **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
   before it resets at your current pace, however much it has left. On by default.
+- **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
+  with over 50% left, the same rule as the alert of that name. It never shows in the menu bar. On by
+  default, and separate from the alert.
 
-They always count what's left, even with Show Usage As set to Used, and they also pick which limits
-the menu bar shows and when the Warning and Critical notifications fire. Critical always stays under
-Warning: moving one onto the other pushes the other 5% along.
+Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
+pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
+always stays under Warning: moving one onto the other pushes the other 5% along.
 
 ## Appearance
 
@@ -35,6 +35,8 @@ Warning: moving one onto the other pushes the other 5% along.
 
 - **Show Usage As.** `48% used` or `52% left`, on the dashboard and in the menu bar.
 - **Reset Times.** `Resets 3h 25m` or `Resets Wed 4 PM`.
+- **Pace Marks.** A tick on each bar and Priority ring where usage would be at an even pace through
+  the window. Off by default.
 
 Click a limit's amount or reset on the dashboard to flip either one.
 
@@ -46,6 +48,8 @@ All off by default. Turning the first one on asks macOS for permission.
 - **Warning.** A limit drops to its Warning level or less left (30% by default).
 - **Will Run Out.** A limit may run out before its reset. After it fires, it waits until the limit's
   pace eases to 90% of the limit before it can fire again.
+- **Use It or Lose It.** A limit resets within 24 hours with over 50% left. Only for windows longer
+  than a day, such as weekly and monthly limits, never the 5-hour session or a dollar spending cap.
 
 Each fires once per metric per reset window. Click one to open All Usage.
 

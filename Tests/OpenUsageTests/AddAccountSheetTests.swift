@@ -11,7 +11,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
         var opened: [URL] = []
-        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { opened.append($0) }) { _, _, _ in
+        let flow = AddAccountFlow(store: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), openURL: { opened.append($0) }) { _, _, _, _ in
             SlowLogin(prompt: .browser(url, acceptsPastedCode: false))
         }
         let presentation = SheetPresentation()
@@ -54,7 +54,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
             (.claude, .browser(url, acceptsPastedCode: true), false),
         ]
         for (provider, prompt, masked) in steps {
-            let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _ in SlowLogin(prompt: prompt) }
+            let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in SlowLogin(prompt: prompt) }
             addTeardownBlock { flow.cancel() }
             flow.choose(provider)
             try await waitUntil { flow.prompt != nil }
