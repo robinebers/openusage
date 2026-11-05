@@ -30,11 +30,11 @@ final class DisplaySettingsTests: QuietWindowTestCase {
             }
             return [entry].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(headingsAndPickers)
         }
-        try await waitUntil { headingsAndPickers(in: host).count >= 7 }
-        XCTAssertEqual(headingsAndPickers(in: host).prefix(7),
-                       ["Priority Icons", container.dataStore.menuBarLimit.label, "Priority Limits", "30% left", "10% left",
+        try await waitUntil { headingsAndPickers(in: host).count >= 6 }
+        XCTAssertEqual(headingsAndPickers(in: host).prefix(6),
+                       ["Priority", container.dataStore.menuBarLimit.label, "30% left", "10% left",
                         "Appearance", AppearanceSetting.system.label],
-                       "Priority Icons and its picker, Priority Limits' Warning and Critical, then Appearance and its Theme picker")
+                       "one Priority heading over the menu bar picker, Warning, and Critical, then Appearance and its Theme picker")
 
         func texts(in element: Any) -> [String] {
             guard let node = element as? NSObject else { return [] }
@@ -42,8 +42,8 @@ final class DisplaySettingsTests: QuietWindowTestCase {
                 ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
             return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
         }
-        let subtitles = ["Turns a limit orange", "Turns a limit red", "Will run out before it resets", "Over 50% left a day before its reset"]
+        let subtitles = ["When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets", "Over 50% left a day before its reset"]
         try await waitUntil { Set(subtitles).isSubset(of: texts(in: host)) }
-        XCTAssertEqual(texts(in: host).filter(subtitles.contains), subtitles, "each Priority Limits row says what it does under its title")
+        XCTAssertEqual(texts(in: host).filter(subtitles.contains), subtitles, "each limit row under Priority says what it does under its title")
     }
 }
