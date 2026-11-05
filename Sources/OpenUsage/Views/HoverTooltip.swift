@@ -274,5 +274,6 @@ private struct TooltipBubble: View {
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
         }
+        .fixedSize()
     }
 }
