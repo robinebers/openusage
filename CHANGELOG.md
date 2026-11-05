@@ -28,6 +28,11 @@
   Priority and All Usage shows the new tab at once
   ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
 
+### Fixed
+- A reset a few days out shows its minutes in clock mode, like `mié, 8:31`, so in a 24-hour
+  locale its hour no longer reads like a day of the month
+  ([#1613](https://github.com/robinebers/openusage/issues/1613)).
+
 ## v0.8.0-beta.2
 
 ### Added
