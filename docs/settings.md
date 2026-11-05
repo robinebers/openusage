@@ -35,6 +35,8 @@ always stays under Warning: moving one onto the other pushes the other 5% along.
 
 - **Show Usage As.** `48% used` or `52% left`, on the dashboard and in the menu bar.
 - **Reset Times.** `Resets 3h 25m` or `Resets Wed 4 PM`.
+- **Pace Marks.** A tick on each bar and Priority ring where usage would be at an even pace through
+  the window. Off by default.
 
 Click a limit's amount or reset on the dashboard to flip either one.
 

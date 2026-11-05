@@ -19,7 +19,7 @@ struct DashboardMetricRow: View {
                 HStack(spacing: DashboardGrid.columnGap) {
                     label
                         .frame(width: DashboardGrid.labelWidth, alignment: .leading)
-                    LevelIndicator(fill: fill, severity: severity)
+                    LevelIndicator(fill: fill, severity: severity, paceMark: model.paceMark)
                         .frame(height: DashboardGrid.levelHeight)
                         .hoverTooltip(paceTooltip)
                     valueText(value, severity: severity)

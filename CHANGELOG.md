@@ -9,6 +9,10 @@
 - Copilot signs in on your company's GitHub Enterprise domain on GHE.com: leave the new Domain step
   blank for github.com, or enter an address like `octocorp.ghe.com`
   ([#1602](https://github.com/robinebers/openusage/issues/1602)).
+- **Pace marks** are back, answering the pace marks request in
+  [#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6634518518): with
+  **Settings → Display → Pace Marks** on, a tick on each All Usage bar and Priority ring shows where
+  usage would be at an even pace through the window. Off by default.
 
 ### Changed
 - **Settings → Display** puts Priority Icons and Priority Limits under one **Priority** heading.

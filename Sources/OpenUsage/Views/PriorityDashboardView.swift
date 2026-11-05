@@ -203,7 +203,7 @@ struct PriorityBoardList: View {
         _ provider: Provider, _ data: WidgetData, severity: WidgetData.MeterSeverity, callout: (text: String, color: Color)? = nil
     ) -> some View {
         HStack(spacing: 10) {
-            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon)
+            PriorityGauge(fraction: data.fraction, severity: severity, icon: provider.icon, paceMark: data.paceMark(now: now))
             VStack(alignment: .leading, spacing: 1) {
                 Text(data.title)
                     .font(.system(size: 13, weight: .medium))
@@ -319,11 +319,13 @@ struct PriorityBoardList: View {
     }
 }
 
-/// A limit's bar as a ring around its provider's mark, filling the same way under Used or Left.
+/// A limit's bar as a ring around its provider's mark, filling the same way under Used or Left, with a tick
+/// where it would be at an even pace.
 private struct PriorityGauge: View {
     let fraction: Double
     let severity: WidgetData.MeterSeverity
     let icon: String
+    let paceMark: Double?
 
     private static let lineWidth: CGFloat = 3
 
@@ -337,9 +339,33 @@ private struct PriorityGauge: View {
                 .trim(from: 0, to: fraction)
                 .stroke(Theme.severityColor(severity), style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+            if let paceMark {
+                PaceTick(mark: paceMark)
+                    .stroke(style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    .blendMode(.destinationOut)
+                PaceTick(mark: paceMark)
+                    .stroke(Theme.paceMark, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            }
             ProviderIcon(id: icon, side: 16, inset: 0.04)
         }
+        .compositingGroup()
         .frame(width: 32, height: 32)
         .accessibilityHidden(true)
+    }
+}
+
+/// A short stroke across the ring's track, clockwise from 12 o'clock by `mark` of a turn.
+private struct PaceTick: Shape {
+    let mark: Double
+
+    func path(in rect: CGRect) -> Path {
+        let angle = mark * 2 * .pi
+        func point(_ radius: CGFloat) -> CGPoint {
+            CGPoint(x: rect.midX + radius * sin(angle), y: rect.midY - radius * cos(angle))
+        }
+        var path = Path()
+        path.move(to: point(rect.width / 2 - 4.25))
+        path.addLine(to: point(rect.width / 2 + 0.75))
+        return path
     }
 }
