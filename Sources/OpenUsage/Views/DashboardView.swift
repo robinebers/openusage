@@ -36,6 +36,7 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
+            .environment(\.concealsAccountNames, container.hideFromScreenShare.isConcealing)
             .sheet(isPresented: $popover.isAddingAccount, onDismiss: { popover.signingInAgainProviderID = nil }) {
                 AddAccountSheet(flow: AddAccountFlow(
                     store: container.accounts,

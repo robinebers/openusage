@@ -120,7 +120,7 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 
 Hover over a provider's card and click the copy button beside its logo, or choose **Share
 Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
-account. Emails are left out.
+account. Account names are blurred.
 
 ## Update banner
 
@@ -133,7 +133,7 @@ cards. **Install Update** opens the update window, and ✕ hides the card until 
 - **OpenUsage** and the version, like `OpenUsage 0.8.0`, sit over **Next update in …**, which counts
   down to the next refresh. Click it or press **⌘R** to refresh now. A dev build shows its commit,
   like `dev (abc1234)`.
-- On Priority, a button copies the tab as a PNG with emails hidden.
+- On Priority, a button copies the tab as a PNG with account names blurred.
 - The **⋯** menu has **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
   **About OpenUsage**, and **Quit OpenUsage**.
 

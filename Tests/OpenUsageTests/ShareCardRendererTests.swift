@@ -6,27 +6,49 @@ import XCTest
 
 @MainActor
 final class ShareCardRendererTests: XCTestCase {
-    func testProviderScreenshotRedactsEmailButIncludesACustomName() throws {
-        func png(label: String?) throws -> Data {
+    func testCopiedCardsBlurEveryAccountNameInItsRow() throws {
+        func cards(label: String?) throws -> [NSBitmapImageRep] {
             var provider = MockData.claude
             provider.accountLabel = label
             let lines = MockData.descriptors(for: provider.id).map { DashboardLine(descriptor: $0, data: $0.sample) }
-            let account = DashboardAccount(provider: provider, lines: lines)
-            let family = DashboardFamily(id: provider.id, provider: provider, accounts: [account])
-            let card = ShareCardView(family: family, appearance: .light)
-            return try XCTUnwrap(ShareCardRenderer.png(for: card))
+            let family = DashboardFamily(id: provider.id, provider: provider, accounts: [DashboardAccount(provider: provider, lines: lines)])
+            let board = PriorityBoard.make(accounts: family.accounts, pinned: Set(lines.prefix(1).map(\.id)), now: Date())
+            return try [
+                AnyView(ShareCardView(family: family, appearance: .light)),
+                AnyView(PriorityShareCard(board: board, now: Date(), appearance: .light)),
+            ].map { try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: $0)))) }
         }
 
-        let redacted = try png(label: "private@example.com")
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: redacted))
-        // Without a plan the caption exists only when the account's name is printed.
-        let unnamed = try XCTUnwrap(NSBitmapImageRep(data: try png(label: nil)))
-        let named = try XCTUnwrap(NSBitmapImageRep(data: try png(label: "Work")))
-        XCTAssertEqual(bitmap.pixelsHigh, unnamed.pixelsHigh)
-        XCTAssertGreaterThan(named.pixelsHigh, bitmap.pixelsHigh)
-        XCTAssertGreaterThanOrEqual(bitmap.pixelsWide, Int(ShareCardView.width))
-        XCTAssertGreaterThan(bitmap.pixelsHigh, 0)
-        XCTAssertTrue(redacted.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        let unnamed = try cards(label: nil)
+        for label in ["private@example.com", "Sunstory Studio"] {
+            for (card, plain) in zip(try cards(label: label), unnamed) {
+                let text = try recognizedText(in: try XCTUnwrap(card.cgImage)).lowercased()
+                for word in label.lowercased().split(whereSeparator: { "@. ".contains($0) }) where word.count > 3 {
+                    XCTAssertFalse(text.contains(word), "\(label) reads: \(text)")
+                }
+                XCTAssertTrue(text.contains("session"), text)
+                XCTAssertGreaterThanOrEqual(card.pixelsHigh, plain.pixelsHigh, "the name keeps its row, blurred")
+            }
+        }
+    }
+
+    func testThePanelBlursEveryAccountNameOnlyWhileConcealing() throws {
+        func reads(_ label: String, concealing: Bool) throws -> String {
+            let row = AccountListRow(provider: Provider(id: "codex@1", kind: .codex, accountLabel: label), grip: { EmptyView() })
+                .frame(width: ShareCardView.width)
+                .background(.white)
+                .environment(\.colorScheme, .light)
+                .environment(\.concealsAccountNames, concealing)
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: row))))
+            return try recognizedText(in: try XCTUnwrap(bitmap.cgImage)).lowercased()
+        }
+
+        for (label, word) in [("private@example.com", "example"), ("Sunstory Studio", "sunstory")] {
+            XCTAssertTrue(try reads(label, concealing: false).contains(word), "nothing blurs without a capture")
+            let concealed = try reads(label, concealing: true)
+            XCTAssertFalse(concealed.contains(word), concealed)
+            XCTAssertTrue(concealed.contains("chatgpt"), "the provider's name stays readable: \(concealed)")
+        }
     }
 
     func testEveryShareImageEndsInATintedBandWithTheTagline() throws {
