@@ -25,7 +25,7 @@ It uses Swift 6 with strict concurrency, and SwiftUI inside an AppKit status ite
 | `WidgetDataStore` | The latest snapshot per account, refresh errors, and display settings. |
 | `AccountRenameStore` | Which account name is being edited. |
 | `TelemetryRecorder` | The daily ping and optional daily provider account counts. |
-| `HideFromScreenShareSetting` | The Hide From Screen Share switch. |
+| `HideFromScreenShareSetting` | The Privacy Mode switch. |
 
 Accounts are the source of truth. Every `AccountStore` change runs `AppContainer.syncAccounts`,
 which swaps the runtimes in place and refreshes new ones. The status item and panel are never rebuilt.

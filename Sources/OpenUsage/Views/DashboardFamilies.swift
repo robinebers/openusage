@@ -4,6 +4,13 @@ struct DashboardFamily: Identifiable {
     let id: String
     let provider: Provider
     var accounts: [DashboardAccount]
+
+    var hidingEmails: DashboardFamily {
+        DashboardFamily(
+            id: id, provider: provider.hidingEmail,
+            accounts: accounts.map(\.hidingEmail)
+        )
+    }
 }
 
 struct DashboardAccount: Identifiable {
@@ -14,6 +21,9 @@ struct DashboardAccount: Identifiable {
 
     var id: String { provider.id }
     var name: String { provider.accountName }
+    var hidingEmail: DashboardAccount {
+        DashboardAccount(provider: provider.hidingEmail, lines: lines, waitingMetricIDs: waitingMetricIDs)
+    }
 }
 
 struct DashboardLine: Identifiable {
@@ -52,5 +62,10 @@ extension DashboardFamily {
 extension Provider {
     var isNamedByEmail: Bool {
         accountLabel?.contains("@") ?? false
+    }
+
+    var hidingEmail: Provider {
+        guard isNamedByEmail else { return self }
+        var copy = self; copy.accountLabel = nil; return copy
     }
 }

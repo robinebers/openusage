@@ -14,7 +14,7 @@ Priority lists.
 - Limits past that number show as a count, like `+7`. With Always Show In Menu Bar off, only
   limits running out show or count.
 - With nothing to show, or with **App Icon Only**, the strip shows the app icon.
-- With [Hide From Screen Share](privacy.md#screen-sharing) on, it shows the app icon while your screen
+- With [Privacy Mode](privacy.md#privacy-mode) on, it shows the app icon while your screen
   is shared or recorded.
 - When an [update](updates.md) is available, the app icon shows at the end of the strip until the
   update banner goes away.

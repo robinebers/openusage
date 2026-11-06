@@ -6,22 +6,32 @@ import XCTest
 
 @MainActor
 final class ShareCardRendererTests: XCTestCase {
-    func testCopiedCardsBlurEveryAccountNameInItsRow() throws {
-        func cards(label: String?) throws -> [NSBitmapImageRep] {
-            var provider = MockData.claude
-            provider.accountLabel = label
-            let lines = MockData.descriptors(for: provider.id).map { DashboardLine(descriptor: $0, data: $0.sample) }
-            let family = DashboardFamily(id: provider.id, provider: provider, accounts: [DashboardAccount(provider: provider, lines: lines)])
-            let board = PriorityBoard.make(accounts: family.accounts, pinned: Set(lines.prefix(1).map(\.id)), now: Date())
-            return try [
-                AnyView(ShareCardView(family: family, appearance: .light)),
-                AnyView(PriorityShareCard(board: board, now: Date(), appearance: .light)),
-            ].map { try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: $0)))) }
-        }
+    private func cards(label: String?, blursAccountNames: Bool) throws -> [NSBitmapImageRep] {
+        var provider = MockData.claude
+        provider.accountLabel = label
+        let lines = MockData.descriptors(for: provider.id).map { DashboardLine(descriptor: $0, data: $0.sample) }
+        let family = DashboardFamily(id: provider.id, provider: provider, accounts: [DashboardAccount(provider: provider, lines: lines)])
+        let board = PriorityBoard.make(accounts: family.accounts, pinned: Set(lines.prefix(1).map(\.id)), now: Date())
+        return try [
+            AnyView(ShareCardView(family: family, appearance: .light, blursAccountNames: blursAccountNames)),
+            AnyView(PriorityShareCard(board: board, now: Date(), appearance: .light, blursAccountNames: blursAccountNames)),
+        ].map { try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ShareCardRenderer.png(for: $0)))) }
+    }
 
-        let unnamed = try cards(label: nil)
+    func testWithTheSettingOffACopiedCardLeavesAnEmailOutAndPrintsACustomName() throws {
+        let email = try XCTUnwrap(cards(label: "private@example.com", blursAccountNames: false).first)
+        let unnamed = try XCTUnwrap(cards(label: nil, blursAccountNames: false).first)
+        let named = try XCTUnwrap(cards(label: "Sunstory Studio", blursAccountNames: false).first)
+        XCTAssertEqual(email.pixelsHigh, unnamed.pixelsHigh, "the email's caption is left out")
+        XCTAssertGreaterThan(named.pixelsHigh, email.pixelsHigh)
+        XCTAssertFalse(try recognizedText(in: try XCTUnwrap(email.cgImage)).lowercased().contains("example"))
+        XCTAssertTrue(try recognizedText(in: try XCTUnwrap(named.cgImage)).lowercased().contains("sunstory"))
+    }
+
+    func testWithTheSettingOnCopiedCardsBlurEveryAccountNameInItsRow() throws {
+        let unnamed = try cards(label: nil, blursAccountNames: true)
         for label in ["private@example.com", "Sunstory Studio"] {
-            for (card, plain) in zip(try cards(label: label), unnamed) {
+            for (card, plain) in zip(try cards(label: label, blursAccountNames: true), unnamed) {
                 let text = try recognizedText(in: try XCTUnwrap(card.cgImage)).lowercased()
                 for word in label.lowercased().split(whereSeparator: { "@. ".contains($0) }) where word.count > 3 {
                     XCTAssertFalse(text.contains(word), "\(label) reads: \(text)")

@@ -63,7 +63,7 @@ struct SettingsScreen: View {
             }
         } footer: {
             if let errorMessage = launchAtLogin.errorMessage {
-                SettingsNote(errorMessage, isWarning: true)
+                SettingsNote(errorMessage)
             }
         }
         .onChange(of: defaultTab) { _, newValue in popover.dashboardTab = newValue }
@@ -154,21 +154,20 @@ struct SettingsScreen: View {
     private var advancedTab: some View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
         Section {
-            Toggle("Hide From Screen Share", isOn: $hideFromScreenShare.isEnabled)
-            Toggle("Help Make OpenUsage Better", isOn: Binding(
+            Toggle(isOn: $hideFromScreenShare.isEnabled) {
+                titled("Privacy Mode", info: "Hide usage and account names from screenshots and recordings")
+            }
+            Toggle(isOn: Binding(
                 get: { container.telemetry.isEnabled },
                 set: { container.telemetry.setEnabled($0) }
-            ))
+            )) {
+                titled("Help Make OpenUsage Better", info: "Share additional anonymous usage stats that tell the team where to improve.")
+            }
         } header: {
             Text("Privacy")
-        } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                SettingsNote("While your screen is shared or recorded, the menu bar shows the app icon instead of your usage.")
-                SettingsNote("Share additional anonymous usage stats that tell the team where to improve.")
-            }
         }
         Section {
-            LabeledContent("Terminal Helper") {
+            LabeledContent {
                 switch commandLineTool.status {
                 case .installed:
                     Button("Uninstall") { commandLineTool.uninstall() }
@@ -178,27 +177,28 @@ struct SettingsScreen: View {
                     Text("Unavailable")
                         .foregroundStyle(.secondary)
                 }
+            } label: {
+                titled("Terminal Helper", info: "Adds a global openusage command that prints the usage the app last fetched.")
             }
         } header: {
             Text("Command Line")
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                SettingsNote("Adds a global `openusage` command that prints the usage the app last fetched.")
-                if commandLineTool.status == .conflict {
-                    SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isWarning: true)
-                } else if let errorMessage = commandLineTool.errorMessage {
-                    SettingsNote(errorMessage, isWarning: true)
-                } else if case .linkedToAnotherCopy = commandLineTool.status {
-                    SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
-                }
+            if commandLineTool.status == .conflict {
+                SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
+            } else if let errorMessage = commandLineTool.errorMessage {
+                SettingsNote(errorMessage)
+            } else if case .linkedToAnotherCopy = commandLineTool.status {
+                SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
             }
         }
         Section {
-            picker("Log Level", selection: $logLevel, options: LogLevelSetting.allCases.map { ($0, $0.label) })
+            Picker(selection: $logLevel) {
+                ForEach(LogLevelSetting.allCases, id: \.self) { Text($0.label).tag($0) }
+            } label: {
+                titled("Log Level", info: "How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.")
+            }
         } header: {
             Text("Debug")
-        } footer: {
-            SettingsNote("How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.")
         }
     }
 
@@ -303,17 +303,15 @@ struct PriorityIconsPreview: View {
 
 private struct SettingsNote: View {
     let text: LocalizedStringKey
-    var isWarning = false
 
-    init(_ text: String, isWarning: Bool = false) {
+    init(_ text: String) {
         self.text = LocalizedStringKey(text)
-        self.isWarning = isWarning
     }
 
     var body: some View {
         Text(text)
             .font(.system(size: 11))
-            .foregroundStyle(isWarning ? AnyShapeStyle(Theme.notice) : AnyShapeStyle(.secondary))
+            .foregroundStyle(Theme.notice)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
