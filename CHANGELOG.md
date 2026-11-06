@@ -8,7 +8,7 @@
   ([#1599](https://github.com/robinebers/openusage/pull/1599)).
 
 ### Fixed
-- On macOS 26 and later, rows scrolled under the panel's footer are frosted again, so the footer
+- On macOS 26, rows scrolled under the panel's footer are frosted, as on macOS 15, so the footer
   stays readable ([#1619](https://github.com/robinebers/openusage/issues/1619)).
 - A reset a few days out shows its minutes in clock mode, like `mié, 8:31`, so in a 24-hour
   locale its hour no longer reads like a day of the month
