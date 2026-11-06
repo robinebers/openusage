@@ -29,6 +29,7 @@ always stays under Warning: moving one onto the other pushes the other 5% along.
 ## Appearance
 
 - **Theme.** System, Light, or Dark.
+- **Icon Style.** Text (provider mark + values), Bars (compact usage bars), Gauge (monochrome dual-arc ring gauge: top 1/3 for 5h, bottom 2/3 for 7d), or Color Gauge (dual-arc ring gauge with pace guideline ticks, colored blue/orange/red based on pace). Text by default.
 - **Time Format.** Auto (your macOS locale), 12-hour, or 24-hour.
 
 ## Usage display

@@ -118,6 +118,7 @@ struct SettingsScreen: View {
         Section("Appearance") {
             picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })
                 .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
+            picker("Icon Style", selection: $dataStore.menuBarStyle, options: MenuBarStyle.allCases.map { ($0, $0.label) })
             picker("Time Format", selection: $timeFormat, options: TimeFormatSetting.allCases.map { ($0, $0.label) })
         }
         Section("Usage") {
@@ -262,18 +263,38 @@ struct PriorityIconsPreview: View {
         (.copilot, nil, "Credits", "7%"),
     ]
 
-    static func sample(limit: MenuBarLimit) -> MenuBarContent {
-        guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        let shown = samples.prefix(limit.count).enumerated().map { index, sample in
-            MenuBarContent.Item(
-                id: "sample.\(index)",
-                provider: Provider(id: "sample.\(index)", kind: sample.kind, badge: sample.badge),
-                label: sample.label,
-                shortLabel: sample.label,
-                value: sample.value
-            )
+    static func sample(limit: MenuBarLimit, style: MenuBarStyle = .text) -> MenuBarContent {
+        guard limit != .iconOnly else { return MenuBarContent(style: style) }
+        switch style {
+        case .text:
+            let shown = samples.prefix(limit.count).enumerated().map { index, sample in
+                MenuBarContent.Item(
+                    id: "sample.\(index)",
+                    provider: Provider(id: "sample.\(index)", kind: sample.kind, badge: sample.badge),
+                    label: sample.label,
+                    shortLabel: sample.label,
+                    value: sample.value
+                )
+            }
+            return MenuBarContent(style: .text, items: shown, overflow: samples.count - shown.count)
+        case .bars:
+            let sampleFractions = [0.85, 0.60, 0.40, 0.20]
+            return MenuBarContent(style: .bars, bars: Array(sampleFractions.prefix(4)))
+        case .gauge, .colorGauge:
+            let sampleGauges = samples.prefix(limit.count).enumerated().map { index, sample in
+                MenuBarGaugeItem(
+                    id: "sample.\(index)",
+                    provider: Provider(id: "sample.\(index)", kind: sample.kind, badge: sample.badge),
+                    topFraction: 0.35 + Double(index) * 0.15,
+                    topPaceMark: 0.5,
+                    topSeverity: index == 0 ? .warning : (index == 1 ? .critical : .normal),
+                    bottomFraction: 0.60 - Double(index) * 0.1,
+                    bottomPaceMark: 0.4,
+                    bottomSeverity: index == 0 ? .normal : .warning
+                )
+            }
+            return MenuBarContent(style: style, gauges: Array(sampleGauges), overflow: samples.count - sampleGauges.count)
         }
-        return MenuBarContent(items: shown, overflow: samples.count - shown.count)
     }
 
     static func fittedSize(of strip: NSSize, in width: CGFloat) -> NSSize {
@@ -282,12 +303,12 @@ struct PriorityIconsPreview: View {
     }
 
     var body: some View {
-        let content = Self.sample(limit: dataStore.menuBarLimit)
+        let content = Self.sample(limit: dataStore.menuBarLimit, style: dataStore.menuBarStyle)
         let strip = MenuBarStripRenderer.image(for: content) ?? MenuBarStripRenderer.appIcon
         GeometryReader { proxy in
             let size = Self.fittedSize(of: strip.size, in: proxy.size.width)
             Image(nsImage: strip)
-                .renderingMode(.template)
+                .renderingMode(dataStore.menuBarStyle == .colorGauge ? .original : .template)
                 .resizable()
                 .frame(width: size.width, height: size.height)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
