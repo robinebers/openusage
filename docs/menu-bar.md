@@ -1,6 +1,7 @@
 # Menu bar
 
-The strip shows the limits closest to running out. You only choose how many.
+The strip shows the limits closest to running out, or with Always Show In Menu Bar everything
+Priority lists.
 
 - Left-click the icon to open the panel. Right-click (or control-click) it for **Settings** and
   **Quit OpenUsage**.
