@@ -49,6 +49,10 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         ])
     }
 
+    func testHideFromScreenshotsExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
+        try await assertExplainedByInfoIcons(.advanced, [HideFromScreenShareSetting.info])
+    }
+
     private func assertExplainedByInfoIcons(_ tab: SettingsTab, _ explainers: [String], line: UInt = #line) async throws {
         let (_, window, host) = showSettings(tab)
         defer { window.close() }

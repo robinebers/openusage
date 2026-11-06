@@ -150,7 +150,9 @@ struct SettingsScreen: View {
     private var advancedTab: some View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
         Section {
-            Toggle("Hide From Screenshots and Recordings", isOn: $hideFromScreenShare.isEnabled)
+            Toggle(isOn: $hideFromScreenShare.isEnabled) {
+                titled("Hide From Screenshots and Recordings", info: HideFromScreenShareSetting.info)
+            }
             Toggle("Help Make OpenUsage Better", isOn: Binding(
                 get: { container.telemetry.isEnabled },
                 set: { container.telemetry.setEnabled($0) }
@@ -158,10 +160,7 @@ struct SettingsScreen: View {
         } header: {
             Text("Privacy")
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                SettingsNote("While your screen is shared or recorded, the menu bar shows the app icon and account names blur. Copied pictures blur account names.")
-                SettingsNote("Share additional anonymous usage stats that tell the team where to improve.")
-            }
+            SettingsNote("Share additional anonymous usage stats that tell the team where to improve.")
         }
         Section {
             LabeledContent("Terminal Helper") {

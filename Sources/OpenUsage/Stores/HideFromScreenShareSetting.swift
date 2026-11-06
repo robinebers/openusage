@@ -8,6 +8,7 @@ import Observation
 @Observable
 final class HideFromScreenShareSetting {
     static let key = "hideUsageWhileScreenSharing"
+    static let info = "Blurs account names in copied images, and while you share or record your screen, blurs them in the panel and shows only the icon in the menu bar. A plain screenshot can't be detected."
 
     var isEnabled: Bool {
         didSet {
