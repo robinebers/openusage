@@ -10,6 +10,9 @@
 - Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
   Priority and All Usage shows the new tab at once
   ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
+- **Hide From Screen Share** now also blurs account names in the panel while your screen is shared or
+  recorded. Copied usage pictures always blur account names, where they used to leave emails out
+  ([#1599](https://github.com/robinebers/openusage/pull/1599)).
 
 ### Fixed
 - A reset a few days out shows its minutes in clock mode, like `mié, 8:31`, so in a 24-hour

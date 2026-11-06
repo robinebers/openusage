@@ -20,7 +20,9 @@ only the provider APIs those accounts need.
 ## Screen sharing
 
 **Settings → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead of your
-usage while your screen is shared or recorded. It is off by default and doesn't hide the panel.
+usage while your screen is shared or recorded, and blurs account names in the panel. It is off by
+default. A single screenshot (⌘⇧3, ⌘⇧4) isn't detected. Copied usage pictures always blur account
+names.
 
 ## Anonymous telemetry
 
