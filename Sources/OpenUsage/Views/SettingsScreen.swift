@@ -183,14 +183,12 @@ struct SettingsScreen: View {
         } header: {
             Text("Command Line")
         } footer: {
-            VStack(alignment: .leading, spacing: 4) {
-                if commandLineTool.status == .conflict {
-                    SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
-                } else if let errorMessage = commandLineTool.errorMessage {
-                    SettingsNote(errorMessage)
-                } else if case .linkedToAnotherCopy = commandLineTool.status {
-                    SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
-                }
+            if commandLineTool.status == .conflict {
+                SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
+            } else if let errorMessage = commandLineTool.errorMessage {
+                SettingsNote(errorMessage)
+            } else if case .linkedToAnotherCopy = commandLineTool.status {
+                SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
             }
         }
         Section {
