@@ -16,9 +16,8 @@ struct PopoverScrollView<Content: View>: View {
 
 extension View {
     /// Sets `top` and `bottom` over a scrolling page of the panel. Content scrolls cleanly under the
-    /// top bar, which hides it. Content under the bottom bar blurs behind it: from macOS 26 with the
-    /// system's soft scroll edge effect, before it with frosted glass. Nothing is drawn behind the bottom
-    /// bar while nothing is under it.
+    /// top bar, which hides it. Content under the bottom bar blurs behind it with frosted glass. Nothing
+    /// is drawn behind the bottom bar while nothing is under it.
     func panelBars(@ViewBuilder top: () -> some View, @ViewBuilder bottom: () -> some View) -> some View {
         modifier(PanelBars(top: top(), bottom: bottom()))
     }
@@ -33,7 +32,7 @@ private struct PanelBars<Top: View, Bottom: View>: ViewModifier {
     @State private var underBottom: CGFloat = 0
 
     func body(content: Content) -> some View {
-        let barred = content
+        content
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 let below = geometry.contentSize.height + geometry.contentInsets.bottom
                     - geometry.containerSize.height - geometry.contentOffset.y
@@ -44,23 +43,16 @@ private struct PanelBars<Top: View, Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 top.background(Theme.panelBody)
             }
-        if #available(macOS 26, *) {
-            barred
-                .safeAreaBar(edge: .bottom, spacing: 0) { bottom }
-                .scrollEdgeEffectStyle(.soft, for: .bottom)
-                .scrollEdgeEffectHidden(true, for: underBottom > 0 ? .top : .vertical)
-        } else {
-            barred.safeAreaInset(edge: .bottom, spacing: 0) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottom.background {
                     FooterFrost(opacity: underBottom)
                         .padding(.top, -FooterFrost.reach)
                 }
             }
-        }
     }
 }
 
-/// The frosted glass behind the bottom bar before macOS 26: an in-window blur of what is under it, in
+/// The frosted glass behind the bottom bar: an in-window blur of what is under it, in
 /// the material whose tint comes closest to the panel's, washed halfway back to the panel's color so the
 /// tint barely shows. It is full from the panel's edge to just short of the bar's top and fades out a
 /// little above it.

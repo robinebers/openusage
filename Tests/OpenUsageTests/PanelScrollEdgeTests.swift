@@ -6,8 +6,8 @@ import XCTest
 @MainActor
 final class PanelScrollEdgeTests: QuietWindowTestCase {
     /// On the panel's pages and Settings' form, content scrolled under the top bar is hidden behind the
-    /// panel, with no blur. Before macOS 26, content under the bottom bar frosts it with an in-window blur,
-    /// and the bottom bar is clear once nothing is under it. (From macOS 26 the system draws that edge.)
+    /// panel, with no blur. Content under the bottom bar frosts it with an in-window blur, and the bottom
+    /// bar is clear once nothing is under it.
     func testTheTopBarHidesContentAndTheBottomBarFrostsOverIt() async throws {
         let barHeight: CGFloat = 30
         let pages: [(String, AnyView)] = [
@@ -24,11 +24,7 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
             let edges = [host.bounds.minY, host.bounds.maxY - barHeight]
             let topBar = NSRect(x: 0, y: host.isFlipped ? edges[0] : edges[1], width: host.bounds.width, height: barHeight)
             let bottomBar = NSRect(x: 0, y: host.isFlipped ? edges[1] : edges[0], width: host.bounds.width, height: barHeight)
-            let frostsBelow = { () -> Bool? in
-                if #available(macOS 26, *) { return nil }
-                return self.frosts(bottomBar, in: host)
-            }
-            XCTAssertNotEqual(frostsBelow(), false, "\(name): the bottom bar stays clear over content")
+            XCTAssertTrue(frosts(bottomBar, in: host), "\(name): the bottom bar stays clear over content")
 
             let scroller = try XCTUnwrap(scrollViews(in: host).first)
             scroller.contentView.scroll(to: NSPoint(x: 0, y: scroller.contentView.bounds.minY + 100))
@@ -40,7 +36,7 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
             scroller.contentView.scroll(to: NSPoint(x: 0, y: 10_000))
             scroller.reflectScrolledClipView(scroller.contentView)
             try await Task.sleep(for: .milliseconds(100))
-            XCTAssertNotEqual(frostsBelow(), true, "\(name): the bottom bar frosts with nothing under it")
+            XCTAssertFalse(frosts(bottomBar, in: host), "\(name): the bottom bar frosts with nothing under it")
         }
     }
 
