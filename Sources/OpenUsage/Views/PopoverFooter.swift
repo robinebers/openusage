@@ -16,6 +16,9 @@ struct PopoverFooter: View {
             if screen == .dashboard {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
+                    #if OPENUSAGE_DEVELOPMENT
+                    DemoDataLabel()
+                    #endif
                     Spacer(minLength: 8)
                     if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
                     optionsMenu

@@ -153,6 +153,9 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var advancedTab: some View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
+        #if OPENUSAGE_DEVELOPMENT
+        DevelopmentDataSettings()
+        #endif
         Section {
             Toggle(isOn: $hideFromScreenShare.isEnabled) {
                 titled("Privacy Mode", info: "Hide usage and account names from screenshots and recordings")
