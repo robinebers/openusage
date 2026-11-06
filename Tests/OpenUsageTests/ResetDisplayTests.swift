@@ -156,6 +156,15 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")
     }
 
+    func testWeekdayTimeShowsMinutesSoTheHourNeverReadsAsADate() {
+        let reset = Date(timeIntervalSince1970: 1_794_382_293) // Wed 2026-11-11 07:31:33 UTC
+        let madrid = TimeZone(identifier: "Europe/Madrid")!
+
+        XCTAssertEqual(TimeFormatSetting.auto.weekdayTime(reset, base: Locale(identifier: "es_ES"), timeZone: madrid), "mié, 8:31")
+        XCTAssertEqual(TimeFormatSetting.auto.weekdayTime(reset, base: Locale(identifier: "en_US"), timeZone: madrid), "Wed 8:31\u{202F}AM")
+        XCTAssertEqual(TimeFormatSetting.twentyFourHour.weekdayTime(reset, base: Locale(identifier: "en_US"), timeZone: madrid), "Wed 08:31")
+    }
+
     func testCompactDurationOfAResetTooFarOffForAnIntShowsTheLongestCountdown() {
         XCTAssertEqual(Formatters.compactDuration(1e300), "6405119470038038d 18h")
     }
