@@ -170,7 +170,7 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertEqual(result.usedUp.map { $0.usedUpNote(now: now) }, ["$0 left", "$0"])
         XCTAssertEqual(result.usedUp.map(\.reason.severity), [.critical, .critical])
         XCTAssertEqual(result.summary, .listed)
-        XCTAssertEqual(MenuBarContentBuilder.build(board: result, limit: .upToFive).items.map(\.value), ["$0", "$0"])
+        XCTAssertTrue(MenuBarContentBuilder.build(board: result, limit: .upToFive).isEmpty, "a balance never reaches the menu bar")
     }
 
     func testAnEmptyBalanceRanksAfterEveryLimitWithAReset() throws {

@@ -37,7 +37,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
 
     func testEachDisplayRowExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
         try await assertExplainedByInfoIcons(.display, [
-            "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
+            "Show everything Priority lists, in its order", "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
             "Over 50% left a day before its reset", "Where usage would be at an even pace",
         ])
     }

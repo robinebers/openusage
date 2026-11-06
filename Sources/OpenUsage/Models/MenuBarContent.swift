@@ -27,10 +27,12 @@ struct MenuBarContent: Equatable {
 enum MenuBarContentBuilder {
     private static let genericWords: Set<String> = ["models", "bot", "usage"]
 
-    static func build(board: PriorityBoard, limit: MenuBarLimit) -> MenuBarContent {
+    /// Only what's running out, or with `alwaysShows` every section of the Priority tab in its order, top to bottom.
+    static func build(board: PriorityBoard, limit: MenuBarLimit, alwaysShows: Bool = false) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        // Running Out and Used Up come before Pinned, so a pin never pushes an urgent limit past the cap.
-        let lines = (board.attention + board.usedUp).map { ($0.provider, $0.line) } + board.pinned.map { ($0.provider, $0.line) }
+        let lines = alwaysShows
+            ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt + board.usedUp).map { ($0.provider, $0.line) }
+            : board.attention.map { ($0.provider, $0.line) }
         let shown = lines.prefix(limit.count).map { provider, line in
             let label = line.data.title
             return MenuBarContent.Item(

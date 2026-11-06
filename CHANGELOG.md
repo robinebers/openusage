@@ -3,8 +3,9 @@
 ## Unreleased
 
 ### Changed
-- The menu bar shows the same limits as Priority: Running Out, then Used Up, then Pinned, up to
-  **Show In Menu Bar**. Pin a metric to always show it
+- **Always Show In Menu Bar** under **Settings → Display → Priority** lists everything Priority does
+  in the menu bar, in its order: Pinned, Running Out, Use It or Lose It, then Used Up. Off by default.
+  **Show In Menu Bar** is now **Max Items In Menu Bar**
   ([#1611](https://github.com/robinebers/openusage/issues/1611)).
 - Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
   Priority and All Usage shows the new tab at once

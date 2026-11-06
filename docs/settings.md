@@ -11,19 +11,21 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 
 ## Priority
 
-- **Show In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits: running out, then used
-  up, then pinned. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
+- **Max Items In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
+  first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
+- **Always Show In Menu Bar.** The menu bar lists everything Priority does, in its order: Pinned,
+  Running Out, Use It or Lose It, then Used Up. Off by default, showing only what's running out.
 - **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
   70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
 - **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
   before it resets at your current pace, however much it has left. On by default.
 - **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
-  with over 50% left, the same rule as the alert of that name. It never shows in the menu bar. On by
+  with over 50% left, the same rule as the alert of that name. It shows in the menu bar only with Always Show In Menu Bar on. On by
   default, and separate from the alert.
 
 Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
-pick which limits the menu bar shows as running out and when the Warning and Critical notifications fire. Critical
+pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
 always stays under Warning: moving one onto the other pushes the other 5% along.
 
 ## Appearance

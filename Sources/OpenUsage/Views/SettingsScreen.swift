@@ -91,7 +91,11 @@ struct SettingsScreen: View {
         @Bindable var dataStore = dataStore
         Section {
             PriorityIconsPreview()
-            picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
+            picker("Max Items In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
+            Toggle(isOn: $dataStore.menuBarAlwaysShows) {
+                titled("Always Show In Menu Bar", info: "Show everything Priority lists, in its order")
+            }
+            .disabled(dataStore.menuBarLimit == .iconOnly)
         } header: {
             Text("Priority")
         }
@@ -249,8 +253,8 @@ struct SettingsScreen: View {
     }
 }
 
-/// Sample icons at the number the setting picks, so every choice looks different whatever is pinned or
-/// running out right now. Shrunk to sit in a row however many it holds.
+/// Sample icons at the number the setting picks, so every choice looks different whatever is running
+/// out right now. Shrunk to sit in a row however many it holds.
 struct PriorityIconsPreview: View {
     @Environment(WidgetDataStore.self) private var dataStore
 
