@@ -44,7 +44,7 @@ final class WidgetDataStore {
         didSet { defaults.set(menuBarLimit.rawValue, forKey: Self.menuBarLimitKey) }
     }
 
-    /// The menu bar also shows used-up and pinned limits, after the ones running out.
+    /// The menu bar lists every Priority section in the tab's order instead of only what's running out.
     var menuBarAlwaysShows: Bool {
         didSet { defaults.set(menuBarAlwaysShows, forKey: Self.menuBarAlwaysShowsKey) }
     }
