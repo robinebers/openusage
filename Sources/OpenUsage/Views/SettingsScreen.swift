@@ -151,7 +151,7 @@ struct SettingsScreen: View {
         @Bindable var hideFromScreenShare = container.hideFromScreenShare
         Section {
             Toggle(isOn: $hideFromScreenShare.isEnabled) {
-                titled("Hide From Screenshots and Recordings", info: HideFromScreenShareSetting.info)
+                titled("Privacy Mode", info: "Hide usage and account names from screenshots and recordings")
             }
             Toggle("Help Make OpenUsage Better", isOn: Binding(
                 get: { container.telemetry.isEnabled },

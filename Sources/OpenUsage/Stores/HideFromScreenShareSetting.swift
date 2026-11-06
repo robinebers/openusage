@@ -1,14 +1,13 @@
 import Foundation
 import Observation
 
-/// The Hide From Screenshots and Recordings setting and the live capture signal behind it. Capture is watched only
+/// The Privacy Mode setting and the live capture signal behind it. Capture is watched only
 /// while the setting is on: a short poll is the guarantee, and the window server's change
 /// notifications, private and best-effort, only make the swap faster.
 @MainActor
 @Observable
 final class HideFromScreenShareSetting {
     static let key = "hideUsageWhileScreenSharing"
-    static let info = "Blurs account names in copied images, and while you share or record your screen, blurs them in the panel and shows only the icon in the menu bar. A plain screenshot can't be detected."
 
     var isEnabled: Bool {
         didSet {

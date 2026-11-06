@@ -49,8 +49,8 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         ])
     }
 
-    func testHideFromScreenshotsExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
-        try await assertExplainedByInfoIcons(.advanced, [HideFromScreenShareSetting.info])
+    func testPrivacyModeExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
+        try await assertExplainedByInfoIcons(.advanced, ["Hide usage and account names from screenshots and recordings"])
     }
 
     private func assertExplainedByInfoIcons(_ tab: SettingsTab, _ explainers: [String], line: UInt = #line) async throws {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension EnvironmentValues {
-    /// On while Hide From Screenshots and Recordings sees a capture, and on a copied card while it's on.
+    /// On while Privacy Mode sees a capture, and on a copied card while it's on.
     @Entry var concealsAccountNames = false
 }
 

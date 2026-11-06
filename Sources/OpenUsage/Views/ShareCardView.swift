@@ -6,7 +6,7 @@ struct ShareCardView: View {
     let family: DashboardFamily
     var plans: [String: String] = [:]
     let appearance: ColorScheme
-    /// Hide From Screenshots and Recordings is on: every account name blurs. Off, emails are left out.
+    /// Privacy Mode is on: every account name blurs. Off, emails are left out.
     var blursAccountNames = false
 
     static let width: CGFloat = 360
