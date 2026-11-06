@@ -3,6 +3,13 @@
 ## Unreleased
 
 ### Changed
+- **Always Show In Menu Bar** under **Settings → Display → Priority** lists everything Priority does
+  in the menu bar, in its order: Pinned, Running Out, Use It or Lose It, then Used Up. Off by default.
+  **Show In Menu Bar** is now **Max Items In Menu Bar**
+  ([#1611](https://github.com/robinebers/openusage/issues/1611)).
+- Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
+  Priority and All Usage shows the new tab at once
+  ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
 - **Hide From Screen Share** now also blurs account names in the panel while your screen is shared or
   recorded. Copied usage pictures always blur account names, where they used to leave emails out
   ([#1599](https://github.com/robinebers/openusage/pull/1599)).
@@ -36,9 +43,6 @@
 - The usage history popover's empty message wraps onto lines of even width.
 - All Usage shows a provider's copy button beside its logo while the pointer is anywhere over its
   card, instead of in place of the logo.
-- Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
-  Priority and All Usage shows the new tab at once
-  ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
 
 ## v0.8.0-beta.2
 

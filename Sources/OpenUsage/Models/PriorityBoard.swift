@@ -133,7 +133,7 @@ struct PriorityBoard {
     let pinned: [PinnedMetric]
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
-    /// Limits with over half left that reset within a day, soonest reset first. Never in the menu bar.
+    /// Limits with over half left that reset within a day, soonest reset first. In the menu bar only with Always Show In Menu Bar on.
     let useItOrLoseIt: [PriorityItem]
     let notices: [AccountNotice]
     /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest.

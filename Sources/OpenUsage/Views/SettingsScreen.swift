@@ -91,7 +91,11 @@ struct SettingsScreen: View {
         @Bindable var dataStore = dataStore
         Section {
             PriorityIconsPreview()
-            picker("Show In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
+            picker("Max Items In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
+            Toggle(isOn: $dataStore.menuBarAlwaysShows) {
+                titled("Always Show In Menu Bar", info: "Show icons in the menu bar even if not requiring your attention yet")
+            }
+            .disabled(dataStore.menuBarLimit == .iconOnly)
         } header: {
             Text("Priority")
         }
