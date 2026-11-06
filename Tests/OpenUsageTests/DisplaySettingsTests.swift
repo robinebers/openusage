@@ -49,8 +49,11 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         ])
     }
 
-    func testPrivacyModeExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
-        try await assertExplainedByInfoIcons(.advanced, ["Hide usage and account names from screenshots and recordings"])
+    func testEachAdvancedRowExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
+        try await assertExplainedByInfoIcons(.advanced, [
+            "Hide usage and account names from screenshots and recordings", "Share additional anonymous usage stats that tell the team where to improve.",
+            "Adds a global openusage command that prints the usage the app last fetched.", "How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.",
+        ])
     }
 
     private func assertExplainedByInfoIcons(_ tab: SettingsTab, _ explainers: [String], line: UInt = #line) async throws {

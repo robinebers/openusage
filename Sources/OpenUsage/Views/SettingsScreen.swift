@@ -153,17 +153,17 @@ struct SettingsScreen: View {
             Toggle(isOn: $hideFromScreenShare.isEnabled) {
                 titled("Privacy Mode", info: "Hide usage and account names from screenshots and recordings")
             }
-            Toggle("Help Make OpenUsage Better", isOn: Binding(
+            Toggle(isOn: Binding(
                 get: { container.telemetry.isEnabled },
                 set: { container.telemetry.setEnabled($0) }
-            ))
+            )) {
+                titled("Help Make OpenUsage Better", info: "Share additional anonymous usage stats that tell the team where to improve.")
+            }
         } header: {
             Text("Privacy")
-        } footer: {
-            SettingsNote("Share additional anonymous usage stats that tell the team where to improve.")
         }
         Section {
-            LabeledContent("Terminal Helper") {
+            LabeledContent {
                 switch commandLineTool.status {
                 case .installed:
                     Button("Uninstall") { commandLineTool.uninstall() }
@@ -173,12 +173,13 @@ struct SettingsScreen: View {
                     Text("Unavailable")
                         .foregroundStyle(.secondary)
                 }
+            } label: {
+                titled("Terminal Helper", info: "Adds a global openusage command that prints the usage the app last fetched.")
             }
         } header: {
             Text("Command Line")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                SettingsNote("Adds a global `openusage` command that prints the usage the app last fetched.")
                 if commandLineTool.status == .conflict {
                     SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isWarning: true)
                 } else if let errorMessage = commandLineTool.errorMessage {
@@ -189,11 +190,13 @@ struct SettingsScreen: View {
             }
         }
         Section {
-            picker("Log Level", selection: $logLevel, options: LogLevelSetting.allCases.map { ($0, $0.label) })
+            Picker(selection: $logLevel) {
+                ForEach(LogLevelSetting.allCases, id: \.self) { Text($0.label).tag($0) }
+            } label: {
+                titled("Log Level", info: "How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.")
+            }
         } header: {
             Text("Debug")
-        } footer: {
-            SettingsNote("How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.")
         }
     }
 
