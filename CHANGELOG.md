@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.4
 
 ### Changed
 - **Always Show In Menu Bar** under **Settings → Display → Priority** lists everything Priority does
