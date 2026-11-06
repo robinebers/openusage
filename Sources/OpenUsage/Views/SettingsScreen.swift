@@ -63,7 +63,7 @@ struct SettingsScreen: View {
             }
         } footer: {
             if let errorMessage = launchAtLogin.errorMessage {
-                SettingsNote(errorMessage, isWarning: true)
+                SettingsNote(errorMessage)
             }
         }
         .onChange(of: defaultTab) { _, newValue in popover.dashboardTab = newValue }
@@ -181,9 +181,9 @@ struct SettingsScreen: View {
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 if commandLineTool.status == .conflict {
-                    SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.", isWarning: true)
+                    SettingsNote("\(commandLineTool.destinationPath) already exists and wasn't installed by OpenUsage.")
                 } else if let errorMessage = commandLineTool.errorMessage {
-                    SettingsNote(errorMessage, isWarning: true)
+                    SettingsNote(errorMessage)
                 } else if case .linkedToAnotherCopy = commandLineTool.status {
                     SettingsNote("\(commandLineTool.destinationPath) points at another copy of OpenUsage. Install points it at this one.")
                 }
@@ -301,17 +301,15 @@ struct PriorityIconsPreview: View {
 
 private struct SettingsNote: View {
     let text: LocalizedStringKey
-    var isWarning = false
 
-    init(_ text: String, isWarning: Bool = false) {
+    init(_ text: String) {
         self.text = LocalizedStringKey(text)
-        self.isWarning = isWarning
     }
 
     var body: some View {
         Text(text)
             .font(.system(size: 11))
-            .foregroundStyle(isWarning ? AnyShapeStyle(Theme.notice) : AnyShapeStyle(.secondary))
+            .foregroundStyle(Theme.notice)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
