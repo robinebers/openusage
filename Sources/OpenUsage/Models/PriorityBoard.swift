@@ -210,7 +210,7 @@ extension WidgetDataStore {
     func priorityBoard(in groups: [ProviderMetrics], pinned: Set<String> = [], now: Date, hidingEmails: Bool = false) -> PriorityBoard {
         let accounts = accounts(in: groups)
         return PriorityBoard.make(
-            accounts: accounts, pinned: pinned, burningFast: burningFast,
+            accounts: hidingEmails ? accounts.map(\.hidingEmail) : accounts, pinned: pinned, burningFast: burningFast,
             useItOrLoseIt: showsUseItOrLoseIt, now: now
         ) { account in
             if let message = self.problem(for: account.id) {

@@ -9,7 +9,7 @@ The strip shows the limits closest to running out. You only choose how many.
 - Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
 - Limits past that number show as a count, like `+7`. Used-up limits and balances never show or count.
 - With nothing running out, or with **App Icon Only**, the strip shows the app icon.
-- With [Hide From Screen Share](privacy.md#screen-sharing) on, it shows the app icon while your screen
+- With [Hide From Screenshots and Recordings](privacy.md#screen-sharing) on, it shows the app icon while your screen
   is shared or recorded.
 - When an [update](updates.md) is available, the app icon shows at the end of the strip until the
   update banner goes away.

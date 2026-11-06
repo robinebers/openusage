@@ -3,9 +3,9 @@
 ## Unreleased
 
 ### Changed
-- **Hide From Screen Share** now also blurs account names in the panel while your screen is shared or
-  recorded. Copied usage pictures always blur account names, where they used to leave emails out
-  ([#1599](https://github.com/robinebers/openusage/pull/1599)).
+- **Hide From Screen Share** is now **Hide From Screenshots and Recordings**, and also blurs account
+  names in the panel while your screen is shared or recorded. While it's on, copied usage pictures
+  blur every account name ([#1599](https://github.com/robinebers/openusage/pull/1599)).
 
 ### Fixed
 - A reset a few days out shows its minutes in clock mode, like `mié, 8:31`, so in a 24-hour

@@ -55,8 +55,9 @@ Each fires once per metric per reset window. Click one to open All Usage.
 
 ## Privacy
 
-- **Hide From Screen Share.** Shows the app icon instead of your usage, and blurs account names in
-  the panel, while your screen is shared or recorded. Off by default.
+- **Hide From Screenshots and Recordings.** Shows the app icon instead of your usage, and blurs
+  account names in the panel, while your screen is shared or recorded. Copied pictures blur account
+  names while it's on. Off by default.
 - **Help Make OpenUsage Better.** Sends optional daily account counts by provider. The daily active
   ping and crash reports don't depend on it.
 
