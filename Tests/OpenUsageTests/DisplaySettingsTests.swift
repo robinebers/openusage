@@ -37,6 +37,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
 
     func testEachDisplayRowExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
         try await assertExplainedByInfoIcons(.display, [
+            "Show icons in the menu bar even if not requiring your attention yet",
             "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
             "Over 50% left a day before its reset", "Where usage would be at an even pace",
         ])
@@ -46,6 +47,13 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         try await assertExplainedByInfoIcons(.alerts, [
             "Alert when a limit drops critically low", "Alert when a limit requires your attention",
             "A limit may run out before its reset", "Over 50% left a day before its reset",
+        ])
+    }
+
+    func testEachAdvancedRowExplainsItselfInAnInfoTooltipInsteadOfAFooterNote() async throws {
+        try await assertExplainedByInfoIcons(.advanced, [
+            "Hide usage and account names from screenshots and recordings", "Share additional anonymous usage stats that tell the team where to improve.",
+            "Adds a global openusage command that prints the usage the app last fetched.", "How much detail OpenUsage writes to the macOS log. Choose Debug while you reproduce a problem.",
         ])
     }
 

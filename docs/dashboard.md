@@ -23,7 +23,7 @@ Priority shows only what needs you, most urgent first.
 - **Use It or Lose It** lists, with the setting of that name on, a limit that resets within 24 hours
   with over 50% left, the same rule as the alert. Only windows longer than a day count, never the
   5-hour session or a dollar spending cap. Each shows when it resets, like `Resets in 18h`, soonest
-  first. These limits never show in the menu bar.
+  first. These show in the menu bar only with Always Show In Menu Bar on.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is
   running low. It waits for accounts that haven't reported yet.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.
@@ -120,7 +120,8 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 
 Hover over a provider's card and click the copy button beside its logo, or choose **Share
 Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
-account. Emails are left out.
+account. Emails are left out, or every account name is blurred with
+[Privacy Mode](privacy.md#privacy-mode) on.
 
 ## Update banner
 
@@ -133,7 +134,7 @@ cards. **Install Update** opens the update window, and ✕ hides the card until 
 - **OpenUsage** and the version, like `OpenUsage 0.8.0`, sit over **Next update in …**, which counts
   down to the next refresh. Click it or press **⌘R** to refresh now. A dev build shows its commit,
   like `dev (abc1234)`.
-- On Priority, a button copies the tab as a PNG with emails hidden.
+- On Priority, a button copies the tab as a PNG, leaving emails out the same way.
 - The **⋯** menu has **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
   **About OpenUsage**, and **Quit OpenUsage**.
 

@@ -31,3 +31,14 @@ jobs:
 
       - name: Run tests
         run: swift test
+
+      - name: Test development sample data
+        run: swift test -Xswiftc -DOPENUSAGE_DEVELOPMENT --filter 'DevelopmentDemoTests|DevelopmentDataModeTests'
+
+      - name: Verify production excludes development sample data
+        run: |
+          production_scratch="$RUNNER_TEMP/openusage-production"
+          swift build -c release --scratch-path "$production_scratch" --product OpenUsage
+          swift build -c release --scratch-path "$production_scratch" --product openusage-cli
+          production_bin="$(swift build -c release --scratch-path "$production_scratch" --show-bin-path)"
+          ./script/verify_no_demo.sh "$production_bin/OpenUsage" "$production_bin/openusage-cli"

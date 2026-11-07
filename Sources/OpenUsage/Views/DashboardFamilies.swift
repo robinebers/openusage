@@ -5,8 +5,6 @@ struct DashboardFamily: Identifiable {
     let provider: Provider
     var accounts: [DashboardAccount]
 
-    /// The family's account when it has just the one, which then has no caption of its own.
-
     var hidingEmails: DashboardFamily {
         DashboardFamily(
             id: id, provider: provider.hidingEmail,

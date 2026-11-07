@@ -30,6 +30,16 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         NSApp.disableRelaunchOnLogin()
+        #if OPENUSAGE_DEVELOPMENT
+        if Bundle.main.bundleIdentifier == DevelopmentDataMode.demoBundleID {
+            let container = DemoSession.makeContainer(defaults: .standard)
+            AppearanceSetting.applyCurrent()
+            self.container = container
+            container.startRefreshing()
+            statusItemController = StatusItemController(container: container, updater: updater)
+            return
+        }
+        #endif
         AppearanceSetting.applyCurrent()
         let container = AppContainer(telemetry: PostHogTelemetrySink(), telemetryDefaults: TelemetryRecorder.suite)
         self.container = container

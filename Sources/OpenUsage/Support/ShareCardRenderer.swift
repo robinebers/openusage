@@ -18,9 +18,10 @@ enum ShareCardRenderer {
     static func share(
         family: DashboardFamily,
         plans: [String: String],
-        appearance: ColorScheme
+        appearance: ColorScheme,
+        blursAccountNames: Bool
     ) -> Bool {
-        copy(ShareCardView(family: family, plans: plans, appearance: appearance), named: family.id)
+        copy(ShareCardView(family: family, plans: plans, appearance: appearance, blursAccountNames: blursAccountNames), named: family.id)
     }
 
     @discardableResult

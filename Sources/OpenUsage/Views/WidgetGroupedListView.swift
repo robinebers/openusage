@@ -127,7 +127,9 @@ struct WidgetGroupedListView: View {
         guard let live = liveFamilies().first(where: { $0.accounts.contains { accountIDs.contains($0.id) } }) else { return false }
         let accounts = live.accounts.filter { accountIDs.contains($0.id) }
         let family = DashboardFamily(id: live.id, provider: accounts[0].provider, accounts: accounts)
-        guard ShareCardRenderer.share(family: family, plans: plans(for: family), appearance: colorScheme) else { return false }
+        guard ShareCardRenderer.share(
+            family: family, plans: plans(for: family), appearance: colorScheme, blursAccountNames: container.hideFromScreenShare.isEnabled
+        ) else { return false }
         popover.shareNotice.present(true)
         return true
     }

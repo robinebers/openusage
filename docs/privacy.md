@@ -17,10 +17,13 @@ only the provider APIs those accounts need.
 - A [proxy](proxy.md) password stays in your `~/.openusage/config.json`. OpenUsage reads it but never
   writes or logs it.
 
-## Screen sharing
+## Privacy Mode
 
-**Settings → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead of your
-usage while your screen is shared or recorded. It is off by default and doesn't hide the panel.
+**Settings → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
+panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
+off, they leave email addresses out. It is off by default. A single still screenshot (⌘⇧3, ⌘⇧4) can't
+be detected, so use the copy button to share a picture.
 
 ## Anonymous telemetry
 

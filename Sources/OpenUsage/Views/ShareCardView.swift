@@ -6,13 +6,15 @@ struct ShareCardView: View {
     let family: DashboardFamily
     var plans: [String: String] = [:]
     let appearance: ColorScheme
+    /// Privacy Mode is on: every account name blurs. Off, emails are left out.
+    var blursAccountNames = false
 
     static let width: CGFloat = 360
     static let inset: CGFloat = 16
 
     var body: some View {
-        ShareCardFrame(appearance: appearance) {
-            DashboardProviderSection(family: family.hidingEmails) { account in
+        ShareCardFrame(appearance: appearance, blursAccountNames: blursAccountNames) {
+            DashboardProviderSection(family: blursAccountNames ? family : family.hidingEmails) { account in
                 DashboardAccountRows(account: account, plan: plans[account.id], hasSiblingAccounts: family.accounts.count > 1)
             }
         }
@@ -52,9 +54,10 @@ struct PriorityShareCard: View {
     let board: PriorityBoard
     let now: Date
     let appearance: ColorScheme
+    var blursAccountNames = false
 
     var body: some View {
-        ShareCardFrame(appearance: appearance) {
+        ShareCardFrame(appearance: appearance, blursAccountNames: blursAccountNames) {
             PriorityBoardList(board: board, now: now)
         }
     }
@@ -62,6 +65,7 @@ struct PriorityShareCard: View {
 
 private struct ShareCardFrame<Content: View>: View {
     let appearance: ColorScheme
+    var blursAccountNames = false
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -73,6 +77,7 @@ private struct ShareCardFrame<Content: View>: View {
         .frame(width: ShareCardView.width, alignment: .topLeading)
         .background(Theme.panelBody)
         .environment(\.drawsLevelsAsShapes, true)
+        .environment(\.concealsAccountNames, blursAccountNames)
         .environment(\.colorScheme, appearance)
     }
 

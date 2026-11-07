@@ -27,7 +27,7 @@ struct AccountListView: View {
             if !hubs.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(hubs) { hub in
-                        CLIProxyHubRow(hub: hub) { withAnimation(Motion.spring) { popover.customizeHubID = hub.id } }
+                        CLIProxyHubRow(hub: hub) { withAnimation(Motion.navigation) { popover.customizeHubID = hub.id } }
                     }
                 }
                 .cardSurface()
@@ -46,7 +46,7 @@ struct AccountListView: View {
         AccountListRow(
             provider: provider,
             grip: { ReorderGrip().highPriorityGesture(accountDragGesture(for: provider)) },
-            onOpen: { withAnimation(Motion.spring) { popover.customizeProviderID = provider.id } }
+            onOpen: { withAnimation(Motion.navigation) { popover.customizeProviderID = provider.id } }
         )
         .opacity(activeProviderID == provider.id ? 0 : 1)
         .reorderFrame(id: provider.id, in: .named(reorderSpaceName))

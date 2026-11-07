@@ -37,7 +37,7 @@ enum Formatters {
             [.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)
         ).day ?? 0
         if days <= 0 { return TimeFormatSetting.current.shortTime(date) }
-        if days < 7 { return TimeFormatSetting.current.weekdayHour(date) }
+        if days < 7 { return TimeFormatSetting.current.weekdayTime(date) }
         return monthDayLabel(date)
     }
 

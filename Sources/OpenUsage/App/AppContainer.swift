@@ -4,6 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class AppContainer {
+    typealias RuntimeFactory = @MainActor ([Account], [ProviderRuntime]) -> [ProviderRuntime]
+
     let accounts: AccountStore
     let layout: LayoutStore
     let dataStore: WidgetDataStore
@@ -12,32 +14,40 @@ final class AppContainer {
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
-    @ObservationIgnored private var providers: [AccountProviderRuntime]
+    @ObservationIgnored private var providers: [ProviderRuntime]
+    @ObservationIgnored private let makeRuntimes: RuntimeFactory
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
-    @ObservationIgnored private let http: any HTTPClient
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let claudeSessions: ClaudeSessions
     @ObservationIgnored private let hubGate = CLIProxyHubGate()
     @ObservationIgnored private let quotaNotifications = QuotaNotificationEvaluator()
+    #if OPENUSAGE_DEVELOPMENT
+    @ObservationIgnored var demo: DemoSession?
+    #endif
 
     init(
         accounts: AccountStore = AccountStore(),
         defaults: UserDefaults = .standard,
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
-        telemetryDefaults: UserDefaults
+        telemetryDefaults: UserDefaults,
+        runtimeFactory: RuntimeFactory? = nil
     ) {
         self.accounts = accounts
-        self.http = http
         self.defaults = defaults
         self.hideFromScreenShare = HideFromScreenShareSetting(defaults: defaults)
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
-        let providers = ProviderCatalog.make(
-            accounts: accounts.accounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys, http: http, hubGate: hubGate,
-            claudeSessions: claudeSessions
-        )
+        let hubGate = self.hubGate
+        let makeRuntimes: RuntimeFactory = runtimeFactory ?? { currentAccounts, existing in
+            ProviderCatalog.make(
+                accounts: currentAccounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys, http: http, hubGate: hubGate,
+                claudeSessions: claudeSessions, reusing: existing.compactMap { $0 as? AccountProviderRuntime }
+            )
+        }
+        self.makeRuntimes = makeRuntimes
+        let providers = makeRuntimes(accounts.accounts, [])
         let registry = WidgetRegistry.from(providers)
         let layout = LayoutStore(registry: registry, defaults: defaults)
         let dataStore = WidgetDataStore(
@@ -70,7 +80,7 @@ final class AppContainer {
     }
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
-        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return nil }
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return nil }
         let rereadsResets = runtime.account.kind == .zai
         return runtime.resetClaimService { [dataStore] in
             await dataStore.refresh(providerID: providerID, force: true, rereadHourly: rereadsResets)
@@ -85,7 +95,7 @@ final class AppContainer {
 
     /// Keeps the account, its name and its place: only the sign-in changes, once its usage read works.
     func replaceCredential(_ credential: AccountCredential, for providerID: String) async throws {
-        guard let runtime = providers.first(where: { $0.provider.id == providerID }) else { return }
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return }
         let account = runtime.account
         if case .oauth = credential, let signedIn = credential.identity,
            let saved = (try? accounts.credential(for: account.id))?.identity, saved != signedIn {
@@ -107,7 +117,7 @@ final class AppContainer {
         await runtime.stopRenewals()
         do {
             try Task.checkCancellation()
-            guard let index = providers.firstIndex(where: { $0.account.id == account.id }) else { return }
+            guard let index = providers.firstIndex(where: { $0.provider.id == providerID }) else { return }
             guard providers[index] === runtime else {
                 throw ProviderError.unavailable("This account’s sign-in changed while OpenUsage was checking it. Try again.")
             }
@@ -161,15 +171,7 @@ final class AppContainer {
 
     private func syncAccounts() {
         let previous = providers.map { ObjectIdentifier($0) }
-        providers = ProviderCatalog.make(
-            accounts: accounts.accounts,
-            vault: accounts.credentialVault,
-            hubKeys: accounts.hubKeys,
-            http: http,
-            hubGate: hubGate,
-            claudeSessions: claudeSessions,
-            reusing: providers
-        )
+        providers = makeRuntimes(accounts.accounts, providers)
         let registry = WidgetRegistry.from(providers)
         layout.apply(registry: registry)
         if let id = popover.customizeProviderID, registry.provider(id: id) == nil {

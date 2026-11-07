@@ -1,15 +1,20 @@
 # Menu bar
 
-The strip shows the limits closest to running out. You only choose how many.
+The strip shows the limits closest to running out, or with Always Show In Menu Bar everything
+Priority lists.
 
 - Left-click the icon to open the panel. Right-click (or control-click) it for **Settings** and
   **Quit OpenUsage**.
 - The strip shows the top limits of the dashboard's [Running Out](dashboard.md#priority) list, up to
-  **Settings → Display → Priority → Show In Menu Bar** (3 by default).
+  **Settings → Display → Priority → Max Items In Menu Bar** (3 by default).
+- With **Always Show In Menu Bar** on (off by default), it lists everything Priority does, in its
+  order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
+  Priority lists it.
 - Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
-- Limits past that number show as a count, like `+7`. Used-up limits and balances never show or count.
-- With nothing running out, or with **App Icon Only**, the strip shows the app icon.
-- With [Hide From Screen Share](privacy.md#screen-sharing) on, it shows the app icon while your screen
+- Limits past that number show as a count, like `+7`. With Always Show In Menu Bar off, only
+  limits running out show or count.
+- With nothing to show, or with **App Icon Only**, the strip shows the app icon.
+- With [Privacy Mode](privacy.md#privacy-mode) on, it shows the app icon while your screen
   is shared or recorded.
 - When an [update](updates.md) is available, the app icon shows at the end of the strip until the
   update banner goes away.
