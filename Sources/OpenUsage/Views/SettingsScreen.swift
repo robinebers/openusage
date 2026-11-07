@@ -8,6 +8,7 @@ struct SettingsScreen: View {
     @Environment(UpdaterController.self) private var updater
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
+    @AppStorage(LevelFillSetting.key) private var levelFill = LevelFillSetting.solid
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
     @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
     @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
@@ -127,6 +128,7 @@ struct SettingsScreen: View {
         Section("Usage") {
             picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
             picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
+            picker("Bar Style", selection: $levelFill, options: LevelFillSetting.allCases.map { ($0, $0.label) })
             Toggle(isOn: $dataStore.showsPaceMarks) {
                 titled("Pace Marks", info: "Where usage would be at an even pace")
             }

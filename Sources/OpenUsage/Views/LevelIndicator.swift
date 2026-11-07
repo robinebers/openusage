@@ -12,6 +12,7 @@ struct LevelIndicator: View {
     var paceMark: Double?
 
     @Environment(\.drawsLevelsAsShapes) private var drawsAsShapes
+    @AppStorage(LevelFillSetting.key) private var fillStyle = LevelFillSetting.solid
 
     private static let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
     private static let shortestFill: CGFloat = 4
@@ -32,7 +33,9 @@ struct LevelIndicator: View {
 
     @ViewBuilder
     private var level: some View {
-        if drawsAsShapes {
+        if fillStyle == .dithered {
+            DitheredLevel(fill: fill, severity: severity)
+        } else if drawsAsShapes {
             shapes
         } else {
             ProgressView(value: min(max(fill, 0), 1))
