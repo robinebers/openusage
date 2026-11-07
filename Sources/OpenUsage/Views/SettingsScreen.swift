@@ -1,7 +1,10 @@
+import AppKit
 import KeyboardShortcuts
 import SwiftUI
 
 struct SettingsScreen: View {
+    var openURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
+
     @Environment(AppContainer.self) private var container
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
@@ -143,11 +146,23 @@ struct SettingsScreen: View {
             Text("Notifications")
         } footer: {
             if notificationsDenied {
-                Text("Notifications are off for OpenUsage in [System Settings](x-apple.systempreferences:com.apple.Notifications-Settings.extension).")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.notice)
+                notificationSettingsButton
             }
         }
+    }
+
+    var notificationSettingsButton: some View {
+        Button {
+            openURL(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier!)")!)
+            (NSApp.keyWindow as? MenuBarPanel)?.onDismiss?()
+        } label: {
+            Text("Notifications are off for OpenUsage in \(Text("System Settings").foregroundColor(.accentColor)).")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.notice)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("System Settings")
     }
 
     @ViewBuilder
