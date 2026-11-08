@@ -14,10 +14,9 @@ final class DashboardLabelFitTests: XCTestCase {
     }
 
     func testEveryClockResetFitsItsColumn() {
-        let evening = Calendar.current.date(bySettingHour: 22, minute: 58, second: 0, of: Date())!
-        for day in 0..<7 {
-            let date = evening.addingTimeInterval(TimeInterval(day) * 86_400)
-            for label in [TimeFormatSetting.twelveHour.weekdayTime(date), TimeFormatSetting.twentyFourHour.weekdayTime(date)] {
+        let mornings: [Date] = (0..<7).map { Date(timeIntervalSince1970: 1_794_394_680 + Double($0) * 86_400) } // Wed 2026-11-11 10:58 UTC
+        for date in mornings + mornings.map({ $0.addingTimeInterval(12 * 3600) }) {
+            for label in [TimeFormatSetting.twelveHour.weekdayTime(date, timeZone: .gmt), TimeFormatSetting.twentyFourHour.weekdayTime(date, timeZone: .gmt)] {
                 let text = Text(label).font(DashboardMetricRow.resetFont).monospacedDigit().fixedSize()
                 XCTAssertLessThanOrEqual(NSHostingView(rootView: text).fittingSize.width, DashboardGrid.clockResetWidth, label)
             }

@@ -18,10 +18,9 @@ enum DashboardGrid {
     /// Fits the widest weekday time a clock reset can show, in this Mac's language under either hour cycle.
     static let clockResetWidth: CGFloat = {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        let evening = Calendar.current.date(bySettingHour: 22, minute: 58, second: 0, of: Date())!
-        let labels = (0..<7).flatMap { day in
-            let date = evening.addingTimeInterval(TimeInterval(day) * 86_400)
-            return [TimeFormatSetting.twelveHour.weekdayTime(date), TimeFormatSetting.twentyFourHour.weekdayTime(date)]
+        let dates: [Date] = (0..<14).map { Date(timeIntervalSince1970: 39_480 + Double($0) * 43_200) }
+        let labels: [String] = dates.flatMap {
+            [TimeFormatSetting.twelveHour.weekdayTime($0, timeZone: .gmt), TimeFormatSetting.twentyFourHour.weekdayTime($0, timeZone: .gmt)]
         }
         return labels.map { ($0 as NSString).size(withAttributes: [.font: font]).width.rounded(.up) }.max()!
     }()
