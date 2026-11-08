@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.5
 
 ### Fixed
 - The "Notifications are off" note in Settings opens OpenUsage's page in System Settings →
