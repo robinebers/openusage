@@ -48,7 +48,7 @@ final class PanelContentHeightTests: QuietWindowTestCase {
     /// through every height in between for about 0.6 s.
     func testATabSwitchResizesThePanelInOneStep() async throws {
         let hosted = try await openWithController(accounts: ["Personal", "Work", "Team"])
-        try await waitUntil { self.fitsContent(hosted) }
+        try await waitUntil(timeout: .seconds(10)) { hosted.dataStore.refreshingProviderIDs.isEmpty && self.fitsContent(hosted) }
         let from = hosted.popover.dashboardTab
         let to: DashboardTab = from == .priority ? .allUsage : .priority
         let start = hosted.panel.frame.height
@@ -66,8 +66,7 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         try await Task.sleep(for: .milliseconds(700))
         try await waitUntil { self.fitsContent(hosted) }
 
-        // One step, plus one more when the test accounts' refresh fails meanwhile and reshapes Priority.
-        XCTAssertLessThanOrEqual(heights.count, 2, "the panel animated through \(heights)")
+        XCTAssertEqual(heights.count, 1, "the panel animated through \(heights)")
     }
 
     /// A screen switch slides at AppKit's 0.25 s pace and drops the outgoing screen when it ends. The
