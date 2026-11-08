@@ -3,14 +3,11 @@
 ## Unreleased
 
 ### Fixed
-<<<<<<< HEAD
+- The "Notifications are off" note in Settings opens OpenUsage's page in System Settings →
+  Notifications in one click ([#1617](https://github.com/robinebers/openusage/pull/1617)).
 - In clock mode, a reset a few days out, like `Tue, 2:30 AM`, no longer runs into the percentage
   beside it. The reset column now fits the longest day and time
   ([#1627](https://github.com/robinebers/openusage/issues/1627)).
-=======
-- The "Notifications are off" note in Settings opens OpenUsage's page in System Settings →
-  Notifications in one click ([#1617](https://github.com/robinebers/openusage/pull/1617)).
->>>>>>> origin/main
 
 ## v0.8.0-beta.4
 
