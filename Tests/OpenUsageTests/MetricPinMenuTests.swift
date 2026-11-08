@@ -27,7 +27,7 @@ final class MetricPinMenuTests: QuietWindowTestCase {
         let container = AppContainer.forTesting(accounts: store, defaults: defaults)
         container.popover.dashboardTab = tab
         container.dataStore.snapshots[account] = ProviderSnapshot(
-            providerID: account, displayName: "Claude", plan: "Max 20x",
+            providerID: account, displayName: "Claude", plan: "Ultra",
             lines: [
                 .progress(label: "Session", used: 10, limit: 100, format: .percent),
                 .progress(label: "Weekly", used: 100, limit: 100, format: .percent),

@@ -57,7 +57,7 @@ final class SignInAgainVisibilityTests: QuietWindowTestCase {
         let container = AppContainer.forTesting(accounts: store, defaults: defaults, http: http)
         try await waitUntil { container.layout.provider(id: id) != nil }
         container.dataStore.snapshots[id] = ProviderSnapshot(
-            providerID: id, displayName: "Claude", plan: "Max 20x",
+            providerID: id, displayName: "Claude", plan: "Ultra",
             lines: [.progress(label: "Session", used: 10, limit: 100, format: .percent)]
         )
         _ = await container.dataStore.refresh(providerID: id, force: true)

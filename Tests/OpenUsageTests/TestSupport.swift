@@ -253,7 +253,7 @@ extension QuietWindowTestCase {
         XCTAssertEqual(container.layout.displayGroups.count, ids.count, "the accounts never reached the dashboard")
         for id in ids {
             container.dataStore.snapshots[id] = ProviderSnapshot(
-                providerID: id, displayName: "Claude", plan: "Max 20x",
+                providerID: id, displayName: "Claude", plan: "Ultra",
                 lines: ["Session", "Weekly"].map {
                     .progress(label: $0, used: 30, limit: 100, format: .percent, resetsAt: Date().addingTimeInterval(3600), periodDurationMs: 5 * 3_600_000)
                 }

@@ -182,7 +182,7 @@ enum DemoFactory {
 
     private static func plans(for account: Account) -> [String] {
         switch account.kind {
-        case .claude: ["Pro", "Max 5x", "Max 20x"]
+        case .claude: ["Pro", "Max", "Ultra"]
         case .codex: ["Plus", "Pro", "Business"]
         case .cursor: ["Pro", "Pro+", "Ultra"]
         case .antigravity: ["AI Pro", "AI Ultra"]
