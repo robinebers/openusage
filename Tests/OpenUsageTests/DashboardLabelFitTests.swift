@@ -13,6 +13,17 @@ final class DashboardLabelFitTests: XCTestCase {
         XCTAssertLessThanOrEqual(width(Text("Free Requests").font(DashboardMetricRow.font)), DashboardGrid.labelWidth)
     }
 
+    func testEveryClockResetFitsItsColumn() {
+        let evening = Calendar.current.date(bySettingHour: 22, minute: 58, second: 0, of: Date())!
+        for day in 0..<7 {
+            let date = evening.addingTimeInterval(TimeInterval(day) * 86_400)
+            for label in [TimeFormatSetting.twelveHour.weekdayTime(date), TimeFormatSetting.twentyFourHour.weekdayTime(date)] {
+                let text = Text(label).font(DashboardMetricRow.resetFont).monospacedDigit().fixedSize()
+                XCTAssertLessThanOrEqual(NSHostingView(rootView: text).fittingSize.width, DashboardGrid.clockResetWidth, label)
+            }
+        }
+    }
+
     func testLongAccountNameLeavesThePlanReadable() throws {
         let width = PanelMetrics.width - 2 * PanelMetrics.margin - 2 * DashboardGrid.cardPadding
         let plan = "SuperGrok Heavy"

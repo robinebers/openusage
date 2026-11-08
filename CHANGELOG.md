@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- In clock mode, a reset a few days out, like `Tue, 2:30 AM`, no longer runs into the percentage
+  beside it. The reset column now fits the longest day and time
+  ([#1627](https://github.com/robinebers/openusage/issues/1627)).
+
 ## v0.8.0-beta.4
 
 ### Changed
