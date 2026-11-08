@@ -162,7 +162,6 @@ struct SettingsScreen: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("System Settings")
     }
 
     @ViewBuilder

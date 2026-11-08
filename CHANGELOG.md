@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- The "Notifications are off" note in Settings opens OpenUsage's page in System Settings →
+  Notifications in one click ([#1617](https://github.com/robinebers/openusage/pull/1617)).
+
 ## v0.8.0-beta.4
 
 ### Changed
