@@ -32,8 +32,9 @@ MIN_SYSTEM_VERSION="15.0"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The dev build is labelled by its commit ("dev (abc1234)" in the footer and About panel), so it never
 # carries a stale release number. Releases take their version from the tag; see script/release.sh.
-APP_VERSION="dev ($(git -C "$ROOT_DIR" rev-parse --short HEAD))"
-APP_BUILD="$(git -C "$ROOT_DIR" rev-list --count HEAD)"
+# A copy without Git history, such as an Amp Mac satellite's mirror of an orb, builds as "dev (unknown)".
+APP_VERSION="dev ($(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown))"
+APP_BUILD="$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || echo 1)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_DISPLAY.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
