@@ -101,7 +101,7 @@ struct DashboardLiveRow: View {
                 } : nil
             },
             confirmDetail: resetClaim?.confirmDetail,
-            title: resetClaim?.scopeTitle,
+            sections: resetClaim?.sections ?? [],
             windowResets: resetClaim?.windowResets ?? [],
             claimWindowReset: resetClaim.map { service in
                 { reset, requestID in await service.claim(reset, requestID: requestID) }

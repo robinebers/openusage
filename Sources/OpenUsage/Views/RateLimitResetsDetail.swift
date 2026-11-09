@@ -14,8 +14,8 @@ struct RateLimitResetsDetail: View {
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
     var confirmDetail: String?
-    /// Names the flat timeline when its resets apply to one model's limit.
-    var title: String?
+    /// Resets listed under a title each; only a usable section's resets can be spent.
+    var sections: [ResetSection] = []
     /// Resets listed per window instead of on one timeline; only each window's earliest can be used.
     var windowResets: [ZAIReset] = []
     var claimWindowReset: ((_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
@@ -42,6 +42,10 @@ struct RateLimitResetsDetail: View {
         )
     }
 
+    private var sectionGroups: [SectionGroup] {
+        Self.sectionGroups(sections, claimed: claimedCounts)
+    }
+
     private var windows: [Window] {
         Self.windows(windowResets.filter { !claimedRecords.contains($0.recordID) })
     }
@@ -57,21 +61,23 @@ struct RateLimitResetsDetail: View {
                     claimingRow().transition(.opacity)
                 }
                 ForEach(windows, id: \.window) { window in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(window.window.title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        timeline(window.entries)
-                    }
+                    titledTimeline(window.window.title, window.entries)
+                }
+            } else if !sectionGroups.isEmpty {
+                if let claiming, !sectionGroups.contains(where: { $0.entries.contains { $0.key == claiming } }) {
+                    claimingRow().transition(.opacity)
+                }
+                ForEach(sectionGroups, id: \.title) { group in
+                    titledTimeline(group.title, group.entries)
                 }
             } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
                 if case .timeline(let entries) = content {
-                    titledTimeline(entries)
+                    timeline(entries)
                 }
             } else {
                 switch content {
-                case .timeline(let entries): titledTimeline(entries)
+                case .timeline(let entries): timeline(entries)
                 case .unknownExpiries(let count): unknownExpiriesState(count)
                 case .empty: emptyState
                 }
@@ -92,7 +98,16 @@ struct RateLimitResetsDetail: View {
         .onChange(of: expiries) { _, newValue in
             expiriesVersion += 1
             claimedCounts = [:]
-            if let confirming, confirming.reset == nil, !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
+            if let confirming, confirming.reset == nil, confirming.section == nil,
+               !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
+                cancelConfirm()
+            }
+        }
+        .onChange(of: sections) { _, newValue in
+            expiriesVersion += 1
+            claimedCounts = [:]
+            if let confirming, confirming.section != nil,
+               !Self.sectionGroups(newValue, claimed: [:]).contains(where: { $0.entries.contains { $0.key == confirming } }) {
                 cancelConfirm()
             }
         }
@@ -139,16 +154,11 @@ struct RateLimitResetsDetail: View {
         .padding(.vertical, 8)
     }
 
-    @ViewBuilder
-    private func titledTimeline(_ entries: [Entry]) -> some View {
-        if let title {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                timeline(entries)
-            }
-        } else {
+    private func titledTimeline(_ title: String, _ entries: [Entry]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
             timeline(entries)
         }
     }
@@ -320,7 +330,10 @@ struct RateLimitResetsDetail: View {
     private static let flowAnimation: Animation = .snappy(duration: 0.25)
 
     private func canUse(_ entry: Entry) -> Bool {
-        entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
+        if let section = entry.key.section {
+            return claim != nil && sections.indices.contains(section) && sections[section].usable
+        }
+        return entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
     }
 
     private func beginConfirm(_ entry: Entry) {

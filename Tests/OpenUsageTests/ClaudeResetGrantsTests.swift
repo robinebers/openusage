@@ -61,21 +61,47 @@ final class ClaudeResetGrantsTests: XCTestCase {
             status.confirmDetail,
             "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
         )
-        XCTAssertEqual(status.scopeTitle(now: now), "Fable Resets")
+        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: "2027-03-09T07:59:00+00:00"))
+        XCTAssertEqual(status.sections(now: now), [ResetSection(title: "Fable Resets", expiries: [expiry, expiry], usable: true)])
     }
 
     func testUnrecognizedWindowKeepsTheGeneralWording() throws {
         XCTAssertNil(try fableStatus(clears: #"["five_hour","some_new_window"]"#).confirmDetail)
     }
 
-    func testMixedGrantsHaveNoScopeTitle() throws {
-        let other = #", { "id": "other", "resets_left": 1, "clears": ["five_hour", "seven_day"] }"#
-        XCTAssertNil(try fableStatus(otherGrant: other).scopeTitle(now: now))
+    func testMixedGrantsListEachKindApartAndOnlyTheNextCanBeSpent() throws {
+        let other = #", { "id": "other", "resets_left": 2, "ends_at": "2026-12-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
+        let sections = try fableStatus(otherGrant: other).sections(now: now)
+        let ordinary = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-12-01T00:00:00+00:00"))
+        XCTAssertEqual(sections.map(\.title), ["Fable Resets", "Session & Weekly Resets"])
+        XCTAssertEqual(sections.map(\.usable), [true, false])
+        XCTAssertEqual(sections.last?.expiries, [ordinary, ordinary])
     }
 
-    func testExpiredOrdinaryGrantLeavesTheFableTitle() throws {
+    func testExpiredOrdinaryGrantLeavesOnlyTheFableSection() throws {
         let lapsed = #", { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
-        XCTAssertEqual(try fableStatus(otherGrant: lapsed).scopeTitle(now: now), "Fable Resets")
+        XCTAssertEqual(try fableStatus(otherGrant: lapsed).sections(now: now).map(\.title), ["Fable Resets"])
+    }
+
+    func testOrdinaryGrantsAloneStayOnOneTimeline() throws {
+        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
+            #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day"]}],"next_grant_id":"g"}}"#
+        )))
+        XCTAssertEqual(status.sections(now: now), [])
+    }
+
+    func testSectionsSharingAnExpiryKeepTheirRowsApartAndSpendFromTheUsableOne() {
+        let expiry = now.addingTimeInterval(86_400)
+        let sections = [
+            ResetSection(title: "Fable Resets", expiries: [expiry, expiry], usable: true),
+            ResetSection(title: "Session & Weekly Resets", expiries: [expiry], usable: false)
+        ]
+        let groups = RateLimitResetsDetail.sectionGroups(sections, claimed: [:], now: now)
+        XCTAssertEqual(Set(groups.flatMap(\.entries).map(\.key)).count, 3)
+        let spent = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 1], now: now)
+        XCTAssertEqual(spent.map(\.entries.count), [1, 1])
+        let gone = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 2], now: now)
+        XCTAssertEqual(gone.map(\.title), ["Session & Weekly Resets"])
     }
 
     func testGrantWithoutDeadlineCountsWithNoExpiry() throws {

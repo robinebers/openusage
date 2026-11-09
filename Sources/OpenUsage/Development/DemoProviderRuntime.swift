@@ -21,24 +21,28 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
-    /// Sample Claude resets read as Fable resets, so their heading and confirmation show without an
-    /// account. Spending one sends nothing.
+    /// A sample Claude account's resets are ordinary ones, Fable ones, or both, fixed by its id, so every
+    /// layout and confirmation shows without an account. Spending one sends nothing.
     func resetClaimService(
-        refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
+        expiries: [Date], refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
         guard account.kind == .claude else { return nil }
-        let grant = ClaudeResetGrantStatus.Grant(
-            id: "sample-fable", resetsLeft: 1, endsAt: nil,
-            clears: ["five_hour", "seven_day_overage_included"], givesBackWeekly: true
-        )
-        let status = ClaudeResetGrantStatus(eligible: true, grants: [grant], nextGrantID: grant.id)
+        let kind = account.id.uuid.0 % 3
+        let grants = expiries.sorted().enumerated().map { index, expiry in
+            let isFable = kind == 1 || (kind == 2 && index == 0)
+            return ClaudeResetGrantStatus.Grant(
+                id: isFable ? "sample-fable-\(index)" : "sample-\(index)", resetsLeft: 1, endsAt: expiry,
+                clears: ["five_hour", isFable ? "seven_day_overage_included" : "seven_day"], givesBackWeekly: isFable
+            )
+        }
+        let status = ClaudeResetGrantStatus(eligible: true, grants: grants, nextGrantID: grants.first?.id)
         return ResetClaimService(
             accountID: account.cardID,
-            isClaimable: true,
+            isClaimable: status.claimableGrantID != nil,
             confirmDetail: status.confirmDetail,
             claimReset: { _, _ in .success },
             refreshAccount: refreshAccount,
-            scopeTitle: status.scopeTitle(now: Date())
+            sections: status.sections(now: Date())
         )
     }
 

@@ -80,13 +80,30 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         return detail + ". This can't be undone."
     }
 
-    /// Names the popover's timeline when every reset still available is for one model's limit.
-    func scopeTitle(now: Date) -> String? {
+    /// The resets by what they refill, once any is for one model's limit: that model's resets, then the
+    /// rest. Empty while every reset is an ordinary one, which the popover lists on one timeline.
+    func sections(now: Date) -> [ResetSection] {
         let open = availableGrants(now: now)
-        guard let model = open.first?.scopedModel, open.allSatisfy({ $0.scopedModel == model }) else {
-            return nil
+        guard open.contains(where: { $0.scopedModel != nil }) else { return [] }
+        var models: [String?] = []
+        for grant in open where !models.contains(grant.scopedModel) { models.append(grant.scopedModel) }
+        let next = claimableGrantID
+        return models.map { model in
+            let grants = open.filter { $0.scopedModel == model }
+            return ResetSection(
+                title: model.map { "\($0) Resets" } ?? Self.ordinaryTitle(grants),
+                expiries: grants.flatMap { grant in
+                    grant.endsAt.map { Array(repeating: $0, count: grant.resetsLeft) } ?? []
+                }.sorted(),
+                usable: grants.contains { $0.id == next }
+            )
         }
-        return "\(model) Resets"
+    }
+
+    private static func ordinaryTitle(_ grants: [Grant]) -> String {
+        let cleared = Set(grants.flatMap(\.clears))
+        let names = [("five_hour", "Session"), ("seven_day", "Weekly")].filter { cleared.contains($0.0) }.map(\.1)
+        return names.isEmpty ? "Other Resets" : names.joined(separator: " & ") + " Resets"
     }
 
     /// The grants whose resets the row counts: eligible, with a reset left, and not yet expired.

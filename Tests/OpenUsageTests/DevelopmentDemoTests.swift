@@ -15,18 +15,26 @@ final class DevelopmentDemoTests: XCTestCase {
         XCTAssertNotEqual(other, first, "another seed must draw other data")
     }
 
-    func testSampleClaudeResetsReadAsFableResets() async throws {
-        let container = await makeContainer(seed: 4242)
-        let accounts = container.dataStore.accounts(in: container.layout.displayGroups)
-        let claude = try XCTUnwrap(accounts.first { $0.provider.kind == .claude })
-        let service = try XCTUnwrap(container.resetClaim(for: claude.provider.id))
-        XCTAssertEqual(service.scopeTitle, "Fable Resets")
-        XCTAssertEqual(
-            service.confirmDetail,
-            "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
-        )
-        let codex = try XCTUnwrap(accounts.first { $0.provider.kind == .codex })
-        XCTAssertNil(container.resetClaim(for: codex.provider.id))
+    func testSampleClaudeResetsAreOrdinaryFableOrBoth() async throws {
+        let fable = "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
+        let ordinary = "Refills your session and weekly limits now. This can't be undone."
+        var layouts: Set<[String]> = []
+        for seed in 1...30 {
+            let container = await makeContainer(seed: seed)
+            for account in container.dataStore.accounts(in: container.layout.displayGroups) {
+                let service = container.resetClaim(for: account.provider.id)
+                guard account.provider.kind == .claude else {
+                    XCTAssertNil(service, "seed \(seed) \(account.provider.kind)")
+                    continue
+                }
+                guard let service, service.isClaimable else { continue }
+                let titles = service.sections.map(\.title)
+                XCTAssertEqual(service.confirmDetail, titles.first == "Fable Resets" ? fable : ordinary, "seed \(seed)")
+                XCTAssertEqual(service.sections.map(\.usable), titles.indices.map { $0 == 0 }, "seed \(seed)")
+                layouts.insert(titles)
+            }
+        }
+        XCTAssertEqual(layouts, [[], ["Fable Resets"], ["Fable Resets", "Session & Weekly Resets"]])
     }
 
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {

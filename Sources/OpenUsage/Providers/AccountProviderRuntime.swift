@@ -86,7 +86,7 @@ final class AccountProviderRuntime: ProviderRuntime {
                 confirmDetail: status?.confirmDetail,
                 claimReset: { [self] _, redeemRequestID in await claimClaudeResetGrant(redeemRequestID: redeemRequestID) },
                 refreshAccount: refreshAccount,
-                scopeTitle: status?.scopeTitle(now: now())
+                sections: status?.sections(now: now()) ?? []
             )
         case .codex:
             return ResetClaimService(

@@ -43,6 +43,8 @@ extension RateLimitResetsDetail {
             let ordinal: Int
             /// The exact record a window entry claims; nil on the flat timeline, which claims by date.
             var reset: ZAIReset?
+            /// The section an entry is listed under, so two sections sharing an expiry keep apart.
+            var section: Int?
         }
 
         var accessibilityLabel: String {
@@ -64,12 +66,29 @@ extension RateLimitResetsDetail {
         }
     }
 
+    struct SectionGroup: Equatable {
+        let title: String
+        let entries: [Entry]
+    }
+
+    /// Each section's resets on its own timeline. Resets already spent here leave the usable section,
+    /// the only one that can spend; a section with nothing left to list is dropped.
+    nonisolated static func sectionGroups(_ sections: [ResetSection], claimed: [Date: Int], now: Date = Date()) -> [SectionGroup] {
+        sections.enumerated().compactMap { index, section in
+            let expiries = section.usable ? visibleExpiries(section.expiries, claimed: claimed) : section.expiries
+            let entries = entries(from: expiries.map { ($0, nil) }, now: now, section: index)
+            return entries.isEmpty ? nil : SectionGroup(title: section.title, entries: entries)
+        }
+    }
+
     nonisolated static func entries(from expiries: [Date], now: Date = Date()) -> [Entry] {
         entries(from: expiries.map { ($0, nil) }, now: now)
     }
 
     /// Each expiry travels with the record it claims, so sorting can never pair a date with another record.
-    nonisolated static func entries(from items: [(date: Date, reset: ZAIReset?)], now: Date = Date()) -> [Entry] {
+    nonisolated static func entries(
+        from items: [(date: Date, reset: ZAIReset?)], now: Date = Date(), section: Int? = nil
+    ) -> [Entry] {
         var seen: [Date: Int] = [:]
         let sorted = items.sorted { ($0.date, $0.reset?.recordID ?? 0) < ($1.date, $1.reset?.recordID ?? 0) }
         return sorted.enumerated().map { index, item in
@@ -83,7 +102,7 @@ extension RateLimitResetsDetail {
                 id: index,
                 number: index + 1,
                 date: date,
-                key: Entry.Key(date: date, ordinal: ordinal, reset: reset),
+                key: Entry.Key(date: date, ordinal: ordinal, reset: reset, section: section),
                 severity: WidgetData.expirySeverity(secondsRemaining: date.timeIntervalSince(now)),
                 time: (imminent || absolute == nil) ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative

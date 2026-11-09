@@ -53,6 +53,14 @@ enum ResetClaimFailure: Equatable, Sendable {
     }
 }
 
+/// One titled group of resets. Only a usable group's resets can be spent: the provider spends its
+/// next grant, whichever row is chosen.
+struct ResetSection: Equatable, Sendable {
+    let title: String
+    let expiries: [Date]
+    let usable: Bool
+}
+
 @MainActor
 struct ResetClaimService {
     let accountID: String
@@ -63,8 +71,8 @@ struct ResetClaimService {
     /// Resets that each refill one window (Z.ai), earliest first, claimed by their exact record.
     var windowResets: [ZAIReset] = []
     var claimWindowReset: (@MainActor (_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
-    /// What the resets apply to, when that is one model's limit ("Fable Resets").
-    var scopeTitle: String?
+    /// Resets listed by what they refill (Claude's Fable resets apart from the rest); empty for one timeline.
+    var sections: [ResetSection] = []
 
     /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
