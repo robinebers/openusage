@@ -21,6 +21,27 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
+    /// Sample Claude resets read as Fable resets, so their heading and confirmation show without an
+    /// account. Spending one sends nothing.
+    func resetClaimService(
+        refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
+    ) -> ResetClaimService? {
+        guard account.kind == .claude else { return nil }
+        let grant = ClaudeResetGrantStatus.Grant(
+            id: "sample-fable", resetsLeft: 1, endsAt: nil,
+            clears: ["five_hour", "seven_day_overage_included"], givesBackWeekly: true
+        )
+        let status = ClaudeResetGrantStatus(eligible: true, grants: [grant], nextGrantID: grant.id)
+        return ResetClaimService(
+            accountID: account.cardID,
+            isClaimable: true,
+            confirmDetail: status.confirmDetail,
+            claimReset: { _, _ in .success },
+            refreshAccount: refreshAccount,
+            scopeTitle: status.scopeTitle
+        )
+    }
+
     static func make(
         accounts: [Account], existing: [ProviderRuntime], read: @escaping @MainActor (Account) -> ProviderSnapshot
     ) -> [ProviderRuntime] {

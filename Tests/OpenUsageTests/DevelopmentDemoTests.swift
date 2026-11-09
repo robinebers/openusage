@@ -15,6 +15,20 @@ final class DevelopmentDemoTests: XCTestCase {
         XCTAssertNotEqual(other, first, "another seed must draw other data")
     }
 
+    func testSampleClaudeResetsReadAsFableResets() async throws {
+        let container = await makeContainer(seed: 4242)
+        let accounts = container.dataStore.accounts(in: container.layout.displayGroups)
+        let claude = try XCTUnwrap(accounts.first { $0.provider.kind == .claude })
+        let service = try XCTUnwrap(container.resetClaim(for: claude.provider.id))
+        XCTAssertEqual(service.scopeTitle, "Fable Resets")
+        XCTAssertEqual(
+            service.confirmDetail,
+            "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
+        )
+        let codex = try XCTUnwrap(accounts.first { $0.provider.kind == .codex })
+        XCTAssertNil(container.resetClaim(for: codex.provider.id))
+    }
+
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {
         for seed in Array(1...30) + [DemoSession.seeds.upperBound] {
             let container = await makeContainer(seed: seed)

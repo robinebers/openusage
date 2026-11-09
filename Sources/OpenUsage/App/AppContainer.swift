@@ -80,6 +80,11 @@ final class AppContainer {
     }
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
+        #if OPENUSAGE_DEVELOPMENT
+        if let demo = providers.first(where: { $0.provider.id == providerID }) as? DemoProviderRuntime {
+            return demo.resetClaimService { [dataStore] in await dataStore.refresh(providerID: providerID, force: true, rereadHourly: false) }
+        }
+        #endif
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return nil }
         let rereadsResets = runtime.account.kind == .zai
         return runtime.resetClaimService { [dataStore] in
