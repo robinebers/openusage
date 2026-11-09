@@ -98,16 +98,16 @@ struct RateLimitResetsDetail: View {
         .onChange(of: expiries) { _, newValue in
             expiriesVersion += 1
             claimedCounts = [:]
-            if let confirming, confirming.reset == nil, confirming.section == nil,
-               !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
+            if let confirming, confirming.reset == nil,
+               !Self.timelineKeys(expiries: newValue, sections: sections).contains(confirming) {
                 cancelConfirm()
             }
         }
         .onChange(of: sections) { _, newValue in
             expiriesVersion += 1
             claimedCounts = [:]
-            if let confirming, confirming.section != nil,
-               !Self.sectionGroups(newValue, claimed: [:]).contains(where: { $0.entries.contains { $0.key == confirming } }) {
+            if let confirming, confirming.reset == nil,
+               !Self.timelineKeys(expiries: expiries, sections: newValue).contains(confirming) {
                 cancelConfirm()
             }
         }

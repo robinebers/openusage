@@ -81,6 +81,15 @@ extension RateLimitResetsDetail {
         }
     }
 
+    /// The rows the popover shows for these resets: the sections' when any has a row, else the one
+    /// timeline's. A confirmation is only kept while its row is among them, so a refresh that switches
+    /// between the two layouts can't strand one that no row shows.
+    nonisolated static func timelineKeys(expiries: [Date], sections: [ResetSection], now: Date = Date()) -> Set<Entry.Key> {
+        let groups = sectionGroups(sections, claimed: [:], now: now)
+        let entries = groups.isEmpty ? entries(from: expiries, now: now) : groups.flatMap(\.entries)
+        return Set(entries.map(\.key))
+    }
+
     nonisolated static func entries(from expiries: [Date], now: Date = Date()) -> [Entry] {
         entries(from: expiries.map { ($0, nil) }, now: now)
     }

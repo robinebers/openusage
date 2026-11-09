@@ -104,6 +104,21 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertEqual(gone.map(\.title), ["Session & Weekly Resets"])
     }
 
+    func testConfirmationDoesNotSurviveASwitchBetweenOneTimelineAndSections() throws {
+        let ordinary = now.addingTimeInterval(86_400)
+        let fable = now.addingTimeInterval(2 * 86_400)
+        let flatKey = try XCTUnwrap(RateLimitResetsDetail.entries(from: [ordinary], now: now).first?.key)
+        let sections = [
+            ResetSection(title: "Session & Weekly Resets", expiries: [ordinary], usable: true),
+            ResetSection(title: "Fable Resets", expiries: [fable], usable: false)
+        ]
+        XCTAssertTrue(RateLimitResetsDetail.timelineKeys(expiries: [ordinary], sections: [], now: now).contains(flatKey))
+        let grouped = RateLimitResetsDetail.timelineKeys(expiries: [ordinary, fable], sections: sections, now: now)
+        XCTAssertFalse(grouped.contains(flatKey), "the ordinary expiry is still there, but under a section's row")
+        let sectionKey = try XCTUnwrap(grouped.first { $0.date == ordinary })
+        XCTAssertFalse(RateLimitResetsDetail.timelineKeys(expiries: [ordinary], sections: [], now: now).contains(sectionKey))
+    }
+
     func testGrantWithoutDeadlineCountsWithNoExpiry() throws {
         let line = try resetsLine(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":null}]}}"#)
         let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
