@@ -115,6 +115,7 @@ private struct DashboardTabControl: NSViewRepresentable {
             action: #selector(Coordinator.pick(_:))
         )
         control.segmentDistribution = .fillEqually
+        control.sendAction(on: .leftMouseDown)
         control.controlSize = .large
         control.setAccessibilityLabel("Dashboard")
         return control
