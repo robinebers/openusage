@@ -11,8 +11,8 @@ Priority lists.
   order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
   Priority lists it.
 - Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
-- Limits past that number show as a count, like `+7`. With Always Show In Menu Bar off, only
-  limits running out show or count.
+- Limits past that number show as a count, like `+7`. Used Up limits never count. With Always Show
+  In Menu Bar off, only limits running out show or count.
 - With nothing to show, or with **App Icon Only**, the strip shows the app icon.
 - With [Privacy Mode](privacy.md#privacy-mode) on, it shows the app icon while your screen
   is shared or recorded.

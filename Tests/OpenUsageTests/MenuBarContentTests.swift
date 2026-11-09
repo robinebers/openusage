@@ -81,12 +81,12 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(strip.overflow, 1, "only Lower waits; Spent and Spent Too aren't running out")
     }
 
-    func testAlwaysShowingListsUsedUpLimitsAfterRunningOutAndCountsThemTowardTheOverflow() {
+    func testAlwaysShowingListsUsedUpLimitsAfterRunningOutWithoutCountingThemTowardTheOverflow() {
         let accounts = account(personal, limit("Spent", used: 100), limit("Spent Too", used: 100),
                                limit("Low", used: 95), limit("Lower", used: 90))
         let one = content(.upToOne, alwaysShows: true, accounts)
         XCTAssertEqual(one.items.map(\.shortLabel), ["Low"])
-        XCTAssertEqual(one.overflow, 3)
+        XCTAssertEqual(one.overflow, 1, "only Lower waits; Used Up never counts")
 
         let five = content(.upToFive, alwaysShows: true, accounts)
         XCTAssertEqual(five.items.map(\.shortLabel), ["Low", "Lower", "Spent", "Spent Too"])
@@ -96,6 +96,15 @@ final class MenuBarContentTests: XCTestCase {
         var left = limit("Spent", used: 100)
         left.displayMode = .remaining
         XCTAssertEqual(content(.upToOne, alwaysShows: true, account(personal, left)).items.map(\.value), ["0%"])
+    }
+
+    func testAlwaysShowingWithTheStripFullOfRunningOutLeavesUsedUpOutOfTheCount() {
+        let strip = content(.upToThree, alwaysShows: true,
+                            account(personal, limit("Low", used: 95), limit("Lower", used: 92), limit("Lowest", used: 90),
+                                    limit("Spent", used: 100), limit("Spent Too", used: 100), limit("Spent Three", used: 100)))
+        XCTAssertEqual(strip.items.map(\.shortLabel), ["Low", "Lower", "Lowest"])
+        XCTAssertEqual(strip.overflow, 0)
+        XCTAssertFalse(strip.accessibilityText.contains("more"))
     }
 
     func testPinnedLimitsShowWithNothingRunningOutOnlyWhenAlwaysShowing() {
@@ -141,7 +150,7 @@ final class MenuBarContentTests: XCTestCase {
                        "Pinned, Running Out, Use It or Lose It, then Used Up, each in the tab's order")
         let three = MenuBarContentBuilder.build(board: board, limit: .upToThree, alwaysShows: true)
         XCTAssertEqual(three.items.map(\.shortLabel), ["Pin B", "Pin A", "Low"])
-        XCTAssertEqual(three.overflow, 2)
+        XCTAssertEqual(three.overflow, 1, "Reset Soon waits; Used Up never counts")
 
         let off = MenuBarContentBuilder.build(board: board, limit: .upToThree)
         XCTAssertEqual(off.items.map(\.shortLabel), ["Low"], "off, only what's running out")
