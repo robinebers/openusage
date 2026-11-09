@@ -14,6 +14,8 @@ struct RateLimitResetsDetail: View {
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
     var confirmDetail: String?
+    /// Names the flat timeline when its resets apply to one model's limit.
+    var title: String?
     /// Resets listed per window instead of on one timeline; only each window's earliest can be used.
     var windowResets: [ZAIReset] = []
     var claimWindowReset: ((_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
@@ -65,11 +67,11 @@ struct RateLimitResetsDetail: View {
             } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
                 if case .timeline(let entries) = content {
-                    timeline(entries)
+                    titledTimeline(entries)
                 }
             } else {
                 switch content {
-                case .timeline(let entries): timeline(entries)
+                case .timeline(let entries): titledTimeline(entries)
                 case .unknownExpiries(let count): unknownExpiriesState(count)
                 case .empty: emptyState
                 }
@@ -135,6 +137,20 @@ struct RateLimitResetsDetail: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func titledTimeline(_ entries: [Entry]) -> some View {
+        if let title {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                timeline(entries)
+            }
+        } else {
+            timeline(entries)
+        }
     }
 
     private func timeline(_ entries: [Entry]) -> some View {

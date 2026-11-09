@@ -63,6 +63,8 @@ struct ResetClaimService {
     /// Resets that each refill one window (Z.ai), earliest first, claimed by their exact record.
     var windowResets: [ZAIReset] = []
     var claimWindowReset: (@MainActor (_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
+    /// What the resets apply to, when that is one model's limit ("Fable Resets").
+    var scopeTitle: String?
 
     /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {

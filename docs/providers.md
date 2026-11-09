@@ -60,7 +60,8 @@ resets popover says so, and you can spend the reset in Claude Code instead.
   the account's billing currency. It hides while extra usage is off. On an Enterprise plan, where
   this is the whole monthly bill, the row reads Spend.
 - **Limit Resets** counts the account's rate-limit resets. Click the count to see when each expires.
-  Choose **Use**, then **Reset**, to spend one.
+  Choose **Use**, then **Reset**, to spend one. Resets that apply to one model's limit, such as Fable
+  resets, are named in the list, and the confirmation says which limits the reset refills.
 
 ## ChatGPT
 

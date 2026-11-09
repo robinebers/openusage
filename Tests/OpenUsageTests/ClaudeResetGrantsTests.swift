@@ -39,6 +39,40 @@ final class ClaudeResetGrantsTests: XCTestCase {
         ])
     }
 
+    /// The live shape of the Fable launch grants: the session and Fable limits, with the week's Fable use
+    /// taken off the weekly limit.
+    private func fableStatus(clears: String = #"["five_hour","seven_day_overage_included"]"#,
+                             otherGrant: String = "") throws -> ClaudeResetGrantStatus {
+        try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
+        { "cedar_ember": { "eligible": true, "grants": [
+            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
+              "label": "New model launch: one Fable reset for Max, Team Premium and Enterprise Premium",
+              "clears": \(clears), "gives_back_weekly": true },
+            { "id": "launch-2610-fable-6mo", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
+              "label": "New model launch: one more Fable reset at 6 months' tenure",
+              "clears": \(clears), "gives_back_weekly": true }\(otherGrant)
+          ], "next_grant_id": "launch-2610-fable" } }
+        """)))
+    }
+
+    func testFableGrantNamesItsLimitsAndTheWeeklyGiveBack() throws {
+        let status = try fableStatus()
+        XCTAssertEqual(
+            status.confirmDetail,
+            "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
+        )
+        XCTAssertEqual(status.scopeTitle, "Fable Resets")
+    }
+
+    func testUnrecognizedWindowKeepsTheGeneralWording() throws {
+        XCTAssertNil(try fableStatus(clears: #"["five_hour","some_new_window"]"#).confirmDetail)
+    }
+
+    func testMixedGrantsHaveNoScopeTitle() throws {
+        let other = #", { "id": "other", "resets_left": 1, "clears": ["five_hour", "seven_day"] }"#
+        XCTAssertNil(try fableStatus(otherGrant: other).scopeTitle)
+    }
+
     func testGrantWithoutDeadlineCountsWithNoExpiry() throws {
         let line = try resetsLine(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":null}]}}"#)
         let (count, expiries) = try XCTUnwrap(countAndExpiries(line))
