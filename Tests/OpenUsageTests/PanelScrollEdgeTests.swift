@@ -46,7 +46,7 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
 
     /// A tab switch draws its new rows a frame before the panel takes their height. In that frame the
     /// bottom bar covers them in the panel's color, so they don't flash through `Next update`; once the
-    /// panel fits the page, the bar shows what is under it again.
+    /// panel fits the page, the bar shows what is under it again (frosted before macOS 27).
     func testTheBottomBarCoversContentOnlyWhileThePanelIsAtAnotherHeight() async throws {
         let barHeight: CGFloat = 30
         MenuBarPopover.clampHeight = { min($0, 300) }
@@ -64,7 +64,11 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
 
         window.setContentSize(CGSize(width: 200, height: 300))
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(try showsContent(in: bottomBar(), of: host, matching: isBlue), "the bottom bar still covers content once the panel fits it")
+        if #available(macOS 27, *) {
+            XCTAssertTrue(try showsContent(in: bottomBar(), of: host, matching: isBlue), "the bottom bar still covers content once the panel fits it")
+        } else {
+            XCTAssertTrue(frosts(bottomBar(), in: host), "the bottom bar doesn't frost over content once the panel fits it")
+        }
     }
 
     /// Whether an in-window blur shows over all of `bar`, a rect in `host`'s coordinates.

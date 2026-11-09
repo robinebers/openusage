@@ -18,6 +18,16 @@ final class CapsuleSegmentsTests: QuietWindowTestCase {
         let inBetween = ContentProgress.inBetween.withLock { $0 }
         XCTAssertTrue(inBetween.isEmpty, "the picked content animated in through \(inBetween.prefix(3))")
     }
+
+    /// The dashboard's tabs switch as the mouse goes down, like a native tab, not when it comes back up.
+    func testAPressPicksTheSegmentBeforeTheRelease() async throws {
+        let model = SegmentModel()
+        let (window, host) = show(SegmentsAndContent(model: model, selectsOnPress: true), in: .borderless, size: CGSize(width: 200, height: 60))
+
+        send(.leftMouseDown, at: CGPoint(x: 150, y: 14), window, host)
+        try await waitUntil { model.selection == "B" }
+        send(.leftMouseUp, at: CGPoint(x: 150, y: 14), window, host)
+    }
 }
 
 @MainActor
@@ -28,10 +38,11 @@ private final class SegmentModel {
 
 private struct SegmentsAndContent: View {
     let model: SegmentModel
+    var selectsOnPress = false
 
     var body: some View {
         VStack(spacing: 0) {
-            CapsuleSegments(options: [("A", "A"), ("B", "B")], selection: Bindable(model).selection)
+            CapsuleSegments(options: [("A", "A"), ("B", "B")], selection: Bindable(model).selection, selectsOnPress: selectsOnPress)
             Text(model.selection)
                 .modifier(ContentProgress(value: model.selection == "B" ? 1 : 0))
         }
