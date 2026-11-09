@@ -4,7 +4,7 @@ import Foundation
 import os
 
 /// Answers "is anything watching the screen right now?" — the live signal behind the menu bar's
-/// Hide From Screen Share setting (`HideFromScreenShareSetting`).
+/// Privacy Mode setting (`HideFromScreenShareSetting`).
 ///
 /// The window server tracks every attached capture stream — Zoom/Meet/Teams screen shares, QuickTime
 /// and `screencapture` recordings, OBS, macOS Screen Sharing — but macOS gives AppKit apps no public

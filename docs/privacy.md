@@ -21,11 +21,13 @@ The [macOS widgets](macos-widgets.md) read a separate local copy of account name
 usage from an App Group shared with the app. That copy contains no credentials or detailed errors.
 Removing an account removes its shared values too. Widget data never goes to the analytics service.
 
-## Screen sharing
+## Privacy Mode
 
-**Settings → Privacy → Hide From Screen Share** shows the app icon in the menu bar instead of your
-usage while your screen is shared or recorded. It is off by default and doesn't hide the panel
-or macOS widgets.
+**Settings → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
+panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
+off, they leave email addresses out. It is off by default and doesn't hide macOS widgets. A single
+still screenshot (⌘⇧3, ⌘⇧4) can't be detected, so use the copy button to share a picture.
 
 ## Anonymous telemetry
 

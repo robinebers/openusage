@@ -17,6 +17,7 @@ struct AccountListRow<Grip: View>: View {
                 if let accountLabel = provider.labelBesideName {
                     Text(accountLabel)
                         .foregroundStyle(.secondary)
+                        .concealingAccountName(of: provider)
                 }
                 Spacer(minLength: 0)
             }

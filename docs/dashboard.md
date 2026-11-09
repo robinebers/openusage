@@ -23,7 +23,7 @@ Priority shows only what needs you, most urgent first.
 - **Use It or Lose It** lists, with the setting of that name on, a limit that resets within 24 hours
   with over 50% left, the same rule as the alert. Only windows longer than a day count, never the
   5-hour session or a dollar spending cap. Each shows when it resets, like `Resets in 18h`, soonest
-  first. These limits never show in the menu bar.
+  first. These show in the menu bar only with Always Show In Menu Bar on.
 - **All Clear** shows under Running Out when every account has a current reading and nothing is
   running low. It waits for accounts that haven't reported yet.
 - **Needs Attention** names an account whose refresh failed or whose provider sent a notice.
@@ -82,8 +82,8 @@ Hover over the warning or the clock, or right-click the account, to see why.
 
 An account's page in **Accounts** lists all of its metrics.
 
-- Turn a metric's switch off to hide it everywhere: All Usage, Priority, the menu bar, and
-  notifications.
+- Turn a metric's switch off, or right-click it on the dashboard and choose **Hide**, to hide it
+  everywhere: All Usage, Priority, the menu bar, and notifications. Hiding a pinned metric unpins it.
 - Click the pin, or right-click the metric on the dashboard and choose **Pin**, to list it under
   Pinned on Priority. A hidden metric can't be pinned.
 - Drag a metric by its handle to move it within the account.
@@ -95,7 +95,7 @@ An account's page in **Accounts** lists all of its metrics.
   Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. A Copilot
   organization account also has **Organization Billing**.
-- A metric: **Pin** or **Unpin**, then its account's menu.
+- A metric: **Pin** or **Unpin**, and **Hide**. On All Usage, its account's menu follows.
 
 ## Reordering
 
@@ -120,7 +120,8 @@ Hover over a Today, Yesterday, or similar figure to preview its details. Click i
 
 Hover over a provider's card and click the copy button beside its logo, or choose **Share
 Screenshot**, to copy a PNG of its card. On one account in a card of several, it copies only that
-account. Emails are left out.
+account. Emails are left out, or every account name is blurred with
+[Privacy Mode](privacy.md#privacy-mode) on.
 
 ## Update banner
 
@@ -133,7 +134,7 @@ cards. **Install Update** opens the update window, and ✕ hides the card until 
 - **OpenUsage** and the version, like `OpenUsage 0.8.0`, sit over **Next update in …**, which counts
   down to the next refresh. Click it or press **⌘R** to refresh now. A dev build shows its commit,
   like `dev (abc1234)`.
-- On Priority, a button copies the tab as a PNG with emails hidden.
+- On Priority, a button copies the tab as a PNG, leaving emails out the same way.
 - The **⋯** menu has **Accounts**, **Settings**, **Check for Updates…**, **Report an Issue…**,
   **About OpenUsage**, and **Quit OpenUsage**.
 

@@ -52,7 +52,8 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 - **Priority.** What's running low, what's used up, and which accounts need you.
 - **All Usage.** Every account and limit in one place, with resets, your pace, and an optional mark
   where an even pace would be.
-- **Your layout.** Pin the metrics you care about, hide the rest, and drag everything into your order.
+- **Your layout.** Pin the metrics you care about, hide the rest with a right-click, and drag
+  everything into your order.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
 - **[macOS widgets](docs/macos-widgets.md).** One account's usage on the desktop or in Notification Center.
 - **Share.** Copy a picture of your usage to the clipboard.

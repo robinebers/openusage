@@ -10,12 +10,15 @@ set -euo pipefail
 #     com.robinebers.openusage below;
 #   - ships no Sparkle feed, so it never checks for or installs updates (test updates with a real
 #     signed + notarized release build — that's the only honest way).
+#   - includes the development-only Sample Data switch and a signed sibling demo app. Production
+#     release builds never receive the compile flag or the sibling app.
 #
 # Usage: script/build_and_run.sh [run|build|logs|verify]
 # Env:   CODESIGN_IDENTITY  override signing identity (exact name or hash)
 #        OPENUSAGE_TEAM_ID  Apple Developer team id (normally inferred from the identity)
 #        WIDGETS_REQUIRED   set to 1 to fail instead of building without widgets
 #        CONFIG             "release" (default) or "debug"
+#        BUNDLE_ID          defaults to com.robinebers.openusage.dev; other identities omit demo code
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
@@ -23,6 +26,9 @@ CONFIG="${CONFIG:-release}"
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
 BUNDLE_ID="${BUNDLE_ID:-com.robinebers.openusage.dev}"
+DEMO_BUNDLE_ID="com.robinebers.openusage.dev.demo"
+DEVELOPMENT_BUILD=false
+[ "$BUNDLE_ID" = "com.robinebers.openusage.dev" ] && DEVELOPMENT_BUILD=true
 MIN_SYSTEM_VERSION="15.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +43,8 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$TARGET_NAME"
+DEMO_APP_BUNDLE="$DIST_DIR/OpenUsage Demo.app"
+DEMO_APP_BINARY="$DEMO_APP_BUNDLE/Contents/MacOS/$TARGET_NAME"
 CLI_BINARY="$APP_HELPERS/openusage"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
@@ -78,14 +86,21 @@ else
   echo "WARNING: no team-signed identity; building the host app without WidgetKit support." >&2
 fi
 
-# Stop only the dev build staged here, never an installed OpenUsage with the same executable name.
+# Stop only the dev builds staged here, never an installed OpenUsage with the same executable name.
 pkill -f "^$APP_BINARY" >/dev/null 2>&1 || true
+if "$DEVELOPMENT_BUILD"; then pkill -f "^$DEMO_APP_BINARY" >/dev/null 2>&1 || true; fi
 # WidgetKit can keep the previous extension alive after the host exits.
 pkill -f "^$APP_BUNDLE/Contents/PlugIns/OpenUsageWidgets.appex/" >/dev/null 2>&1 || true
 
 echo "==> swift build ($CONFIG)"
-swift build -c "$CONFIG"
-BUILD_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+BUILD_ARGS=(-c "$CONFIG")
+BUILD_ARTIFACTS="$ROOT_DIR/.build/artifacts"
+if "$DEVELOPMENT_BUILD"; then
+  BUILD_ARGS+=(--scratch-path "$ROOT_DIR/.build/development" -Xswiftc -DOPENUSAGE_DEVELOPMENT)
+  BUILD_ARTIFACTS="$ROOT_DIR/.build/development/artifacts"
+fi
+swift build "${BUILD_ARGS[@]}"
+BUILD_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$TARGET_NAME"
 BUILD_CLI_BINARY="$BUILD_DIR/openusage-cli"
 
@@ -213,7 +228,7 @@ fi
 # Embed + sign Sparkle.framework before sealing the app. The executable links Sparkle, so without the
 # embedded framework the build would fail to launch — even though the updater stays dormant here (no
 # SUFeedURL in the Info.plist above; see UpdaterController).
-"$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime"
+"$ROOT_DIR/script/embed_sparkle.sh" "$APP_BUNDLE" "$APP_BINARY" "$CODESIGN_IDENTITY" "--options runtime" "$BUILD_ARTIFACTS"
 
 if [ -n "$CODESIGN_IDENTITY" ]; then
   /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$CLI_BINARY" >/dev/null
@@ -244,6 +259,22 @@ else
   echo "WARNING: no Apple Development identity found; ad-hoc signed." >&2
 fi
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+
+if "$DEVELOPMENT_BUILD"; then
+  echo "==> staging $DEMO_APP_BUNDLE"
+  rm -rf "$DEMO_APP_BUNDLE"
+  ditto "$APP_BUNDLE" "$DEMO_APP_BUNDLE"
+  rm -rf "$DEMO_APP_BUNDLE/Contents/PlugIns"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $DEMO_BUNDLE_ID" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  if [ -n "$CODESIGN_IDENTITY" ]; then
+    /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
+      --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+  else
+    /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+  fi
+fi
 
 launch_app() {
   /usr/bin/open -n "$APP_BUNDLE"

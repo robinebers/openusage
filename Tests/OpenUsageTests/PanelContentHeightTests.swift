@@ -44,6 +44,45 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         }
     }
 
+    /// A tab switch resizes the panel in one step, like a native window. It used to spring the panel
+    /// through every height in between for about 0.6 s.
+    func testATabSwitchResizesThePanelInOneStep() async throws {
+        let hosted = try await openWithController(accounts: ["Personal", "Work", "Team"])
+        try await waitUntil(timeout: .seconds(10)) { hosted.dataStore.refreshingProviderIDs.isEmpty && self.fitsContent(hosted) }
+        let from = hosted.popover.dashboardTab
+        let to: DashboardTab = from == .priority ? .allUsage : .priority
+        let start = hosted.panel.frame.height
+        nonisolated(unsafe) var heights: [CGFloat] = []
+        let panel = hosted.panel
+        let observer = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: panel, queue: nil) { _ in
+            MainActor.assumeIsolated { heights.append(panel.frame.height) }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let segmentWidth = (PanelMetrics.width - 2 * PanelMetrics.margin) / 2
+        let index = CGFloat(DashboardTab.allCases.firstIndex(of: to) ?? 0)
+        click(CGPoint(x: PanelMetrics.margin + segmentWidth * (index + 0.5), y: PanelMetrics.margin + 14), hosted.panel, hosted.host)
+        try await waitUntil { hosted.popover.dashboardTab == to && abs(hosted.panel.frame.height - start) > 1 }
+        try await Task.sleep(for: .milliseconds(700))
+        try await waitUntil { self.fitsContent(hosted) }
+
+        XCTAssertEqual(heights.count, 1, "the panel animated through \(heights)")
+    }
+
+    /// A screen switch slides at AppKit's 0.25 s pace and drops the outgoing screen when it ends. The
+    /// old spring kept both screens up for about 0.6 s, with a wobble at the end.
+    func testAScreenSlideEndsAtTheNavigationPace() async throws {
+        let hosted = try await openWithController(accounts: ["Personal"])
+        try await waitUntil { self.fitsContent(hosted) }
+
+        let started = ContinuousClock.now
+        hosted.popover.toggle(.accounts)
+        try await waitUntil { scrollViews(in: hosted.host).count == 2 }
+        try await waitUntil { scrollViews(in: hosted.host).count == 1 }
+
+        XCTAssertLessThan(ContinuousClock.now - started, .milliseconds(550))
+    }
+
     private func fitsContent(_ hosted: HostedPopover) -> Bool {
         guard let height = contentHeight(hosted.host) else { return false }
         return abs(hosted.panel.frame.height - height) <= 1

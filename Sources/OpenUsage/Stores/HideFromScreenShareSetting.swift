@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// The Hide From Screen Share setting and the live capture signal behind it. Capture is watched only
+/// The Privacy Mode setting and the live capture signal behind it. Capture is watched only
 /// while the setting is on: a short poll is the guarantee, and the window server's change
 /// notifications, private and best-effort, only make the swap faster.
 @MainActor

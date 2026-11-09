@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Right-click a usage row on All Usage or Priority and choose **Hide** to turn it off, the same as
+  its switch on the account's page. Requested by [@maddada](https://x.com/maddada) on X.
+
+### Fixed
+- With **Always Show In Menu Bar** on, the `+N` count in the menu bar no longer counts Used Up limits.
+
+## v0.8.0-beta.5
+
+### Fixed
+- The "Notifications are off" note in Settings opens OpenUsage's page in System Settings →
+  Notifications in one click ([#1617](https://github.com/robinebers/openusage/pull/1617)).
+- In clock mode, a reset a few days out, like `Tue, 2:30 AM`, no longer runs into the percentage
+  beside it. The reset column is now wide enough for an English day and time
+  ([#1627](https://github.com/robinebers/openusage/issues/1627)).
+
+## v0.8.0-beta.4
+
+### Changed
+- **Always Show In Menu Bar** under **Settings → Display → Priority** lists everything Priority does
+  in the menu bar, in its order: Pinned, Running Out, Use It or Lose It, then Used Up. Off by default.
+  **Show In Menu Bar** is now **Max Items In Menu Bar**
+  ([#1611](https://github.com/robinebers/openusage/issues/1611)).
+- Screen and account page slides run at the Mac's native 0.25 s pace, and switching between
+  Priority and All Usage shows the new tab at once
+  ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6652210093)).
+- **Hide From Screen Share** is now **Privacy Mode**, and also blurs account names in the panel while
+  your screen is shared or recorded. While it's on, copied usage pictures blur every account name
+  ([#1599](https://github.com/robinebers/openusage/pull/1599)).
+
+### Fixed
+- On macOS 26, rows scrolled under the panel's footer are frosted, as on macOS 15, so the footer
+  stays readable ([#1619](https://github.com/robinebers/openusage/issues/1619)).
+- A reset a few days out shows its minutes in clock mode, like `mié, 8:31`, so in a 24-hour
+  locale its hour no longer reads like a day of the month
+  ([#1613](https://github.com/robinebers/openusage/issues/1613)).
+
 ## v0.8.0-beta.3
 
 ### Added

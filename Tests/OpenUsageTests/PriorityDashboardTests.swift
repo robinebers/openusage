@@ -29,7 +29,7 @@ final class PriorityDashboardTests: QuietWindowTestCase {
         container.popover.dashboardTab = tab
         for id in accounts {
             container.dataStore.snapshots[id] = ProviderSnapshot(
-                providerID: id, displayName: "Claude", plan: "Max 20x",
+                providerID: id, displayName: "Claude", plan: "Ultra",
                 lines: ["Session", "Weekly"].map {
                     .progress(label: $0, used: id == accounts.last ? 95 : 10, limit: 100, format: .percent)
                 }

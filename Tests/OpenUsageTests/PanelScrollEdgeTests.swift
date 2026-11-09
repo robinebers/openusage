@@ -6,8 +6,8 @@ import XCTest
 @MainActor
 final class PanelScrollEdgeTests: QuietWindowTestCase {
     /// On the panel's pages and Settings' form, content scrolled under the top bar is hidden behind the
-    /// panel, with no blur. Before macOS 26, content under the bottom bar frosts it with an in-window blur,
-    /// and the bottom bar is clear once nothing is under it. (From macOS 26 the system draws that edge.)
+    /// panel, with no blur. Before macOS 27, content under the bottom bar frosts it with an in-window blur,
+    /// and the bottom bar is clear once nothing is under it. (From macOS 27 the system draws that edge.)
     func testTheTopBarHidesContentAndTheBottomBarFrostsOverIt() async throws {
         let barHeight: CGFloat = 30
         let pages: [(String, AnyView)] = [
@@ -25,7 +25,7 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
             let topBar = NSRect(x: 0, y: host.isFlipped ? edges[0] : edges[1], width: host.bounds.width, height: barHeight)
             let bottomBar = NSRect(x: 0, y: host.isFlipped ? edges[1] : edges[0], width: host.bounds.width, height: barHeight)
             let frostsBelow = { () -> Bool? in
-                if #available(macOS 26, *) { return nil }
+                if #available(macOS 27, *) { return nil }
                 return self.frosts(bottomBar, in: host)
             }
             XCTAssertNotEqual(frostsBelow(), false, "\(name): the bottom bar stays clear over content")

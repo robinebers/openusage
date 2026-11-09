@@ -36,6 +36,7 @@ struct DashboardView: View {
                 }
             }
             .coordinateSpace(name: Self.reorderSpace)
+            .environment(\.concealsAccountNames, container.hideFromScreenShare.isConcealing)
             .sheet(isPresented: $popover.isAddingAccount, onDismiss: { popover.signingInAgainProviderID = nil }) {
                 AddAccountSheet(flow: AddAccountFlow(
                     store: container.accounts,
@@ -108,7 +109,7 @@ struct DashboardView: View {
                     let coTarget: CGFloat? = heightTarget(for: destination)
                         ?? (animatedHeight > 0 ? animatedHeight : nil)
                     if coTarget != nil { didEstablishHeight = true }
-                    withAnimation(Motion.spring, completionCriteria: .removed) {
+                    withAnimation(Motion.navigation, completionCriteria: .removed) {
                         slideProgress = 1
                         if let coTarget { animatedHeight = coTarget }
                     } completion: {
@@ -118,7 +119,7 @@ struct DashboardView: View {
                             didEstablishHeight = true
                             animatedHeight = target
                         } else if abs(target - animatedHeight) > 1 {
-                            withAnimation(Motion.spring) { animatedHeight = target }
+                            withAnimation(Motion.navigation) { animatedHeight = target }
                         }
                     }
                 }
@@ -130,11 +131,11 @@ struct DashboardView: View {
                 if !didEstablishHeight {
                     didEstablishHeight = true
                     animatedHeight = target
-                } else if isOpening || (popover.screen == .settings && !isSliding) {
-                    // The panel opens at its height, and a spring would redraw it on every frame of a Settings tab switch.
+                } else if isOpening || !isSliding {
+                    // Outside a screen slide the panel takes its new size in one step, like a native window.
                     animatedHeight = target
                 } else if abs(target - animatedHeight) > 1 {
-                    withAnimation(Motion.spring) { animatedHeight = target }
+                    withAnimation(Motion.navigation) { animatedHeight = target }
                 }
             }
     }

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct PopoverFooter: View {
+    @Environment(AppContainer.self) private var container
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(LayoutStore.self) private var layout
@@ -15,6 +16,9 @@ struct PopoverFooter: View {
             if screen == .dashboard {
                 HStack(alignment: .center, spacing: 8) {
                     footerIdentity
+                    #if OPENUSAGE_DEVELOPMENT
+                    DemoDataLabel()
+                    #endif
                     Spacer(minLength: 8)
                     if popover.dashboardTab == .priority, liveBoard.hasRows { copyPriorityButton }
                     optionsMenu
@@ -51,13 +55,15 @@ struct PopoverFooter: View {
     }
 
     private var liveBoard: PriorityBoard {
-        dataStore.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date(), hidingEmails: true)
+        dataStore.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date(), hidingEmails: !container.hideFromScreenShare.isEnabled)
     }
 
     /// Copies the Priority tab as a picture. It reads the live board when clicked.
     private var copyPriorityButton: some View {
         Button {
-            guard ShareCardRenderer.copy(PriorityShareCard(board: liveBoard, now: Date(), appearance: colorScheme), named: "priority") else { return }
+            guard ShareCardRenderer.copy(PriorityShareCard(
+                board: liveBoard, now: Date(), appearance: colorScheme, blursAccountNames: container.hideFromScreenShare.isEnabled
+            ), named: "priority") else { return }
             popover.shareNotice.present(true)
         } label: {
             Image(systemName: "doc.on.doc")

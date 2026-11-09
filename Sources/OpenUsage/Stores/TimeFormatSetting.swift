@@ -21,8 +21,8 @@ enum TimeFormatSetting: String, Hashable, Sendable, CaseIterable {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: locale(base)))
     }
 
-    func weekdayHour(_ date: Date, base: Locale = .current) -> String {
-        date.formatted(Date.FormatStyle(locale: locale(base)).weekday(.abbreviated).hour())
+    func weekdayTime(_ date: Date, base: Locale = .current, timeZone: TimeZone = .current) -> String {
+        date.formatted(Date.FormatStyle(locale: locale(base), timeZone: timeZone).weekday(.abbreviated).hour().minute())
     }
 
     private func locale(_ base: Locale) -> Locale {

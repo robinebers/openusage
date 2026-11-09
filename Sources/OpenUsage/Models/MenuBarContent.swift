@@ -27,19 +27,24 @@ struct MenuBarContent: Equatable {
 enum MenuBarContentBuilder {
     private static let genericWords: Set<String> = ["models", "bot", "usage"]
 
-    static func build(board: PriorityBoard, limit: MenuBarLimit) -> MenuBarContent {
+    /// Only what's running out, or with `alwaysShows` every section of the Priority tab in its order, top to bottom.
+    static func build(board: PriorityBoard, limit: MenuBarLimit, alwaysShows: Bool = false) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        let shown = board.attention.prefix(limit.count).map { item in
-            let label = item.data.title
+        let counted = alwaysShows
+            ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt).map { ($0.provider, $0.line) }
+            : board.attention.map { ($0.provider, $0.line) }
+        let usedUp = alwaysShows ? board.usedUp.map { ($0.provider, $0.line) } : []
+        let shown = (counted + usedUp).prefix(limit.count).map { provider, line in
+            let label = line.data.title
             return MenuBarContent.Item(
-                id: item.id,
-                provider: item.provider,
+                id: line.id,
+                provider: provider,
                 label: label,
                 shortLabel: shortLabel(label),
-                value: item.data.menuBarValue
+                value: line.data.menuBarValue
             )
         }
-        return MenuBarContent(items: shown, overflow: board.attention.count - shown.count)
+        return MenuBarContent(items: shown, overflow: max(0, counted.count - shown.count))
     }
 
     static func shortLabel(_ label: String) -> String {

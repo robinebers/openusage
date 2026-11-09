@@ -14,7 +14,13 @@ struct PriorityDashboardView: View {
                 onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() },
                 onShowAllUsage: { popover.dashboardTab = .allUsage },
                 onFixAccount: { popover.openAccounts($0) },
-                onSetPinned: { layout.setMetric($0, pinned: $1) }
+                onMetricCommand: { command in
+                    switch command {
+                    case .setPinned(let metricID, let pinned): layout.setMetric(metricID, pinned: pinned)
+                    case .hide(let metricID): layout.setMetric(metricID, shown: false)
+                    default: break
+                    }
+                }
             )
         }
     }
@@ -28,7 +34,7 @@ struct PriorityBoardList: View {
     var onToggleResetDisplay: (() -> Void)?
     var onShowAllUsage: (() -> Void)?
     var onFixAccount: ((String) -> Void)?
-    var onSetPinned: ((String, Bool) -> Void)?
+    var onMetricCommand: ((DashboardCommand) -> Void)?
 
     private static let green = Color(nsColor: .systemGreen)
     private static let gaugeSide: CGFloat = 32
@@ -105,6 +111,7 @@ struct PriorityBoardList: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .truncationMode(notice.provider.isNamedByEmail ? .middle : .tail)
+                        .concealingAccountName(of: notice.provider)
                 }
             }
             .lineLimit(1)
@@ -125,7 +132,7 @@ struct PriorityBoardList: View {
                 limitRow(pin.provider, pin.data, severity: .normal)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(pin.id, pinned: true) }
+                    .contextMenu { metricMenu(pin.id, pinned: true) }
             }
         }
     }
@@ -139,7 +146,7 @@ struct PriorityBoardList: View {
                          callout: item.runOutText(now: now).map { ($0, Theme.severityTextColor(.warning)) })
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
             }
         }
     }
@@ -151,7 +158,7 @@ struct PriorityBoardList: View {
                 usedUpRow(item)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
             }
         }
         .opacity(0.5)
@@ -165,15 +172,15 @@ struct PriorityBoardList: View {
                          callout: item.resetsInText(now: now).map { ($0, Theme.severityTextColor(.normal)) })
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { pinMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
             }
         }
     }
 
     @ViewBuilder
-    private func pinMenu(_ metricID: String, pinned: Bool) -> some View {
-        if let onSetPinned {
-            DashboardMenu(sections: [[DashboardMenus.pin(metricID, pinned: pinned)]]) { _ in onSetPinned(metricID, !pinned) }
+    private func metricMenu(_ metricID: String, pinned: Bool) -> some View {
+        if let onMetricCommand {
+            DashboardMenu(sections: [DashboardMenus.metric(metricID, pinned: pinned)], perform: onMetricCommand)
         }
     }
 
@@ -212,6 +219,7 @@ struct PriorityBoardList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(provider.isNamedByEmail ? .middle : .tail)
+                    .concealingAccountName(of: provider)
             }
             .lineLimit(1)
             Spacer(minLength: 0)
@@ -253,6 +261,7 @@ struct PriorityBoardList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .truncationMode(item.provider.isNamedByEmail ? .middle : .tail)
+                    .concealingAccountName(of: item.provider)
             }
             .lineLimit(1)
             Spacer(minLength: 0)
