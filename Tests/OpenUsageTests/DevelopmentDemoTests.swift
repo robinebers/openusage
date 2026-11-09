@@ -34,7 +34,7 @@ final class DevelopmentDemoTests: XCTestCase {
                 layouts.insert(titles)
             }
         }
-        XCTAssertEqual(layouts, [[], ["Fable Resets"], ["Fable Resets", "Session & Weekly Resets"]])
+        XCTAssertEqual(layouts, [["Session & Weekly Resets"], ["Fable Resets"], ["Fable Resets", "Session & Weekly Resets"]])
     }
 
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {

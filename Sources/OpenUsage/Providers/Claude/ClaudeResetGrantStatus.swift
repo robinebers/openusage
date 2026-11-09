@@ -80,11 +80,10 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         return detail + ". This can't be undone."
     }
 
-    /// The resets by what they refill, once any is for one model's limit: that model's resets, then the
-    /// rest. Empty while every reset is an ordinary one, which the popover lists on one timeline.
+    /// The resets by what they refill, each kind under its own title: one model's resets apart from
+    /// the ordinary ones. An account with one kind still gets that kind's title.
     func sections(now: Date) -> [ResetSection] {
         let open = availableGrants(now: now)
-        guard open.contains(where: { $0.scopedModel != nil }) else { return [] }
         var models: [String?] = []
         for grant in open where !models.contains(grant.scopedModel) { models.append(grant.scopedModel) }
         let next = claimableGrantID

@@ -83,11 +83,12 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertEqual(try fableStatus(otherGrant: lapsed).sections(now: now).map(\.title), ["Fable Resets"])
     }
 
-    func testOrdinaryGrantsAloneStayOnOneTimeline() throws {
+    func testOrdinaryGrantsAloneStillGetTheirTitle() throws {
         let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
             #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day"]}],"next_grant_id":"g"}}"#
         )))
-        XCTAssertEqual(status.sections(now: now), [])
+        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-12-01T00:00:00+00:00"))
+        XCTAssertEqual(status.sections(now: now), [ResetSection(title: "Session & Weekly Resets", expiries: [expiry], usable: true)])
     }
 
     func testSectionsSharingAnExpiryKeepTheirRowsApartAndSpendFromTheUsableOne() {
