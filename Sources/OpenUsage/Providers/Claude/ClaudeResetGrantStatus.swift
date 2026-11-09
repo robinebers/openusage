@@ -90,7 +90,7 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         return models.map { model in
             let grants = open.filter { $0.scopedModel == model }
             return ResetSection(
-                title: model.map { "\($0) Resets" } ?? Self.ordinaryTitle(grants),
+                title: model ?? Self.ordinaryTitle(grants),
                 expiries: grants.flatMap { grant in
                     grant.endsAt.map { Array(repeating: $0, count: grant.resetsLeft) } ?? []
                 }.sorted(),
@@ -102,7 +102,7 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
     private static func ordinaryTitle(_ grants: [Grant]) -> String {
         let cleared = Set(grants.flatMap(\.clears))
         let names = [("five_hour", "Session"), ("seven_day", "Weekly")].filter { cleared.contains($0.0) }.map(\.1)
-        return names.isEmpty ? "Other Resets" : names.joined(separator: " & ") + " Resets"
+        return names.isEmpty ? "Other" : names.joined(separator: " & ")
     }
 
     /// The grants whose resets the row counts: eligible, with a reset left, and not yet expired.

@@ -69,7 +69,7 @@ final class ResetClaimServiceTests: XCTestCase {
             case .codex:
                 XCTAssertEqual(service?.accountID, runtime.account.cardID)
                 XCTAssertEqual(service?.isClaimable, true)
-                XCTAssertEqual(service?.timelineTitle, "Session & Weekly Resets")
+                XCTAssertEqual(service?.timelineTitle, "Session & Weekly")
             case .zai:
                 XCTAssertEqual(service?.accountID, runtime.account.cardID)
                 XCTAssertEqual(service?.windowResets, [], "nothing to claim before the first reset-list read")

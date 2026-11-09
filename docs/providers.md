@@ -71,7 +71,7 @@ resets popover says so, and you can spend the reset in Claude Code instead.
 - The command line calls this provider `codex`.
 - Extra Usage shows your credits in dollars, at 4¢ a credit, even at `$0`. It hides while ChatGPT
   reports credits off.
-- Rate-limit resets work like Claude's, listed under Session & Weekly Resets.
+- Rate-limit resets work like Claude's, listed under Session & Weekly.
 - Credit Limit shows the credits a workspace lets you spend and when that resets. It shows only when
   the workspace sets one.
 

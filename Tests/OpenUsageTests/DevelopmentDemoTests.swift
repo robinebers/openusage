@@ -24,19 +24,19 @@ final class DevelopmentDemoTests: XCTestCase {
             for account in container.dataStore.accounts(in: container.layout.displayGroups) {
                 let service = container.resetClaim(for: account.provider.id)
                 guard account.provider.kind == .claude else {
-                    XCTAssertEqual(service?.timelineTitle, account.provider.kind == .codex ? "Session & Weekly Resets" : nil,
+                    XCTAssertEqual(service?.timelineTitle, account.provider.kind == .codex ? "Session & Weekly" : nil,
                                    "seed \(seed) \(account.provider.kind)")
                     XCTAssertEqual(service?.sections ?? [], [], "seed \(seed) \(account.provider.kind)")
                     continue
                 }
                 guard let service, service.isClaimable else { continue }
                 let titles = service.sections.map(\.title)
-                XCTAssertEqual(service.confirmDetail, titles.first == "Fable Resets" ? fable : ordinary, "seed \(seed)")
+                XCTAssertEqual(service.confirmDetail, titles.first == "Fable" ? fable : ordinary, "seed \(seed)")
                 XCTAssertEqual(service.sections.map(\.usable), titles.indices.map { $0 == 0 }, "seed \(seed)")
                 layouts.insert(titles)
             }
         }
-        XCTAssertEqual(layouts, [["Session & Weekly Resets"], ["Fable Resets"], ["Fable Resets", "Session & Weekly Resets"]])
+        XCTAssertEqual(layouts, [["Session & Weekly"], ["Fable"], ["Fable", "Session & Weekly"]])
     }
 
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {

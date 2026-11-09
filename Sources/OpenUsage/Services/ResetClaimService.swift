@@ -76,7 +76,7 @@ struct ResetClaimService {
     /// Titles the one timeline of a provider whose resets are all one kind (ChatGPT).
     var timelineTitle: String?
 
-    static let sessionAndWeeklyTitle = "Session & Weekly Resets"
+    static let sessionAndWeeklyTitle = "Session & Weekly"
 
     /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
