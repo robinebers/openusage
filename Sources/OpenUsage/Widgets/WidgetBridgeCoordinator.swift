@@ -111,6 +111,12 @@ final class WidgetBridgeCoordinator {
         bundle: Bundle = .main,
         fileManager: FileManager = .default
     ) -> WidgetBridgeCoordinator? {
+        #if OPENUSAGE_DEVELOPMENT
+        if bundle.bundleIdentifier == DevelopmentDataMode.demoBundleID {
+            AppLog.info(.config, "widget bridge disabled for demo bundle")
+            return nil
+        }
+        #endif
         guard let appGroup = bundle.object(forInfoDictionaryKey: "OpenUsageAppGroupIdentifier") as? String,
               !appGroup.isEmpty else {
             AppLog.warn(.config, "widget bridge disabled: OpenUsageAppGroupIdentifier is missing")

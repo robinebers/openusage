@@ -268,11 +268,15 @@ if "$DEVELOPMENT_BUILD"; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $DEMO_BUNDLE_ID" "$DEMO_APP_BUNDLE/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName OpenUsage Demo" "$DEMO_APP_BUNDLE/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Delete :OpenUsageAppGroupIdentifier" "$DEMO_APP_BUNDLE/Contents/Info.plist" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Delete :OpenUsageURLScheme" "$DEMO_APP_BUNDLE/Contents/Info.plist" >/dev/null 2>&1 || true
+  /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$DEMO_APP_BUNDLE/Contents/Info.plist" >/dev/null 2>&1 || true
+  DEMO_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
   if [ -n "$CODESIGN_IDENTITY" ]; then
     /usr/bin/codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
-      --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+      --entitlements "$DEMO_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
   else
-    /usr/bin/codesign --force --sign - --entitlements "$SIGN_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
+    /usr/bin/codesign --force --sign - --entitlements "$DEMO_ENTITLEMENTS" "$DEMO_APP_BUNDLE" >/dev/null
   fi
 fi
 

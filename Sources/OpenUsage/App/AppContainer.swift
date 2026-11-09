@@ -14,7 +14,7 @@ final class AppContainer {
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
-    private let widgetBridgeCoordinator: WidgetBridgeCoordinator?
+    let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     @ObservationIgnored private var providers: [ProviderRuntime]
     @ObservationIgnored private let makeRuntimes: RuntimeFactory
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -33,7 +33,8 @@ final class AppContainer {
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
         telemetryDefaults: UserDefaults,
-        runtimeFactory: RuntimeFactory? = nil
+        runtimeFactory: RuntimeFactory? = nil,
+        enableWidgetBridge: Bool = true
     ) {
         self.accounts = accounts
         self.defaults = defaults
@@ -73,9 +74,14 @@ final class AppContainer {
             }
         )
         self.telemetry = telemetry
-        let widgetBridge = WidgetBridgeCoordinator.makeDefault(
-            exporter: WidgetBridgeExporter(layout: layout, dataStore: dataStore)
-        )
+        let widgetBridge: WidgetBridgeCoordinator?
+        if enableWidgetBridge {
+            widgetBridge = WidgetBridgeCoordinator.makeDefault(
+                exporter: WidgetBridgeExporter(layout: layout, dataStore: dataStore)
+            )
+        } else {
+            widgetBridge = nil
+        }
         self.widgetBridgeCoordinator = widgetBridge
         widgetBridge?.start()
         accounts.didChange = { [weak self] in self?.syncAccounts() }
