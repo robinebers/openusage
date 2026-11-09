@@ -10,10 +10,15 @@ struct PopoverTopBar: View {
     var body: some View {
         switch screen {
         case .dashboard:
-            CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: Bindable(popover).dashboardTab)
-                .padding(.horizontal, PanelMetrics.margin)
-                .padding(.top, PanelMetrics.margin)
-                .padding(.bottom, DashboardContentView.barGap)
+            Picker("Dashboard", selection: Bindable(popover).dashboardTab) {
+                ForEach(DashboardTab.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(height: 28)
+            .padding(.horizontal, PanelMetrics.margin)
+            .padding(.top, PanelMetrics.margin)
+            .padding(.bottom, DashboardContentView.barGap)
         case .accounts:
             if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
                 navigationBar(back: { popover.back() }) {
