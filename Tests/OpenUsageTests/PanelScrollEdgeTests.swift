@@ -59,11 +59,12 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
         )
         try await Task.sleep(for: .milliseconds(100))
         let bottomBar = { NSRect(x: 0, y: host.isFlipped ? host.bounds.maxY - barHeight : 0, width: host.bounds.width, height: barHeight) }
-        XCTAssertFalse(try showsBlue(in: bottomBar(), of: host), "content shows through the bottom bar before the panel fits it")
+        let isBlue = { (color: NSColor) in color.blueComponent - max(color.redComponent, color.greenComponent) > 0.2 }
+        XCTAssertFalse(try showsContent(in: bottomBar(), of: host, matching: isBlue), "content shows through the bottom bar before the panel fits it")
 
         window.setContentSize(CGSize(width: 200, height: 300))
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertTrue(try showsBlue(in: bottomBar(), of: host), "the bottom bar still covers content once the panel fits it")
+        XCTAssertTrue(try showsContent(in: bottomBar(), of: host, matching: isBlue), "the bottom bar still covers content once the panel fits it")
     }
 
     /// Whether an in-window blur shows over all of `bar`, a rect in `host`'s coordinates.
@@ -81,27 +82,19 @@ final class PanelScrollEdgeTests: QuietWindowTestCase {
         }
     }
 
-    /// Whether the black content shows anywhere down the middle of `bar`.
-    private func showsContent(in bar: NSRect, of host: NSView) throws -> Bool {
+    /// Whether the content shows anywhere down the middle of `bar`: black, unless `matching` says otherwise.
+    private func showsContent(
+        in bar: NSRect,
+        of host: NSView,
+        matching: (NSColor) -> Bool = { $0.brightnessComponent < 0.5 }
+    ) throws -> Bool {
         let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: rep)
         let scale = CGFloat(rep.pixelsWide) / host.bounds.width
         return stride(from: bar.minY, to: bar.maxY, by: 1).contains { y in
             let row = host.isFlipped ? y : host.bounds.maxY - y - 1
             let color = rep.colorAt(x: Int(bar.midX * scale), y: Int(row * scale))!.usingColorSpace(.deviceRGB)!
-            return color.brightnessComponent < 0.5
-        }
-    }
-
-    /// Whether the blue content shows anywhere down the middle of `bar`.
-    private func showsBlue(in bar: NSRect, of host: NSView) throws -> Bool {
-        let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
-        host.cacheDisplay(in: host.bounds, to: rep)
-        let scale = CGFloat(rep.pixelsWide) / host.bounds.width
-        return stride(from: bar.minY, to: bar.maxY, by: 1).contains { y in
-            let row = host.isFlipped ? y : host.bounds.maxY - y - 1
-            let color = rep.colorAt(x: Int(bar.midX * scale), y: Int(row * scale))!.usingColorSpace(.deviceRGB)!
-            return color.blueComponent - max(color.redComponent, color.greenComponent) > 0.2
+            return matching(color)
         }
     }
 

@@ -55,22 +55,17 @@ private struct PanelBars<Top: View, Bottom: View>: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 top.background(Theme.panelBody)
             }
+        let footer = bottom.background { if isResizing { Theme.panelBody } }
         if #available(macOS 27, *) {
             barred
-                .safeAreaBar(edge: .bottom, spacing: 0) {
-                    bottom.background { if isResizing { Theme.panelBody } }
-                }
+                .safeAreaBar(edge: .bottom, spacing: 0) { footer }
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .scrollEdgeEffectHidden(true, for: underBottom > 0 ? .top : .vertical)
         } else {
             barred.safeAreaInset(edge: .bottom, spacing: 0) {
-                bottom.background {
-                    if isResizing {
-                        Theme.panelBody
-                    } else {
-                        FooterFrost(opacity: underBottom)
-                            .padding(.top, -FooterFrost.reach)
-                    }
+                footer.background {
+                    FooterFrost(opacity: isResizing ? 0 : underBottom)
+                        .padding(.top, -FooterFrost.reach)
                 }
             }
         }
