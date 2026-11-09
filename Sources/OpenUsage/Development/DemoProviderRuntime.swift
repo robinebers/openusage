@@ -21,15 +21,15 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
-    /// A sample Claude account's resets are ordinary ones, Fable ones, or both, fixed by its id, so every
-    /// layout and confirmation shows without an account. Spending one sends nothing.
+    /// A sample Claude account's resets go by their count, so every layout and confirmation shows without
+    /// an account: one is ordinary, two are Fable ones, three are a Fable one and two ordinary. Spending
+    /// one sends nothing.
     func resetClaimService(
         expiries: [Date], refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
         guard account.kind == .claude else { return nil }
-        let kind = account.id.uuid.0 % 3
         let grants = expiries.sorted().enumerated().map { index, expiry in
-            let isFable = kind == 1 || (kind == 2 && index == 0)
+            let isFable = expiries.count == 2 || (expiries.count > 2 && index == 0)
             return ClaudeResetGrantStatus.Grant(
                 id: isFable ? "sample-fable-\(index)" : "sample-\(index)", resetsLeft: 1, endsAt: expiry,
                 clears: ["five_hour", isFable ? "seven_day_overage_included" : "seven_day"], givesBackWeekly: isFable

@@ -24,8 +24,8 @@ demo app. Turn it off to restart the normal dev app with its existing accounts a
   provider's account count and names, which limits show, their usage, and their resets.
 - Every seed shows at least one Warning, Critical, Burning Fast, Used Up, empty balance, Use It or
   Lose It, and account notice. Resets fall between the next hour and the next week.
-- A sample Claude account's resets are ordinary ones, Fable ones, or both. Reshuffle until you see
-  the one you need. Spending one sends nothing.
+- A sample Claude account's resets go by their count: one is ordinary, two are Fable resets, three
+  are a Fable reset and two ordinary ones. Spending one sends nothing.
 - **Reshuffle**, under Development in the demo app, swaps in a new seed's accounts without a restart.
 - To reproduce a seed, launch the demo with it:
   `open "dist/OpenUsage Demo.app" --args -DemoSeed 4242`.
