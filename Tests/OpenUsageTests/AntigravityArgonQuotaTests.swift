@@ -21,10 +21,14 @@ final class AntigravityArgonQuotaTests: XCTestCase {
     private func assertSharedPoolsOnly(_ data: Data, file: StaticString = #filePath, line: UInt = #line) {
         let lines = AntigravityUsageMapper.parseQuotaSummaries([data])
         XCTAssertEqual(lines?.map(\.label), ["Session", "Weekly", "Claude", "Claude Weekly"], file: file, line: line)
-        XCTAssertEqual(lines?.map { metric -> Double? in
+        let used = lines?.map { metric -> Double? in
             guard case .progress(_, let used, _, _, _, _) = metric else { return nil }
             return used
-        }, [20, 30, 40, 50], file: file, line: line)
+        }
+        XCTAssertEqual(used?.count, 4, file: file, line: line)
+        for (actual, expected) in zip(used ?? [], [20.0, 30, 40, 50]) {
+            XCTAssertEqual(actual ?? -1, expected, accuracy: 0.0001, file: file, line: line)
+        }
     }
 
     func testUnavailableArgonPreservesSharedQuotas() {
