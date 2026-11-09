@@ -59,6 +59,16 @@ struct ResetSection: Equatable, Sendable {
     let title: String
     let expiries: [Date]
     let usable: Bool
+    /// Whether the reset the provider spends next is one of this group's rows. Only then does a claim
+    /// take a row off the list before the refresh: otherwise the spent reset has no row to take.
+    let holdsNextReset: Bool
+
+    init(title: String, expiries: [Date], usable: Bool, holdsNextReset: Bool? = nil) {
+        self.title = title
+        self.expiries = expiries
+        self.usable = usable
+        self.holdsNextReset = holdsNextReset ?? usable
+    }
 }
 
 @MainActor

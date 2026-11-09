@@ -99,6 +99,39 @@ final class ClaudeResetGrantsTests: XCTestCase {
           ], "next_grant_id": "lapsed" } }
         """)))
         XCTAssertEqual(status.sections(now: now).map(\.usable), [true])
+        XCTAssertEqual(status.sections(now: now).map(\.holdsNextReset), [false])
+    }
+
+    func testAClaimOnAnUnlistedNextGrantTakesNoRowFromEitherSection() throws {
+        let shared = "2027-03-09T07:59:00+00:00"
+        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
+        { "cedar_ember": { "eligible": true, "grants": [
+            { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] },
+            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "\(shared)", "clears": ["five_hour","seven_day_overage_included"] },
+            { "id": "other", "resets_left": 1, "ends_at": "\(shared)", "clears": ["five_hour", "seven_day"] }
+          ], "next_grant_id": "lapsed" } }
+        """)))
+        let sections = status.sections(now: now)
+        XCTAssertEqual(sections.map(\.usable), [true, true])
+        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: shared))
+        let groups = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 1], now: now)
+        XCTAssertEqual(groups.map(\.title), ["Fable", "Session & Weekly"])
+        XCTAssertEqual(groups.map(\.entries.count), [1, 1])
+    }
+
+    func testNextGrantWithoutADeadlineLeavesTheListedSectionUsable() throws {
+        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
+        { "cedar_ember": { "eligible": true, "grants": [
+            { "id": "undated", "resets_left": 1, "ends_at": null, "clears": ["five_hour", "seven_day"] },
+            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "clears": ["five_hour","seven_day_overage_included"] }
+          ], "next_grant_id": "undated" } }
+        """)))
+        let groups = RateLimitResetsDetail.sectionGroups(status.sections(now: now), claimed: [:], now: now)
+        XCTAssertEqual(groups.map(\.title), ["Fable"])
+        let fable = try XCTUnwrap(status.sections(now: now).first { $0.title == "Fable" })
+        XCTAssertTrue(fable.usable)
+        XCTAssertFalse(fable.holdsNextReset)
+        XCTAssertEqual(status.confirmDetail, "Refills your session and weekly limits now. This can't be undone.")
     }
 
     func testOrdinaryGrantsAloneStillGetTheirTitle() throws {

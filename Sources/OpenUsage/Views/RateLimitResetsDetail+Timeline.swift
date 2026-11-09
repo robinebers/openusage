@@ -72,11 +72,11 @@ extension RateLimitResetsDetail {
         let entries: [Entry]
     }
 
-    /// Each section's resets on its own timeline. Resets already spent here leave the usable section,
-    /// the only one that can spend; a section with nothing left to list is dropped.
+    /// Each section's resets on its own timeline. Resets already spent here leave the one section that
+    /// holds the next reset's row; a section with nothing left to list is dropped.
     nonisolated static func sectionGroups(_ sections: [ResetSection], claimed: [Date: Int], now: Date = Date()) -> [SectionGroup] {
         sections.compactMap { section in
-            let expiries = section.usable ? visibleExpiries(section.expiries, claimed: claimed) : section.expiries
+            let expiries = section.holdsNextReset ? visibleExpiries(section.expiries, claimed: claimed) : section.expiries
             let entries = entries(from: expiries.map { ($0, nil) }, now: now, section: section.title)
             return entries.isEmpty ? nil : SectionGroup(title: section.title, entries: entries)
         }

@@ -87,16 +87,20 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         var models: [String?] = []
         for grant in open where !models.contains(grant.scopedModel) { models.append(grant.scopedModel) }
         let next = claimableGrantID
-        // A next grant the sections don't list leaves every section usable: Anthropic decides.
-        let nextIsListed = open.contains { $0.id == next }
+        // A next grant with no row (expired, or with no expiry to list) leaves every section usable:
+        // Anthropic decides what a claim spends, and no row is taken off until the refresh.
+        func isNextRow(_ grant: Grant) -> Bool { grant.id == next && grant.endsAt != nil }
+        let nextHasRow = open.contains(where: isNextRow)
         return models.map { model in
             let grants = open.filter { $0.scopedModel == model }
+            let holdsNext = grants.contains(where: isNextRow)
             return ResetSection(
                 title: model ?? Self.ordinaryTitle(grants),
                 expiries: grants.flatMap { grant in
                     grant.endsAt.map { Array(repeating: $0, count: grant.resetsLeft) } ?? []
                 }.sorted(),
-                usable: nextIsListed ? grants.contains { $0.id == next } : next != nil
+                usable: nextHasRow ? holdsNext : next != nil,
+                holdsNextReset: holdsNext
             )
         }
     }

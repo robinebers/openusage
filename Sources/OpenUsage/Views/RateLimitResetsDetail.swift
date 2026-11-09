@@ -382,11 +382,13 @@ struct RateLimitResetsDetail: View {
             claiming = entry.key
         }
         let versionAtClaim = expiriesVersion
+        // A section that doesn't hold the next reset's row has no row to take off: the refresh settles it.
+        let takesRow = entry.key.section.map { title in sections.contains { $0.title == title && $0.holdsNextReset } } ?? true
         Task {
             let outcome = await send()
             withAnimation(Self.flowAnimation) {
                 claiming = nil
-                apply(outcome, for: entry.date, record: reset?.recordID, refreshed: expiriesVersion != versionAtClaim)
+                apply(outcome, for: entry.date, record: reset?.recordID, refreshed: expiriesVersion != versionAtClaim || !takesRow)
             }
             onPinChange?(false)
         }
