@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import Vision
 import XCTest
 @testable import OpenUsage
 
@@ -91,9 +90,6 @@ final class ShareCardRendererTests: XCTestCase {
     }
 
     private func recognizedText(in image: CGImage) throws -> String {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        try VNImageRequestHandler(cgImage: image).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        try recognizedLines(in: image).joined(separator: "\n")
     }
 }

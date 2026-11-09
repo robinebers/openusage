@@ -1,7 +1,6 @@
 import AppKit
 import Observation
 import SwiftUI
-import Vision
 import XCTest
 @testable import OpenUsage
 
@@ -89,9 +88,7 @@ final class AddAccountSheetTests: QuietWindowTestCase {
     private func readText(in host: NSView) throws -> String {
         let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: rep)
-        let request = VNRecognizeTextRequest()
-        try VNImageRequestHandler(cgImage: XCTUnwrap(rep.cgImage)).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
+        return try recognizedLines(in: XCTUnwrap(rep.cgImage)).joined(separator: " ")
     }
 
     private func textFields(in view: NSView) -> [NSTextField] {

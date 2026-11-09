@@ -10,7 +10,7 @@ struct PopoverTopBar: View {
     var body: some View {
         switch screen {
         case .dashboard:
-            CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: Bindable(popover).dashboardTab)
+            CapsuleSegments(options: DashboardTab.allCases.map { ($0, $0.label) }, selection: Bindable(popover).dashboardTab, selectsOnPress: true)
                 .padding(.horizontal, PanelMetrics.margin)
                 .padding(.top, PanelMetrics.margin)
                 .padding(.bottom, DashboardContentView.barGap)

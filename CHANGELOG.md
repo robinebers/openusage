@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+- Priority and All Usage switch as soon as you press a tab, with no sliding, and the **Next update**
+  footer no longer flashes the new tab's rows behind it while the panel resizes. Reported by
+  [@Atchferox](https://github.com/Atchferox) ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).
+
+## v0.8.0-beta.6
+
 ### Added
 - Right-click a usage row on All Usage or Priority and choose **Hide** to turn it off, the same as
   its switch on the account's page. Requested by [@maddada](https://x.com/maddada) on X.

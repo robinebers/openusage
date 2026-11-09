@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Prepares an Amp orb for OpenUsage. The app is macOS-only (AppKit, SwiftUI, Sparkle), so the Linux
+# orb installs no toolchain: agents build, test, and run it on an Amp Mac satellite, which starts
+# fresh with Xcode and resolves the SwiftPM packages in seconds. This script only writes the orb
+# guidance agents need to work that way. It is idempotent: each run replaces its own block.
+set -euo pipefail
+
+guidance="$HOME/.config/amp/AGENTS.md"
+begin="<!-- openusage orb guidance: begin -->"
+end="<!-- openusage orb guidance: end -->"
+
+echo "==> writing OpenUsage orb guidance to $guidance"
+mkdir -p "$(dirname "$guidance")"
+touch "$guidance"
+# Drop the block an earlier run wrote, keeping everything else in the file.
+sed -i "/^$begin\$/,/^$end\$/d" "$guidance"
+cat >>"$guidance" <<EOF
+$begin
+
+# OpenUsage in an Orb
+
+- This orb runs Linux with no Swift toolchain. OpenUsage imports AppKit and SwiftUI, so build,
+  test, and run it on a Mac satellite: start one with mac_sidecar and run the commands from
+  AGENTS.md (\`swift build\`, \`swift test\`, \`script/test_quiet.sh\`, \`./script/build_and_run.sh verify\`)
+  with mac_shell. Edit files on the orb; each mac_shell call mirrors them to the Mac.
+- The default \`macos-27\` image builds the package. Cold times on a \`mac.medium\`: package resolve
+  about 8 s, \`swift build\` about 25 s, \`swift test\` about 30 s, \`build_and_run.sh verify\` about 50 s.
+- \`swift test\` passes on a satellite. Vision's \`.accurate\` text recognition throws \`nilError\` on the
+  virtual Mac, so the OCR tests (\`ShareCardRendererTests\`, \`AddAccountSheetTests\`,
+  \`CLIProxyHubNestingTests\`) fall back to \`.fast\` there. Fast recognition can't read a lightly
+  blurred name that accurate might, so check a change to how account names blur in CI or on a real Mac.
+- Nobody types on a satellite, so the focus tests run there:
+  \`OPENUSAGE_FOCUS_TESTS=1 swift test --filter 'InlineRenameFocusTests|UpdateControlsTests'\`.
+- The Mac gets the worktree without \`.git\`, so \`build_and_run.sh\` labels the build "dev (unknown)"
+  and signs it ad hoc.
+
+$end
+EOF
+echo "==> done"
