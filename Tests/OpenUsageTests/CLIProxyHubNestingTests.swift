@@ -1,7 +1,6 @@
 import AppKit
 import os
 import SwiftUI
-import Vision
 import XCTest
 @testable import OpenUsage
 
@@ -116,9 +115,13 @@ final class CLIProxyHubNestingTests: QuietWindowTestCase {
         XCTAssertTrue(ocrShows(in: accountPage, "Managed by mac-mini.local:8317"), accountPage)
     }
 
-    /// Vision sometimes drops the space between words, as in "1account".
+    /// Vision sometimes drops the space between words, as in "1account", and fast recognition reads a
+    /// zero as a capital O, as in "miniO@example.com".
     private func ocrShows(in screen: String, _ text: String) -> Bool {
-        screen.replacingOccurrences(of: " ", with: "").contains(text.replacingOccurrences(of: " ", with: ""))
+        func normalized(_ string: String) -> String {
+            string.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "O", with: "0")
+        }
+        return normalized(screen).contains(normalized(text))
     }
 
     private func screenText(_ container: AppContainer) async throws -> String {
@@ -143,10 +146,6 @@ final class CLIProxyHubNestingTests: QuietWindowTestCase {
         ))
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width * scale, height: image.height * scale))
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
-        try VNImageRequestHandler(cgImage: try XCTUnwrap(context.makeImage())).perform([request])
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        return try recognizedLines(in: XCTUnwrap(context.makeImage()), usesLanguageCorrection: false).joined(separator: "\n")
     }
 }
