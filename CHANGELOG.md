@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.6
 
 ### Added
 - Right-click a usage row on All Usage or Priority and choose **Hide** to turn it off, the same as
