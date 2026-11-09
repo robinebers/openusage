@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PopoverTopBar: View {
@@ -10,15 +11,11 @@ struct PopoverTopBar: View {
     var body: some View {
         switch screen {
         case .dashboard:
-            Picker("Dashboard", selection: Bindable(popover).dashboardTab) {
-                ForEach(DashboardTab.allCases, id: \.self) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
-            .padding(.horizontal, PanelMetrics.margin)
-            .padding(.top, PanelMetrics.margin)
-            .padding(.bottom, DashboardContentView.barGap)
+            DashboardTabControl(selection: Bindable(popover).dashboardTab)
+                .frame(height: 28)
+                .padding(.horizontal, PanelMetrics.margin)
+                .padding(.top, PanelMetrics.margin)
+                .padding(.bottom, DashboardContentView.barGap)
         case .accounts:
             if let providerID = popover.customizeProviderID, let provider = layout.provider(id: providerID) {
                 navigationBar(back: { popover.back() }) {
@@ -102,6 +99,48 @@ struct PopoverTopBar: View {
         AccountIcon(provider: provider, side: 22, inset: 0.04)
             .frame(width: 28, height: 28)
             .accessibilityHidden(true)
+    }
+}
+
+/// The system segmented control, with Priority and All Usage each taking half the bar. SwiftUI's
+/// segmented `Picker` sizes its segments to their labels on macOS.
+private struct DashboardTabControl: NSViewRepresentable {
+    @Binding var selection: DashboardTab
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            labels: DashboardTab.allCases.map(\.label),
+            trackingMode: .selectOne,
+            target: context.coordinator,
+            action: #selector(Coordinator.pick(_:))
+        )
+        control.segmentDistribution = .fillEqually
+        control.controlSize = .large
+        control.setAccessibilityLabel("Dashboard")
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.selection = $selection
+        control.selectedSegment = DashboardTab.allCases.firstIndex(of: selection) ?? 0
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSegmentedControl, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? nsView.intrinsicContentSize.width, height: nsView.intrinsicContentSize.height)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    final class Coordinator: NSObject {
+        var selection: Binding<DashboardTab>
+
+        init(selection: Binding<DashboardTab>) {
+            self.selection = selection
+        }
+
+        @objc func pick(_ control: NSSegmentedControl) {
+            selection.wrappedValue = DashboardTab.allCases[control.selectedSegment]
+        }
     }
 }
 
