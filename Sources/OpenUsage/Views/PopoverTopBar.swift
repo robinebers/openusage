@@ -15,7 +15,7 @@ struct PopoverTopBar: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(height: 28)
+            .frame(maxWidth: .infinity, minHeight: 28, maxHeight: 28)
             .padding(.horizontal, PanelMetrics.margin)
             .padding(.top, PanelMetrics.margin)
             .padding(.bottom, DashboardContentView.barGap)

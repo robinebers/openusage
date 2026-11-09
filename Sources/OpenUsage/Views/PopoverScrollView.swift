@@ -64,7 +64,7 @@ private struct PanelBars<Top: View, Bottom: View>: ViewModifier {
         } else {
             barred.safeAreaInset(edge: .bottom, spacing: 0) {
                 footer.background {
-                    FooterFrost(opacity: isResizing ? 0 : underBottom)
+                    FooterFrost(opacity: underBottom)
                         .padding(.top, -FooterFrost.reach)
                 }
             }
