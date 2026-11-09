@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- Priority and All Usage switch with the standard Mac segmented control, which changes at once
+  instead of sliding, and the **Next update** footer no longer flashes the new tab's rows behind it
+  while the panel resizes. Reported by [@Atchferox](https://github.com/Atchferox)
+  ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).
+
 ## v0.8.0-beta.6
 
 ### Added
