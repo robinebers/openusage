@@ -16,6 +16,8 @@ struct RateLimitResetsDetail: View {
     var confirmDetail: String?
     /// Resets listed under a title each; only a usable section's resets can be spent.
     var sections: [ResetSection] = []
+    /// Titles the one timeline, for a provider whose resets are all one kind.
+    var timelineTitle: String?
     /// Resets listed per window instead of on one timeline; only each window's earliest can be used.
     var windowResets: [ZAIReset] = []
     var claimWindowReset: ((_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
@@ -73,11 +75,11 @@ struct RateLimitResetsDetail: View {
             } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
                 if case .timeline(let entries) = content {
-                    timeline(entries)
+                    flatTimeline(entries)
                 }
             } else {
                 switch content {
-                case .timeline(let entries): timeline(entries)
+                case .timeline(let entries): flatTimeline(entries)
                 case .unknownExpiries(let count): unknownExpiriesState(count)
                 case .empty: emptyState
                 }
@@ -152,6 +154,11 @@ struct RateLimitResetsDetail: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func flatTimeline(_ entries: [Entry]) -> some View {
+        if let timelineTitle { titledTimeline(timelineTitle, entries) } else { timeline(entries) }
     }
 
     private func titledTimeline(_ title: String, _ entries: [Entry]) -> some View {

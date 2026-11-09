@@ -73,6 +73,10 @@ struct ResetClaimService {
     var claimWindowReset: (@MainActor (_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
     /// Resets listed by what they refill (Claude's Fable resets apart from the rest); empty for one timeline.
     var sections: [ResetSection] = []
+    /// Titles the one timeline of a provider whose resets are all one kind (ChatGPT).
+    var timelineTitle: String?
+
+    static let sessionAndWeeklyTitle = "Session & Weekly Resets"
 
     /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
     func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {

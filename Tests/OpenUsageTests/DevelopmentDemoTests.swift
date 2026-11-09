@@ -24,7 +24,9 @@ final class DevelopmentDemoTests: XCTestCase {
             for account in container.dataStore.accounts(in: container.layout.displayGroups) {
                 let service = container.resetClaim(for: account.provider.id)
                 guard account.provider.kind == .claude else {
-                    XCTAssertNil(service, "seed \(seed) \(account.provider.kind)")
+                    XCTAssertEqual(service?.timelineTitle, account.provider.kind == .codex ? "Session & Weekly Resets" : nil,
+                                   "seed \(seed) \(account.provider.kind)")
+                    XCTAssertEqual(service?.sections ?? [], [], "seed \(seed) \(account.provider.kind)")
                     continue
                 }
                 guard let service, service.isClaimable else { continue }

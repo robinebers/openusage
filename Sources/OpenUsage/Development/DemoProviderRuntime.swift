@@ -21,12 +21,19 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
-    /// A sample Claude account's resets go by their count, so every layout and confirmation shows without
+    /// Sample ChatGPT resets are ordinary ones. A sample Claude account's resets go by their count, so every layout and confirmation shows without
     /// an account: one is ordinary, two are Fable ones, three are a Fable one and two ordinary. Spending
     /// one sends nothing.
     func resetClaimService(
         expiries: [Date], refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
+        if account.kind == .codex {
+            return ResetClaimService(
+                accountID: account.cardID, isClaimable: true, confirmDetail: nil,
+                claimReset: { _, _ in .success }, refreshAccount: refreshAccount,
+                timelineTitle: ResetClaimService.sessionAndWeeklyTitle
+            )
+        }
         guard account.kind == .claude else { return nil }
         let grants = expiries.sorted().enumerated().map { index, expiry in
             let isFable = expiries.count == 2 || (expiries.count > 2 && index == 0)

@@ -96,7 +96,8 @@ final class AccountProviderRuntime: ProviderRuntime {
                 claimReset: { [self] expiry, redeemRequestID in
                     await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: redeemRequestID)
                 },
-                refreshAccount: refreshAccount
+                refreshAccount: refreshAccount,
+                timelineTitle: ResetClaimService.sessionAndWeeklyTitle
             )
         case .zai:
             return ResetClaimService(
