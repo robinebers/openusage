@@ -53,6 +53,7 @@ struct RateLimitResetsDetail: View {
     }
 
     var body: some View {
+        let groups = sectionGroups
         VStack(alignment: .leading, spacing: 8) {
             if let banner {
                 bannerView(banner)
@@ -65,11 +66,11 @@ struct RateLimitResetsDetail: View {
                 ForEach(windows, id: \.window) { window in
                     titledTimeline(window.window.title, window.entries)
                 }
-            } else if !sectionGroups.isEmpty {
-                if let claiming, !sectionGroups.contains(where: { $0.entries.contains { $0.key == claiming } }) {
+            } else if !groups.isEmpty {
+                if let claiming, !groups.contains(where: { $0.entries.contains { $0.key == claiming } }) {
                     claimingRow().transition(.opacity)
                 }
-                ForEach(sectionGroups, id: \.title) { group in
+                ForEach(groups, id: \.title) { group in
                     titledTimeline(group.title, group.entries)
                 }
             } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
@@ -338,7 +339,7 @@ struct RateLimitResetsDetail: View {
 
     private func canUse(_ entry: Entry) -> Bool {
         if let section = entry.key.section {
-            return claim != nil && sections.indices.contains(section) && sections[section].usable
+            return claim != nil && sections.contains { $0.title == section && $0.usable }
         }
         return entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
     }

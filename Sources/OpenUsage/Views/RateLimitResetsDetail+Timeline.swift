@@ -43,8 +43,9 @@ extension RateLimitResetsDetail {
             let ordinal: Int
             /// The exact record a window entry claims; nil on the flat timeline, which claims by date.
             var reset: ZAIReset?
-            /// The section an entry is listed under, so two sections sharing an expiry keep apart.
-            var section: Int?
+            /// The title of the section an entry is listed under, so two sections sharing an expiry keep
+            /// apart whatever order a refresh returns them in.
+            var section: String?
         }
 
         var accessibilityLabel: String {
@@ -74,9 +75,9 @@ extension RateLimitResetsDetail {
     /// Each section's resets on its own timeline. Resets already spent here leave the usable section,
     /// the only one that can spend; a section with nothing left to list is dropped.
     nonisolated static func sectionGroups(_ sections: [ResetSection], claimed: [Date: Int], now: Date = Date()) -> [SectionGroup] {
-        sections.enumerated().compactMap { index, section in
+        sections.compactMap { section in
             let expiries = section.usable ? visibleExpiries(section.expiries, claimed: claimed) : section.expiries
-            let entries = entries(from: expiries.map { ($0, nil) }, now: now, section: index)
+            let entries = entries(from: expiries.map { ($0, nil) }, now: now, section: section.title)
             return entries.isEmpty ? nil : SectionGroup(title: section.title, entries: entries)
         }
     }
@@ -96,7 +97,7 @@ extension RateLimitResetsDetail {
 
     /// Each expiry travels with the record it claims, so sorting can never pair a date with another record.
     nonisolated static func entries(
-        from items: [(date: Date, reset: ZAIReset?)], now: Date = Date(), section: Int? = nil
+        from items: [(date: Date, reset: ZAIReset?)], now: Date = Date(), section: String? = nil
     ) -> [Entry] {
         var seen: [Date: Int] = [:]
         let sorted = items.sorted { ($0.date, $0.reset?.recordID ?? 0) < ($1.date, $1.reset?.recordID ?? 0) }

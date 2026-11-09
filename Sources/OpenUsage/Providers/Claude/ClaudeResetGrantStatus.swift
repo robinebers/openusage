@@ -87,6 +87,8 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
         var models: [String?] = []
         for grant in open where !models.contains(grant.scopedModel) { models.append(grant.scopedModel) }
         let next = claimableGrantID
+        // A next grant the sections don't list leaves every section usable: Anthropic decides.
+        let nextIsListed = open.contains { $0.id == next }
         return models.map { model in
             let grants = open.filter { $0.scopedModel == model }
             return ResetSection(
@@ -94,15 +96,17 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
                 expiries: grants.flatMap { grant in
                     grant.endsAt.map { Array(repeating: $0, count: grant.resetsLeft) } ?? []
                 }.sorted(),
-                usable: grants.contains { $0.id == next }
+                usable: nextIsListed ? grants.contains { $0.id == next } : next != nil
             )
         }
     }
 
     private static func ordinaryTitle(_ grants: [Grant]) -> String {
+        // A window this doesn't recognize gets no name, never a title that understates.
+        let known = [("five_hour", "Session"), ("seven_day", "Weekly")]
         let cleared = Set(grants.flatMap(\.clears))
-        let names = [("five_hour", "Session"), ("seven_day", "Weekly")].filter { cleared.contains($0.0) }.map(\.1)
-        return names.isEmpty ? "Other" : names.joined(separator: " & ")
+        guard !cleared.isEmpty, cleared.isSubset(of: known.map(\.0)) else { return "Other" }
+        return known.filter { cleared.contains($0.0) }.map(\.1).joined(separator: " & ")
     }
 
     /// The grants whose resets the row counts: eligible, with a reset left, and not yet expired.

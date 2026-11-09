@@ -83,6 +83,24 @@ final class ClaudeResetGrantsTests: XCTestCase {
         XCTAssertEqual(try fableStatus(otherGrant: lapsed).sections(now: now).map(\.title), ["Fable"])
     }
 
+    func testUnrecognizedWindowIsNotTitledByTheWindowsItShares() throws {
+        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
+            #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day_overage_included"]}],"next_grant_id":"g"}}"#
+        )))
+        XCTAssertEqual(status.sections(now: now).map(\.title), ["Other"])
+    }
+
+    func testNextGrantOutsideTheSectionsLeavesThemUsable() throws {
+        let lapsedNext = #", { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
+        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
+        { "cedar_ember": { "eligible": true, "grants": [
+            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
+              "clears": ["five_hour","seven_day_overage_included"] }\(lapsedNext)
+          ], "next_grant_id": "lapsed" } }
+        """)))
+        XCTAssertEqual(status.sections(now: now).map(\.usable), [true])
+    }
+
     func testOrdinaryGrantsAloneStillGetTheirTitle() throws {
         let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
             #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day"]}],"next_grant_id":"g"}}"#

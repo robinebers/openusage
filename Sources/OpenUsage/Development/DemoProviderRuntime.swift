@@ -21,9 +21,9 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
-    /// Sample ChatGPT resets are ordinary ones. A sample Claude account's resets go by their count, so every layout and confirmation shows without
-    /// an account: one is ordinary, two are Fable ones, three are a Fable one and two ordinary. Spending
-    /// one sends nothing.
+    /// Sample ChatGPT resets are ordinary ones. A sample Claude account's resets go by their count, so
+    /// every layout and confirmation shows without an account: one is ordinary, two are Fable ones,
+    /// three are a Fable one and two ordinary. Spending one sends nothing.
     func resetClaimService(
         expiries: [Date], refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {

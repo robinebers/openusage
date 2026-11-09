@@ -62,7 +62,8 @@ resets popover says so, and you can spend the reset in Claude Code instead.
 - **Limit Resets** counts the account's rate-limit resets. Click the count to see when each expires.
   Choose **Use**, then **Reset**, to spend one. The list is titled by what the resets refill:
   resets for one model's limit, such as Fable resets, are listed apart from the others, and the
-  confirmation says which limits the reset refills. With both kinds, only the kind Anthropic spends next can be used.
+  confirmation says which limits the reset refills. With both kinds, only the kind Anthropic spends
+  next can be used.
 
 ## ChatGPT
 
