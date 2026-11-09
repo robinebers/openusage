@@ -61,7 +61,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
             status.confirmDetail,
             "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
         )
-        XCTAssertEqual(status.scopeTitle, "Fable Resets")
+        XCTAssertEqual(status.scopeTitle(now: now), "Fable Resets")
     }
 
     func testUnrecognizedWindowKeepsTheGeneralWording() throws {
@@ -70,7 +70,12 @@ final class ClaudeResetGrantsTests: XCTestCase {
 
     func testMixedGrantsHaveNoScopeTitle() throws {
         let other = #", { "id": "other", "resets_left": 1, "clears": ["five_hour", "seven_day"] }"#
-        XCTAssertNil(try fableStatus(otherGrant: other).scopeTitle)
+        XCTAssertNil(try fableStatus(otherGrant: other).scopeTitle(now: now))
+    }
+
+    func testExpiredOrdinaryGrantLeavesTheFableTitle() throws {
+        let lapsed = #", { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
+        XCTAssertEqual(try fableStatus(otherGrant: lapsed).scopeTitle(now: now), "Fable Resets")
     }
 
     func testGrantWithoutDeadlineCountsWithNoExpiry() throws {

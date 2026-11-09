@@ -81,12 +81,20 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
     }
 
     /// Names the popover's timeline when every reset still available is for one model's limit.
-    var scopeTitle: String? {
-        let open = grants.filter { $0.resetsLeft > 0 }
-        guard eligible, let model = open.first?.scopedModel, open.allSatisfy({ $0.scopedModel == model }) else {
+    func scopeTitle(now: Date) -> String? {
+        let open = availableGrants(now: now)
+        guard let model = open.first?.scopedModel, open.allSatisfy({ $0.scopedModel == model }) else {
             return nil
         }
         return "\(model) Resets"
+    }
+
+    /// The grants whose resets the row counts: eligible, with a reset left, and not yet expired.
+    func availableGrants(now: Date) -> [Grant] {
+        guard eligible else { return [] }
+        return grants.filter { grant in
+            grant.resetsLeft >= 1 && !(grant.endsAt.map { $0 <= now } ?? false)
+        }
     }
 
     static let lineLabel = "Rate Limit Resets"
@@ -94,12 +102,9 @@ struct ClaudeResetGrantStatus: Equatable, Sendable {
     func line(now: Date) -> MetricLine {
         var count = 0
         var expiries: [Date] = []
-        if eligible {
-            for grant in grants where grant.resetsLeft >= 1 {
-                if let endsAt = grant.endsAt, endsAt <= now { continue }
-                count += grant.resetsLeft
-                if let endsAt = grant.endsAt { expiries += Array(repeating: endsAt, count: grant.resetsLeft) }
-            }
+        for grant in availableGrants(now: now) {
+            count += grant.resetsLeft
+            if let endsAt = grant.endsAt { expiries += Array(repeating: endsAt, count: grant.resetsLeft) }
         }
         return .values(
             label: Self.lineLabel,

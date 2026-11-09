@@ -38,7 +38,7 @@ final class DemoProviderRuntime: ProviderRuntime {
             confirmDetail: status.confirmDetail,
             claimReset: { _, _ in .success },
             refreshAccount: refreshAccount,
-            scopeTitle: status.scopeTitle
+            scopeTitle: status.scopeTitle(now: Date())
         )
     }
 
