@@ -30,10 +30,11 @@ enum MenuBarContentBuilder {
     /// Only what's running out, or with `alwaysShows` every section of the Priority tab in its order, top to bottom.
     static func build(board: PriorityBoard, limit: MenuBarLimit, alwaysShows: Bool = false) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        let lines = alwaysShows
-            ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt + board.usedUp).map { ($0.provider, $0.line) }
+        let counted = alwaysShows
+            ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt).map { ($0.provider, $0.line) }
             : board.attention.map { ($0.provider, $0.line) }
-        let shown = lines.prefix(limit.count).map { provider, line in
+        let usedUp = alwaysShows ? board.usedUp.map { ($0.provider, $0.line) } : []
+        let shown = (counted + usedUp).prefix(limit.count).map { provider, line in
             let label = line.data.title
             return MenuBarContent.Item(
                 id: line.id,
@@ -43,7 +44,7 @@ enum MenuBarContentBuilder {
                 value: line.data.menuBarValue
             )
         }
-        return MenuBarContent(items: shown, overflow: lines.count - shown.count)
+        return MenuBarContent(items: shown, overflow: max(0, counted.count - shown.count))
     }
 
     static func shortLabel(_ label: String) -> String {

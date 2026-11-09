@@ -6,6 +6,9 @@
 - Right-click a usage row on All Usage or Priority and choose **Hide** to turn it off, the same as
   its switch on the account's page. Requested by [@maddada](https://x.com/maddada) on X.
 
+### Fixed
+- With **Always Show In Menu Bar** on, the `+N` count in the menu bar no longer counts Used Up limits.
+
 ## v0.8.0-beta.5
 
 ### Fixed
