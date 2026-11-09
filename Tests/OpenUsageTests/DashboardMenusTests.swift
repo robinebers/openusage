@@ -70,11 +70,14 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
-    func testAMetricIsPinnedOrUnpinnedWithThePinSymbols() {
-        XCTAssertEqual(DashboardMenus.pin("claude@1.weekly", pinned: false),
-                       DashboardMenuItem(title: "Pin", command: .setPinned("claude@1.weekly", true), systemImage: "pin"))
-        XCTAssertEqual(DashboardMenus.pin("claude@1.weekly", pinned: true),
-                       DashboardMenuItem(title: "Unpin", command: .setPinned("claude@1.weekly", false), systemImage: "pin.slash"))
+    func testAMetricIsPinnedOrUnpinnedWithThePinSymbolsAndCanBeHidden() {
+        let hide = DashboardMenuItem(title: "Hide", command: .hide("claude@1.weekly"), systemImage: "eye.slash")
+        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: false), [
+            DashboardMenuItem(title: "Pin", command: .setPinned("claude@1.weekly", true), systemImage: "pin"), hide,
+        ])
+        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: true), [
+            DashboardMenuItem(title: "Unpin", command: .setPinned("claude@1.weekly", false), systemImage: "pin.slash"), hide,
+        ])
     }
 
     func testTheAccountMenuKeepsItsActionsWhenShowingAStatus() {

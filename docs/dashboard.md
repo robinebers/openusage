@@ -82,8 +82,8 @@ Hover over the warning or the clock, or right-click the account, to see why.
 
 An account's page in **Accounts** lists all of its metrics.
 
-- Turn a metric's switch off to hide it everywhere: All Usage, Priority, the menu bar, and
-  notifications.
+- Turn a metric's switch off, or right-click it on the dashboard and choose **Hide**, to hide it
+  everywhere: All Usage, Priority, the menu bar, and notifications. Hiding a pinned metric unpins it.
 - Click the pin, or right-click the metric on the dashboard and choose **Pin**, to list it under
   Pinned on Priority. A hidden metric can't be pinned.
 - Drag a metric by its handle to move it within the account.
@@ -95,7 +95,7 @@ An account's page in **Accounts** lists all of its metrics.
   Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. A Copilot
   organization account also has **Organization Billing**.
-- A metric: **Pin** or **Unpin**, then its account's menu.
+- A metric: **Pin** or **Unpin**, and **Hide**. On All Usage, its account's menu follows.
 
 ## Reordering
 
