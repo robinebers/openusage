@@ -169,7 +169,7 @@ struct PopoverFooter: View {
     }
 
     private var isUpdating: Bool {
-        !dataStore.refreshingProviderIDs.isEmpty
+        container.isRefreshingNow || !dataStore.refreshingProviderIDs.isEmpty
     }
 
     private func refreshNow() {

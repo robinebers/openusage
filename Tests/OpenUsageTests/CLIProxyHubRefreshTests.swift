@@ -3,8 +3,8 @@ import os
 import XCTest
 @testable import OpenUsage
 
-/// Refresh re-reads every hub before it reads usage, and the hub row counts only enabled logins
-/// OpenUsage can't mirror.
+/// Refresh re-reads every hub before it reads usage and ignores a second press while it runs, and the
+/// hub row counts only enabled logins OpenUsage can't mirror.
 @MainActor
 final class CLIProxyHubRefreshTests: XCTestCase {
     nonisolated private static let hubURL = URL(string: "http://mini.local:8317")!
@@ -38,6 +38,31 @@ final class CLIProxyHubRefreshTests: XCTestCase {
         XCTAssertTrue(store.accounts(onHub: hub.id).isEmpty, "the login turned off on the hub is gone after Refresh")
         let paths = http.requests.dropFirst(before).map { $0.url.path() }
         XCTAssertEqual(paths, ["/v0/management/auth-files"], "Refresh read the hub's list and sent no usage read for the gone login")
+    }
+
+    func testARefreshPressedWhileOneRunsSendsNoSecondUsageRead() async throws {
+        let http = RoutingHTTPClient { request in
+            if request.url.path() == "/v0/management/auth-files" { try await Task.sleep(for: .milliseconds(200)) }
+            return .json(Self.listing(Self.claude(disabled: false)))
+        }
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
+        let hub = CLIProxyHub(url: Self.hubURL)
+        try store.addHub(hub, key: "mgmt-key")
+        try store.mirror(try HubLogin.listing(from: Data(Self.listing(Self.claude(disabled: false)).utf8)), from: hub.id)
+        let container = AppContainer.forTesting(accounts: store, defaults: isolatedDefaults(), http: http)
+
+        async let first: Void = container.refreshNow()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(container.isRefreshingNow, "the footer shows Updating… while the hub is read")
+        await container.refreshNow()
+        await first
+
+        let usageReads = http.requests.filter { request in
+            let call = (try? JSONSerialization.jsonObject(with: request.body ?? Data())) as? [String: Any]
+            return call?["url"] as? String == ClaudeUsageClient.usageURL.absoluteString
+        }
+        XCTAssertEqual(usageReads.count, 1, "the second press joined nothing and read nothing")
+        XCTAssertFalse(container.isRefreshingNow)
     }
 
     func testTheHubCountsOnlyEnabledLoginsOpenUsageCantMirror() async throws {
