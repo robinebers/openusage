@@ -15,8 +15,8 @@
   **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
 ### Fixed
-- Using a Claude reset that Anthropic refuses for this sign-in now says so and points to Claude Code,
-  instead of saying the sign-in expired.
+- **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
+  requires to spend a reset. Sign in to existing Claude accounts again to use their resets.
 
 ## v0.8.0-beta.7
 
