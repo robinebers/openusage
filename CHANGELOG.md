@@ -16,7 +16,7 @@
 
 ### Fixed
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
-  requires to spend a reset. Sign in to existing Claude accounts again to use their resets.
+  requires to spend a reset. Remove existing Claude accounts and add them again to use their resets.
 
 ## v0.8.0-beta.7
 
