@@ -20,10 +20,10 @@ enum OpenUsageISO8601 {
         return formatter(fractionalSeconds: true).date(from: s) ?? formatter(fractionalSeconds: false).date(from: s)
     }
 
-    // ISO8601DateFormatter is expensive to construct and is hit on every provider read and limits
-    // export, so the two fixed configurations are built once. `ISO8601DateFormatter` is thread-safe for
-    // parsing/formatting, and parsing here runs on the main-actor refresh path; `nonisolated(unsafe)`
-    // shares the immutable instances without per-call allocation.
+    // ISO8601DateFormatter is expensive to construct, so the two fixed configurations are built once.
+    // `ISO8601DateFormatter` is thread-safe for parsing/formatting, and parsing here runs on the
+    // main-actor refresh path; `nonisolated(unsafe)` shares the immutable instances without per-call
+    // allocation.
     private nonisolated(unsafe) static let fractionalFormatter = makeFormatter(fractionalSeconds: true)
     private nonisolated(unsafe) static let plainFormatter = makeFormatter(fractionalSeconds: false)
 

@@ -33,7 +33,7 @@ final class UsageLedger {
     }
 
     /// Days outside `span` are dropped, and a due day that did not come back is unread, so a failed re-read
-    /// reads 0 instead of showing an old value.
+    /// removes the day instead of showing an old value.
     func record(_ read: [Date: UsageDay], due: [Date], span: [Date]) {
         let kept = Set(span).subtracting(due)
         days = days.filter { kept.contains($0.key) }.merging(read) { _, new in new }
