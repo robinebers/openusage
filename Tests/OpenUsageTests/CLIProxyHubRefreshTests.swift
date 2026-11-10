@@ -22,7 +22,7 @@ final class CLIProxyHubRefreshTests: XCTestCase {
 
     func testRefreshDropsALoginTurnedOffOnTheHubBeforeReadingUsage() async throws {
         let disabled = OSAllocatedUnfairLock(initialState: false)
-        let http = Self.hub(listing: { Self.listing(Self.claude(disabled: disabled.withLock { $0 })) })
+        let http = RoutingHTTPClient { _ in .json(Self.listing(Self.claude(disabled: disabled.withLock { $0 }))) }
         let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: Self.hubURL)
         try store.addHub(hub, key: "mgmt-key")
@@ -41,7 +41,7 @@ final class CLIProxyHubRefreshTests: XCTestCase {
     }
 
     func testTheHubCountsOnlyEnabledLoginsOpenUsageCantMirror() async throws {
-        let http = Self.hub(listing: { Self.listing(Self.claude(disabled: false), Self.unsupportedEntries) })
+        let http = RoutingHTTPClient { _ in .json(Self.listing(Self.claude(disabled: false), Self.unsupportedEntries)) }
         let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
         let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: CLIProxyHubGate()), isEnabled: true)
 
@@ -52,7 +52,7 @@ final class CLIProxyHubRefreshTests: XCTestCase {
         XCTAssertEqual(sync.status(of: hub.id), .synced(unsupported: 1), "only the enabled Muse login counts; disabled logins and the hub's own files don't")
     }
 
-    // MARK: - Fake hub
+    // MARK: - Listing
 
     nonisolated private static func claude(disabled: Bool) -> String {
         #"{"account":"alice@example.com","account_type":"oauth","auth_index":"b799da203df01af5","disabled":\#(disabled),"email":"alice@example.com","id":"claude-alice@example.com.json","label":"alice@example.com","name":"claude-alice@example.com.json","provider":"claude","status":"active","type":"claude"}"#
@@ -60,19 +60,5 @@ final class CLIProxyHubRefreshTests: XCTestCase {
 
     nonisolated private static func listing(_ entries: String...) -> String {
         #"{"files":["# + entries.joined(separator: ",") + "]}"
-    }
-
-    /// A hub that checks the management key, lists `listing()`, and answers every `api-call` with `{}`.
-    nonisolated private static func hub(listing: @escaping @Sendable () -> String) -> RoutingHTTPClient {
-        RoutingHTTPClient { request in
-            guard request.headers["Authorization"] == "Bearer mgmt-key" else { return .json(#"{"error":"invalid management key"}"#, status: 401) }
-            switch request.url.path() {
-            case "/v0/management/auth-files": return .json(listing())
-            case "/v0/management/api-call":
-                let envelope: [String: Any] = ["status_code": 200, "header": ["Content-Type": ["application/json"]], "body": "{}"]
-                return HTTPResponse(statusCode: 200, headers: [:], body: try JSONSerialization.data(withJSONObject: envelope))
-            default: return .json("", status: 404)
-            }
-        }
     }
 }
