@@ -9,29 +9,17 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 - **Default Tab.** Priority or All Usage, the tab the panel opens to.
 - **Global Shortcut.** Opens and closes the panel from any app. Click the field and press the keys.
 
-## Priority
+## Appearance
+
+- **Theme.** System, Light, or Dark.
+- **Time Format.** Auto (your macOS locale), 12-hour, or 24-hour.
+
+## Menu bar icons
 
 - **Max Items In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
   first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 - **Always Show In Menu Bar.** The menu bar lists everything Priority does, in its order: Pinned,
   Running Out, Use It or Lose It, then Used Up. Off by default, showing only what's running out.
-- **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
-  70% left, 30% by default.
-- **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
-- **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
-  before it resets at your current pace, however much it has left. On by default.
-- **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
-  with over 50% left, the same rule as the alert of that name. It shows in the menu bar only with
-  Always Show In Menu Bar on. On by default, and separate from the alert.
-
-Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
-pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
-always stays under Warning: moving one onto the other pushes the other 5% along.
-
-## Appearance
-
-- **Theme.** System, Light, or Dark.
-- **Time Format.** Auto (your macOS locale), 12-hour, or 24-hour.
 
 ## Usage display
 
@@ -47,6 +35,21 @@ Click a limit's amount or reset on the dashboard to flip either one.
 - **Claude** and **ChatGPT.** Show the provider's accounts as one card, with each limit once. Off by
   default. It's the same setting as [Unify Multiple Accounts](dashboard.md#unify-multiple-accounts)
   in the provider's right-click menu.
+
+## Priority
+
+- **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
+  70% left, 30% by default.
+- **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
+- **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
+  before it resets at your current pace, however much it has left. On by default.
+- **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
+  with over 50% left, the same rule as the alert of that name. It shows in the menu bar only with
+  Always Show In Menu Bar on. On by default, and separate from the alert.
+
+Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
+pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
+always stays under Warning: moving one onto the other pushes the other 5% along.
 
 ## Notifications
 

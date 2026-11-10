@@ -6,7 +6,7 @@ Priority lists.
 - Left-click the icon to open the panel. Right-click (or control-click) it for **Settings** and
   **Quit OpenUsage**.
 - The strip shows the top limits of the dashboard's [Running Out](dashboard.md#priority) list, up to
-  **Settings → Display → Priority → Max Items In Menu Bar** (3 by default).
+  **Settings → Display → Menu Bar Icons → Max Items In Menu Bar** (3 by default).
 - With **Always Show In Menu Bar** on (off by default), it lists everything Priority does, in its
   order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
   Priority lists it.

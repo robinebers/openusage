@@ -6,6 +6,11 @@
 - Unify Accounts shows your Claude or ChatGPT accounts as one card, with one bar per limit. Turn it on in
   Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
 
+### Changed
+- Settings tabs are regrouped: **Display** keeps **Menu Bar Icons** (formerly Priority) and **Usage**,
+  **Alerts** opens with **Priority** (Warning, Critical, Burning Fast, Use It or Lose It) above
+  **Notifications**, and **Appearance** moves to **General**.
+
 ## v0.8.0-beta.7
 
 ### Added

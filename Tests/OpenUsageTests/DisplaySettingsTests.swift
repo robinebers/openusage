@@ -15,36 +15,33 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         super.tearDown()
     }
 
-    func testPriorityIconsLeadsTheDisplayTab() async throws {
-        let (container, window, host) = showSettings(.display)
-        defer { window.close() }
-        func headingsAndPickers(in element: Any) -> [String] {
-            guard let node = element as? NSObject else { return [] }
-            let entry: String? = switch node.value(forKey: "accessibilityRole") as? String {
-            case "AXHeading": node.value(forKey: "accessibilityLabel") as? String
-            case NSAccessibility.Role.popUpButton.rawValue: node.value(forKey: "accessibilityValue") as? String
-            default: nil
-            }
-            return [entry].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(headingsAndPickers)
-        }
-        try await waitUntil { headingsAndPickers(in: host).count >= 6 }
-        XCTAssertEqual(headingsAndPickers(in: host).prefix(6),
-                       ["Priority", container.dataStore.menuBarLimit.label, "30% left", "10% left",
-                        "Appearance", AppearanceSetting.system.label],
-                       "one Priority heading over the menu bar picker, Warning, and Critical, then Appearance and its Theme picker")
-        XCTAssertFalse(texts(in: host).contains { $0.hasPrefix("OpenUsage intelligently displays") }, "no note under Priority")
+    func testGeneralEndsWithAppearanceThenUpdates() async throws {
+        try await assertHeadingsAndPickers(.general, [
+            DashboardTab.priority.label, "Appearance", AppearanceSetting.system.label, TimeFormatSetting.auto.label, "Updates",
+        ])
+    }
+
+    func testDisplayHoldsMenuBarIconsThenUsageThenUnifyAccounts() async throws {
+        try await assertHeadingsAndPickers(.display, [
+            "Menu Bar Icons", MenuBarLimit.upToThree.label, "Usage", WidgetDisplayMode.remaining.label, ResetDisplayMode.relative.label,
+            "Unify Accounts",
+        ])
+    }
+
+    func testAlertsOpensWithPriorityAboveNotifications() async throws {
+        try await assertHeadingsAndPickers(.alerts, ["Priority", "30% left", "10% left", "Notifications"])
     }
 
     func testEachDisplayRowExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
         try await assertExplainedByInfoIcons(.display, [
-            "Show icons in the menu bar even if not requiring your attention yet",
-            "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
-            "Over 50% left a day before its reset", "Where usage would be at an even pace",
+            "Show icons in the menu bar even if not requiring your attention yet", "Where usage would be at an even pace",
         ])
     }
 
     func testEachAlertExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
         try await assertExplainedByInfoIcons(.alerts, [
+            "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
+            "Over 50% left a day before its reset",
             "Alert when a limit drops critically low", "Alert when a limit requires your attention",
             "A limit may run out before its reset", "Over 50% left a day before its reset",
         ])
@@ -88,6 +85,14 @@ final class DisplaySettingsTests: QuietWindowTestCase {
                        "the menu and the switch save one setting")
     }
 
+    private func assertHeadingsAndPickers(_ tab: SettingsTab, _ expected: [String], line: UInt = #line) async throws {
+        let (_, window, host) = showSettings(tab)
+        defer { window.close() }
+        try await waitUntil { self.headingsAndPickers(in: host).count >= expected.count }
+        XCTAssertEqual(headingsAndPickers(in: host), expected, "\(tab)'s headings and pickers, in order", line: line)
+        XCTAssertFalse(texts(in: host).contains { $0.hasPrefix("OpenUsage intelligently displays") }, "no note under Menu Bar Icons", line: line)
+    }
+
     private func assertExplainedByInfoIcons(_ tab: SettingsTab, _ explainers: [String], line: UInt = #line) async throws {
         let (_, window, host) = showSettings(tab)
         defer { window.close() }
@@ -118,10 +123,26 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         return (container, window, host)
     }
 
+    private func headingsAndPickers(in element: Any) -> [String] {
+        guard let node = element as? NSObject else { return [] }
+        let entry: String? = switch node.value(forKey: "accessibilityRole") as? String {
+        case "AXHeading": node.value(forKey: "accessibilityLabel") as? String
+        case NSAccessibility.Role.popUpButton.rawValue: node.value(forKey: "accessibilityValue") as? String
+        default: nil
+        }
+        return [entry].compactMap { $0 } + children(of: node).flatMap(headingsAndPickers)
+    }
+
+    /// Skips text fields: walking into the Global Shortcut recorder's search field aborts the test process.
+    private func children(of node: NSObject) -> [Any] {
+        guard node.value(forKey: "accessibilityRole") as? String != NSAccessibility.Role.textField.rawValue else { return [] }
+        return node.value(forKey: "accessibilityChildren") as? [Any] ?? []
+    }
+
     private func texts(in element: Any) -> [String] {
         guard let node = element as? NSObject else { return [] }
         let text = node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.staticText.rawValue
             ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
-        return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
+        return [text].compactMap { $0 } + children(of: node).flatMap(texts)
     }
 }
