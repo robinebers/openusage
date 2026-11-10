@@ -15,6 +15,8 @@
   **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
 ### Fixed
+- Grok's **Extra Usage** shows its pay-as-you-go cap in dollars, like `$25 cap`, instead of the cents xAI
+  reports (`2500 cap`).
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
   requires to spend a reset. Remove existing Claude accounts and add them again to use their resets.
 
