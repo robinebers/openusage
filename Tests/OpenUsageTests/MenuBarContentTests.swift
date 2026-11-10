@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OpenUsage
 
@@ -198,10 +199,23 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertTrue(PriorityIconsPreview.sample(limit: .iconOnly).isEmpty)
     }
 
-    func testThePreviewShrinksAWideStripToFitAndKeepsItsProportions() {
-        let wide = PriorityIconsPreview.fittedSize(of: NSSize(width: 400, height: 24), in: 268)
-        XCTAssertEqual(wide.width, 268)
-        XCTAssertEqual(wide.height, 16.08, accuracy: 0.01)
+    func testThePreviewDrawsTheWholeStripAtOneSizeWhateverTheRowOffers() throws {
+        let settingsRowWidth: CGFloat = 296
+        let store = WidgetDataStore.forTesting([], defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        for limit in MenuBarLimit.allCases {
+            store.menuBarLimit = limit
+            let inRow = try inkWidth(of: PriorityIconsPreview().environment(store), offered: settingsRowWidth)
+            let wider = try inkWidth(of: PriorityIconsPreview().environment(store), offered: settingsRowWidth + 60)
+            XCTAssertEqual(inRow, wider, "\(limit) is sized by the row it sits in")
+            XCTAssertLessThan(inRow, settingsRowWidth, "\(limit) doesn't fit its Settings row")
+        }
+    }
+
+    private func inkWidth(of view: some View, offered width: CGFloat) throws -> CGFloat {
+        let renderer = ImageRenderer(content: view)
+        renderer.proposedSize = ProposedViewSize(width: width, height: nil)
+        let image = try XCTUnwrap(renderer.cgImage)
+        return try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: image)).width / renderer.scale
     }
 
     func testTheShortLabelDropsATrailingGenericWordWhenAWordRemains() {

@@ -74,7 +74,7 @@ enum MenuBarStripRenderer {
     }
 }
 
-private struct MenuBarTextStrip: View {
+struct MenuBarTextStrip: View {
     let content: MenuBarContent
 
     var body: some View {
