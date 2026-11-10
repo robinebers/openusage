@@ -186,6 +186,7 @@ enum DemoFactory {
         case .claude: ["Pro", "Max", "Ultra"]
         case .codex: ["Plus", "Pro", "Business"]
         case .cursor: ["Pro", "Pro+", "Ultra"]
+        case .amp: ["Free", "Megawatt"]
         case .antigravity: ["AI Pro", "AI Ultra"]
         case .copilot: account.organization == nil ? ["Free", "Pro", "Pro+"] : ["Business", "Enterprise"]
         case .devin: ["Core", "Team"]

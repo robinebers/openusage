@@ -106,6 +106,38 @@ struct MuseLogin: ProviderLogin {
     }
 }
 
+/// Amp's device sign-in, under the Amp CLI's own public WorkOS client and through the page `amp login`
+/// opens, which carries the browser's Amp session to the confirm step. The account takes the address
+/// Amp's usage text reports for it, so the sign-in proves it can read usage.
+struct AmpLogin: ProviderLogin {
+    static let clientID = "client_01JNSEYM3V0J5AXK4YXNXRXTGP"
+    static let authenticateURL = URL(string: "https://authapi.ampcode.com/user_management/authenticate")!
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        let token = try await deviceAuthorization(
+            provider: "Amp",
+            startURL: URL(string: "https://authapi.ampcode.com/user_management/authorize/device")!,
+            tokenURL: Self.authenticateURL,
+            clientID: Self.clientID,
+            scopes: nil,
+            verificationPage: URL(string: "https://ampcode.com/auth/cli/device")!,
+            deniedMessage: "Amp device sign-in was denied.",
+            http: http,
+            prompt: prompt
+        )
+        let balance = try await AmpUsageClient(http: http).fetchBalance(accessToken: token.accessToken)
+        try ProviderError.requireSuccess(balance, kind: .amp)
+        let userID = ProviderParse.jwtPayload(token.accessToken)?["sub"] as? String
+        return (AmpUsageMapper.email(balance.body) ?? ProviderKind.amp.displayName, .oauth(OAuthTokens(
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+            expiresAt: ProviderParse.jwtExpiry(token.accessToken),
+            extras: userID.map { [OAuthTokens.identityKey: "amp:\($0)"] } ?? [:]
+        )))
+    }
+}
+
 struct CursorLogin: ProviderLogin {
     var http: any HTTPClient = URLSessionHTTPClient()
 
@@ -212,6 +244,7 @@ enum ProviderLoginCatalog {
         case .claude: ClaudeLogin()
         case .codex: CodexLogin()
         case .cursor: CursorLogin()
+        case .amp: AmpLogin()
         case .antigravity: AntigravityLogin()
         case .copilot: CopilotLogin(domain: domain)
         case .devin: DevinLogin()
@@ -229,6 +262,7 @@ private func deviceAuthorization(
     clientID: String,
     scopes: String?,
     headers: [String: String] = [:],
+    verificationPage: URL? = nil,
     deniedMessage: String,
     http: any HTTPClient,
     prompt: @Sendable (LoginPrompt) async -> Void
@@ -237,8 +271,9 @@ private func deviceAuthorization(
     fields["scope"] = scopes
     let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
-    let candidates = [device.verificationURIComplete, device.verificationURI].compactMap { $0.flatMap(URL.init(string:)) }
-    guard let verificationURL = candidates.first(where: { $0.scheme == "https" && $0.host?.isEmpty == false }) else {
+    let page = verificationPage?.appending(queryItems: [URLQueryItem(name: "user_code", value: device.userCode)])
+    let candidates = [page] + [device.verificationURIComplete, device.verificationURI].map { $0.flatMap(URL.init(string:)) }
+    guard let verificationURL = candidates.compactMap({ $0 }).first(where: { $0.scheme == "https" && $0.host?.isEmpty == false }) else {
         throw LoginError.invalidResponse
     }
     await prompt(.deviceCode(userCode: device.userCode, verificationURL: verificationURL))

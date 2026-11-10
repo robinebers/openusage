@@ -15,6 +15,7 @@ How each provider signs in and what its card shows.
 | Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
 | ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits, Today, Yesterday, Last 30 Days |
+| Amp | Device code (Amp) | Agent Usage, Orb Hours, Amp Free, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub or GHE.com) | Credits, Extra Usage, Chat, Completions |
 | Copilot organization | Organization and token | Org Credits, Org Spend |
@@ -36,6 +37,7 @@ did. The token is stored in the app's Keychain.
 | Claude | `user:profile` | The token cannot run inference, create API keys, or reach Claude Code sessions, MCP servers, or uploads. |
 | ChatGPT | `openid profile email offline_access` | Plain OpenID Connect. The email names the account. |
 | Cursor | none | Cursor's sign-in returns a dashboard session with no scopes. |
+| Amp | none | The same device sign-in the Amp CLI uses. The token lasts five minutes, so OpenUsage renews it before each read. |
 | Antigravity | `cloud-platform`, `userinfo.email` | Google's quota API requires `cloud-platform`. |
 | Copilot | `read:user` (ignored by GitHub) | GitHub ignores the scopes a GitHub App asks for, so OpenUsage cannot narrow the token. It reads only your login and your quota with it. |
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
@@ -103,6 +105,18 @@ How the history is read:
 - Days are kept in memory, so the first refresh after a launch reads all 30 days again.
 - A failed day adds nothing to a range.
 - If Cursor rate-limits a read, the retry waits for its Retry-After, or an hour.
+
+## Amp
+
+- Sign in with an Amp device code. The browser opens the page `amp login` opens, with the code filled
+  in. The account takes the email Amp reports.
+- The card shows what `amp usage` prints:
+  - **Agent Usage**: the plan's agent dollars spent.
+  - **Orb Hours**: the plan's orb hours used.
+  - **Amp Free**: the daily free allowance.
+  - **Credits**: your individual credits, even at `$0 left`.
+- Each row shows only when Amp reports it. Agent Usage and Orb Hours reset at the end of the billing
+  period Amp reports. Amp gives no time for the daily Amp Free reset, so that row has none.
 
 ## Antigravity
 
