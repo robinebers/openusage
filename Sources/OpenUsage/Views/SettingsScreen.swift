@@ -71,6 +71,11 @@ struct SettingsScreen: View {
             }
         }
         .onChange(of: defaultTab) { _, newValue in popover.dashboardTab = newValue }
+        Section("Appearance") {
+            picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })
+                .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
+            picker("Time Format", selection: $timeFormat, options: TimeFormatSetting.allCases.map { ($0, $0.label) })
+        }
         updatesSection
     }
 
@@ -101,9 +106,29 @@ struct SettingsScreen: View {
             }
             .disabled(dataStore.menuBarLimit == .iconOnly)
         } header: {
-            Text("Priority")
+            Text("Menu Bar Icons")
         }
-        Section {
+        Section("Usage") {
+            picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
+            picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
+            Toggle(isOn: $dataStore.showsPaceMarks) {
+                titled("Pace Marks", info: "Where usage would be at an even pace")
+            }
+        }
+        Section("Unify Accounts") {
+            ForEach(ProviderKind.unifiable, id: \.self) { kind in
+                Toggle(kind.displayName, isOn: Binding(
+                    get: { layout.unifiesAccounts(of: kind) },
+                    set: { unifies in withAnimation(Motion.spring) { _ = layout.setUnifiesAccounts(unifies, of: kind) } }
+                ))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var alertsTab: some View {
+        @Bindable var dataStore = dataStore
+        Section("Priority") {
             levelPicker("Warning", info: "When a limit turns into a priority", severity: .warning,
                         selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
             levelPicker("Critical", info: "When a limit turns critically low", severity: .critical,
@@ -123,29 +148,6 @@ struct SettingsScreen: View {
                 }
             }
         }
-        Section("Appearance") {
-            picker("Theme", selection: $appearance, options: AppearanceSetting.allCases.map { ($0, $0.label) })
-                .onChange(of: appearance) { AppearanceSetting.applyCurrent() }
-            picker("Time Format", selection: $timeFormat, options: TimeFormatSetting.allCases.map { ($0, $0.label) })
-        }
-        Section("Usage") {
-            picker("Show Usage As", selection: $dataStore.meterStyle, options: WidgetDisplayMode.allCases.map { ($0, $0.label) })
-            picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
-            Toggle(isOn: $dataStore.showsPaceMarks) {
-                titled("Pace Marks", info: "Where usage would be at an even pace")
-            }
-        }
-        Section("Unify Accounts") {
-            ForEach(ProviderKind.unifiable, id: \.self) { kind in
-                Toggle(kind.displayName, isOn: Binding(
-                    get: { layout.unifiesAccounts(of: kind) },
-                    set: { unifies in withAnimation(Motion.spring) { _ = layout.setUnifiesAccounts(unifies, of: kind) } }
-                ))
-            }
-        }
-    }
-
-    private var alertsTab: some View {
         Section {
             notificationToggle(.critical, isOn: $criticalAlert)
             notificationToggle(.warning, isOn: $warningAlert)
