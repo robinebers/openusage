@@ -58,7 +58,7 @@ enum ResetClaimFailure: Equatable, Sendable {
 }
 
 /// What a reset refills, read from the provider's own fields. Ties at one expiry list in this order.
-enum ResetKind: Int, Comparable, Sendable {
+enum ResetKind: Int, Sendable {
     case session, weekly, fable, full
 
     var title: String {
@@ -69,8 +69,6 @@ enum ResetKind: Int, Comparable, Sendable {
         case .full: "Full Reset"
         }
     }
-
-    static func < (lhs: ResetKind, rhs: ResetKind) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
 /// The record a claim spends: Claude's grant, ChatGPT's credit with that expiry, or Z.ai's exact record.

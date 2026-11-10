@@ -332,9 +332,7 @@ struct RateLimitResetsDetail: View {
     }
 
     private func runClaim(_ entry: Entry) {
-        guard let claim, let item = entry.item else { return }
-        let requestID = requestIDs[item.claim] ?? UUID().uuidString
-        requestIDs[item.claim] = requestID
+        guard let claim, let item = entry.item, let requestID = requestIDs[item.claim] else { return }
         withAnimation(Self.flowAnimation) {
             confirming = nil
             claiming = entry.key
