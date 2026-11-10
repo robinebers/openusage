@@ -21,8 +21,11 @@ enum ClaudeUsageMapper {
     /// `next` names the reset Anthropic wants used first, for a claim it refuses as `not_next_grant`.
     static func resetClaimOutcome(from response: HTTPResponse, next: ResetKind? = nil) -> ResetClaimOutcome {
         // Anthropic answers a token whose scopes don't cover an endpoint with a 403 whose message reads
-        // "OAuth token does not meet scope requirement …"; that is the sign-in's grant, not an expiry.
-        if response.statusCode == 403, String(decoding: response.body, as: UTF8.self).contains("scope requirement") {
+        // "OAuth token does not meet scope requirement …"; that is the sign-in's grant, not an expiry. The
+        // claim also goes out on a token renewed after any 401, so a 401 that survives is Anthropic refusing
+        // this `user:profile` sign-in, as it did on Nov 10, while the same token still reads usage.
+        if response.statusCode == 401
+            || (response.statusCode == 403 && String(decoding: response.body, as: UTF8.self).contains("scope requirement")) {
             return .failed(.notPermitted)
         }
         if ProviderError.isAuthFailure(response) { return .failed(.signInExpired) }

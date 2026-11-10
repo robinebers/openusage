@@ -14,6 +14,10 @@
 - **Settings → Alerts** sets the Warning and Critical **Thresholds**, then lists each alert once with a
   **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
+### Fixed
+- Using a Claude reset that Anthropic refuses for this sign-in now says so and points to Claude Code,
+  instead of saying the sign-in expired.
+
 ## v0.8.0-beta.7
 
 ### Added

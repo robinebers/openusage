@@ -56,7 +56,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome("not json"), .failed(.refused))
         XCTAssertEqual(outcome(#"{"result":"reset"}"#, status: 429), .failed(.refused))
         XCTAssertEqual(outcome(#"{"result":"reset"}"#, status: 500), .failed(.refused))
-        XCTAssertEqual(outcome("", status: 401), .failed(.signInExpired))
+        XCTAssertEqual(outcome("", status: 401), .failed(.notPermitted))
         XCTAssertEqual(outcome("", status: 403), .failed(.signInExpired))
         let scopeRefusal = #"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:inference"}}"#
         XCTAssertEqual(outcome(scopeRefusal, status: 403), .failed(.notPermitted))
@@ -134,6 +134,22 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(http.requests.filter { $0.url.path == "/v1/oauth/token" }.count, 1)
         guard case .oauth(let saved)? = try vault.load(account.id) else { return XCTFail("expected saved tokens") }
         XCTAssertEqual(saved.accessToken, "token-b")
+    }
+
+    func testAClaimStillRefusedAfterRenewingTheSignInSaysItCantUseResetsNotThatItExpired() async throws {
+        let http = makeHTTP(claim: { _ in HTTPResponse(statusCode: 401, headers: [:], body: Data()) })
+        let runtime = try makeRuntime(http: http)
+        await prime(runtime)
+
+        let outcome = await runtime.claimClaudeResetGrant(Self.grantID, redeemRequestID: Self.requestID)
+
+        XCTAssertEqual(outcome, .failed(.notPermitted))
+        XCTAssertEqual(outcome.message(), "This sign-in can't use resets. Use the reset in Claude Code instead.")
+        let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
+        XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a", "Bearer token-b"])
+        XCTAssertEqual(try claims.map(requestID), [Self.requestID, Self.requestID])
+        XCTAssertEqual(http.requests.filter { $0.url.path == "/v1/oauth/token" }.count, 1)
+        XCTAssertEqual(runtime.claude.session?.resetGrants.unsettledClaims, [:])
     }
 
     func testScopeRefusedClaimSaysTheSignInCantUseResetsAndKeepsTheCheck() async throws {

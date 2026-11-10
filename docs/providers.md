@@ -49,8 +49,9 @@ A narrower grant applies the next time you add an account. To get it for an exis
 the account and add it again. Claude is the exception: a refreshed Claude token carries only
 `user:profile`.
 
-Spending a Claude reset with a `user:profile`-only sign-in is untested. If Anthropic refuses it, the
-resets popover says so, and you can spend the reset in Claude Code instead.
+Anthropic refuses to spend a Claude reset for a `user:profile`-only sign-in: the claim gets HTTP 401
+even after a fresh token, while the same token still reads usage. The resets popover says the sign-in
+can't use resets, and you can spend the reset in Claude Code instead.
 
 ## Claude
 
