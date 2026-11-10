@@ -53,7 +53,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
         XCTAssertEqual(editor.selectedRange(), NSRange(location: 0, length: (name as NSString).length), "the whole name isn't selected", line: line)
 
         for character in "Zed" {
-            try await press(String(character), hosted)
+            try await press(String(character))
         }
         XCTAssertEqual(renaming.draft, "Zed", "typing didn't replace the name", line: line)
         renaming.cancel()
@@ -139,7 +139,7 @@ final class InlineRenameFocusTests: QuietWindowTestCase {
 
     /// A key press as the window server delivers it: to the key window, or nowhere when there is none,
     /// so it reaches the field only when the panel is key.
-    private func press(_ character: String, _ hosted: Hosted) async throws {
+    private func press(_ character: String) async throws {
         guard let keyWindow = NSApp.keyWindow else { return }
         NSApp.sendEvent(NSEvent.keyEvent(
             with: .keyDown,

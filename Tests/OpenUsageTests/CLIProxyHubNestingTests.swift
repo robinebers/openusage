@@ -82,7 +82,7 @@ final class CLIProxyHubNestingTests: QuietWindowTestCase {
         let container = AppContainer.forTesting(accounts: store, defaults: defaults, http: http)
         try await container.hubs.connect(url: "http://mac-mini.local:8317", key: "key-a")
         try await container.hubs.connect(url: "https://hub.example.com", key: "key-b")
-        down.withLock { $0.insert("hub.example.com") }
+        down.withLock { _ = $0.insert("hub.example.com") }
         await container.hubs.syncDue(maxAge: 0)
         let (mini, office) = (store.hubs[0], store.hubs[1])
         guard case .failed = container.hubs.status(of: office.id) else { return XCTFail("the office hub's read didn't fail") }

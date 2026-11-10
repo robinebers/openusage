@@ -100,7 +100,7 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.oldToken]
         )
 
-        let snapshot = try await harness.runtime.refresh().get()
+        _ = try await harness.runtime.refresh().get()
 
         XCTAssertEqual(harness.stored?.expiresAt, Self.expiry)
         XCTAssertEqual(harness.stored?.accessToken, Self.oldToken)
@@ -115,7 +115,7 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.newToken]
         )
 
-        let snapshot = try await harness.runtime.refresh().get()
+        _ = try await harness.runtime.refresh().get()
 
         XCTAssertEqual(harness.usageTokens, [Self.newToken])
         try assertRefreshedAndSaved(harness)
@@ -129,7 +129,7 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.newToken]
         )
 
-        let snapshot = try await harness.runtime.refresh().get()
+        _ = try await harness.runtime.refresh().get()
 
         XCTAssertEqual(harness.usageTokens, [Self.oldToken, Self.newToken])
         try assertRefreshedAndSaved(harness)
@@ -159,7 +159,7 @@ final class CursorTokenRefreshTests: XCTestCase {
             acceptedTokens: [Self.oldToken]
         )
 
-        let snapshot = try await harness.runtime.refresh().get()
+        _ = try await harness.runtime.refresh().get()
 
         XCTAssertEqual(harness.refreshRequests.count, 1)
         XCTAssertEqual(harness.usageTokens, [Self.oldToken])

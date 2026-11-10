@@ -66,7 +66,6 @@ final class AddAccountSheetTests: QuietWindowTestCase {
     }
 
     func testTheHubSheetShowsTheHintOrTheErrorButNeverBoth() async throws {
-        let hint = "The hub needs remote management turned on. OpenUsage uses https unless you type http://, which works only for this Mac, your local network, or Tailscale."
         let error = "Use https for hub.example.com. OpenUsage uses http only for a hub on this Mac, your local network, or Tailscale."
         let flow = AddAccountFlow(
             store: AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault()), connectHub: { _, _ in throw ProviderError.unavailable(error) }

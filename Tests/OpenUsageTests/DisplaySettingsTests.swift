@@ -7,11 +7,11 @@ import XCTest
 final class DisplaySettingsTests: QuietWindowTestCase {
     override func setUp() {
         super.setUp()
-        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        MainActor.assumeIsolated { NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface") }
     }
 
     override func tearDown() {
-        NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface")
+        MainActor.assumeIsolated { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
         super.tearDown()
     }
 

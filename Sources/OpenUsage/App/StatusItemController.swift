@@ -79,7 +79,7 @@ class MenuBarPanel: NSPanel {
     func clearStrayFocus() {
         let recording = (firstResponder as? NSTextView)?.delegate is KeyboardShortcuts.RecorderCocoa
         guard recording || !(firstResponder is NSText) else { return }
-        makeFirstResponder(nil)
+        _ = makeFirstResponder(nil)
     }
 }
 

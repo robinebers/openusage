@@ -108,7 +108,7 @@ final class ResetClaimServiceTests: XCTestCase {
         XCTAssertEqual(ResetClaimFailure(ProviderError.signInExpired(.codex)), .signInExpired)
         XCTAssertEqual(ResetClaimFailure(URLError(.timedOut)), .connection)
         XCTAssertEqual(ResetClaimFailure(ProviderError.connectionFailed), .connection)
-        XCTAssertEqual(ResetClaimFailure(ProviderError.connectionFailed), .connection)
+        XCTAssertEqual(ResetClaimFailure(ProviderError.unreachable("Can't reach the hub.")), .connection)
         XCTAssertEqual(ResetClaimFailure(ProviderError.requestFailed(500)), .refused)
     }
 
