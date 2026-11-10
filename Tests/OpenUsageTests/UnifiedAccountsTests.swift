@@ -23,7 +23,9 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         return data
     }
 
-    private func family(_ accounts: [(label: String, readings: [(key: String, data: WidgetData)])]) -> DashboardFamily {
+    private func family(
+        _ accounts: [(label: String, readings: [(key: String, data: WidgetData)])], waiting: Set<String> = []
+    ) -> DashboardFamily {
         let groups = accounts.enumerated().map { index, account in
             let provider = Provider(id: "claude@\(index + 1)", kind: .claude, accountLabel: account.label)
             return ProviderMetrics(
@@ -32,7 +34,9 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
                 unifiesAccounts: true
             )
         }
-        return DashboardFamily.make(groups: groups) { DashboardLine(descriptor: $0, data: $0.sample) }[0]
+        return DashboardFamily.make(groups: groups, isWaiting: { waiting.contains($0.id) }) {
+            DashboardLine(descriptor: $0, data: $0.sample)
+        }[0]
     }
 
     private var robins: DashboardFamily {
@@ -138,6 +142,33 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
             account.id == "claude@3" ? .unavailable("Sign in again.") : .current
         }
         XCTAssertEqual(board.notices.map(\.provider.id), ["claude@3"])
+    }
+
+    func testPinAndHideReachEveryAccountsCopyEvenBeforeItsFirstReading() {
+        let weekly = limit("Weekly", left: 40, resetsIn: day)
+        let unified = family([("AM1", [("weekly", weekly)]), ("AM2", [("weekly", weekly)])], waiting: ["claude@2"])
+        XCTAssertEqual(line("weekly", in: unified).members.map(\.provider.id), ["claude@1"])
+        XCTAssertEqual(line("weekly", in: unified).metricIDs, ["claude@1.weekly", "claude@2.weekly"])
+    }
+
+    func testCappedAndUncappedSpendingAddUpPerCurrencyAndKeepEveryAccount() {
+        func capped(_ spent: Double, of cap: Double, _ currency: String) -> WidgetData {
+            WidgetData(title: "Extra Usage", kind: .dollars, currencyCode: currency, used: spent, limit: cap)
+        }
+        var uncapped = WidgetData(title: "Extra Usage", kind: .dollars, used: 0, limit: nil)
+        uncapped.values = [MetricValue(number: 5, kind: .dollars, currencyCode: "USD")]
+
+        let mixed = line("extra", in: family([("AM1", [("extra", capped(10, of: 50, "USD"))]), ("AM2", [("extra", uncapped)])]))
+        XCTAssertEqual(mixed.members.count, 2, "an uncapped account stays in the list")
+        XCTAssertNil(mixed.data.limit)
+        XCTAssertEqual(mixed.data.values, [MetricValue(number: 15, kind: .dollars, currencyCode: "USD")])
+
+        let currencies = [("AM1", [("extra", capped(90, of: 100, "USD"))]), ("AM2", [("extra", capped(80, of: 100, "EUR"))])]
+        let forward = line("extra", in: family(currencies)).data
+        let backward = line("extra", in: family(currencies.reversed())).data
+        XCTAssertNil(forward.limit, "caps in two currencies have no total")
+        XCTAssertEqual(Set(forward.values.map(\.currencyCode)), ["USD", "EUR"])
+        XCTAssertEqual(Set(forward.values.map(\.number)), Set(backward.values.map(\.number)))
     }
 
     func testTheProviderMenuTurnsItOnAndOffWithACheckmark() {

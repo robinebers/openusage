@@ -18,7 +18,7 @@ extension DashboardAccount {
         let lines = mergedOrder(accounts.map { $0.lines.map(\.descriptor.key) }).compactMap { key in
             DashboardLine.unifying(accounts.compactMap { account in
                 account.lines.first { $0.descriptor.key == key }.map { DashboardLine.Member(provider: account.provider, line: $0) }
-            }, as: provider)
+            }, as: provider, copyIDs: accounts.map { "\($0.id).\(key)" })
         }
         let waiting = lines.isEmpty && accounts.allSatisfy { !$0.waitingMetricIDs.isEmpty } ? accounts[0].waitingMetricIDs : []
         return DashboardAccount(provider: provider, lines: lines, waitingMetricIDs: waiting, members: accounts)
@@ -38,33 +38,36 @@ extension DashboardAccount {
 }
 
 extension DashboardLine {
-    static func unifying(_ members: [Member], as provider: Provider) -> DashboardLine? {
+    /// `copyIDs` names every account's copy of the limit, read or not, for Pin and Hide.
+    static func unifying(_ members: [Member], as provider: Provider, copyIDs: [String]) -> DashboardLine? {
         guard let first = members.first?.line else { return nil }
-        let bounded = members.filter { $0.line.data.isBounded }
-        let pooled = bounded.isEmpty ? members : bounded
         var descriptor = WidgetDescriptor(
             provider: provider, key: first.descriptor.key, metricLabel: first.descriptor.metricLabel, sample: first.descriptor.sample
         )
         descriptor.limitResources = first.descriptor.limitResources
-        return DashboardLine(descriptor: descriptor, data: .pooling(pooled.map(\.line.data)), members: pooled)
+        return DashboardLine(descriptor: descriptor, data: .pooling(members.map(\.line.data)), members: members, copyIDs: copyIDs)
     }
 }
 
 extension WidgetData {
-    /// Limits add up what each account used against what each allows, so percents average. Amounts and counts add
-    /// up, and a limit is used up only when every account's is.
+    /// Limits add up what each account used against what each allows, so percents average, and a limit is used up
+    /// only when every account's is. Limits in different units, or capped beside uncapped, add up what each spent.
     static func pooling(_ readings: [WidgetData]) -> WidgetData {
         var data = readings[0]
         data.periodDurationMs = nil
         data.sessionStartSignal = nil
-        guard data.isBounded else {
+        guard readings.allSatisfy({ $0.isBounded && $0.kind == data.kind && $0.currencyCode == data.currencyCode }) else {
+            data = readings.first { !$0.isBounded } ?? data
+            data.limit = nil
             data.expiriesAt = readings.flatMap(\.expiriesAt).sorted()
             let badges = readings.compactMap(\.valueTextOverride)
             if !badges.isEmpty {
                 data.valueTextOverride = badges.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: " · ")
                 return data
             }
-            data.values = summed(readings.flatMap(\.values))
+            data.values = summed(readings.flatMap { reading in
+                reading.isBounded ? [MetricValue(number: reading.used, kind: reading.kind, currencyCode: reading.currencyCode)] : reading.values
+            })
             data.hasData = !data.values.isEmpty
             return data
         }

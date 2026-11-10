@@ -78,7 +78,8 @@ one card. It's saved per provider and shows a checkmark while it's on. Choose it
 
 - The card names how many accounts it holds and carries a **Unified** badge.
 - Each limit shows once. Its amount averages what's left across the accounts that have that limit, so
-  an account without it doesn't count. Dollar and count amounts add up.
+  an account without it doesn't count. Dollar and count amounts add up, per currency. Spending capped
+  in different currencies, or capped beside uncapped, shows what each account spent, with no cap.
 - The red end of a bar is the share held by accounts that are used up.
 - The reset is the next reset of any account.
 - Limit Resets adds up every account's resets.

@@ -46,17 +46,19 @@ struct DashboardLine: Identifiable {
     let data: WidgetData
     /// For a unified limit, every account that reports it, in the user's order.
     var members: [Member] = []
+    /// For a unified limit, every account's copy of it, including accounts still waiting for a reading.
+    var copyIDs: [String] = []
     var id: String { descriptor.id }
 
     /// What Pin and Hide act on: each account's own copy of a unified limit.
-    var metricIDs: [String] { members.isEmpty ? [id] : members.map(\.line.id) }
+    var metricIDs: [String] { copyIDs.isEmpty ? [id] : copyIDs }
 
     /// The share of a unified bar held by accounts that are used up.
     var usedUpShare: Double {
-        let bounded = members.map(\.line.data).filter(\.isBounded)
-        let total = bounded.reduce(0) { $0 + ($1.limit ?? 0) }
-        guard total > 0 else { return 0 }
-        return bounded.filter(\.isSpent).reduce(0) { $0 + ($1.limit ?? 0) } / total
+        let readings = members.map(\.line.data)
+        let total = readings.reduce(0) { $0 + ($1.limit ?? 0) }
+        guard data.isBounded, total > 0 else { return 0 }
+        return readings.filter(\.isSpent).reduce(0) { $0 + ($1.limit ?? 0) } / total
     }
 
     func dashboardRow(now: Date = Date()) -> DashboardRowModel {
