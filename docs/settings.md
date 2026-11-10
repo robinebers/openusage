@@ -42,6 +42,12 @@ always stays under Warning: moving one onto the other pushes the other 5% along.
 
 Click a limit's amount or reset on the dashboard to flip either one.
 
+## Unify Accounts
+
+- **Claude** and **ChatGPT.** Show the provider's accounts as one card, with each limit once. Off by
+  default. It's the same setting as [Unify Multiple Accounts](dashboard.md#unify-multiple-accounts)
+  in the provider's right-click menu.
+
 ## Notifications
 
 All off by default. Turning the first one on asks macOS for permission.

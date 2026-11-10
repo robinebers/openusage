@@ -8,6 +8,8 @@ struct DashboardMetricRow: View {
     var valueTooltip: String?
     var resetTooltip: String?
     var figure: (AnyView) -> AnyView = { $0 }
+    /// The account the label names, blurred with the other names while Hide From Screen Share is on.
+    var account: Provider?
 
     static let font: Font = .system(size: 12)
     static let resetFont: Font = .system(size: 11)
@@ -55,9 +57,17 @@ struct DashboardMetricRow: View {
         .accessibilityElement(children: .combine)
     }
 
+    @ViewBuilder
     private var label: some View {
-        Text(model.label)
-            .lineLimit(1)
+        if let account {
+            Text(model.label)
+                .lineLimit(1)
+                .truncationMode(account.isNamedByEmail ? .middle : .tail)
+                .concealingAccountName(of: account)
+        } else {
+            Text(model.label)
+                .lineLimit(1)
+        }
     }
 
     /// A figure keeps the row's colour until it warns.

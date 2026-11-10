@@ -20,4 +20,5 @@ Priority lists.
   update banner goes away.
 - When a provider has more than one account, its mark carries the account name's initials: "Personal"
   reads P and "Attention Machine 1" reads A1. Rename one of two accounts with the same initials to tell
-  them apart.
+  them apart. A provider with [Unify Multiple Accounts](dashboard.md#unify-multiple-accounts) on shows
+  each limit once, with no initials.

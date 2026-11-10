@@ -22,10 +22,22 @@ final class DashboardMenusTests: XCTestCase {
 
         XCTAssertEqual(commands(DashboardMenus.provider(family)), [
             [.refresh(["claude@1", "claude@2"])],
-            [.manageAccounts],
+            [.manageAccounts, .unifyAccounts(.claude, true)],
             [.shareScreenshot(["claude@1", "claude@2"])],
             claudeLinks,
         ])
+    }
+
+    func testOnlyClaudeAndChatGPTCardsOfferUnifyMultipleAccounts() {
+        func unifyItems(_ kind: ProviderKind) -> [DashboardMenuItem] {
+            let accounts = (1...2).map { DashboardAccount(provider: Provider(id: "\(kind.rawValue)@\($0)", kind: kind, accountLabel: "\($0)"), lines: []) }
+            return DashboardMenus.provider(DashboardFamily(id: kind.rawValue, provider: accounts[0].provider, accounts: accounts))
+                .flatMap { $0 }.filter { $0.title == "Unify Multiple Accounts" }
+        }
+        XCTAssertEqual(unifyItems(.codex).map(\.command), [.unifyAccounts(.codex, true)])
+        for kind in ProviderKind.allCases where kind != .claude && kind != .codex {
+            XCTAssertEqual(unifyItems(kind), [], "\(kind.displayName) has no Unify Multiple Accounts")
+        }
     }
 
     func testOpenRouterLinksIncludeCredits() {
@@ -71,12 +83,12 @@ final class DashboardMenusTests: XCTestCase {
     }
 
     func testAMetricIsPinnedOrUnpinnedWithThePinSymbolsAndCanBeHidden() {
-        let hide = DashboardMenuItem(title: "Hide", command: .hide("claude@1.weekly"), systemImage: "eye.slash")
-        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: false), [
-            DashboardMenuItem(title: "Pin", command: .setPinned("claude@1.weekly", true), systemImage: "pin"), hide,
+        let hide = DashboardMenuItem(title: "Hide", command: .hide(["claude@1.weekly"]), systemImage: "eye.slash")
+        XCTAssertEqual(DashboardMenus.metric(["claude@1.weekly"], pinned: false), [
+            DashboardMenuItem(title: "Pin", command: .setPinned(["claude@1.weekly"], true), systemImage: "pin"), hide,
         ])
-        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: true), [
-            DashboardMenuItem(title: "Unpin", command: .setPinned("claude@1.weekly", false), systemImage: "pin.slash"), hide,
+        XCTAssertEqual(DashboardMenus.metric(["claude@1.weekly"], pinned: true), [
+            DashboardMenuItem(title: "Unpin", command: .setPinned(["claude@1.weekly"], false), systemImage: "pin.slash"), hide,
         ])
     }
 

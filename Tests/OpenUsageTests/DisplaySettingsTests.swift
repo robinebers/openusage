@@ -57,6 +57,37 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         ])
     }
 
+    func testUnifyAccountsHasASwitchForClaudeAndChatGPTThatTheProviderMenuSharesAndThatIsSaved() async throws {
+        let defaults = isolatedDefaults()
+        let (container, window, host) = showSettings(.display, defaults: defaults)
+        defer { window.close() }
+        func nodes(in element: Any) -> [NSObject] {
+            guard let node = element as? NSObject else { return [] }
+            return [node] + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(nodes)
+        }
+        func unifySwitches() -> [(label: String, isOn: Bool, node: NSObject)] {
+            let all = nodes(in: host)
+            guard let heading = all.firstIndex(where: { $0.value(forKey: "accessibilityLabel") as? String == "Unify Accounts" }) else { return [] }
+            let rows = all[(heading + 1)...]
+            return zip(rows, rows.dropFirst()).compactMap { title, control in
+                guard control.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.checkBox.rawValue,
+                      let label = title.value(forKey: "accessibilityValue") as? String else { return nil }
+                return (label, (control.value(forKey: "accessibilityValue") as? NSNumber)?.boolValue == true, control)
+            }
+        }
+        try await waitUntil { unifySwitches().count == 2 }
+        XCTAssertEqual(unifySwitches().map(\.label), ["Claude", "ChatGPT"])
+        XCTAssertEqual(unifySwitches().map(\.isOn), [false, false], "both start off")
+
+        container.layout.setUnifiesAccounts(true, of: .claude)
+        try await waitUntil { unifySwitches().map(\.isOn) == [true, false] }
+
+        unifySwitches()[1].node.perform(NSSelectorFromString("accessibilityPerformPress"))
+        try await waitUntil { container.layout.unifiesAccounts(of: .codex) }
+        XCTAssertEqual(LayoutStore(registry: container.layout.registry, defaults: defaults).state.unifiedProviderKinds, [.claude, .codex],
+                       "the menu and the switch save one setting")
+    }
+
     private func assertExplainedByInfoIcons(_ tab: SettingsTab, _ explainers: [String], line: UInt = #line) async throws {
         let (_, window, host) = showSettings(tab)
         defer { window.close() }
@@ -71,8 +102,8 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         XCTAssertTrue(Set(texts(in: host)).isDisjoint(with: explainers), "no explainer shows as a second line", line: line)
     }
 
-    private func showSettings(_ tab: SettingsTab) -> (AppContainer, NSWindow, NSView) {
-        let defaults = isolatedDefaults()
+    private func showSettings(_ tab: SettingsTab, defaults: UserDefaults? = nil) -> (AppContainer, NSWindow, NSView) {
+        let defaults = defaults ?? isolatedDefaults()
         let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         container.popover.screen = .settings
         container.popover.settingsTab = tab

@@ -51,6 +51,8 @@ on `gh-pages`). Cut releases with the release-swift skill.
   the user's saved order; a provider's first account goes to the bottom, and a new account goes to the
   bottom of its provider's accounts, in the order they were added. Never sort providers or accounts by
   catalog order or name.
+- The one exception to provider-supplied values: a unified multi-account row (Unify Multiple Accounts)
+  may average provider percents, at the owner's request.
 - Never rebuild `AppContainer` or the status item on an account change; the account observer swaps
   runtimes in place.
 - See `docs/` for behavior docs and the developer docs (architecture overview, adding a provider).

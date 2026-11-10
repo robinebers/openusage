@@ -6,7 +6,7 @@ struct DashboardRowModel: Equatable {
         case value(String, detail: String? = nil, severity: WidgetData.MeterSeverity = .normal)
     }
 
-    let label: String
+    var label: String
     let mark: Mark
     /// Clock times run wider than countdowns, so they get the wider reset lane.
     var showsClockTimes = false

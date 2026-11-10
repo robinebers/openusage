@@ -16,8 +16,8 @@ struct PriorityDashboardView: View {
                 onFixAccount: { popover.openAccounts($0) },
                 onMetricCommand: { command in
                     switch command {
-                    case .setPinned(let metricID, let pinned): layout.setMetric(metricID, pinned: pinned)
-                    case .hide(let metricID): layout.setMetric(metricID, shown: false)
+                    case .setPinned(let metricIDs, let pinned): layout.setMetrics(metricIDs, pinned: pinned)
+                    case .hide(let metricIDs): layout.setMetrics(metricIDs, shown: false)
                     default: break
                     }
                 }
@@ -132,7 +132,7 @@ struct PriorityBoardList: View {
                 limitRow(pin.provider, pin.data, severity: .normal)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { metricMenu(pin.id, pinned: true) }
+                    .contextMenu { metricMenu(pin.line.metricIDs, pinned: true) }
             }
         }
     }
@@ -146,7 +146,7 @@ struct PriorityBoardList: View {
                          callout: item.runOutText(now: now).map { ($0, Theme.severityTextColor(.warning)) })
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.line.metricIDs, pinned: item.isPinned) }
             }
         }
     }
@@ -158,7 +158,7 @@ struct PriorityBoardList: View {
                 usedUpRow(item)
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.line.metricIDs, pinned: item.isPinned) }
             }
         }
         .opacity(0.5)
@@ -172,15 +172,15 @@ struct PriorityBoardList: View {
                          callout: item.resetsInText(now: now).map { ($0, Theme.severityTextColor(.normal)) })
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
-                    .contextMenu { metricMenu(item.id, pinned: item.isPinned) }
+                    .contextMenu { metricMenu(item.line.metricIDs, pinned: item.isPinned) }
             }
         }
     }
 
     @ViewBuilder
-    private func metricMenu(_ metricID: String, pinned: Bool) -> some View {
+    private func metricMenu(_ metricIDs: [String], pinned: Bool) -> some View {
         if let onMetricCommand {
-            DashboardMenu(sections: [DashboardMenus.metric(metricID, pinned: pinned)], perform: onMetricCommand)
+            DashboardMenu(sections: [DashboardMenus.metric(metricIDs, pinned: pinned)], perform: onMetricCommand)
         }
     }
 

@@ -70,7 +70,7 @@ struct PriorityItem: Identifiable {
     let provider: Provider
     let line: DashboardLine
     let reason: Reason
-    /// The user pinned it. A pinned item is listed under Running Out, Used Up, or Use It or Lose It instead of Pinned.
+    /// The user pinned it, or for a unified limit any account's copy of it. A pinned item is listed under Running Out, Used Up, or Use It or Lose It instead of Pinned.
     let isPinned: Bool
 
     var id: String { line.id }
@@ -162,7 +162,7 @@ struct PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
         let items = lines.compactMap { provider, line in
             PriorityItem.Reason(line, now: now, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt).map {
-                PriorityItem(provider: provider, line: line, reason: $0, isPinned: pinnedIDs.contains(line.id))
+                PriorityItem(provider: provider, line: line, reason: $0, isPinned: line.metricIDs.contains(where: pinnedIDs.contains))
             }
         }
         let ranked = items.enumerated().sorted { lhs, rhs in
@@ -172,7 +172,8 @@ struct PriorityBoard {
 
         var waiting: [Provider] = []
         var notices: [AccountNotice] = []
-        for account in accounts {
+        // A unified account reads through each account it stands for, so each still says when it needs the user.
+        for account in accounts.flatMap({ $0.members.isEmpty ? [$0] : $0.members }) {
             switch status(account) {
             case .waiting: waiting.append(account.provider)
             case .unavailable(let message): notices.append(AccountNotice(provider: account.provider, message: message))
@@ -193,7 +194,7 @@ struct PriorityBoard {
         }
         let listed = Set(ranked.map(\.id))
         return PriorityBoard(
-            pinned: lines.filter { pinnedIDs.contains($0.1.id) && !listed.contains($0.1.id) }.map(PinnedMetric.init),
+            pinned: lines.filter { $0.1.metricIDs.contains(where: pinnedIDs.contains) && !listed.contains($0.1.id) }.map(PinnedMetric.init),
             attention: ranked.filter { $0.reason.section == .runningOut },
             usedUp: ranked.filter { $0.reason.section == .usedUp },
             useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt },

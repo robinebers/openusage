@@ -158,9 +158,15 @@ extension WidgetData {
         return (limit, resetsAt, TimeInterval(periodDurationMs) / 1000)
     }
 
+    /// Nothing is left at the precision the row shows.
+    var isSpent: Bool {
+        guard hasData, let limit, limit > 0 else { return false }
+        return roundedAtDisplayPrecision(limit - used) <= 0
+    }
+
     func meterState(now: Date = Date()) -> MeterState {
         guard hasData, let limit, limit > 0 else { return hasData ? .unpaced : .noData }
-        if roundedAtDisplayPrecision(limit - used) <= 0 { return .spent }
+        if isSpent { return .spent }
         guard let pace = pace(now: now) else { return .unpaced }
         switch pace.status {
         case .ahead:
