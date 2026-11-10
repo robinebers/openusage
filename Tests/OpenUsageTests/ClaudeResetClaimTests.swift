@@ -147,7 +147,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome, .failed(.notPermitted))
         XCTAssertEqual(http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }.count, 1)
         XCTAssertNotNil(runtime.claude.session?.resetGrants.check?.status)
-        XCTAssertNil(runtime.claude.session?.resetGrants.unsettledClaim)
+        XCTAssertEqual(runtime.claude.session?.resetGrants.unsettledClaims, [:])
     }
 
     func testRemovedCredentialFailsWithoutSendingAClaim() async throws {
@@ -187,7 +187,30 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(retry, .success)
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
         XCTAssertEqual(try claims.map(requestID), ["first-confirm", "first-confirm", "first-confirm"])
-        XCTAssertNil(runtime.claude.session?.resetGrants.unsettledClaim)
+        XCTAssertEqual(runtime.claude.session?.resetGrants.unsettledClaims, [:])
+    }
+
+    func testAnotherGrantsAnswerKeepsAnUnsettledClaimsRequestID() async throws {
+        let lost = TestSwitch(true)
+        let http = makeHTTP(grants: Self.maxLoginGrants, claim: { request in
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.body)) as? [String: String])
+            if body["grant_id"] == "launch-2610-fable" {
+                if lost.value { throw URLError(.networkConnectionLost) }
+                return .json(#"{"result":"already_used"}"#)
+            }
+            return .json(#"{"result":"not_limited"}"#)
+        })
+        let runtime = try makeRuntime(http: http)
+        await prime(runtime)
+
+        _ = await runtime.claimClaudeResetGrant("launch-2610-fable", redeemRequestID: "fable-first")
+        _ = await runtime.claimClaudeResetGrant("free_reset_oct_2026", redeemRequestID: "weekly-request")
+        lost.value = false
+        let retry = await runtime.claimClaudeResetGrant("launch-2610-fable", redeemRequestID: "reopened-popover")
+
+        XCTAssertEqual(retry, .success)
+        let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
+        XCTAssertEqual(try claims.map(requestID), ["fable-first", "weekly-request", "fable-first"])
     }
 
     func testLostAnswerReadsAsConnectionAndKeepsItsRequestID() async throws {
@@ -266,7 +289,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome, .notNextReset(next: .weekly))
         XCTAssertEqual(outcome.message(), "Claude wants your Weekly Reset used first. Nothing was used.")
         XCTAssertEqual(runtime.resetClaimService { .refreshed }?.items.count, 3, "nothing was spent")
-        XCTAssertNil(runtime.claude.session?.resetGrants.unsettledClaim)
+        XCTAssertEqual(runtime.claude.session?.resetGrants.unsettledClaims, [:])
     }
 
     func testMalformedRequestIDIsRefusedBeforeSending() async throws {
