@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SettingsScreen: View {
     var openURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
+    var notifications = AppNotifications.shared
 
     @Environment(AppContainer.self) private var container
     @Environment(PopoverState.self) private var popover
@@ -25,6 +26,7 @@ struct SettingsScreen: View {
 
     /// How far a grouped `Form` already sets its cards in from every edge.
     private static let formRowInset: CGFloat = 20
+    private static let alertColumnWidth: CGFloat = 56
 
     var body: some View {
         Form {
@@ -135,33 +137,38 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var alertsTab: some View {
         @Bindable var dataStore = dataStore
-        Section("Priority") {
-            levelPicker("Warning", info: "When a limit turns into a priority", severity: .warning,
-                        selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
-            levelPicker("Critical", info: "When a limit turns critically low", severity: .critical,
-                        selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
-            Toggle(isOn: $dataStore.showsBurningFast) {
-                limitLabel("Burning Fast", info: "Will run out before it resets") {
-                    Image(systemName: "flame.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Theme.severityColor(.warning))
-                }
-            }
-            Toggle(isOn: $dataStore.showsUseItOrLoseIt) {
-                limitLabel("Use It or Lose It", info: PaceMilestone.useItOrLoseIt.settingSubtitle) {
-                    Image(systemName: "hourglass.tophalf.filled")
-                        .font(.system(size: 9))
-                        .foregroundStyle(Theme.severityColor(.normal))
-                }
-            }
+        Section("Thresholds") {
+            levelPicker("Warning", severity: .warning, selection: $dataStore.priorityLimits.warning, options: PriorityLimits.warningOptions)
+            levelPicker("Critical", severity: .critical, selection: $dataStore.priorityLimits.critical, options: PriorityLimits.criticalOptions)
         }
         Section {
-            notificationToggle(.critical, isOn: $criticalAlert)
-            notificationToggle(.warning, isOn: $warningAlert)
-            notificationToggle(.closeToRunningOut, isOn: $closeToRunningOut)
-            notificationToggle(.useItOrLoseIt, isOn: $useItOrLoseIt)
+            alertRow("Warning", info: "When a limit turns into a priority", priority: nil, notify: $warningAlert) {
+                severityDot(.warning)
+            }
+            alertRow("Critical", info: "When a limit turns critically low", priority: nil, notify: $criticalAlert) {
+                severityDot(.critical)
+            }
+            alertRow("Burning Fast", info: "Will run out before it resets", priority: $dataStore.showsBurningFast, notify: $closeToRunningOut) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.severityColor(.warning))
+            }
+            alertRow("Use It or Lose It", info: "Over 50% left a day before its reset", priority: $dataStore.showsUseItOrLoseIt, notify: $useItOrLoseIt) {
+                Image(systemName: "hourglass.tophalf.filled")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.severityColor(.normal))
+            }
         } header: {
-            Text("Notifications")
+            HStack {
+                Text("Alerts")
+                Spacer()
+                ForEach(["Priority", "Notify"], id: \.self) {
+                    Text($0)
+                        .fontWeight(.regular)
+                        .foregroundStyle(.secondary)
+                        .frame(width: Self.alertColumnWidth)
+                }
+            }
         } footer: {
             if notificationsDenied {
                 notificationSettingsButton
@@ -243,24 +250,43 @@ struct SettingsScreen: View {
         }
     }
 
-    private func levelPicker(
-        _ title: String, info: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]
-    ) -> some View {
+    private func levelPicker(_ title: String, severity: WidgetData.MeterSeverity, selection: Binding<Int>, options: [Int]) -> some View {
         Picker(selection: selection) {
             ForEach(options, id: \.self) { Text("\($0)% left").tag($0) }
         } label: {
-            limitLabel(title, info: info) {
-                Circle().fill(Theme.severityColor(severity)).frame(width: 8, height: 8)
+            HStack(spacing: 8) {
+                severityDot(severity)
+                Text(title)
             }
         }
     }
 
-    /// A Priority limit row's label: its mark, then its title with what it does behind an info icon.
-    private func limitLabel(_ title: String, info: String, @ViewBuilder mark: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            mark().frame(width: 8)
-            titled(title, info: info)
+    private func severityDot(_ severity: WidgetData.MeterSeverity) -> some View {
+        Circle().fill(Theme.severityColor(severity)).frame(width: 8, height: 8)
+    }
+
+    /// One alert condition: its mark and title, a switch that lists it in Priority, and one that notifies about it.
+    /// Warning and Critical always show in Priority, so a nil `priority` draws that switch on and dimmed.
+    private func alertRow(
+        _ title: String, info: String, priority: Binding<Bool>?, notify: Binding<Bool>, @ViewBuilder mark: () -> some View
+    ) -> some View {
+        HStack {
+            HStack(spacing: 8) {
+                mark().frame(width: 8)
+                titled(title, info: info)
+            }
+            Spacer()
+            Toggle("\(title) in Priority", isOn: priority ?? .constant(true))
+                .disabled(priority == nil)
+                .frame(width: Self.alertColumnWidth)
+            Toggle("Notify About \(title)", isOn: notify)
+                .frame(width: Self.alertColumnWidth)
+                .onChange(of: notify.wrappedValue) { _, enabled in
+                    if enabled { checkNotificationPermission() }
+                }
         }
+        .toggleStyle(.switch)
+        .labelsHidden()
     }
 
     /// A row's title followed by an info icon that shows what the row does on hover.
@@ -274,17 +300,8 @@ struct SettingsScreen: View {
         }
     }
 
-    private func notificationToggle(_ milestone: PaceMilestone, isOn: Binding<Bool>) -> some View {
-        Toggle(isOn: isOn) {
-            titled(milestone.notificationTitle, info: milestone.settingSubtitle)
-        }
-        .onChange(of: isOn.wrappedValue) { _, enabled in
-            if enabled { checkNotificationPermission() }
-        }
-    }
-
     private func checkNotificationPermission() {
-        Task { notificationsDenied = await !AppNotifications.shared.requestAuthorization() }
+        Task { notificationsDenied = await !notifications.requestAuthorization() }
     }
 }
 

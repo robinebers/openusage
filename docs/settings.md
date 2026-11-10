@@ -36,35 +36,34 @@ Click a limit's amount or reset on the dashboard to flip either one.
   default. It's the same setting as [Unify Multiple Accounts](dashboard.md#unify-multiple-accounts)
   in the provider's right-click menu.
 
-## Priority
+## Thresholds
 
 - **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
   70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
-- **Burning Fast.** Also lists a limit under Running Out, and in the menu bar, when it would run out
-  before it resets at your current pace, however much it has left. On by default.
-- **Use It or Lose It.** Lists a limit in its own Priority section when it resets within 24 hours
-  with over 50% left, the same rule as the alert of that name. It shows in the menu bar only with
-  Always Show In Menu Bar on. On by default, and separate from the alert.
 
 Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
-pick which limits the menu bar shows and when the Warning and Critical notifications fire. Critical
+pick which limits the menu bar shows and when the Warning and Critical alerts notify you. Critical
 always stays under Warning: moving one onto the other pushes the other 5% along.
 
-## Notifications
+## Alerts
 
-All off by default. Turning the first one on asks macOS for permission.
-If notifications are off for OpenUsage, click **System Settings** in the notice to open
-**Notifications → OpenUsage** and allow them.
+Each alert has two separate switches. **Priority** lists the limit in Priority and the menu bar.
+**Notify** sends a notification, even with its Priority switch off.
 
-- **Critical.** A limit drops to its Critical level or less left (10% by default).
-- **Warning.** A limit drops to its Warning level or less left (30% by default).
-- **Will Run Out.** A limit may run out before its reset. After it fires, it waits until the limit's
-  pace eases to 90% of the limit before it can fire again.
+- **Warning** and **Critical.** A limit drops to its threshold or less left. Priority always lists
+  it, so that switch stays on.
+- **Burning Fast.** A limit would run out before it resets at your current pace, however much it
+  has left. Priority lists it under Running Out. After it notifies you, it waits until the limit's
+  pace eases to 90% of the limit before it can notify again.
 - **Use It or Lose It.** A limit resets within 24 hours with over 50% left. Only for windows longer
   than a day, such as weekly and monthly limits, never the 5-hour session or a dollar spending cap.
+  Priority lists it in its own section, and in the menu bar only with Always Show In Menu Bar on.
 
-Each fires once per metric per reset window. Click one to open All Usage.
+Priority is on by default for all four, and Notify is off. Turning the first Notify on asks macOS
+for permission. If notifications are off for OpenUsage, click **System Settings** in the notice to
+open **Notifications → OpenUsage** and allow them. Each notification fires once per metric per reset
+window. Click one to open All Usage.
 
 ## Privacy
 

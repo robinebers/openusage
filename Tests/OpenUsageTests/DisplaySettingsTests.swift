@@ -28,8 +28,8 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         ])
     }
 
-    func testAlertsOpensWithPriorityAboveNotifications() async throws {
-        try await assertHeadingsAndPickers(.alerts, ["Priority", "30% left", "10% left", "Notifications"])
+    func testAlertsOpensWithThresholdsAboveAlerts() async throws {
+        try await assertHeadingsAndPickers(.alerts, ["Thresholds", "30% left", "10% left", "Alerts"])
     }
 
     func testEachDisplayRowExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
@@ -43,8 +43,6 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         try await assertExplainedByInfoIcons(.alerts, [
             "When a limit turns into a priority", "When a limit turns critically low", "Will run out before it resets",
             "Over 50% left a day before its reset",
-            "Alert when a limit drops critically low", "Alert when a limit requires your attention",
-            "A limit may run out before its reset", "Over 50% left a day before its reset",
         ])
     }
 
@@ -86,6 +84,58 @@ final class DisplaySettingsTests: QuietWindowTestCase {
                        "the menu and the switch save one setting")
     }
 
+    func testEachAlertsPriorityAndNotifySwitchDrivesItsOwnSavedSetting() async throws {
+        let defaults = isolatedDefaults()
+        let (_, window, host) = showSettings(.alerts, defaults: defaults, notifications: AppNotifications(authorizationStatus: { .authorized }))
+        defer { window.close() }
+        func nodes(in element: Any) -> [NSObject] {
+            guard let node = element as? NSObject else { return [] }
+            return [node] + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(nodes)
+        }
+        func switches() -> [String: NSObject] {
+            Dictionary(nodes(in: host).compactMap { node in
+                guard node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.checkBox.rawValue,
+                      let label = node.value(forKey: "accessibilityLabel") as? String else { return nil }
+                return (label, node)
+            }, uniquingKeysWith: { first, _ in first })
+        }
+        func isOn(_ label: String) -> Bool? { (switches()[label]?.value(forKey: "accessibilityValue") as? NSNumber)?.boolValue }
+        func saved() -> [Bool] {
+            [defaults.object(forKey: "priorityBurningFast") as? Bool ?? true, defaults.object(forKey: "priorityUseItOrLoseIt") as? Bool ?? true]
+                + [PaceMilestone.warning, .critical, .closeToRunningOut, .useItOrLoseIt].map { defaults.bool(forKey: $0.settingKey) }
+        }
+        let alerts = ["Warning", "Critical", "Burning Fast", "Use It or Lose It"]
+        try await waitUntil { switches().count == 8 }
+        XCTAssertEqual(alerts.map { isOn("\($0) in Priority") }, [true, true, true, true])
+        XCTAssertEqual(alerts.map { switches()["\($0) in Priority"]?.value(forKey: "accessibilityEnabled") as? Bool }, [false, false, true, true],
+                       "Warning and Critical always show in Priority")
+        XCTAssertEqual(alerts.map { isOn("Notify About \($0)") }, [false, false, false, false])
+        XCTAssertEqual(saved(), [true, true, false, false, false, false])
+
+        let presses: [(String, [Bool])] = [
+            ("Burning Fast in Priority", [false, true, false, false, false, false]),
+            ("Use It or Lose It in Priority", [false, false, false, false, false, false]),
+            ("Notify About Warning", [false, false, true, false, false, false]),
+            ("Notify About Critical", [false, false, true, true, false, false]),
+            ("Notify About Burning Fast", [false, false, true, true, true, false]),
+            ("Notify About Use It or Lose It", [false, false, true, true, true, true]),
+        ]
+        for (label, expected) in presses {
+            let wasOn = try XCTUnwrap(isOn(label), label)
+            let frame = try XCTUnwrap(switches()[label]?.value(forKey: "accessibilityFrame") as? NSValue).rectValue
+            let point = window.convertPoint(fromScreen: NSPoint(x: frame.midX, y: frame.midY))
+            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+                window.sendEvent(NSEvent.mouseEvent(
+                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
+                    pressure: type == .leftMouseDown ? 1 : 0
+                )!)
+            }
+            try await waitUntil { saved() == expected && isOn(label) == !wasOn }
+            XCTAssertEqual(saved(), expected, "\(label) saves only its own setting")
+        }
+    }
+
     private func assertHeadingsAndPickers(_ tab: SettingsTab, _ expected: [String], line: UInt = #line) async throws {
         let (_, window, host) = showSettings(tab)
         defer { window.close() }
@@ -108,12 +158,14 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         XCTAssertTrue(Set(texts(in: host)).isDisjoint(with: explainers), "no explainer shows as a second line", line: line)
     }
 
-    private func showSettings(_ tab: SettingsTab, defaults: UserDefaults? = nil) -> (AppContainer, NSWindow, NSView) {
+    private func showSettings(
+        _ tab: SettingsTab, defaults: UserDefaults? = nil, notifications: AppNotifications = .shared
+    ) -> (AppContainer, NSWindow, NSView) {
         let defaults = defaults ?? isolatedDefaults()
         let container = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults)
         container.popover.screen = .settings
         container.popover.settingsTab = tab
-        let settings = SettingsScreen()
+        let settings = SettingsScreen(notifications: notifications)
             .defaultAppStorage(defaults)
             .environment(container)
             .environment(container.layout)
