@@ -74,49 +74,37 @@ final class AccountProviderRuntime: ProviderRuntime {
         )
     }
 
+    /// The account's resets, one item each, and the claim that spends the chosen one. `expiries` are the
+    /// resets row's own, which list ChatGPT's credits.
     func resetClaimService(
+        expiries: [Date] = [],
         refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
+        let items: [ResetItem]
         switch account.kind {
         case .claude:
-            let status = claude.session?.resetGrants.check?.status
-            return ResetClaimService(
-                accountID: account.cardID,
-                isClaimable: status?.claimableGrantID != nil,
-                confirmDetail: status?.confirmDetail,
-                claimReset: { [self] _, redeemRequestID in await claimClaudeResetGrant(redeemRequestID: redeemRequestID) },
-                refreshAccount: refreshAccount
-            )
+            items = claude.session?.resetGrants.check?.status?.items(now: now()) ?? []
         case .codex:
-            return ResetClaimService(
-                accountID: account.cardID,
-                isClaimable: true,
-                confirmDetail: nil,
-                claimReset: { [self] expiry, redeemRequestID in
-                    await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: redeemRequestID)
-                },
-                refreshAccount: refreshAccount
-            )
+            items = expiries.map { ResetItem(kind: .full, expiresAt: $0, claim: .codexCredit($0)) }
         case .zai:
-            return ResetClaimService(
-                accountID: account.cardID,
-                isClaimable: false,
-                confirmDetail: nil,
-                claimReset: nil,
-                refreshAccount: refreshAccount,
-                windowResets: unexpiredZAIResets ?? [],
-                claimWindowReset: { [self] reset, requestID in await claimZAIReset(reset, requestID: requestID) }
-            )
-        case .cursor, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
+            items = ZAIResetsMapper.items(unexpiredZAIResets ?? [])
+        case .cursor, .amp, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
             return nil
         }
+        return ResetClaimService(accountID: account.cardID, items: items, claimReset: { [self] claim, requestID in
+            switch claim {
+            case .claudeGrant(let id): await claimClaudeResetGrant(id, redeemRequestID: requestID)
+            case .codexCredit(let expiry): await claimCodexResetCredit(expiringAt: expiry, redeemRequestID: requestID)
+            case .zai(let reset): await claimZAIReset(reset, requestID: requestID)
+            }
+        }, refreshAccount: refreshAccount)
     }
 
     func restore(_ snapshot: ProviderSnapshot) {
         switch account.kind {
         case .claude: restoreClaude(snapshot)
         case .muse: museLastKnown = snapshot.lines
-        case .codex, .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai: break
+        case .codex, .cursor, .amp, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai: break
         }
     }
 
@@ -163,6 +151,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             case .claude: try await refreshClaude(credential)
             case .codex: try await refreshCodex(credential)
             case .cursor: try await refreshCursor(credential)
+            case .amp: try await refreshAmp(credential)
             case .antigravity: try await refreshAntigravity(credential)
             case .copilot: try await refreshCopilot(credential)
             case .devin: try await refreshDevin(credential)
@@ -286,6 +275,15 @@ final class AccountProviderRuntime: ProviderRuntime {
             planRead.record(settings.flatMap(GrokUsageMapper.planName(from:)), at: now())
         }
         return ProviderUsage(plan: planRead.value, lines: mapped.lines, notice: mapped.notice)
+    }
+
+    /// Amp's access token lasts five minutes, so nearly every read renews it first.
+    private func refreshAmp(_ credential: AccountCredential) async throws -> ProviderUsage {
+        let (_, response) = try await authorizedRead(credential, grant: AmpLogin.refresh) { tokens in
+            try await AmpUsageClient(http: http).fetchBalance(accessToken: tokens.accessToken)
+        }
+        try ProviderError.requireSuccess(response, kind: .amp)
+        return try AmpUsageMapper.map(response.body)
     }
 
     private func refreshMuse(_ credential: AccountCredential) async throws -> ProviderUsage {

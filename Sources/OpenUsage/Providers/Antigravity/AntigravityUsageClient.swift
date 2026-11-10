@@ -22,11 +22,14 @@ extension AntigravityLogin {
 
 struct AntigravityUsageClient: Sendable {
     static let unavailableMessage = "Antigravity usage is temporarily unavailable. Try again shortly."
-    // The daily endpoint can omit Gemini quotas from a successful response; prefer production.
+    // Plan and project lookups prefer production.
     static let cloudCodeURLs = [
         "https://cloudcode-pa.googleapis.com",
         "https://daily-cloudcode-pa.googleapis.com"
     ]
+    // Production can return untouched Gemini windows; daily has the active counters.
+    // Use production for missing buckets or failed daily reads.
+    static let quotaSummaryURLs = Array(cloudCodeURLs.reversed())
     static let loadCodeAssistPath = "/v1internal:loadCodeAssist"
     static let quotaSummaryPath = "/v1internal:retrieveUserQuotaSummary"
 
@@ -70,7 +73,7 @@ struct AntigravityUsageClient: Sendable {
         let payload = (try? JSONSerialization.data(withJSONObject: body)) ?? Data("{}".utf8)
         var responses: [HTTPResponse] = []
         var transportError: Error?
-        for (index, base) in Self.cloudCodeURLs.enumerated() {
+        for (index, base) in Self.quotaSummaryURLs.enumerated() {
             guard let url = URL(string: base + Self.quotaSummaryPath) else { continue }
             let request = Self.cloudCodeRequest(url: url, token: token, payload: payload)
             let response: HTTPResponse

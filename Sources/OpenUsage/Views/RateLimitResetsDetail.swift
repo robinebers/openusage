@@ -1,68 +1,46 @@
 import SwiftUI
 
-/// When a `claim` closure is supplied, each node also becomes claimable: hovering a node reveals a
-/// "Use" affordance, clicking it expands that node in place into an inline confirm, and confirming runs
-/// the claim and shows the outcome. `claim` is `nil` for any non-claimable row, which renders exactly
-/// the read-only timeline. Each credit's claim carries an idempotency key (a UUID minted the first time
-/// that credit enters confirm and reused for any retry), so a retried claim can never double-spend — the
-/// server answers `already_redeemed` / `already_used`, which counts as success.
+/// When a `claim` closure is supplied, each usable reset also becomes claimable: hovering its node reveals
+/// a "Use" affordance, clicking it expands that node in place into an inline confirm, and confirming spends
+/// exactly that row's reset and shows the outcome. `claim` is `nil` for a read-only timeline. Each claim carries
+/// an idempotency key (a UUID minted when its row enters confirm and reused for any retry until the claim
+/// settles), so a retried claim can never double-spend: the server answers it as already used, which
+/// counts as success.
 struct RateLimitResetsDetail: View {
     let count: Int
     let expiries: [Date]
+    var items: [ResetItem] = []
     var showsActions = false
     var onHoverChange: (Bool) -> Void
     var onPinChange: ((Bool) -> Void)?
-    var claim: ((_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
-    var confirmDetail: String?
-    /// Resets listed per window instead of on one timeline; only each window's earliest can be used.
-    var windowResets: [ZAIReset] = []
-    var claimWindowReset: ((_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
+    var claim: ((_ item: ResetItem, _ requestID: String) async -> ResetClaimOutcome)?
 
-    @State private var claimedCounts: [Date: Int] = [:]
-    @State private var expiriesVersion = 0
+    @State private var claimed: [ResetClaimRef: Int] = [:]
+    @State private var itemsVersion = 0
     @State private var confirming: Entry.Key?
     @State private var claiming: Entry.Key?
     @State private var hovered: Entry.Key?
-    @State private var redeemRequestIDs: [Date: String] = [:]
-    @State private var windowRequestIDs: [Int: String] = [:]
-    @State private var claimedRecords: Set<Int> = []
+    @State private var requestIDs: [ResetClaimRef: String] = [:]
     @State private var banner: Banner?
-    @State private var nothingToReset = false
+    /// Kinds a claim has shown need no reset right now; their rows' Use stays disabled.
+    @State private var nothingToReset: Set<ResetKind> = []
 
     private static let width: CGFloat = 250
 
     private var claimInProgress: Bool { confirming != nil || claiming != nil }
 
     private var content: Content {
-        Self.content(
-            count: count - claimedCounts.values.reduce(0, +),
-            expiries: Self.visibleExpiries(expiries, claimed: claimedCounts)
-        )
-    }
-
-    private var windows: [Window] {
-        Self.windows(windowResets.filter { !claimedRecords.contains($0.recordID) })
+        Self.content(count: count, expiries: expiries, items: items, claimed: claimed)
     }
 
     var body: some View {
+        let content = content
         VStack(alignment: .leading, spacing: 8) {
             if let banner {
                 bannerView(banner)
                     .transition(.scale(scale: 0.95, anchor: .top).combined(with: .opacity))
             }
-            if !windowResets.isEmpty {
-                if let claiming, !windows.contains(where: { $0.entries.contains { $0.key == claiming } }) {
-                    claimingRow().transition(.opacity)
-                }
-                ForEach(windows, id: \.window) { window in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(window.window.title)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        timeline(window.entries)
-                    }
-                }
-            } else if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
+            if let claiming, !content.entries.contains(where: { $0.key == claiming }) {
                 claimingRow().transition(.opacity)
                 if case .timeline(let entries) = content {
                     timeline(entries)
@@ -78,7 +56,7 @@ struct RateLimitResetsDetail: View {
         .padding(14)
         .frame(width: Self.width)
         // Report the ideal (content-hugging) height as the fixed size, so collapsing the confirm card
-        // back to a one-line node shrinks the popover again — without this, NSPopover keeps the largest
+        // back to a node shrinks the popover again — without this, NSPopover keeps the largest
         // height it has ever measured (it grows on Use but never scales back on Cancel).
         .fixedSize(horizontal: false, vertical: true)
         .onContinuousHover { phase in
@@ -87,21 +65,20 @@ struct RateLimitResetsDetail: View {
             case .ended: onHoverChange(false)
             }
         }
+        .onChange(of: items) { _, newValue in
+            itemsVersion += 1
+            claimed = [:]
+            dropConfirmUnlisted(Self.content(count: count, expiries: expiries, items: newValue))
+        }
         .onChange(of: expiries) { _, newValue in
-            expiriesVersion += 1
-            claimedCounts = [:]
-            if let confirming, confirming.reset == nil, !Self.entries(from: newValue).contains(where: { $0.key == confirming }) {
-                cancelConfirm()
-            }
+            guard items.isEmpty else { return }
+            dropConfirmUnlisted(Self.content(count: count, expiries: newValue, items: items))
         }
-        .onChange(of: windowResets) { _, newValue in
-            expiriesVersion += 1
-            claimedRecords = []
-            if let confirming, confirming.reset != nil,
-               !Self.windows(newValue).contains(where: { $0.entries.contains { $0.key == confirming } }) {
-                cancelConfirm()
-            }
-        }
+    }
+
+    /// A refresh that takes away the row being confirmed takes its confirmation with it.
+    private func dropConfirmUnlisted(_ content: Content) {
+        if let confirming, !content.entries.contains(where: { $0.key == confirming }) { cancelConfirm() }
     }
 
     private var emptyState: some View {
@@ -152,7 +129,7 @@ struct RateLimitResetsDetail: View {
     }
 
     private func dotCenterY(for entry: Entry) -> CGFloat {
-        confirming == entry.key ? confirmCardPadding + 9 : nodeHeight / 2
+        confirming == entry.key ? confirmCardPadding + 9 : firstLineCenterY
     }
 
     /// The connector rail: a hairline in two segments — a fixed-height top segment (row top → dot
@@ -200,19 +177,47 @@ struct RateLimitResetsDetail: View {
         }
     }
 
-    private let nodeHeight: CGFloat = 30
+    /// A node is two lines: the kind and countdown, then the use-by time. The dot sits on the first line.
+    private let nodeTopPadding: CGFloat = 5
+    private let firstLineHeight: CGFloat = 20
+    private var firstLineCenterY: CGFloat { nodeTopPadding + firstLineHeight / 2 }
     private let confirmCardPadding: CGFloat = 10
 
+    @ViewBuilder
     private func row(_ entry: Entry) -> some View {
-        HStack(spacing: 8) {
-            Text(entry.time)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            trailing(entry)
+        Group {
+            if let item = entry.item {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 8) {
+                        Text(item.kind.title)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        trailing(entry)
+                    }
+                    .frame(height: firstLineHeight)
+                    Text(entry.useBy)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(height: 15)
+                }
+                .padding(.top, nodeTopPadding)
+                .padding(.bottom, 7)
+            } else {
+                // The expiries alone, until the provider's list says what each reset is.
+                HStack(spacing: 8) {
+                    Text(entry.useBy)
+                        .font(.callout)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    trailing(entry)
+                }
+                .frame(height: firstLineCenterY * 2)
+            }
         }
-        .frame(height: nodeHeight)
         .contentShape(Rectangle())
         .onHover { inside in
             if inside { hovered = entry.key }
@@ -225,11 +230,12 @@ struct RateLimitResetsDetail: View {
     @ViewBuilder
     private func trailing(_ entry: Entry) -> some View {
         Group {
-            if canUse(entry), showsActions || hovered == entry.key, !claimInProgress {
-                Button("Use") { beginConfirm(entry) }
+            if let item = usableItem(entry), showsActions || hovered == entry.key, !claimInProgress {
+                let blocked = nothingToReset.contains(item.kind)
+                Button("Use") { beginConfirm(entry, item) }
                     .controlSize(.small)
-                    .disabled(nothingToReset)
-                    .hoverTooltip(nothingToReset ? "Nothing to reset right now" : nil)
+                    .disabled(blocked)
+                    .hoverTooltip(blocked ? "Nothing to reset right now" : nil)
                     .transition(.opacity)
             } else if let countdown = entry.countdown {
                 Text(countdown)
@@ -248,7 +254,7 @@ struct RateLimitResetsDetail: View {
             Text("Use this reset?")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
-            Text(entry.key.reset?.window.confirmDetail ?? confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
+            Text(entry.item?.confirmDetail ?? "Immediately reset your usage limits. This can't be undone.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -280,7 +286,7 @@ struct RateLimitResetsDetail: View {
             Spacer(minLength: 8)
             MotionAwareProgressView(controlSize: .small)
         }
-        .frame(height: nodeHeight)
+        .frame(height: firstLineCenterY * 2)
     }
 
     private func bannerView(_ banner: Banner) -> some View {
@@ -303,16 +309,13 @@ struct RateLimitResetsDetail: View {
 
     private static let flowAnimation: Animation = .snappy(duration: 0.25)
 
-    private func canUse(_ entry: Entry) -> Bool {
-        entry.key.reset == nil ? claim != nil : claimWindowReset != nil && entry.id == 0
+    private func usableItem(_ entry: Entry) -> ResetItem? {
+        guard claim != nil, let item = entry.item, item.usable else { return nil }
+        return item
     }
 
-    private func beginConfirm(_ entry: Entry) {
-        if let reset = entry.key.reset {
-            if windowRequestIDs[reset.recordID] == nil { windowRequestIDs[reset.recordID] = UUID().uuidString }
-        } else if redeemRequestIDs[entry.date] == nil {
-            redeemRequestIDs[entry.date] = UUID().uuidString
-        }
+    private func beginConfirm(_ entry: Entry, _ item: ResetItem) {
+        if requestIDs[item.claim] == nil { requestIDs[item.claim] = UUID().uuidString }
         withAnimation(Self.flowAnimation) {
             banner = nil
             hovered = nil
@@ -329,49 +332,41 @@ struct RateLimitResetsDetail: View {
     }
 
     private func runClaim(_ entry: Entry) {
-        let reset = entry.key.reset
-        let send: () async -> ResetClaimOutcome
-        if let reset, let claimWindowReset {
-            let requestID = windowRequestIDs[reset.recordID] ?? UUID().uuidString
-            send = { await claimWindowReset(reset, requestID) }
-        } else if let claim {
-            let redeemRequestID = redeemRequestIDs[entry.date] ?? UUID().uuidString
-            send = { await claim(entry.date, redeemRequestID) }
-        } else {
-            return
-        }
+        guard let claim, let item = entry.item, let requestID = requestIDs[item.claim] else { return }
         withAnimation(Self.flowAnimation) {
             confirming = nil
             claiming = entry.key
         }
-        let versionAtClaim = expiriesVersion
+        let versionAtClaim = itemsVersion
         Task {
-            let outcome = await send()
+            let outcome = await claim(item, requestID)
             withAnimation(Self.flowAnimation) {
                 claiming = nil
-                apply(outcome, for: entry.date, record: reset?.recordID, refreshed: expiriesVersion != versionAtClaim)
+                apply(outcome, for: item, refreshed: itemsVersion != versionAtClaim)
             }
             onPinChange?(false)
         }
     }
 
-    private func apply(_ outcome: ResetClaimOutcome, for date: Date, record: Int?, refreshed: Bool) {
+    private func apply(_ outcome: ResetClaimOutcome, for item: ResetItem, refreshed: Bool) {
         switch outcome {
         case .success:
-            if !refreshed { markClaimed(date, record: record) }
-            if record == nil { nothingToReset = true }
+            if !refreshed { claimed[item.claim, default: 0] += 1 }
+            nothingToReset.insert(item.kind)
         case .nothingToReset:
-            nothingToReset = true
+            nothingToReset.insert(item.kind)
         case .noCredit:
-            if !refreshed { markClaimed(date, record: record) }
-        case .unconfirmed, .unavailableNow, .failed:
+            if !refreshed { claimed[item.claim, default: 0] += 1 }
+        case .notNextReset, .unconfirmed, .unavailableNow, .failed:
             break
         }
+        // A settled claim's key is done: the next claim on this record is a new one. An unsettled claim
+        // keeps its key, so a retry can't spend a second reset.
+        switch outcome {
+        case .unconfirmed, .failed: break
+        case .success, .nothingToReset, .noCredit, .notNextReset, .unavailableNow: requestIDs[item.claim] = nil
+        }
         banner = Self.banner(for: outcome)
-    }
-
-    private func markClaimed(_ date: Date, record: Int?) {
-        if let record { claimedRecords.insert(record) } else { claimedCounts[date, default: 0] += 1 }
     }
 
     static func banner(for outcome: ResetClaimOutcome, now: Date = Date()) -> Banner {
@@ -383,7 +378,7 @@ struct RateLimitResetsDetail: View {
             return Banner(text: text, icon: "info.circle.fill", tint: Theme.severityColor(.normal))
         case .unconfirmed:
             return Banner(text: text, icon: "clock.fill", tint: Theme.severityColor(.normal))
-        case .noCredit, .unavailableNow:
+        case .noCredit, .notNextReset, .unavailableNow:
             return Banner(text: text, icon: "exclamationmark.triangle.fill", tint: Theme.severityColor(.warning))
         case .failed:
             return Banner(text: text, icon: "xmark.circle.fill", tint: Theme.severityColor(.critical))

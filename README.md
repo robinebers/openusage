@@ -30,6 +30,7 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 - **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage (Enterprise spend), rate-limit resets
 - **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
 - **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
+- **[Amp](docs/providers.md#amp)**: agent usage, orb hours, Amp Free, credits
 - **[Antigravity](docs/providers.md#antigravity)**: Gemini and Claude quotas
 - **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing, GitHub Enterprise on GHE.com
 - **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
@@ -54,6 +55,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
   where an even pace would be.
 - **Your layout.** Pin the metrics you care about, hide the rest with a right-click, and drag
   everything into your order.
+- **Unify multiple accounts.** Show your Claude or ChatGPT accounts as one card, with one bar per limit.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
 - **[macOS widgets](docs/macos-widgets.md).** One account's usage on the desktop or in Notification Center.
 - **Share.** Copy a picture of your usage to the clipboard.

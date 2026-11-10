@@ -15,6 +15,7 @@ final class AppContainer {
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
     let widgetBridgeCoordinator: WidgetBridgeCoordinator?
+    private(set) var isRefreshingNow = false
     @ObservationIgnored private var providers: [ProviderRuntime]
     @ObservationIgnored private let makeRuntimes: RuntimeFactory
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -96,9 +97,20 @@ final class AppContainer {
     }
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
+        var expiries: [Date] = []
+        if case .values(_, _, let dates)? = dataStore.snapshots[providerID]?.line(label: ClaudeResetGrantStatus.lineLabel) {
+            expiries = dates
+        }
+        #if OPENUSAGE_DEVELOPMENT
+        if let demo = providers.first(where: { $0.provider.id == providerID }) as? DemoProviderRuntime {
+            return demo.resetClaimService(expiries: expiries) { [dataStore] in
+                await dataStore.refresh(providerID: providerID, force: true, rereadHourly: false)
+            }
+        }
+        #endif
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return nil }
         let rereadsResets = runtime.account.kind == .zai
-        return runtime.resetClaimService { [dataStore] in
+        return runtime.resetClaimService(expiries: expiries) { [dataStore] in
             await dataStore.refresh(providerID: providerID, force: true, rereadHourly: rereadsResets)
         }
     }
@@ -160,6 +172,16 @@ final class AppContainer {
         try await hubs.replaceKey(key, for: hubID)
         let ids = Set(accounts.accounts(onHub: hubID).map(\.cardID))
         await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
+    }
+
+    /// The Refresh button: every hub's login list is read first, so a login turned off on its hub is gone
+    /// before the usage read instead of failing in it. A press while one runs does nothing.
+    func refreshNow() async {
+        guard !isRefreshingNow else { return }
+        isRefreshingNow = true
+        defer { isRefreshingNow = false }
+        await hubs.syncDue(maxAge: 0)
+        await dataStore.refreshAll(force: true)
     }
 
     func startRefreshing() {

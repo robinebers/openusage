@@ -24,9 +24,7 @@ struct WidgetData: Hashable {
     var showsPaceMarks = true
 
     enum SessionStartSignal: Hashable {
-        /// Zero usage is the fresh signal. Antigravity reports a reset instant even for an untouched
-        /// window and its mapper rounds the fresh pool's fraction-derived percent to 0, so `used == 0`
-        /// is what marks the window as fresh.
+        /// Antigravity supplies reset dates for untouched windows. Only exact zero usage marks them fresh.
         case zeroUsage
         /// A missing reset date is the fresh signal: by the time a row carries one, a reset instant
         /// means the window started. Claude's five-hour block is created by the first message, so it
@@ -160,9 +158,15 @@ extension WidgetData {
         return (limit, resetsAt, TimeInterval(periodDurationMs) / 1000)
     }
 
+    /// Nothing is left at the precision the row shows.
+    var isSpent: Bool {
+        guard hasData, let limit, limit > 0 else { return false }
+        return roundedAtDisplayPrecision(limit - used) <= 0
+    }
+
     func meterState(now: Date = Date()) -> MeterState {
         guard hasData, let limit, limit > 0 else { return hasData ? .unpaced : .noData }
-        if roundedAtDisplayPrecision(limit - used) <= 0 { return .spent }
+        if isSpent { return .spent }
         guard let pace = pace(now: now) else { return .unpaced }
         switch pace.status {
         case .ahead:

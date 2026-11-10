@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum CodexUsageMapper {
     /// OpenAI sells ChatGPT credits at 4¢ each; the usage API reports only the count.
@@ -163,7 +164,21 @@ enum CodexUsageMapper {
                 guard let status = credit["status"] as? String else { return true }
                 return status == "available"
             }
-            .map { credit in (credit["id"] as? String, parseExpiry(credit["expires_at"])) }
+            .map { credit in
+                noteResetType(credit["reset_type"])
+                return (credit["id"] as? String, parseExpiry(credit["expires_at"]))
+            }
+    }
+
+    private static let loggedResetTypes = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    /// ChatGPT's one reset type refills every limit, so each credit lists as a Full Reset. A type this
+    /// doesn't know lists the same way, and is logged once per launch so a new kind shows up.
+    private static func noteResetType(_ value: Any?) {
+        guard let type = value as? String, type != "codex_rate_limits",
+              loggedResetTypes.withLock({ $0.insert(type).inserted })
+        else { return }
+        AppLog.warn(LogTag.plugin("codex"), "reset credit type \(type) is new; listing it as a Full Reset")
     }
 
     private static func parseExpiry(_ value: Any?) -> Date? {

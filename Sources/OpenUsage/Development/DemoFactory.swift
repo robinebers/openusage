@@ -105,8 +105,9 @@ enum DemoFactory {
     private static func line(for descriptor: WidgetDescriptor, scenario: Scenario?, now: Date, using random: inout DemoRandom) -> MetricLine {
         let label = descriptor.metricLabel
         if descriptor.sample.showsResetExpiries {
+            // Real resets last weeks to months, so samples span both countdown formats.
             let expiries = (0..<Int.random(in: 1...3, using: &random)).map { _ in
-                now.addingTimeInterval(.random(in: hour...week, using: &random))
+                now.addingTimeInterval(.random(in: hour...(120 * day), using: &random))
             }.sorted()
             return .values(label: label, values: [MetricValue(number: Double(expiries.count), kind: .count, label: "available")],
                            expiriesAt: expiries)
@@ -185,6 +186,7 @@ enum DemoFactory {
         case .claude: ["Pro", "Max", "Ultra"]
         case .codex: ["Plus", "Pro", "Business"]
         case .cursor: ["Pro", "Pro+", "Ultra"]
+        case .amp: ["Free", "Megawatt"]
         case .antigravity: ["AI Pro", "AI Ultra"]
         case .copilot: account.organization == nil ? ["Free", "Pro", "Pro+"] : ["Business", "Enterprise"]
         case .devin: ["Core", "Team"]

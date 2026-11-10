@@ -2,10 +2,39 @@
 
 ## Unreleased
 
+### Added
+- Unify Accounts shows your Claude or ChatGPT accounts as one card, with one bar per limit. Turn it on in
+  Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
+
 ### Changed
+- **Unify Accounts** in Settings → Display shows each provider's mark before its name, with an info icon
+  explaining what it does.
+- Settings tabs are regrouped: **Display** keeps **Menu Bar Icons** (formerly Priority) and **Usage**,
+  and **Appearance** moves to **General**.
+- **Settings → Alerts** sets the Warning and Critical **Thresholds**, then lists each alert once with a
+  **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
+
+## v0.8.0-beta.7
+
+### Added
+- Amp accounts: sign in with an Amp device code to see agent usage, orb hours, Amp Free, and credits
+  ([#1188](https://github.com/robinebers/openusage/issues/1188)).
+
+### Changed
+- Limit Resets now names each reset (Session, Weekly, Fable or Full Reset) and shows when to use it
+  by. Claude, ChatGPT and Z.ai list their resets the same way, and **Use** spends the reset you picked.
+- Reset countdowns a month or more away read in months and days, like `3m 12d`, instead of `119d 12h`.
+- **⌘R** rereads every CLIProxyAPI hub's login list first, so a login turned off on the hub disappears
+  instead of failing with "no working sign-in".
+- A hub's "logins OpenUsage doesn't support yet" count leaves out logins turned off on the hub and files
+  that aren't logins.
 - Priority and All Usage switch as soon as you press a tab, with no sliding, and the **Next update**
   footer no longer flashes the new tab's rows behind it while the panel resizes. Reported by
   [@Atchferox](https://github.com/Atchferox) ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).
+
+### Fixed
+- Antigravity's Gemini limits match what Antigravity shows, and a lightly used session keeps its
+  reset countdown instead of reading as untouched ([#1641](https://github.com/robinebers/openusage/pull/1641)).
 
 ## v0.8.0-beta.6
 

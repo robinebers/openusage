@@ -63,6 +63,17 @@ extension AccountProviderRuntime {
                 .history(key: "yesterday", provider: provider, .window(.yesterday, .spend, then: .tokens)),
                 .history(key: "last30", provider: provider, .window(.lastDays(30), .spend, then: .tokens))
             ]
+        case .amp:
+            [
+                .boundedDollars(key: "agent", provider: provider, title: "Agent Usage", limit: 20)
+                    .exportingLimit("agentUsage", unit: "usd"),
+                .boundedCount(key: "orbHours", provider: provider, title: "Orb Hours", limit: 750)
+                    .exportingLimit("orbHours", unit: "hours"),
+                .percent(key: "free", provider: provider, title: "Amp Free")
+                    .exportingLimit("free", unit: "percent"),
+                .values(key: "credits", provider: provider, title: "Credits", metricLabel: "Individual Credits", valueWord: "left")
+                    .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+            ]
         case .antigravity:
             [
                 .percent(key: "geminiPro", provider: provider, title: "Gemini 5h",

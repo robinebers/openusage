@@ -169,12 +169,12 @@ struct PopoverFooter: View {
     }
 
     private var isUpdating: Bool {
-        !dataStore.refreshingProviderIDs.isEmpty
+        container.isRefreshingNow || !dataStore.refreshingProviderIDs.isEmpty
     }
 
     private func refreshNow() {
         guard !isUpdating else { return }
-        Task { await dataStore.refreshAll(force: true) }
+        Task { await container.refreshNow() }
     }
 
     private func updateStatusText(now: Date) -> String {

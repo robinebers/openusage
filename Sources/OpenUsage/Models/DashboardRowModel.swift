@@ -6,7 +6,7 @@ struct DashboardRowModel: Equatable {
         case value(String, detail: String? = nil, severity: WidgetData.MeterSeverity = .normal)
     }
 
-    let label: String
+    var label: String
     let mark: Mark
     /// Clock times run wider than countdowns, so they get the wider reset lane.
     var showsClockTimes = false
@@ -59,7 +59,7 @@ extension WidgetData {
 
     private static func resetReading(_ resetsAt: Date, as mode: ResetDisplayMode, now: Date) -> String? {
         switch mode {
-        case .relative: Formatters.compactDuration(resetsAt.timeIntervalSince(now))
+        case .relative: Formatters.countdown(to: resetsAt, now: now)
         case .absolute: Formatters.compactClock(resetsAt, now: now)
         }
     }

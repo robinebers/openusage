@@ -15,7 +15,7 @@ Priority shows only what needs you, most urgent first.
   out moves to Running Out until it recovers, one that's used up moves to Used Up until it resets,
   and one listed under Use It or Lose It moves there until it resets.
 - **Running Out** lists every limit at or under its Warning level (30% left by default, set in
-  [Settings → Display → Priority](settings.md#priority)). With **Burning Fast** on, it also lists a
+  [Settings → Alerts → Thresholds](settings.md#thresholds)). With **Burning Fast** on, it also lists a
   limit that would run out before it resets at your current pace, however much it has left, with the
   time it would run out, like `Out in 1h 8m`, in place of its reset. It stays listed until its pace eases to
   90% of the limit. What would run out soonest at your current pace comes first, then limits with no
@@ -54,7 +54,8 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 
 - Click any amount, on either tab, to flip every row between used and left. Click any reset to flip
   between a countdown and the exact time. **Settings → Display** has the same two switches.
-- Countdowns update every 30 seconds.
+- Countdowns update every 30 seconds. A reset a calendar month or more away counts down in months
+  and days, like `3m 12d`.
 - Hover over a bar to see where your current pace lands at reset. The same pace drives the
   [notifications](settings.md).
 - A tick on the bar marks where it would be by now at an even pace through the window: under Used
@@ -69,6 +70,29 @@ Claude, ChatGPT, and Z.ai accounts show a **Limit Resets** row while they have r
 available. Hover over the count to see the expiry dates, or click it to keep them open. To spend a
 reset, choose **Use**, then **Reset**. Z.ai lists its Session and Weekly resets apart, and only the
 earliest of each can be used.
+
+### Unify Multiple Accounts
+
+Right-click a Claude or ChatGPT card with two or more accounts and choose **Unify Multiple Accounts** to
+show them as one card. It's saved per provider and shows a checkmark while it's on. Choose it again to
+turn it off. The same setting has a switch per provider in [Settings → Display](settings.md#unify-accounts).
+
+- The card names how many accounts it holds. Its badge shows the plan when every account is on the
+  same one, and **Multiple** when they differ.
+- Each limit shows once. Its amount averages what's left across the accounts that have that limit, so
+  an account without it doesn't count. Dollar and count amounts add up, per currency. Spending capped
+  in different currencies, or capped beside uncapped, shows what each account spent, with no cap.
+- The reset is the next reset of any account.
+- Limit Resets adds up every account's resets.
+- Hover over a row, or click it to keep it open, to list each account with its own bar, amount and
+  reset. On Limit Resets, each account's resets are listed under its name, and **Use** spends that
+  account's reset.
+- Pin and Hide on a unified row act on every account's copy of the limit.
+
+On Priority and in the menu bar a unified limit counts once. It's listed under Used Up only when every
+account is used up, and under Running Out when the unified amount is low. Burning Fast and Use It or
+Lose It don't list a unified limit, and its bar has no pace mark. Each account still shows under
+Needs Attention when it needs you. Notifications stay per account.
 
 ### Account status
 
@@ -91,8 +115,8 @@ An account's page in **Accounts** lists all of its metrics.
 
 ## Right-click menus
 
-- A provider: **Refresh**, **Manage Accounts…**, **Share Screenshot**, and links such as **Status
-  Page** and **Usage Dashboard**.
+- A provider: **Refresh**, **Manage Accounts…**, **Unify Multiple Accounts** (Claude and ChatGPT, with
+  two or more accounts), **Share Screenshot**, and links such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. A Copilot
   organization account also has **Organization Billing**.
 - A metric: **Pin** or **Unpin**, and **Hide**. On All Usage, its account's menu follows.

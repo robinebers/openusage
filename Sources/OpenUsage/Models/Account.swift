@@ -11,6 +11,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
     case claude
     case codex
     case cursor
+    case amp
     case antigravity
     case copilot
     case devin
@@ -26,6 +27,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .claude: "Claude"
         case .codex: "ChatGPT"
         case .cursor: "Cursor"
+        case .amp: "Amp"
         case .antigravity: "Antigravity"
         case .copilot: "Copilot"
         case .devin: "Devin"
@@ -46,6 +48,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
                       .init(label: "Usage Dashboard", url: URL(string: "https://chatgpt.com/settings/usage")!)]
         case .cursor: [.init(label: "Status Page", url: URL(string: "https://status.cursor.com/")!),
                        .init(label: "Usage Dashboard", url: URL(string: "https://www.cursor.com/dashboard")!)]
+        case .amp: [.init(label: "Usage Dashboard", url: URL(string: "https://ampcode.com/settings")!)]
         case .antigravity: []
         case .copilot: [.init(label: "Status Page", url: URL(string: "https://www.githubstatus.com/")!),
                         .init(label: "Usage Dashboard", url: URL(string: "https://github.com/settings/billing")!)]
@@ -66,7 +69,7 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
 
     var authMethods: [ProviderAuthMethod] {
         switch self {
-        case .claude, .codex, .cursor, .antigravity, .devin, .grok, .muse: [.oauth]
+        case .claude, .codex, .cursor, .amp, .antigravity, .devin, .grok, .muse: [.oauth]
         case .copilot: [.oauth, .organizationToken]
         case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
         case .opencodeGo: [.apiKey(keyPage: URL(string: "https://opencode.ai/console")!)]

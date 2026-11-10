@@ -40,7 +40,8 @@ final class LayoutStore {
             priorityPinIDs: saved.priorityPinIDs.filter { registry.descriptor(id: $0) != nil },
             providerOrder: saved.providerOrder,
             metricOrderByProvider: saved.metricOrderByProvider.filter { registry.provider(id: $0.key) != nil },
-            seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil }
+            seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil },
+            unifiedProviderKinds: saved.unifiedProviderKinds.filter(ProviderKind.unifiable.contains)
         )
     }
 
@@ -70,11 +71,18 @@ final class LayoutStore {
 
     @discardableResult
     func setMetric(_ descriptorID: String, shown: Bool) -> Bool {
+        setMetrics([descriptorID], shown: shown)
+    }
+
+    /// One undo step for them all, such as every account's copy of a unified limit.
+    @discardableResult
+    func setMetrics(_ descriptorIDs: [String], shown: Bool) -> Bool {
         recordingUndoStep {
-            guard registry.descriptor(id: descriptorID) != nil else { return false }
-            if shown { return state.hiddenMetricIDs.remove(descriptorID) != nil }
-            state.priorityPinIDs.remove(descriptorID)
-            return state.hiddenMetricIDs.insert(descriptorID).inserted
+            descriptorIDs.filter { registry.descriptor(id: $0) != nil }.reduce(false) { changed, id in
+                if shown { return state.hiddenMetricIDs.remove(id) != nil || changed }
+                state.priorityPinIDs.remove(id)
+                return state.hiddenMetricIDs.insert(id).inserted || changed
+            }
         }
     }
 
@@ -85,10 +93,28 @@ final class LayoutStore {
     /// Only a shown metric can be pinned.
     @discardableResult
     func setMetric(_ descriptorID: String, pinned: Bool) -> Bool {
+        setMetrics([descriptorID], pinned: pinned)
+    }
+
+    @discardableResult
+    func setMetrics(_ descriptorIDs: [String], pinned: Bool) -> Bool {
         recordingUndoStep {
-            guard registry.descriptor(id: descriptorID) != nil else { return false }
-            if !pinned { return state.priorityPinIDs.remove(descriptorID) != nil }
-            return isMetricShown(descriptorID) && state.priorityPinIDs.insert(descriptorID).inserted
+            descriptorIDs.filter { registry.descriptor(id: $0) != nil }.reduce(false) { changed, id in
+                if !pinned { return state.priorityPinIDs.remove(id) != nil || changed }
+                return (isMetricShown(id) && state.priorityPinIDs.insert(id).inserted) || changed
+            }
+        }
+    }
+
+    /// Unify Multiple Accounts, saved per provider. Settings → Display and the provider's menu both set it.
+    func unifiesAccounts(of kind: ProviderKind) -> Bool {
+        state.unifiedProviderKinds.contains(kind)
+    }
+
+    @discardableResult
+    func setUnifiesAccounts(_ unifies: Bool, of kind: ProviderKind) -> Bool {
+        recordingUndoStep {
+            unifies ? state.unifiedProviderKinds.insert(kind).inserted : state.unifiedProviderKinds.remove(kind) != nil
         }
     }
 
