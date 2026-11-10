@@ -197,6 +197,45 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(Self.jsonBody(key)?["onboard"] as? Bool, false)
     }
 
+    func testAmpDeviceLoginOpensTheAmpCLIPageAndNamesTheAccountByItsUsageEmail() async throws {
+        let accessToken = Self.jwt(#"{"sub":"user_01AMP","exp":1794290794}"#)
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/user_management/authorize/device":
+                Self.response(#"{"device_code":"device","user_code":"AMPC-ODE1","verification_uri":"https://auth.ampcode.com/device","verification_uri_complete":"https://auth.ampcode.com/device?user_code=AMPC-ODE1","expires_in":300,"interval":1}"#)
+            case "/user_management/authenticate":
+                Self.response(#"{"user":{"id":"user_01AMP","email":"amp@example.com"},"access_token":"\#(accessToken)","refresh_token":"amp-refresh","authentication_method":"MagicAuth"}"#)
+            case "/api/internal":
+                Self.response(#"{"ok":true,"result":{"displayText":"Signed in as amp@example.com (example)\nIndividual credits: $1.00 remaining"}}"#)
+            default:
+                Self.response("{}", status: 404)
+            }
+        }
+        let prompt = PromptCapture()
+
+        let result = try await AmpLogin(http: http).login(prompt: { prompt.store($0) }, pastedCode: emptyInput())
+
+        XCTAssertEqual(result.label, "amp@example.com")
+        XCTAssertEqual(result.credential, .oauth(OAuthTokens(
+            accessToken: accessToken,
+            refreshToken: "amp-refresh",
+            expiresAt: Date(timeIntervalSince1970: 1_794_290_794),
+            extras: [OAuthTokens.identityKey: "amp:user_01AMP"]
+        )))
+        XCTAssertEqual(prompt.value?.deviceCode?.userCode, "AMPC-ODE1")
+        XCTAssertEqual(
+            prompt.value?.deviceCode?.verificationURL, URL(string: "https://ampcode.com/auth/cli/device?user_code=AMPC-ODE1"),
+            "the page amp login opens, which carries the browser's Amp session to the confirm step"
+        )
+        let start = try XCTUnwrap(http.requests.first { $0.url.path == "/user_management/authorize/device" })
+        XCTAssertEqual(Self.formBody(start), ["client_id": AmpLogin.clientID])
+        let token = try XCTUnwrap(http.requests.first { $0.url.path == "/user_management/authenticate" })
+        XCTAssertEqual(Self.formBody(token)["grant_type"], "urn:ietf:params:oauth:grant-type:device_code")
+        XCTAssertEqual(Self.formBody(token)["device_code"], "device")
+        let usage = try XCTUnwrap(http.requests.first { $0.url.path == "/api/internal" })
+        XCTAssertEqual(usage.headers["Authorization"], "Bearer \(accessToken)")
+    }
+
     func testCursorLoginPollsForTokens() async throws {
         let http = RoutingHTTPClient { _ in
             Self.response(#"{"accessToken":"\#(Self.jwt(#"{"sub":"auth0|user_abc"}"#))","refreshToken":"cursor-refresh","authId":"auth0|user_abc"}"#)

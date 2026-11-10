@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+- Amp accounts: sign in with an Amp device code to see agent usage, orb hours, Amp Free, and credits
+  ([#1188](https://github.com/robinebers/openusage/issues/1188)).
+
 ### Changed
 - Limit Resets now names each reset (Session, Weekly, Fable or Full Reset) and shows when to use it
   by. Claude, ChatGPT and Z.ai list their resets the same way, and **Use** spends the reset you picked.

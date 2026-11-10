@@ -88,7 +88,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             items = expiries.map { ResetItem(kind: .full, expiresAt: $0, claim: .codexCredit($0)) }
         case .zai:
             items = ZAIResetsMapper.items(unexpiredZAIResets ?? [])
-        case .cursor, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
+        case .cursor, .amp, .antigravity, .copilot, .devin, .grok, .muse, .ollama, .opencodeGo, .openrouter:
             return nil
         }
         return ResetClaimService(accountID: account.cardID, items: items, claimReset: { [self] claim, requestID in
@@ -104,7 +104,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         switch account.kind {
         case .claude: restoreClaude(snapshot)
         case .muse: museLastKnown = snapshot.lines
-        case .codex, .cursor, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai: break
+        case .codex, .cursor, .amp, .antigravity, .copilot, .devin, .grok, .ollama, .opencodeGo, .openrouter, .zai: break
         }
     }
 
@@ -151,6 +151,7 @@ final class AccountProviderRuntime: ProviderRuntime {
             case .claude: try await refreshClaude(credential)
             case .codex: try await refreshCodex(credential)
             case .cursor: try await refreshCursor(credential)
+            case .amp: try await refreshAmp(credential)
             case .antigravity: try await refreshAntigravity(credential)
             case .copilot: try await refreshCopilot(credential)
             case .devin: try await refreshDevin(credential)
@@ -274,6 +275,15 @@ final class AccountProviderRuntime: ProviderRuntime {
             planRead.record(settings.flatMap(GrokUsageMapper.planName(from:)), at: now())
         }
         return ProviderUsage(plan: planRead.value, lines: mapped.lines, notice: mapped.notice)
+    }
+
+    /// Amp's access token lasts five minutes, so nearly every read renews it first.
+    private func refreshAmp(_ credential: AccountCredential) async throws -> ProviderUsage {
+        let (_, response) = try await authorizedRead(credential, grant: AmpLogin.refresh) { tokens in
+            try await AmpUsageClient(http: http).fetchBalance(accessToken: tokens.accessToken)
+        }
+        try ProviderError.requireSuccess(response, kind: .amp)
+        return try AmpUsageMapper.map(response.body)
     }
 
     private func refreshMuse(_ credential: AccountCredential) async throws -> ProviderUsage {
