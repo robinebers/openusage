@@ -201,7 +201,7 @@ final class MenuBarContentTests: XCTestCase {
 
     func testThePreviewDrawsTheWholeStripAtOneSizeWhateverTheRowOffers() throws {
         let settingsRowWidth: CGFloat = 296
-        let store = WidgetDataStore.forTesting([], defaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let store = WidgetDataStore.forTesting([], defaults: isolatedDefaults())
         for limit in MenuBarLimit.allCases {
             store.menuBarLimit = limit
             let inRow = try inkWidth(of: PriorityIconsPreview().environment(store), offered: settingsRowWidth)
