@@ -115,13 +115,20 @@ struct SettingsScreen: View {
                 titled("Pace Marks", info: "Where usage would be at an even pace")
             }
         }
-        Section("Unify Accounts") {
+        Section {
             ForEach(ProviderKind.unifiable, id: \.self) { kind in
-                Toggle(kind.displayName, isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { layout.unifiesAccounts(of: kind) },
                     set: { unifies in withAnimation(Motion.spring) { _ = layout.setUnifiesAccounts(unifies, of: kind) } }
-                ))
+                )) {
+                    HStack(spacing: 8) {
+                        ProviderIcon(id: kind.rawValue, side: 16, inset: 0.04)
+                        Text(kind.displayName)
+                    }
+                }
             }
+        } header: {
+            titled("Unify Accounts", info: "Show usage limits as if all accounts were one")
         }
     }
 

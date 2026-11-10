@@ -7,6 +7,8 @@
   Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
 
 ### Changed
+- **Unify Accounts** in Settings → Display shows each provider's mark before its name, with an info icon
+  explaining what it does.
 - Settings tabs are regrouped: **Display** keeps **Menu Bar Icons** (formerly Priority) and **Usage**,
   **Alerts** opens with **Priority** (Warning, Critical, Burning Fast, Use It or Lose It) above
   **Notifications**, and **Appearance** moves to **General**.
