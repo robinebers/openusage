@@ -59,7 +59,7 @@ final class OpenRouterUsageMapperTests: XCTestCase {
     func testActivitySumsRowsPerUTCDayAndModelAndAMalformedRowRejectsTheRead() throws {
         let rows = #"""
         {"data":[{"date":"2026-10-28","model":"a","usage":1,"requests":2,"prompt_tokens":10,"completion_tokens":5},
-        {"date":"2026-10-28","model":"a","usage":0.5,"requests":1,"prompt_tokens":4,"completion_tokens":1,"cached_tokens":2,"reasoning_tokens":null}]}
+        {"date":"2026-10-28 00:00:00","model":"a","usage":0.5,"requests":1,"prompt_tokens":4,"completion_tokens":1,"cached_tokens":2,"reasoning_tokens":null}]}
         """#
         let day = try XCTUnwrap(OpenRouterUsageMapper.activityDays(body(rows))?[try XCTUnwrap(date("2026-10-28T00:00:00Z"))])
 
@@ -70,17 +70,10 @@ final class OpenRouterUsageMapperTests: XCTestCase {
             #"{"data":{"date":"2026-10-28"}}"#,
             #"{"data":[{"date":"2026-10-28","model":"a","usage":1,"prompt_tokens":10}]}"#,
             #"{"data":[{"date":"2026-10-28","model":"a","usage":-1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
-            #"{"data":[{"date":"yesterday","model":"a","usage":1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#
+            #"{"data":[{"date":"yesterday","model":"a","usage":1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#,
+            #"{"data":[{"date":"2026-10-28 99:99:99","model":"a","usage":1,"requests":1,"prompt_tokens":10,"completion_tokens":5}]}"#
         ] {
             XCTAssertNil(OpenRouterUsageMapper.activityDays(body(text)), text)
         }
-    }
-
-    func testActivityReadsADateThatCarriesATimeOfDay() throws {
-        let rows = #"{"data":[{"date":"2026-10-28 00:00:00","model":"a","usage":1,"requests":2,"prompt_tokens":10,"completion_tokens":5}]}"#
-
-        let day = try XCTUnwrap(OpenRouterUsageMapper.activityDays(body(rows))?[try XCTUnwrap(date("2026-10-28T00:00:00Z"))])
-
-        XCTAssertEqual(day.totals[.spend], 1)
     }
 }

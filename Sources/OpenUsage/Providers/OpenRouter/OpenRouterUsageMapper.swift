@@ -52,7 +52,8 @@ enum OpenRouterUsageMapper {
         guard let rows = ProviderParse.jsonObject(body)?["data"] as? [[String: Any]] else { return nil }
         var days: [Date: UsageDay] = [:]
         for row in rows {
-            guard let date = (row["date"] as? String).flatMap({ OpenUsageISO8601.date(from: "\($0.prefix(10))T00:00:00Z") }),
+            guard let datePart = (row["date"] as? String)?.wholeMatch(of: #/(\d{4}-\d{2}-\d{2})(?: (?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)?/#)?.1,
+                  let date = OpenUsageISO8601.date(from: "\(datePart)T00:00:00Z"),
                   let model = row["model"] as? String,
                   let totals = activityTotals(row) else { return nil }
             let day = days[date] ?? quietDay
