@@ -12,7 +12,7 @@ OpenUsage refreshes every account every 5 minutes. There is no setting for the i
 | **⌘R**, or clicking **Next update in …** | Every account, skipping the cache and the wait after a failure |
 | An account's **Refresh** menu item | Its accounts, like ⌘R |
 | Claiming a rate-limit reset | That account |
-| Launch, opening Accounts, and hourly | Each [CLIProxyAPI hub](cliproxyapi.md#staying-in-sync)'s login list |
+| Launch, opening Accounts, **⌘R**, and hourly | Each [CLIProxyAPI hub](cliproxyapi.md#staying-in-sync)'s login list. ⌘R reads it before usage |
 | Replacing a hub's management key | Every account from that hub |
 
 A wait a provider asked for (HTTP 429) holds even for ⌘R. Accounts fetch in parallel.

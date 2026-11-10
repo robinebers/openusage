@@ -14,6 +14,7 @@ final class AppContainer {
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
+    private(set) var isRefreshingNow = false
     @ObservationIgnored private var providers: [ProviderRuntime]
     @ObservationIgnored private let makeRuntimes: RuntimeFactory
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -144,6 +145,16 @@ final class AppContainer {
         try await hubs.replaceKey(key, for: hubID)
         let ids = Set(accounts.accounts(onHub: hubID).map(\.cardID))
         await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
+    }
+
+    /// The Refresh button: every hub's login list is read first, so a login turned off on its hub is gone
+    /// before the usage read instead of failing in it. A press while one runs does nothing.
+    func refreshNow() async {
+        guard !isRefreshingNow else { return }
+        isRefreshingNow = true
+        defer { isRefreshingNow = false }
+        await hubs.syncDue(maxAge: 0)
+        await dataStore.refreshAll(force: true)
     }
 
     func startRefreshing() {

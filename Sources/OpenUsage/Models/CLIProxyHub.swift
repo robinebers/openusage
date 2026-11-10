@@ -162,6 +162,12 @@ struct HubLogin: Equatable, Sendable {
         }
     }
 
+    /// An enabled login OpenUsage can't mirror. A file the hub couldn't read lists as provider `unknown`
+    /// and isn't a login at all.
+    var isUnsupported: Bool {
+        !isDisabled && kind == nil && provider != "unknown"
+    }
+
     /// The listing's logins in hub order. An entry without an id is skipped; an undecodable body throws.
     static func listing(from body: Data) throws -> [HubLogin] {
         let decoder = JSONDecoder()
