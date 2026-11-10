@@ -24,7 +24,7 @@ final class AntigravityQuotaSummaryMergeTests: XCTestCase {
         }
         let lines = AntigravityUsageMapper.parseQuotaSummaries([Data(argon(0.6).utf8), Data(argon(0.1).utf8)])
         XCTAssertEqual(lines?.map(\.label), ["Argon Weekly"], "two hosts' Argon groups must not read as an ambiguous bucket")
-        XCTAssertEqual(lines?.map { used($0) }, [40])
+        XCTAssertEqual(used(lines?.first) ?? -1, 40, accuracy: 0.0001)
     }
 
     func testIsCompleteSummaryNeedsAllFourUsableBuckets() {

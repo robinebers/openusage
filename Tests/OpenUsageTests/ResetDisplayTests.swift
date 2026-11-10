@@ -46,6 +46,74 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertFalse(data.isFreshSessionWindow(now: data.resetsAt!.addingTimeInterval(1)))
     }
 
+    func testAntigravitySessionJustUnderFullKeepsItsCountdownBehindTheRoundedPercent() {
+        let line = AntigravityUsageMapper.line(
+            pool: AntigravityMetric.sessionLabel, fraction: 0.99965,
+            resetTime: now.addingTimeInterval(2 * 3600), periodMs: MetricPeriod.sessionMs)
+        guard case .progress(_, let used, let limit, _, let resetsAt, let periodMs) = line else {
+            return XCTFail("expected a progress line")
+        }
+        XCTAssertEqual(used, 0.035, accuracy: 0.001)
+        XCTAssertGreaterThan(used, 0)
+
+        var data = WidgetData(title: "Gemini 5h", kind: .percent, used: used, limit: limit,
+                              resetsAt: resetsAt, periodDurationMs: periodMs)
+        data.sessionStartSignal = .zeroUsage
+        data.displayMode = .remaining
+
+        XCTAssertEqual(data.valueText, "100%")
+        XCTAssertFalse(data.isFreshSessionWindow(now: now))
+        XCTAssertEqual(data.compactResetText(now: now), "2h")
+        guard case .bar(_, _, let value, let reset, _) = data.dashboardRow(now: now).mark else {
+            return XCTFail("expected a bar mark")
+        }
+        XCTAssertEqual(value, "100%")
+        XCTAssertEqual(reset, "2h")
+    }
+
+    func testAntigravityUntouchedAndExhaustedWindowsKeepTheirFreshAndCountdownReads() {
+        func line(fraction: Double) -> WidgetData {
+            guard case .progress(_, let used, let limit, _, let resetsAt, let periodMs) =
+                    AntigravityUsageMapper.line(pool: AntigravityMetric.sessionLabel, fraction: fraction,
+                                                resetTime: now.addingTimeInterval(2 * 3600),
+                                                periodMs: MetricPeriod.sessionMs)
+            else { preconditionFailure("expected a progress line") }
+            var data = WidgetData(title: "Gemini 5h", kind: .percent, used: used, limit: limit,
+                                  resetsAt: resetsAt, periodDurationMs: periodMs)
+            data.sessionStartSignal = .zeroUsage
+            data.displayMode = .remaining
+            return data
+        }
+
+        let untouched = line(fraction: 1)
+        XCTAssertTrue(untouched.isFreshSessionWindow(now: now))
+        XCTAssertNil(untouched.compactResetText(now: now))
+
+        let exhausted = line(fraction: 0)
+        XCTAssertFalse(exhausted.isFreshSessionWindow(now: now))
+        XCTAssertEqual(exhausted.compactResetText(now: now), "2h")
+
+        for (fraction, expected) in [(1.5, 0.0), (-0.5, 100.0)] {
+            guard case .progress(_, let used, _, _, _, _) =
+                    AntigravityUsageMapper.line(pool: "x", fraction: fraction, resetTime: nil, periodMs: MetricPeriod.sessionMs)
+            else { return XCTFail("expected a progress line") }
+            XCTAssertEqual(used, expected, "fraction \(fraction) clamps into 0...1")
+        }
+    }
+
+    func testAntigravityWeeklyKeepsTheFractionsRawPercentForTheCardToRound() {
+        guard case .progress(_, let used, let limit, _, let resetsAt, let periodMs) =
+                AntigravityUsageMapper.line(pool: AntigravityMetric.weeklyLabel, fraction: 0.9742,
+                                            resetTime: now.addingTimeInterval(5 * 24 * 3600),
+                                            periodMs: MetricPeriod.weekMs)
+        else { return XCTFail("expected a progress line") }
+        var data = WidgetData(title: "Gemini", kind: .percent, used: used, limit: limit,
+                              resetsAt: resetsAt, periodDurationMs: periodMs)
+        data.displayMode = .remaining
+
+        XCTAssertEqual(data.valueText, "97%")
+    }
+
     func testMissingResetDateSignalKeepsCountdownForSubOnePercentSession() {
         // Claude reports utilization in whole percents, so an in-flight session under 1% reads
         // used == 0 — but its reset date exists precisely because the window started. The row must show
