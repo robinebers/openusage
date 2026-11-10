@@ -144,6 +144,15 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         XCTAssertEqual(board.notices.map(\.provider.id), ["claude@3"])
     }
 
+    func testAnAccountOverItsCapDoesNotUseUpAnotherAccountsRoom() {
+        let over = WidgetData(title: "Budget", kind: .dollars, used: 250, limit: 100, displayMode: .remaining)
+        let fresh = WidgetData(title: "Budget", kind: .dollars, used: 0, limit: 100, displayMode: .remaining)
+        let budget = line("budget", in: family([("AM1", [("budget", over)]), ("AM2", [("budget", fresh)])]))
+        XCTAssertEqual(budget.data.valueText, "$100", "the second account's room is still there")
+        XCTAssertEqual(budget.usedUpShare, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(budget.members.map(\.line.data.used), [250, 0], "each account keeps its own spend in the list")
+    }
+
     func testPinAndHideReachEveryAccountsCopyEvenBeforeItsFirstReading() {
         let weekly = limit("Weekly", left: 40, resetsIn: day)
         let unified = family([("AM1", [("weekly", weekly)]), ("AM2", [("weekly", weekly)])], waiting: ["claude@2"])

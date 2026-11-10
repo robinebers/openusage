@@ -50,8 +50,8 @@ extension DashboardLine {
 }
 
 extension WidgetData {
-    /// Limits add up what each account used against what each allows, so percents average, and a limit is used up
-    /// only when every account's is. Limits in different units, or capped beside uncapped, add up what each spent.
+    /// Limits add up what each account used, up to its cap, against what each allows, so percents average, and a
+    /// limit is used up only when every account's is. Limits in different units, or capped beside uncapped, add up what each spent.
     static func pooling(_ readings: [WidgetData]) -> WidgetData {
         var data = readings[0]
         data.periodDurationMs = nil
@@ -71,7 +71,8 @@ extension WidgetData {
             data.hasData = !data.values.isEmpty
             return data
         }
-        let used = readings.reduce(0) { $0 + $1.used }
+        // An account over its own cap can't spend another account's room.
+        let used = readings.reduce(0) { $0 + min($1.used, $1.limit ?? 0) }
         let limit = readings.reduce(0) { $0 + ($1.limit ?? 0) }
         guard limit > 0 else { return data }
         let scale = data.kind == .percent ? 100 / limit : 1
