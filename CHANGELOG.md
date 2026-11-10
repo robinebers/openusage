@@ -17,6 +17,8 @@
 ### Fixed
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
   requires to spend a reset. Remove existing Claude accounts and add them again to use their resets.
+- OpenRouter's **Yesterday** and **Prior 30 Days** no longer read `$0` when OpenRouter dates a day with a
+  time of day, like `2026-08-23 00:00:00`.
 
 ## v0.8.0-beta.7
 

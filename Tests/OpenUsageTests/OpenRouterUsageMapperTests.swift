@@ -75,4 +75,12 @@ final class OpenRouterUsageMapperTests: XCTestCase {
             XCTAssertNil(OpenRouterUsageMapper.activityDays(body(text)), text)
         }
     }
+
+    func testActivityReadsADateThatCarriesATimeOfDay() throws {
+        let rows = #"{"data":[{"date":"2026-10-28 00:00:00","model":"a","usage":1,"requests":2,"prompt_tokens":10,"completion_tokens":5}]}"#
+
+        let day = try XCTUnwrap(OpenRouterUsageMapper.activityDays(body(rows))?[try XCTUnwrap(date("2026-10-28T00:00:00Z"))])
+
+        XCTAssertEqual(day.totals[.spend], 1)
+    }
 }
