@@ -16,15 +16,6 @@ extension PaceMilestone {
 
     var isLevel: Bool { self == .critical || self == .warning }
 
-    var settingSubtitle: String {
-        switch self {
-        case .critical: return "Alert when a limit drops critically low"
-        case .warning: return "Alert when a limit requires your attention"
-        case .closeToRunningOut: return "A limit may run out before its reset"
-        case .useItOrLoseIt: return "Over 50% left a day before its reset"
-        }
-    }
-
     var notificationTitle: String {
         switch self {
         case .critical: return "Critical"

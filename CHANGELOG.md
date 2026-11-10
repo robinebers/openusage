@@ -10,8 +10,9 @@
 - **Unify Accounts** in Settings → Display shows each provider's mark before its name, with an info icon
   explaining what it does.
 - Settings tabs are regrouped: **Display** keeps **Menu Bar Icons** (formerly Priority) and **Usage**,
-  **Alerts** opens with **Priority** (Warning, Critical, Burning Fast, Use It or Lose It) above
-  **Notifications**, and **Appearance** moves to **General**.
+  and **Appearance** moves to **General**.
+- **Settings → Alerts** sets the Warning and Critical **Thresholds**, then lists each alert once with a
+  **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
 ## v0.8.0-beta.7
 
