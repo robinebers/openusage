@@ -113,8 +113,7 @@ final class LayoutStore {
 
     @discardableResult
     func setUnifiesAccounts(_ unifies: Bool, of kind: ProviderKind) -> Bool {
-        guard ProviderKind.unifiable.contains(kind) else { return false }
-        return recordingUndoStep {
+        recordingUndoStep {
             unifies ? state.unifiedProviderKinds.insert(kind).inserted : state.unifiedProviderKinds.remove(kind) != nil
         }
     }

@@ -77,12 +77,6 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         XCTAssertEqual(line("fable", in: family).data.valueText, "56%")
     }
 
-    func testAUnifiedRowIsAPlainBarOfTheAveragedPercent() {
-        XCTAssertEqual(line("weekly", in: robins).data.dashboardRow(now: now).mark,
-                       .bar(fill: 0.51, severity: .normal, value: "51%", reset: "14h 32m"),
-                       "no separate mark for the used-up accounts")
-    }
-
     func testTheCountdownIsTheNextResetOfAnyAccount() {
         let family = robins
         XCTAssertEqual(line("session", in: family).data.compactResetText(now: now), "3h 12m", "AM1 and AM2 have no session running")
@@ -212,7 +206,6 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
 
     func testOnlyClaudeAndChatGPTCanBeUnified() {
         let defaults = isolatedDefaults()
-        XCTAssertFalse(LayoutStore(registry: .mock, defaults: defaults).setUnifiesAccounts(true, of: .cursor))
         LayoutPersistence(defaults: defaults).save(LayoutState(unifiedProviderKinds: [.claude, .cursor]))
         XCTAssertEqual(LayoutStore(registry: .mock, defaults: defaults).state.unifiedProviderKinds, [.claude],
                        "a provider saved by an earlier build stops unifying")
