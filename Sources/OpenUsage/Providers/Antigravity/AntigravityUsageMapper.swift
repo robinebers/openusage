@@ -106,7 +106,7 @@ enum AntigravityUsageMapper {
 
     static func line(pool: String, fraction: Double, resetTime: Date?, periodMs: Int) -> MetricLine {
         let clamped = max(0, min(1, fraction))
-        let used = ((1 - clamped) * 100).rounded()
+        let used = (1 - clamped) * 100
         return .percent(pool, used, resetsAt: resetTime, periodMs: periodMs)
     }
 

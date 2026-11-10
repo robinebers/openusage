@@ -31,7 +31,9 @@ A hub account works like any other account and carries the CLIProxyAPI mark.
 
 ## Staying in sync
 
-OpenUsage reads the hub's login list at launch, when Accounts opens, and about once an hour.
+OpenUsage reads the hub's login list at launch, when Accounts opens, on **⌘R** (or a click on **Next
+update in …**), and about once an hour. ⌘R reads the list before usage, so a login turned off on the
+hub is gone right away.
 
 - A login added on the hub appears at the bottom of its provider's accounts.
 - A login removed on the hub disappears once two reads in a row miss it.
@@ -45,7 +47,8 @@ API key and Cursor's usage reads need OpenUsage's own sign-in.
 ## The hub in Accounts
 
 Each hub has a row under the accounts. A warning sign means the last read failed. The hub's page
-shows the last error, its accounts, and how many logins aren't supported yet.
+shows the last error, its accounts, and how many logins aren't supported yet. That count leaves out
+logins turned off on the hub and files that aren't logins, such as `local-models/catalog.json`.
 
 - **Replace Management Key…** tests the new key before saving it. A refused key keeps the old one.
 - **Remove Hub…** deletes the hub's accounts and key from this Mac. Nothing changes on the hub.

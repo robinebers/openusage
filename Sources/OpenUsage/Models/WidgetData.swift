@@ -24,9 +24,7 @@ struct WidgetData: Hashable {
     var showsPaceMarks = true
 
     enum SessionStartSignal: Hashable {
-        /// Zero usage is the fresh signal. Antigravity reports a reset instant even for an untouched
-        /// window and its mapper rounds the fresh pool's fraction-derived percent to 0, so `used == 0`
-        /// is what marks the window as fresh.
+        /// Antigravity supplies reset dates for untouched windows. Only exact zero usage marks them fresh.
         case zeroUsage
         /// A missing reset date is the fresh signal: by the time a row carries one, a reset instant
         /// means the window started. Claude's five-hour block is created by the first message, so it
