@@ -56,7 +56,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         XCTAssertEqual(outcome("not json"), .failed(.refused))
         XCTAssertEqual(outcome(#"{"result":"reset"}"#, status: 429), .failed(.refused))
         XCTAssertEqual(outcome(#"{"result":"reset"}"#, status: 500), .failed(.refused))
-        XCTAssertEqual(outcome("", status: 401), .failed(.notPermitted))
+        XCTAssertEqual(outcome("", status: 401), .failed(.signInExpired))
         XCTAssertEqual(outcome("", status: 403), .failed(.signInExpired))
         let scopeRefusal = #"{"type":"error","error":{"type":"permission_error","message":"OAuth token does not meet scope requirement user:inference"}}"#
         XCTAssertEqual(outcome(scopeRefusal, status: 403), .failed(.notPermitted))

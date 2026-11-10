@@ -103,7 +103,11 @@ extension AccountProviderRuntime {
             session.resetGrants.unsettledClaims[grantID] = requestID
         }
         let next = status.nextGrantID.flatMap { id in status.grants.first { $0.id == id } }?.kind
-        let outcome = ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
+        // A renewable sign-in has already been renewed and retried by now, so a 401 that survives is
+        // Anthropic refusing this `user:profile` sign-in, as it did on Nov 10, not an expiry.
+        let outcome: ResetClaimOutcome = response.statusCode == 401 && tokens.refreshToken != nil
+            ? .failed(.notPermitted)
+            : ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
         if outcome == .success {
             AppLog.info(tag, "\(cardID) reset claim: claimed (HTTP \(response.statusCode))")
         } else {
