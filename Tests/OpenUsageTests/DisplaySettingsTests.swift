@@ -112,11 +112,15 @@ final class DisplaySettingsTests: QuietWindowTestCase {
             ("Notify About Burning Fast", [false, false, true, true, true, false]),
             ("Notify About Use It or Lose It", [false, false, true, true, true, true]),
         ]
+        func switchViews(in view: NSView) -> [NSSwitch] {
+            [view as? NSSwitch].compactMap { $0 } + view.subviews.flatMap(switchViews)
+        }
         for (label, expected) in presses {
             let wasOn = try XCTUnwrap(isOn(label), label)
             let frame = try XCTUnwrap(switches()[label]?.value(forKey: "accessibilityFrame") as? NSValue).rectValue
             let point = window.convertPoint(fromScreen: NSPoint(x: frame.midX, y: frame.midY))
-            click(CGPoint(x: point.x, y: host.bounds.height - point.y), window, host)
+            let control = try XCTUnwrap(switchViews(in: host).first { $0.convert($0.bounds, to: nil).contains(point) }, label)
+            control.performClick(nil)
             try await waitUntil { saved() == expected && isOn(label) == !wasOn }
             XCTAssertEqual(saved(), expected, "\(label) saves only its own setting")
         }
