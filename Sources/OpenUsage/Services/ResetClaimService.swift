@@ -6,6 +6,8 @@ enum ResetClaimOutcome: Equatable, Sendable {
     case noCredit
     case unconfirmed
     case unavailableNow(until: Date?)
+    /// Claude refused this reset because another one has to be used first (`not_next_grant`).
+    case notNextReset(next: ResetKind?)
     case failed(ResetClaimFailure)
 }
 
@@ -23,6 +25,8 @@ extension ResetClaimOutcome {
         case .unavailableNow(let until):
             "Resets can't be used right now." + (until.flatMap { Formatters.whenLabel(at: $0, mode: .relative, now: now) }
                 .map { $0 == Formatters.imminent ? " Try again soon." : " Try again in \($0)." } ?? "")
+        case .notNextReset(let next):
+            "Claude wants \(next.map { "your \($0.title)" } ?? "another reset") used first. Nothing was used."
         case .failed(.signInExpired):
             "Your sign-in expired. Sign in again from the account's page."
         case .failed(.notPermitted):
@@ -53,53 +57,66 @@ enum ResetClaimFailure: Equatable, Sendable {
     }
 }
 
-/// One titled group of resets. Only a usable group's resets can be spent: the provider spends its
-/// next grant, whichever row is chosen.
-struct ResetSection: Equatable, Sendable {
-    let title: String
-    let expiries: [Date]
-    let usable: Bool
-    /// Whether the reset the provider spends next is one of this group's rows. Only then does a claim
-    /// take a row off the list before the refresh: otherwise the spent reset has no row to take.
-    let holdsNextReset: Bool
+/// What a reset refills, read from the provider's own fields. Ties at one expiry list in this order.
+enum ResetKind: Int, Comparable, Sendable {
+    case session, weekly, fable, full
 
-    init(title: String, expiries: [Date], usable: Bool, holdsNextReset: Bool? = nil) {
-        self.title = title
-        self.expiries = expiries
-        self.usable = usable
-        self.holdsNextReset = holdsNextReset ?? usable
+    var title: String {
+        switch self {
+        case .session: "Session Reset"
+        case .weekly: "Weekly Reset"
+        case .fable: "Fable Reset"
+        case .full: "Full Reset"
+        }
+    }
+
+    static func < (lhs: ResetKind, rhs: ResetKind) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+/// The record a claim spends: Claude's grant, ChatGPT's credit with that expiry, or Z.ai's exact record.
+enum ResetClaimRef: Hashable, Sendable {
+    case claudeGrant(String)
+    case codexCredit(Date)
+    case zai(ZAIReset)
+
+    /// Orders two resets that share an expiry and a kind, so the list keeps its order across refreshes.
+    fileprivate var tieBreaker: (record: Int, grant: String) {
+        switch self {
+        case .claudeGrant(let id): (0, id)
+        case .codexCredit: (0, "")
+        case .zai(let reset): (reset.recordID, "")
+        }
+    }
+}
+
+/// One reset on the Limit Resets timeline: one row each, for every provider.
+struct ResetItem: Hashable, Sendable {
+    let kind: ResetKind
+    let expiresAt: Date
+    let claim: ResetClaimRef
+    /// Whether the row offers Use.
+    var usable = true
+    /// The confirmation's sentence; nil keeps the general wording.
+    var confirmDetail: String?
+
+    static func timelineOrder(_ lhs: ResetItem, _ rhs: ResetItem) -> Bool {
+        let (left, right) = (lhs.claim.tieBreaker, rhs.claim.tieBreaker)
+        return (lhs.expiresAt, lhs.kind.rawValue, left.record, left.grant) < (rhs.expiresAt, rhs.kind.rawValue, right.record, right.grant)
     }
 }
 
 @MainActor
 struct ResetClaimService {
     let accountID: String
-    let isClaimable: Bool
-    let confirmDetail: String?
-    let claimReset: (@MainActor (_ expiry: Date, _ redeemRequestID: String) async -> ResetClaimOutcome)?
+    /// Every reset the account holds, one row each; empty until the provider's list is read.
+    let items: [ResetItem]
+    let claimReset: @MainActor (_ claim: ResetClaimRef, _ requestID: String) async -> ResetClaimOutcome
     let refreshAccount: @MainActor () async -> WidgetDataStore.RefreshOutcome
-    /// Resets that each refill one window (Z.ai), earliest first, claimed by their exact record.
-    var windowResets: [ZAIReset] = []
-    var claimWindowReset: (@MainActor (_ reset: ZAIReset, _ requestID: String) async -> ResetClaimOutcome)?
-    /// Resets listed by what they refill (Claude's Fable resets apart from the rest); empty for one timeline.
-    var sections: [ResetSection] = []
-    /// Titles the one timeline of a provider whose resets are all one kind (ChatGPT).
-    var timelineTitle: String?
 
-    static let sessionAndWeeklyTitle = "Session & Weekly"
-
-    /// The claim's result shows first; the refresh that drops the spent row starts at once behind it.
-    func claim(creditExpiringAt expiry: Date, redeemRequestID: String) async -> ResetClaimOutcome {
-        guard let claimReset else { return .noCredit }
-        return settle(await claimReset(expiry, redeemRequestID))
-    }
-
-    func claim(_ reset: ZAIReset, requestID: String) async -> ResetClaimOutcome {
-        guard let claimWindowReset else { return .noCredit }
-        return settle(await claimWindowReset(reset, requestID))
-    }
-
-    private func settle(_ outcome: ResetClaimOutcome) -> ResetClaimOutcome {
+    /// Spends exactly the reset on the chosen row. The claim's result shows first; the refresh that drops
+    /// the spent row starts at once behind it.
+    func claim(_ item: ResetItem, requestID: String) async -> ResetClaimOutcome {
+        let outcome = await claimReset(item.claim, requestID)
         if case .failed = outcome { return outcome }
         Task { await refreshAfterClaim() }
         return outcome

@@ -50,11 +50,15 @@ extension AccountProviderRuntime {
         }
     }
 
-    func claimClaudeResetGrant(redeemRequestID: String) async -> ResetClaimOutcome {
+    /// Spends a reset from the grant on the row the user chose, as Claude Code does, not Anthropic's
+    /// next grant.
+    func claimClaudeResetGrant(_ grantID: String, redeemRequestID: String) async -> ResetClaimOutcome {
         let tag = LogTag.plugin("claude")
         let cardID = account.cardID
-        guard let session = claude.session, let grantID = session.resetGrants.check?.status?.claimableGrantID else {
-            AppLog.warn(tag, "\(cardID) reset claim: no claimable grant in the last reset-grants check")
+        guard let session = claude.session, let status = session.resetGrants.check?.status,
+              let chosen = status.claimableGrant(grantID)
+        else {
+            AppLog.warn(tag, "\(cardID) reset claim: the chosen grant has no reset left in the last reset-grants check")
             return .noCredit
         }
         // A claim whose answer never arrived may have landed. Retrying it under its original request id
@@ -98,14 +102,15 @@ extension AccountProviderRuntime {
         } else if succeeded || response.statusCode >= 500 {
             session.resetGrants.unsettledClaim = (grantID, requestID)
         }
-        let outcome = ClaudeUsageMapper.resetClaimOutcome(from: response)
+        let next = status.nextGrantID.flatMap { id in status.grants.first { $0.id == id } }?.kind
+        let outcome = ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
         if outcome == .success {
             AppLog.info(tag, "\(cardID) reset claim: claimed (HTTP \(response.statusCode))")
         } else {
             AppLog.warn(tag, "\(cardID) reset claim: \(outcome) (HTTP \(response.statusCode))")
         }
         switch outcome {
-        case .success, .unconfirmed, .noCredit:
+        case .success, .unconfirmed, .noCredit, .notNextReset:
             let resetsLeft = ProviderParse.number(body?["resets_left"]).flatMap { ProviderParse.int($0.rounded(.down)) }
             session.resetGrants.settleClaim(grantID: grantID, outcome: outcome, resetsLeft: resetsLeft)
         case .nothingToReset, .unavailableNow, .failed:

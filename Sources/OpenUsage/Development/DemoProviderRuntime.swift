@@ -21,35 +21,37 @@ final class DemoProviderRuntime: ProviderRuntime {
         return .success(snapshot)
     }
 
-    /// Sample ChatGPT resets are ordinary ones. A sample Claude account's resets go by their count, so
-    /// every layout and confirmation shows without an account: one is ordinary, two are Fable ones,
-    /// three are a Fable one and two ordinary. Spending one sends nothing.
+    /// Sample resets show every kind without an account, and spending one sends nothing. ChatGPT's are
+    /// Full Resets. Z.ai's alternate Session and Weekly. A sample Claude account's go by their count, set
+    /// from the same fields Anthropic sends: one is a Weekly Reset, two are Fable Resets, and three are a
+    /// Weekly Reset then two Fable Resets, like a Max login holding the Fable launch grants.
     func resetClaimService(
         expiries: [Date], refreshAccount: @escaping @MainActor () async -> WidgetDataStore.RefreshOutcome
     ) -> ResetClaimService? {
-        if account.kind == .codex {
-            return ResetClaimService(
-                accountID: account.cardID, isClaimable: true, confirmDetail: nil,
-                claimReset: { _, _ in .success }, refreshAccount: refreshAccount,
-                timelineTitle: ResetClaimService.sessionAndWeeklyTitle
-            )
+        let sorted = expiries.sorted()
+        let items: [ResetItem]
+        switch account.kind {
+        case .codex:
+            items = sorted.map { ResetItem(kind: .full, expiresAt: $0, claim: .codexCredit($0)) }
+        case .zai:
+            items = ZAIResetsMapper.items(sorted.enumerated().map { index, expiry in
+                ZAIReset(window: index.isMultiple(of: 2) ? .fiveHour : .week, recordID: index, expiresAt: expiry, grantType: "SAMPLE")
+            })
+        case .claude:
+            let grants = sorted.enumerated().map { index, expiry in
+                let isFable = sorted.count == 2 || (sorted.count > 2 && index > 0)
+                return ClaudeResetGrantStatus.Grant(
+                    id: "sample-\(index)", resetsLeft: 1, endsAt: expiry,
+                    clears: isFable ? ["seven_day_overage_included"] : ["seven_day", "seven_day_overage_included"],
+                    type: isFable ? "full" : "weekly", givesBackWeekly: isFable, usableNow: true
+                )
+            }
+            items = ClaudeResetGrantStatus(eligible: true, grants: grants, nextGrantID: grants.first?.id).items(now: Date())
+        default:
+            return nil
         }
-        guard account.kind == .claude else { return nil }
-        let grants = expiries.sorted().enumerated().map { index, expiry in
-            let isFable = expiries.count == 2 || (expiries.count > 2 && index == 0)
-            return ClaudeResetGrantStatus.Grant(
-                id: isFable ? "sample-fable-\(index)" : "sample-\(index)", resetsLeft: 1, endsAt: expiry,
-                clears: ["five_hour", isFable ? "seven_day_overage_included" : "seven_day"], givesBackWeekly: isFable
-            )
-        }
-        let status = ClaudeResetGrantStatus(eligible: true, grants: grants, nextGrantID: grants.first?.id)
         return ResetClaimService(
-            accountID: account.cardID,
-            isClaimable: status.claimableGrantID != nil,
-            confirmDetail: status.confirmDetail,
-            claimReset: { _, _ in .success },
-            refreshAccount: refreshAccount,
-            sections: status.sections(now: Date())
+            accountID: account.cardID, items: items, claimReset: { _, _ in .success }, refreshAccount: refreshAccount
         )
     }
 

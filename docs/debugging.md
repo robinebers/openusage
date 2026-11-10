@@ -23,10 +23,11 @@ demo app. Turn it off to restart the normal dev app with its existing accounts a
 - Each launch draws a random seed, shown beside **Demo Data** in the footer. The seed picks every
   provider's account count and names, which limits show, their usage, and their resets.
 - Every seed shows at least one Warning, Critical, Burning Fast, Used Up, empty balance, Use It or
-  Lose It, and account notice. Resets fall between the next hour and the next week.
-- Sample ChatGPT resets can be spent too. A sample Claude account's resets go by their count: one
-  is ordinary, two are Fable resets, three are a Fable reset and two ordinary ones. Spending one
-  sends nothing.
+  Lose It, and account notice. Limits reset between the next hour and the next week. Rate-limit
+  resets expire between the next hour and four months out.
+- Sample rate-limit resets can be spent, and spending one sends nothing. ChatGPT's are Full Resets,
+  and Z.ai's alternate Session and Weekly. A sample Claude account's go by their count: one is a
+  Weekly Reset, two are Fable Resets, and three are a Weekly Reset and two Fable Resets.
 - **Reshuffle**, under Development in the demo app, swaps in a new seed's accounts without a restart.
 - To reproduce a seed, launch the demo with it:
   `open "dist/OpenUsage Demo.app" --args -DemoSeed 4242`.

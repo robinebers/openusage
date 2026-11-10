@@ -87,7 +87,7 @@ struct PriorityItem: Identifiable {
 
     /// The line under the amount of a limit listed to use before it resets, in place of its reset.
     func resetsInText(now: Date) -> String? {
-        guard case .useItOrLoseIt(let resetsAt) = reason, let duration = Formatters.compactDuration(resetsAt.timeIntervalSince(now))
+        guard case .useItOrLoseIt(let resetsAt) = reason, let duration = Formatters.countdown(to: resetsAt, now: now)
         else { return nil }
         return "Resets in \(duration)"
     }

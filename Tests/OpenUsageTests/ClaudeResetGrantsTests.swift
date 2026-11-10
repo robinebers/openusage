@@ -39,136 +39,112 @@ final class ClaudeResetGrantsTests: XCTestCase {
         ])
     }
 
-    /// The live shape of the Fable launch grants: the session and Fable limits, with the week's Fable use
-    /// taken off the weekly limit.
-    private func fableStatus(clears: String = #"["five_hour","seven_day_overage_included"]"#,
-                             otherGrant: String = "") throws -> ClaudeResetGrantStatus {
-        try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
-        { "cedar_ember": { "eligible": true, "grants": [
-            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
-              "label": "New model launch: one Fable reset for Max, Team Premium and Enterprise Premium",
-              "clears": \(clears), "gives_back_weekly": true },
-            { "id": "launch-2610-fable-6mo", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
-              "label": "New model launch: one more Fable reset at 6 months' tenure",
-              "clears": \(clears), "gives_back_weekly": true }\(otherGrant)
-          ], "next_grant_id": "launch-2610-fable" } }
-        """)))
+    /// Robin's Max 20x login on Nov 10 (handoffs/SCO-150/claude-login-5): one Weekly grant Anthropic spends
+    /// next, then three Fable launch grants that say `type: "full"`.
+    private nonisolated static let maxLogin = """
+    { "cedar_ember": { "eligible": true, "at_limit": false, "exhausted": [], "next_grant_id": "free_reset_oct_2026",
+      "grants": [
+        { "id": "free_reset_oct_2026", "label": "Free limit reset", "type": "weekly", "gives_back_weekly": false,
+          "clears": ["seven_day", "seven_day_overage_included"], "resets_total": 1, "resets_left": 1,
+          "ends_at": "2026-12-16T04:59:00+00:00", "paused": false, "usable_now": true, "use_requires_limit": false },
+        { "id": "launch-2610-fable", "label": "New model launch: one Fable reset for Max, Team Premium and Enterprise Premium",
+          "type": "full", "gives_back_weekly": true, "clears": ["seven_day_overage_included"], "resets_total": 1,
+          "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "paused": false, "usable_now": true },
+        { "id": "launch-2610-fable-12mo", "label": "New model launch: one more Fable reset at 12 months' tenure",
+          "type": "full", "gives_back_weekly": true, "clears": ["seven_day_overage_included"], "resets_total": 1,
+          "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "paused": false, "usable_now": true },
+        { "id": "launch-2610-fable-6mo", "label": "New model launch: one more Fable reset at 6 months' tenure",
+          "type": "full", "gives_back_weekly": true, "clears": ["seven_day_overage_included"], "resets_total": 1,
+          "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "paused": false, "usable_now": true }
+      ] } }
+    """
+
+    /// A Team login's Fable launch grant (claude-login-1): the session and Fable limits.
+    private nonisolated static let teamFable = #"{ "id": "launch-2610-fable", "type": "full", "gives_back_weekly": true, "clears": ["five_hour", "seven_day_overage_included"], "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "usable_now": true }"#
+
+    private func status(_ json: String) throws -> ClaudeResetGrantStatus {
+        try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(json)))
     }
 
-    func testFableGrantNamesItsLimitsAndTheWeeklyGiveBack() throws {
-        let status = try fableStatus()
-        XCTAssertEqual(
-            status.confirmDetail,
-            "Refills your session and Fable limits now, and takes this week's Fable use off your weekly limit. This can't be undone."
-        )
-        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: "2027-03-09T07:59:00+00:00"))
-        XCTAssertEqual(status.sections(now: now), [ResetSection(title: "Fable", expiries: [expiry, expiry], usable: true)])
+    private func status(grants: [String]) throws -> ClaudeResetGrantStatus {
+        try status(#"{"cedar_ember":{"eligible":true,"grants":[\#(grants.joined(separator: ","))]}}"#)
+    }
+
+    private func grant(_ fields: String) -> String {
+        #"{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","usable_now":true,\#(fields)}"#
+    }
+
+    func testKindComesFromTheGrantsFieldsAsClaudeCodeReadsThem() throws {
+        let cases: [(String, ResetKind)] = [
+            (#""type":"full","gives_back_weekly":true,"clears":["seven_day_overage_included"]"#, .fable),
+            (#""type":"weekly","clears":["seven_day","seven_day_overage_included"]"#, .weekly),
+            (#""type":"session","clears":["five_hour"]"#, .session),
+            (#""type":"full","clears":["five_hour","seven_day"]"#, .full),
+            (#""clears":["five_hour"]"#, .session),
+            (#""clears":["seven_day"]"#, .weekly),
+            (#""clears":["five_hour","seven_day"]"#, .full),
+            (#""clears":[]"#, .full)
+        ]
+        for (fields, kind) in cases {
+            XCTAssertEqual(try status(grants: [grant(fields)]).items(now: now).map(\.kind), [kind], fields)
+        }
+    }
+
+    func testTheLabelNeverNamesTheKind() throws {
+        let fields = #""label":"Fable reset","type":"weekly","gives_back_weekly":false,"clears":["seven_day"]"#
+        XCTAssertEqual(try status(grants: [grant(fields)]).items(now: now).map(\.kind), [.weekly])
+    }
+
+    func testMaxLoginListsItsWeeklyResetThenThreeFableResetsEachClaimingItsOwnGrant() throws {
+        let status = try status(Self.maxLogin)
+        let items = status.items(now: now)
+        XCTAssertEqual(items.map(\.kind), [.weekly, .fable, .fable, .fable])
+        guard case .values(_, let values, _) = status.line(now: now) else { return XCTFail("expected the resets row") }
+        XCTAssertEqual(values.first?.number, 4)
+
+        let entries = RateLimitResetsDetail.content(count: 4, expiries: [], items: items, now: now).entries
+        XCTAssertEqual(entries.compactMap(\.item?.kind.title), ["Weekly Reset", "Fable Reset", "Fable Reset", "Fable Reset"])
+        XCTAssertEqual(entries.map(\.key.claim), [
+            .claudeGrant("free_reset_oct_2026"), .claudeGrant("launch-2610-fable"),
+            .claudeGrant("launch-2610-fable-12mo"), .claudeGrant("launch-2610-fable-6mo")
+        ], "ties at one expiry keep a stable order by grant id")
+        XCTAssertEqual(entries.map(\.number), [1, 2, 3, 4])
+    }
+
+    func testConfirmationSaysWhatEachLiveGrantRefills() throws {
+        let max = try status(Self.maxLogin).items(now: now)
+        XCTAssertEqual(max.first?.confirmDetail, "Refills your weekly and Fable limits now. This can't be undone.")
+        XCTAssertEqual(max.last?.confirmDetail,
+                       "Refills your Fable limit now and gives back what Fable used of your weekly limit. This can't be undone.")
+        XCTAssertEqual(try status(grants: [Self.teamFable]).items(now: now).first?.confirmDetail,
+                       "Refills your session and Fable limits now and gives back what Fable used of your weekly limit. This can't be undone.")
     }
 
     func testUnrecognizedWindowKeepsTheGeneralWording() throws {
-        XCTAssertNil(try fableStatus(clears: #"["five_hour","some_new_window"]"#).confirmDetail)
+        let item = try status(grants: [grant(#""clears":["five_hour","some_new_window"]"#)]).items(now: now).first
+        XCTAssertNotNil(item)
+        XCTAssertNil(item?.confirmDetail)
     }
 
-    func testMixedGrantsListEachKindApartAndOnlyTheNextCanBeSpent() throws {
-        let other = #", { "id": "other", "resets_left": 2, "ends_at": "2026-12-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
-        let sections = try fableStatus(otherGrant: other).sections(now: now)
-        let ordinary = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-12-01T00:00:00+00:00"))
-        XCTAssertEqual(sections.map(\.title), ["Fable", "Session & Weekly"])
-        XCTAssertEqual(sections.map(\.usable), [true, false])
-        XCTAssertEqual(sections.last?.expiries, [ordinary, ordinary])
+    func testUseShowsOnlyOnAGrantAnthropicSaysCanBeUsedNow() throws {
+        let unusable = #"{"id":"held","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","usable_now":false}"#
+        let paused = #"{"id":"paused","resets_left":1,"ends_at":"2026-12-02T00:00:00+00:00","usable_now":true,"paused":true}"#
+        let items = try status(grants: [unusable, paused, grant(#""clears":["five_hour"]"#)]).items(now: now)
+        XCTAssertEqual(items.map(\.claim), [.claudeGrant("held"), .claudeGrant("paused"), .claudeGrant("g")])
+        XCTAssertEqual(items.map(\.usable), [false, false, true])
     }
 
-    func testExpiredOrdinaryGrantLeavesOnlyTheFableSection() throws {
-        let lapsed = #", { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
-        XCTAssertEqual(try fableStatus(otherGrant: lapsed).sections(now: now).map(\.title), ["Fable"])
+    func testAnExpiredGrantLeavesTheList() throws {
+        let lapsed = #"{"id":"lapsed","resets_left":1,"ends_at":"2026-09-01T00:00:00+00:00","usable_now":true}"#
+        XCTAssertEqual(try status(grants: [lapsed, Self.teamFable]).items(now: now).map(\.claim), [.claudeGrant("launch-2610-fable")])
     }
 
-    func testUnrecognizedWindowIsNotTitledByTheWindowsItShares() throws {
-        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
-            #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day_overage_included"]}],"next_grant_id":"g"}}"#
-        )))
-        XCTAssertEqual(status.sections(now: now).map(\.title), ["Other"])
-    }
-
-    func testNextGrantOutsideTheSectionsLeavesThemUsable() throws {
-        let lapsedNext = #", { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] }"#
-        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
-        { "cedar_ember": { "eligible": true, "grants": [
-            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00",
-              "clears": ["five_hour","seven_day_overage_included"] }\(lapsedNext)
-          ], "next_grant_id": "lapsed" } }
-        """)))
-        XCTAssertEqual(status.sections(now: now).map(\.usable), [true])
-        XCTAssertEqual(status.sections(now: now).map(\.holdsNextReset), [false])
-    }
-
-    func testAClaimOnAnUnlistedNextGrantTakesNoRowFromEitherSection() throws {
-        let shared = "2027-03-09T07:59:00+00:00"
-        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
-        { "cedar_ember": { "eligible": true, "grants": [
-            { "id": "lapsed", "resets_left": 1, "ends_at": "2026-09-01T00:00:00+00:00", "clears": ["five_hour", "seven_day"] },
-            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "\(shared)", "clears": ["five_hour","seven_day_overage_included"] },
-            { "id": "other", "resets_left": 1, "ends_at": "\(shared)", "clears": ["five_hour", "seven_day"] }
-          ], "next_grant_id": "lapsed" } }
-        """)))
-        let sections = status.sections(now: now)
-        XCTAssertEqual(sections.map(\.usable), [true, true])
-        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: shared))
-        let groups = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 1], now: now)
-        XCTAssertEqual(groups.map(\.title), ["Fable", "Session & Weekly"])
-        XCTAssertEqual(groups.map(\.entries.count), [1, 1])
-    }
-
-    func testNextGrantWithoutADeadlineLeavesTheListedSectionUsable() throws {
-        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json("""
-        { "cedar_ember": { "eligible": true, "grants": [
-            { "id": "undated", "resets_left": 1, "ends_at": null, "clears": ["five_hour", "seven_day"] },
-            { "id": "launch-2610-fable", "resets_left": 1, "ends_at": "2027-03-09T07:59:00+00:00", "clears": ["five_hour","seven_day_overage_included"] }
-          ], "next_grant_id": "undated" } }
-        """)))
-        let groups = RateLimitResetsDetail.sectionGroups(status.sections(now: now), claimed: [:], now: now)
-        XCTAssertEqual(groups.map(\.title), ["Fable"])
-        let fable = try XCTUnwrap(status.sections(now: now).first { $0.title == "Fable" })
-        XCTAssertTrue(fable.usable)
-        XCTAssertFalse(fable.holdsNextReset)
-        XCTAssertEqual(status.confirmDetail, "Refills your session and weekly limits now. This can't be undone.")
-    }
-
-    func testOrdinaryGrantsAloneStillGetTheirTitle() throws {
-        let status = try XCTUnwrap(ClaudeUsageMapper.mapResetGrantStatus(.json(
-            #"{"cedar_ember":{"eligible":true,"grants":[{"id":"g","resets_left":1,"ends_at":"2026-12-01T00:00:00+00:00","clears":["five_hour","seven_day"]}],"next_grant_id":"g"}}"#
-        )))
-        let expiry = try XCTUnwrap(OpenUsageISO8601.date(from: "2026-12-01T00:00:00+00:00"))
-        XCTAssertEqual(status.sections(now: now), [ResetSection(title: "Session & Weekly", expiries: [expiry], usable: true)])
-    }
-
-    func testSectionsSharingAnExpiryKeepTheirRowsApartAndSpendFromTheUsableOne() {
-        let expiry = now.addingTimeInterval(86_400)
-        let sections = [
-            ResetSection(title: "Fable", expiries: [expiry, expiry], usable: true),
-            ResetSection(title: "Session & Weekly", expiries: [expiry], usable: false)
-        ]
-        let groups = RateLimitResetsDetail.sectionGroups(sections, claimed: [:], now: now)
-        XCTAssertEqual(Set(groups.flatMap(\.entries).map(\.key)).count, 3)
-        let spent = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 1], now: now)
-        XCTAssertEqual(spent.map(\.entries.count), [1, 1])
-        let gone = RateLimitResetsDetail.sectionGroups(sections, claimed: [expiry: 2], now: now)
-        XCTAssertEqual(gone.map(\.title), ["Session & Weekly"])
-    }
-
-    func testConfirmationDoesNotSurviveASwitchBetweenOneTimelineAndSections() throws {
-        let ordinary = now.addingTimeInterval(86_400)
-        let fable = now.addingTimeInterval(2 * 86_400)
-        let flatKey = try XCTUnwrap(RateLimitResetsDetail.entries(from: [ordinary], now: now).first?.key)
-        let sections = [
-            ResetSection(title: "Session & Weekly", expiries: [ordinary], usable: true),
-            ResetSection(title: "Fable", expiries: [fable], usable: false)
-        ]
-        XCTAssertTrue(RateLimitResetsDetail.timelineKeys(expiries: [ordinary], sections: [], now: now).contains(flatKey))
-        let grouped = RateLimitResetsDetail.timelineKeys(expiries: [ordinary, fable], sections: sections, now: now)
-        XCTAssertFalse(grouped.contains(flatKey), "the ordinary expiry is still there, but under a section's row")
-        let sectionKey = try XCTUnwrap(grouped.first { $0.date == ordinary })
-        XCTAssertFalse(RateLimitResetsDetail.timelineKeys(expiries: [ordinary], sections: [], now: now).contains(sectionKey))
+    func testAGrantWithSeveralResetsListsARowForEachAndAClaimHereTakesOneOff() throws {
+        let items = try status(grants: [#"{"id":"g","resets_left":2,"ends_at":"2026-12-01T00:00:00+00:00","usable_now":true}"#]).items(now: now)
+        let entries = RateLimitResetsDetail.content(count: 2, expiries: [], items: items, now: now).entries
+        XCTAssertEqual(Set(entries.map(\.key)).count, 2)
+        let spent = RateLimitResetsDetail.content(count: 2, expiries: [], items: items, claimed: [.claudeGrant("g"): 1], now: now)
+        XCTAssertEqual(spent.entries.count, 1)
     }
 
     func testGrantWithoutDeadlineCountsWithNoExpiry() throws {
@@ -216,7 +192,7 @@ final class ClaudeResetGrantsTests: XCTestCase {
 
     func testPopoverEntriesStayDistinctWhenResetsShareADeadline() {
         let deadline = now.addingTimeInterval(10 * 86_400)
-        let entries = RateLimitResetsDetail.entries(from: [deadline, deadline], now: now)
+        let entries = RateLimitResetsDetail.entries(from: [(deadline, nil), (deadline, nil)], now: now)
         XCTAssertEqual(entries.map(\.number), [1, 2])
         XCTAssertEqual(Set(entries.map(\.key)).count, 2)
     }
