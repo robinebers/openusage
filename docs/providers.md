@@ -30,11 +30,11 @@ How each provider signs in and what its card shows.
 ## What you grant
 
 Each OAuth sign-in asks for the least the card needs. A refresh never asks for more than the sign-in
-did. The token is stored in the app's Keychain.
+did, except Claude's: it asks for today's scopes and falls back to the old ones when Anthropic refuses. The token is stored in the app's Keychain.
 
 | Provider | Scopes requested | Notes |
 |---|---|---|
-| Claude | `user:profile` | The token cannot run inference, create API keys, or reach Claude Code sessions, MCP servers, or uploads. |
+| Claude | `user:profile`, `user:inference` | Anthropic only lets a token with `user:inference` spend a reset, so OpenUsage asks for it. That scope also lets the token run Claude on your plan; OpenUsage never does. The token cannot create API keys or reach Claude Code sessions, MCP servers, or uploads. |
 | ChatGPT | `openid profile email offline_access` | Plain OpenID Connect. The email names the account. |
 | Cursor | none | Cursor's sign-in returns a dashboard session with no scopes. |
 | Amp | none | The same device sign-in the Amp CLI uses. The token lasts five minutes, so OpenUsage renews it before each read. |
@@ -46,11 +46,11 @@ did. The token is stored in the app's Keychain.
 | Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
 
 A narrower grant applies the next time you add an account. To get it for an existing account, remove
-the account and add it again. Claude is the exception: a refreshed Claude token carries only
-`user:profile`.
+the account and add it again.
 
-Spending a Claude reset with a `user:profile`-only sign-in is untested. If Anthropic refuses it, the
-resets popover says so, and you can spend the reset in Claude Code instead.
+A Claude account signed in before OpenUsage asked for `user:inference` keeps reading usage, but
+Anthropic refuses its reset claims with HTTP 401. The resets popover then asks you to remove the account
+and add it again.
 
 ## Claude
 

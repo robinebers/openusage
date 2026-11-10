@@ -122,7 +122,7 @@ final class ResetClaimServiceTests: XCTestCase {
             (.unavailableNow(until: nil), "Resets can't be used right now."),
             (.unavailableNow(until: now.addingTimeInterval(90 * 60)), "Resets can't be used right now. Try again in 1h 30m."),
             (.failed(.signInExpired), "Your sign-in expired. Sign in again from the account's page."),
-            (.failed(.notPermitted), "This sign-in can't use resets. Use the reset in Claude Code instead."),
+            (.failed(.notPermitted), "This sign-in can't use resets. Remove the account and add it again."),
             (.failed(.connection), "Couldn't connect. Check your internet connection and try again."),
             (.failed(.refused), "Couldn't reset usage. Please try again.")
         ]

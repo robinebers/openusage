@@ -103,7 +103,10 @@ extension AccountProviderRuntime {
             session.resetGrants.unsettledClaims[grantID] = requestID
         }
         let next = status.nextGrantID.flatMap { id in status.grants.first { $0.id == id } }?.kind
-        let outcome = ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
+        // A renewable sign-in was already renewed and retried, so a 401 that survives is a scope refusal.
+        let outcome: ResetClaimOutcome = response.statusCode == 401 && tokens.refreshToken != nil
+            ? .failed(.notPermitted)
+            : ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
         if outcome == .success {
             AppLog.info(tag, "\(cardID) reset claim: claimed (HTTP \(response.statusCode))")
         } else {

@@ -4,10 +4,12 @@ struct ClaudeLogin: ProviderLogin {
     static let clientID = String(data: Data(base64Encoded: "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl")!, encoding: .utf8)!
     static let authorizeURL = URL(string: "https://claude.ai/oauth/authorize")!
     static let tokenURL = URL(string: "https://platform.claude.com/v1/oauth/token")!
-    /// `/api/oauth/usage` and `/api/oauth/profile` gate on `user:profile` and nothing else (Anthropic answers
-    /// a token without it with "OAuth token does not meet scope requirement user:profile"). The refresh
-    /// grant sends the same string, so a refreshed token never carries more than the sign-in granted.
-    static let scopes = "user:profile"
+    /// `/api/oauth/usage` and `/api/oauth/profile` gate on `user:profile`. Spending a reset
+    /// (`reset_rate_limits`) also needs `user:inference`: Anthropic answers a `user:profile`-only token there
+    /// with a 401. Claude Code asks for both. The refresh grant sends the same string.
+    static let scopes = "user:profile user:inference"
+    /// What a sign-in from before `user:inference` holds; its refresh falls back to this.
+    static let profileOnlyScopes = "user:profile"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {

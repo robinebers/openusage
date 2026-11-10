@@ -30,7 +30,7 @@ extension ResetClaimOutcome {
         case .failed(.signInExpired):
             "Your sign-in expired. Sign in again from the account's page."
         case .failed(.notPermitted):
-            "This sign-in can't use resets. Use the reset in Claude Code instead."
+            "This sign-in can't use resets. Remove the account and add it again."
         case .failed(.connection):
             "Couldn't connect. Check your internet connection and try again."
         case .failed(.refused):

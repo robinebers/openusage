@@ -92,7 +92,7 @@ extension OAuthTokenResponse {
     }
 
     /// RFC 6749 sends `error` as a string; OpenAI also sends `error.code` or a top-level `code`.
-    private static func errorCode(_ body: Data) -> String? {
+    static func errorCode(_ body: Data) -> String? {
         let json = ProviderParse.jsonObject(body)
         let error = json?["error"]
         return error as? String ?? (error as? [String: Any])?["code"] as? String ?? json?["code"] as? String

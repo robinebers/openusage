@@ -14,6 +14,10 @@
 - **Settings → Alerts** sets the Warning and Critical **Thresholds**, then lists each alert once with a
   **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
+### Fixed
+- **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
+  requires to spend a reset. Remove existing Claude accounts and add them again to use their resets.
+
 ## v0.8.0-beta.7
 
 ### Added

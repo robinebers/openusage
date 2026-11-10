@@ -27,7 +27,7 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(callback.value, 200)
         let authorizeURL = try XCTUnwrap(prompt.value?.browserURL)
         let query = try XCTUnwrap(URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(query.first { $0.name == "scope" }?.value, "user:profile")
+        XCTAssertEqual(query.first { $0.name == "scope" }?.value, "user:profile user:inference")
         let tokenRequest = try XCTUnwrap(http.requests.first { $0.url.path == "/v1/oauth/token" })
         let body = try XCTUnwrap(Self.jsonBody(tokenRequest))
         XCTAssertEqual(body["grant_type"] as? String, "authorization_code")
