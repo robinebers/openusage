@@ -48,7 +48,7 @@ always stays under Warning: moving one onto the other pushes the other 5% along.
 
 ## Alerts
 
-Each alert has two separate switches. **Priority** lists the limit in Priority and the menu bar.
+Each alert has two separate switches. **Priority** lists the limit in Priority.
 **Notify** sends a notification, even with its Priority switch off.
 
 - **Warning** and **Critical.** A limit drops to its threshold or less left. Priority always lists

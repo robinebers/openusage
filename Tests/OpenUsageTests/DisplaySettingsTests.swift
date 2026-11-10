@@ -57,10 +57,6 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let (container, window, host) = showSettings(.display, defaults: defaults)
         defer { window.close() }
-        func nodes(in element: Any) -> [NSObject] {
-            guard let node = element as? NSObject else { return [] }
-            return [node] + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(nodes)
-        }
         func unifySwitches() -> [(label: String, isOn: Bool, node: NSObject)] {
             let all = nodes(in: host)
             guard let heading = all.firstIndex(where: { $0.value(forKey: "accessibilityLabel") as? String == "Unify Accounts" }) else { return [] }
@@ -88,10 +84,6 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         let defaults = isolatedDefaults()
         let (_, window, host) = showSettings(.alerts, defaults: defaults, notifications: AppNotifications(authorizationStatus: { .authorized }))
         defer { window.close() }
-        func nodes(in element: Any) -> [NSObject] {
-            guard let node = element as? NSObject else { return [] }
-            return [node] + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(nodes)
-        }
         func switches() -> [String: NSObject] {
             Dictionary(nodes(in: host).compactMap { node in
                 guard node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.checkBox.rawValue,
@@ -124,16 +116,15 @@ final class DisplaySettingsTests: QuietWindowTestCase {
             let wasOn = try XCTUnwrap(isOn(label), label)
             let frame = try XCTUnwrap(switches()[label]?.value(forKey: "accessibilityFrame") as? NSValue).rectValue
             let point = window.convertPoint(fromScreen: NSPoint(x: frame.midX, y: frame.midY))
-            for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-                window.sendEvent(NSEvent.mouseEvent(
-                    with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                    windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1,
-                    pressure: type == .leftMouseDown ? 1 : 0
-                )!)
-            }
+            click(CGPoint(x: point.x, y: host.bounds.height - point.y), window, host)
             try await waitUntil { saved() == expected && isOn(label) == !wasOn }
             XCTAssertEqual(saved(), expected, "\(label) saves only its own setting")
         }
+    }
+
+    private func nodes(in element: Any) -> [NSObject] {
+        guard let node = element as? NSObject else { return [] }
+        return [node] + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(nodes)
     }
 
     private func assertHeadingsAndPickers(_ tab: SettingsTab, _ expected: [String], line: UInt = #line) async throws {
