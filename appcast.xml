@@ -3,6 +3,33 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.0-beta.7</title>
+            <pubDate>Tue, 10 Nov 2026 05:53:22 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>860</sparkle:version>
+            <sparkle:shortVersionString>0.8.0-beta.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[
+### Changed
+- Limit Resets now names each reset (Session, Weekly, Fable or Full Reset) and shows when to use it
+  by. Claude, ChatGPT and Z.ai list their resets the same way, and **Use** spends the reset you picked.
+- Reset countdowns a month or more away read in months and days, like `3m 12d`, instead of `119d 12h`.
+- **⌘R** rereads every CLIProxyAPI hub's login list first, so a login turned off on the hub disappears
+  instead of failing with "no working sign-in".
+- A hub's "logins OpenUsage doesn't support yet" count leaves out logins turned off on the hub and files
+  that aren't logins.
+- Priority and All Usage switch as soon as you press a tab, with no sliding, and the **Next update**
+  footer no longer flashes the new tab's rows behind it while the panel resizes. Reported by
+  [@Atchferox](https://github.com/Atchferox) ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).
+
+### Fixed
+- Antigravity's Gemini limits match what Antigravity shows, and a lightly used session keeps its
+  reset countdown instead of reading as untouched ([#1641](https://github.com/robinebers/openusage/pull/1641)).
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.0-beta.7/OpenUsage-0.8.0-beta.7.dmg" length="19398628" type="application/octet-stream" sparkle:edSignature="YtDfKHjROV41qkDB+xbS9Geb5Fd5msNYMkOLSwpPkot4CCZQX7Ti6WFMx8ulhkXVJ8dihlffU6MhL1L1ljoqAQ=="/>
+        </item>
+        <item>
             <title>0.8.0-beta.6</title>
             <pubDate>Mon, 09 Nov 2026 07:50:57 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
