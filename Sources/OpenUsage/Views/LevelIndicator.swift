@@ -5,13 +5,11 @@ extension EnvironmentValues {
     @Entry var drawsLevelsAsShapes = false
 }
 
-/// A limit's level as Apple's progress bar, with a tick where it would be at an even pace. Drawn as shapes, it
-/// can mark in red the stretch of a unified bar held by accounts that are used up.
+/// A limit's level as Apple's progress bar, with a tick where it would be at an even pace.
 struct LevelIndicator: View {
     let fill: Double
     let severity: WidgetData.MeterSeverity
     var paceMark: Double?
-    var usedUp: ClosedRange<Double>?
 
     @Environment(\.drawsLevelsAsShapes) private var drawsAsShapes
 
@@ -53,16 +51,6 @@ struct LevelIndicator: View {
                         Self.shape
                             .fill(Theme.severityColor(severity))
                             .frame(width: max(Self.shortestFill, (proxy.size.width * min(fill, 1)).rounded()))
-                    }
-                }
-            }
-            .overlay(alignment: .leading) {
-                if let usedUp {
-                    GeometryReader { proxy in
-                        Self.shape
-                            .fill(Theme.severityColor(.critical).opacity(0.45))
-                            .frame(width: (proxy.size.width * (usedUp.upperBound - usedUp.lowerBound)).rounded())
-                            .offset(x: (proxy.size.width * usedUp.lowerBound).rounded())
                     }
                 }
             }

@@ -37,12 +37,8 @@ struct WidgetGroupedListView: View {
 
     private func plans(for family: DashboardFamily) -> [String: String] {
         Dictionary(uniqueKeysWithValues: family.accounts.compactMap { account in
-            plan(for: account).map { (account.id, $0) }
+            dataStore.plan(of: account).map { (account.id, $0) }
         })
-    }
-
-    private func plan(for account: DashboardAccount) -> String? {
-        account.members.isEmpty ? dataStore.plan(for: account.id) : "Unified"
     }
 
     /// A unified account shows the first of its accounts that needs the user, and Fix opens that one.
@@ -78,7 +74,7 @@ struct WidgetGroupedListView: View {
 
     private func unifiedSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            DashboardAccountCaption(account: account, plan: plan(for: account), status: status(for: account))
+            DashboardAccountCaption(account: account, plan: dataStore.plan(of: account), status: status(for: account))
             DashboardLineStack(account: account) { line in
                 DashboardUnifiedRow(
                     line: line,

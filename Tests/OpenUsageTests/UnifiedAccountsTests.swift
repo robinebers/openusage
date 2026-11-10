@@ -77,23 +77,17 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         XCTAssertEqual(line("fable", in: family).data.valueText, "56%")
     }
 
-    func testTheRedEndIsTheShareHeldByUsedUpAccounts() {
-        let family = robins
-        XCTAssertEqual(line("weekly", in: family).usedUpShare, 0.4, accuracy: 0.0001, "AM1 and AM2, two of five")
-        XCTAssertEqual(line("fable", in: family).usedUpShare, 0.2, accuracy: 0.0001)
-        XCTAssertEqual(line("session", in: family).usedUpShare, 0)
-
-        let weekly = line("weekly", in: family).dashboardRow(now: now)
-        XCTAssertEqual(weekly.usedUp?.lowerBound ?? 0, 0.6, accuracy: 0.0001, "Left fills from the start, so the red sits at the end")
-        XCTAssertEqual(weekly.usedUp?.upperBound, 1)
-        XCTAssertNil(line("session", in: family).dashboardRow(now: now).usedUp)
+    func testAUnifiedRowIsAPlainBarOfTheAveragedPercent() {
+        XCTAssertEqual(line("weekly", in: robins).data.dashboardRow(now: now).mark,
+                       .bar(fill: 0.51, severity: .normal, value: "51%", reset: "14h 32m"),
+                       "no separate mark for the used-up accounts")
     }
 
     func testTheCountdownIsTheNextResetOfAnyAccount() {
         let family = robins
         XCTAssertEqual(line("session", in: family).data.compactResetText(now: now), "3h 12m", "AM1 and AM2 have no session running")
         XCTAssertEqual(line("weekly", in: family).data.compactResetText(now: now), "14h 32m")
-        XCTAssertNil(line("weekly", in: family).dashboardRow(now: now).paceMark, "a unified bar has no even pace to mark")
+        XCTAssertNil(line("weekly", in: family).data.dashboardRow(now: now).paceMark, "a unified bar has no even pace to mark")
     }
 
     func testLimitResetsAddUpAndStayListedByAccount() {
@@ -149,7 +143,6 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         let fresh = WidgetData(title: "Budget", kind: .dollars, used: 0, limit: 100, displayMode: .remaining)
         let budget = line("budget", in: family([("AM1", [("budget", over)]), ("AM2", [("budget", fresh)])]))
         XCTAssertEqual(budget.data.valueText, "$100", "the second account's room is still there")
-        XCTAssertEqual(budget.usedUpShare, 0.5, accuracy: 0.0001)
         XCTAssertEqual(budget.members.map(\.line.data.used), [250, 0], "each account keeps its own spend in the list")
     }
 
@@ -198,5 +191,30 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
 
         XCTAssertTrue(relaunched.setUnifiesAccounts(false, of: .claude), "choosing it again turns it off")
         XCTAssertEqual(LayoutStore(registry: .mock, defaults: defaults).state.unifiedProviderKinds, [])
+    }
+
+    func testTheBadgeShowsTheSharedPlanOrMultiple() {
+        let defaults = isolatedDefaults()
+        let dataStore = AppContainer.forTesting(accounts: AccountStore(defaults: defaults, vault: InMemoryCredentialVault()), defaults: defaults).dataStore
+        let unified = robins.accounts[0]
+        func plans(_ plans: [String?]) -> String? {
+            for (index, plan) in plans.enumerated() {
+                let id = "claude@\(index + 1)"
+                dataStore.snapshots[id] = ProviderSnapshot(providerID: id, displayName: "Claude", plan: plan, lines: [])
+            }
+            return dataStore.plan(of: unified)
+        }
+        XCTAssertEqual(plans(Array(repeating: "Team 5x", count: 5)), "Team 5x")
+        XCTAssertEqual(plans(["Ultra", "Team 5x", "Team 5x", "Team 5x", "Team 5x"]), "Multiple")
+        XCTAssertEqual(plans(["Team 5x", nil, "Team 5x", nil, "Team 5x"]), "Team 5x", "an account with no plan doesn't make it Multiple")
+        XCTAssertNil(plans(Array(repeating: nil, count: 5)), "no plan, no badge")
+    }
+
+    func testOnlyClaudeAndChatGPTCanBeUnified() {
+        let defaults = isolatedDefaults()
+        XCTAssertFalse(LayoutStore(registry: .mock, defaults: defaults).setUnifiesAccounts(true, of: .cursor))
+        LayoutPersistence(defaults: defaults).save(LayoutState(unifiedProviderKinds: [.claude, .cursor]))
+        XCTAssertEqual(LayoutStore(registry: .mock, defaults: defaults).state.unifiedProviderKinds, [.claude],
+                       "a provider saved by an earlier build stops unifying")
     }
 }

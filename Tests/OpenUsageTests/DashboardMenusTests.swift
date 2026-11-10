@@ -28,6 +28,18 @@ final class DashboardMenusTests: XCTestCase {
         ])
     }
 
+    func testOnlyClaudeAndChatGPTCardsOfferUnifyMultipleAccounts() {
+        func unifyItems(_ kind: ProviderKind) -> [DashboardMenuItem] {
+            let accounts = (1...2).map { DashboardAccount(provider: Provider(id: "\(kind.rawValue)@\($0)", kind: kind, accountLabel: "\($0)"), lines: []) }
+            return DashboardMenus.provider(DashboardFamily(id: kind.rawValue, provider: accounts[0].provider, accounts: accounts))
+                .flatMap { $0 }.filter { $0.title == "Unify Multiple Accounts" }
+        }
+        XCTAssertEqual(unifyItems(.codex).map(\.command), [.unifyAccounts(.codex, true)])
+        for kind in ProviderKind.allCases where kind != .claude && kind != .codex {
+            XCTAssertEqual(unifyItems(kind), [], "\(kind.displayName) has no Unify Multiple Accounts")
+        }
+    }
+
     func testOpenRouterLinksIncludeCredits() {
         let openRouter = Provider(id: "openrouter@1", kind: .openrouter, accountLabel: "Personal")
         let family = DashboardFamily(id: "openrouter", provider: openRouter, accounts: [DashboardAccount(provider: openRouter, lines: [])])

@@ -53,21 +53,6 @@ struct DashboardLine: Identifiable {
     /// What Pin and Hide act on: each account's own copy of a unified limit.
     var metricIDs: [String] { copyIDs.isEmpty ? [id] : copyIDs }
 
-    /// The share of a unified bar held by accounts that are used up.
-    var usedUpShare: Double {
-        let readings = members.map(\.line.data)
-        let total = readings.reduce(0) { $0 + ($1.limit ?? 0) }
-        guard data.isBounded, total > 0 else { return 0 }
-        return readings.filter(\.isSpent).reduce(0) { $0 + ($1.limit ?? 0) } / total
-    }
-
-    func dashboardRow(now: Date = Date()) -> DashboardRowModel {
-        var row = data.dashboardRow(now: now)
-        let share = usedUpShare
-        if share > 0 { row.usedUp = data.displayMode == .remaining ? (1 - share)...1 : 0...share }
-        return row
-    }
-
     // Spent reset grants remain available to CLI clients.
     var isVisible: Bool {
         guard data.hasData else { return false }

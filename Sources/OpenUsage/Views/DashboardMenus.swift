@@ -25,7 +25,7 @@ enum DashboardMenus {
     typealias Sections = [[DashboardMenuItem]]
 
     static func provider(_ family: DashboardFamily) -> Sections {
-        let unify = family.accountIDs.count > 1 ? [DashboardMenuItem(
+        let unify = family.accountIDs.count > 1 && ProviderKind.unifiable.contains(family.provider.kind) ? [DashboardMenuItem(
             title: "Unify Multiple Accounts", command: .unifyAccounts(family.provider.kind, !family.isUnified), isChecked: family.isUnified
         )] : []
         return [

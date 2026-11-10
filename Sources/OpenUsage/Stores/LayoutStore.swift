@@ -41,7 +41,7 @@ final class LayoutStore {
             providerOrder: saved.providerOrder,
             metricOrderByProvider: saved.metricOrderByProvider.filter { registry.provider(id: $0.key) != nil },
             seededProviderIDs: saved.seededProviderIDs.filter { registry.provider(id: $0) != nil },
-            unifiedProviderKinds: saved.unifiedProviderKinds
+            unifiedProviderKinds: saved.unifiedProviderKinds.filter(ProviderKind.unifiable.contains)
         )
     }
 
@@ -106,10 +106,15 @@ final class LayoutStore {
         }
     }
 
-    /// Unify Multiple Accounts, saved per provider.
+    /// Unify Multiple Accounts, saved per provider. Settings → Display and the provider's menu both set it.
+    func unifiesAccounts(of kind: ProviderKind) -> Bool {
+        state.unifiedProviderKinds.contains(kind)
+    }
+
     @discardableResult
     func setUnifiesAccounts(_ unifies: Bool, of kind: ProviderKind) -> Bool {
-        recordingUndoStep {
+        guard ProviderKind.unifiable.contains(kind) else { return false }
+        return recordingUndoStep {
             unifies ? state.unifiedProviderKinds.insert(kind).inserted : state.unifiedProviderKinds.remove(kind) != nil
         }
     }

@@ -9,6 +9,7 @@ struct SettingsScreen: View {
     @Environment(PopoverState.self) private var popover
     @Environment(WidgetDataStore.self) private var dataStore
     @Environment(UpdaterController.self) private var updater
+    @Environment(LayoutStore.self) private var layout
     @AppStorage(AppearanceSetting.key) private var appearance = AppearanceSetting.system
     @AppStorage(TimeFormatSetting.key) private var timeFormat = TimeFormatSetting.auto
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
@@ -132,6 +133,14 @@ struct SettingsScreen: View {
             picker("Reset Times", selection: $dataStore.resetDisplayMode, options: ResetDisplayMode.allCases.map { ($0, $0.label) })
             Toggle(isOn: $dataStore.showsPaceMarks) {
                 titled("Pace Marks", info: "Where usage would be at an even pace")
+            }
+        }
+        Section("Unify Accounts") {
+            ForEach(ProviderKind.unifiable, id: \.self) { kind in
+                Toggle(kind.displayName, isOn: Binding(
+                    get: { layout.unifiesAccounts(of: kind) },
+                    set: { unifies in withAnimation(Motion.spring) { _ = layout.setUnifiesAccounts(unifies, of: kind) } }
+                ))
             }
         }
     }

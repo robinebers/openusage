@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// A unified limit's row. Hovering or clicking it lists each account's own reading of the limit, or for Limit
-/// Resets each account's own resets, since a reset refills only its own account. Its bars draw as shapes, so
-/// the ones with a red end match the rest.
+/// Resets each account's own resets, since a reset refills only its own account.
 struct DashboardUnifiedRow: View {
     let line: DashboardLine
     let resetClaim: (String) -> ResetClaimService?
@@ -15,14 +14,13 @@ struct DashboardUnifiedRow: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             DashboardMetricRow(
-                model: line.dashboardRow(now: context.date),
+                model: line.data.dashboardRow(now: context.date),
                 onToggleMeterStyle: line.data.hasMeterStyleToggle ? onToggleMeterStyle : nil,
                 onToggleResetDisplay: onToggleResetDisplay,
                 valueTooltip: line.data.meterStyleTooltip,
                 resetTooltip: line.data.resetTooltip(now: context.date)
             )
         }
-        .environment(\.drawsLevelsAsShapes, true)
         .contentShape(Rectangle())
         .onTapGesture { hover.openDetails() }
         .hoverHighlight(hover.overInline || hover.isPresented)
@@ -75,12 +73,11 @@ private struct UnifiedLimitDetail: View {
             }
             .padding(14)
             .frame(width: 310)
-            .environment(\.drawsLevelsAsShapes, true)
         }
     }
 
     private func row(of member: DashboardLine.Member, now: Date) -> DashboardRowModel {
-        var row = member.line.dashboardRow(now: now)
+        var row = member.line.data.dashboardRow(now: now)
         row.label = member.provider.accountName
         return row
     }

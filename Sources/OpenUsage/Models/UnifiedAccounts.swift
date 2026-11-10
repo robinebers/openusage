@@ -1,5 +1,18 @@
 import Foundation
 
+extension ProviderKind {
+    /// The providers whose accounts can be unified, in the order Settings lists them.
+    static let unifiable: [ProviderKind] = [.claude, .codex]
+}
+
+extension WidgetDataStore {
+    /// A unified account shows the plan its accounts share, or Multiple when they differ.
+    func plan(of account: DashboardAccount) -> String? {
+        let plans = Set(account.accountIDs.compactMap(plan(for:)))
+        return plans.count > 1 ? "Multiple" : plans.first
+    }
+}
+
 /// Unify Multiple Accounts: a provider's accounts shown as one, with each limit once.
 extension DashboardFamily {
     func unifyingAccounts() -> DashboardFamily {

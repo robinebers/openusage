@@ -73,14 +73,15 @@ earliest of each can be used.
 
 ### Unify Multiple Accounts
 
-Right-click a provider with two or more accounts and choose **Unify Multiple Accounts** to show them as
-one card. It's saved per provider and shows a checkmark while it's on. Choose it again to turn it off.
+Right-click a Claude or ChatGPT card with two or more accounts and choose **Unify Multiple Accounts** to
+show them as one card. It's saved per provider and shows a checkmark while it's on. Choose it again to
+turn it off. The same setting has a switch per provider in [Settings → Display](settings.md#unify-accounts).
 
-- The card names how many accounts it holds and carries a **Unified** badge.
+- The card names how many accounts it holds. Its badge shows the plan when every account is on the
+  same one, and **Multiple** when they differ.
 - Each limit shows once. Its amount averages what's left across the accounts that have that limit, so
   an account without it doesn't count. Dollar and count amounts add up, per currency. Spending capped
   in different currencies, or capped beside uncapped, shows what each account spent, with no cap.
-- The red end of a bar is the share held by accounts that are used up.
 - The reset is the next reset of any account.
 - Limit Resets adds up every account's resets.
 - Hover over a row, or click it to keep it open, to list each account with its own bar, amount and
@@ -114,8 +115,8 @@ An account's page in **Accounts** lists all of its metrics.
 
 ## Right-click menus
 
-- A provider: **Refresh**, **Manage Accounts…**, **Unify Multiple Accounts** (with two or more
-  accounts), **Share Screenshot**, and links such as **Status Page** and **Usage Dashboard**.
+- A provider: **Refresh**, **Manage Accounts…**, **Unify Multiple Accounts** (Claude and ChatGPT, with
+  two or more accounts), **Share Screenshot**, and links such as **Status Page** and **Usage Dashboard**.
 - An account: **Refresh**, **Rename**, **Edit Account…**, and **Share Screenshot**. A Copilot
   organization account also has **Organization Billing**.
 - A metric: **Pin** or **Unpin**, and **Hide**. On All Usage, its account's menu follows.

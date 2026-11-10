@@ -15,7 +15,7 @@ extension LayoutStore {
         orderedProviders().compactMap { provider in
             let metrics = orderedSupportedMetrics(for: provider.id).filter { isMetricShown($0.id) }
             return metrics.isEmpty ? nil : ProviderMetrics(
-                provider: provider, metrics: metrics, unifiesAccounts: state.unifiedProviderKinds.contains(provider.kind)
+                provider: provider, metrics: metrics, unifiesAccounts: unifiesAccounts(of: provider.kind)
             )
         }
     }

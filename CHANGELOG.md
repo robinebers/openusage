@@ -3,8 +3,8 @@
 ## Unreleased
 
 ### Added
-- Right-click a provider with several accounts and choose **Unify Multiple Accounts** to show them as one
-  card, with one bar per limit. Hover over a row to see each account.
+- Unify Accounts shows your Claude or ChatGPT accounts as one card, with one bar per limit. Turn it on in
+  Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
 
 ## v0.8.0-beta.7
 
