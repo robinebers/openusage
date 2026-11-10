@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.8.0-beta.7
 
 ### Changed
 - Limit Resets now names each reset (Session, Weekly, Fable or Full Reset) and shows when to use it
@@ -13,6 +13,10 @@
 - Priority and All Usage switch as soon as you press a tab, with no sliding, and the **Next update**
   footer no longer flashes the new tab's rows behind it while the panel resizes. Reported by
   [@Atchferox](https://github.com/Atchferox) ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).
+
+### Fixed
+- Antigravity's Gemini limits match what Antigravity shows, and a lightly used session keeps its
+  reset countdown instead of reading as untouched ([#1641](https://github.com/robinebers/openusage/pull/1641)).
 
 ## v0.8.0-beta.6
 
