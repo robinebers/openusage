@@ -17,7 +17,7 @@ openusage codex@1a2b3c4d   # one account, by its id
 
 ## Install on `PATH`
 
-- **Settings → Command Line → Install…** asks for an administrator password, then links
+- **Settings → Advanced → Command Line → Install…** asks for an administrator password, then links
   `/usr/local/bin/openusage` to the helper inside OpenUsage. App updates update the command too.
 - Install replaces a link left by another copy of OpenUsage, such as the one 0.7.x installed.
 - **Uninstall** removes the link. A file at that path that OpenUsage didn't install is left alone, and

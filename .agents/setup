@@ -30,7 +30,7 @@ $begin
   \`CLIProxyHubNestingTests\`) fall back to \`.fast\` there. Fast recognition can't read a lightly
   blurred name that accurate might, so check a change to how account names blur in CI or on a real Mac.
 - Nobody types on a satellite, so the focus tests run there:
-  \`OPENUSAGE_FOCUS_TESTS=1 swift test --filter 'InlineRenameFocusTests|UpdateControlsTests'\`.
+  \`OPENUSAGE_FOCUS_TESTS=1 swift test --filter 'InlineRenameFocusTests|UpdateControlsTests|MetricPinMenuTests'\`.
 - The Mac gets the worktree without \`.git\`, so \`build_and_run.sh\` labels the build "dev (unknown)"
   and signs it ad hoc.
 
