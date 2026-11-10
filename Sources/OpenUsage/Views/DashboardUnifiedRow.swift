@@ -62,7 +62,7 @@ struct UnifiedLimitDetail: View {
                     Text(line.data.title)
                         .font(.system(size: 13, weight: .semibold))
                     Spacer(minLength: 0)
-                    Text(CLIProxyHub.count(line.members.count, "Account"))
+                    Text(line.members.count == 1 ? "1 Account" : "\(line.members.count) Accounts")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
