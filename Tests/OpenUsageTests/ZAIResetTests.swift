@@ -50,17 +50,22 @@ final class ZAIResetTests: XCTestCase {
         }
     }
 
-    func testDetailListsEachWindowApartAndKeysEqualExpiriesApart() {
-        let windows = RateLimitResetsDetail.windows([Self.session11, Self.weekly21, Self.session12], now: Self.now)
-        XCTAssertEqual(windows.map(\.window), [.fiveHour, .week])
-        XCTAssertEqual(windows.map { $0.entries.compactMap(\.key.reset?.recordID) }, [[11, 12], [21]])
-        XCTAssertNotEqual(windows[0].entries[0].key, windows[1].entries[0].key, "a shared expiry must not make one key")
+    private func entries(_ resets: [ZAIReset]) -> [RateLimitResetsDetail.Entry] {
+        RateLimitResetsDetail.content(count: resets.count, expiries: [], items: ZAIResetsMapper.items(resets), now: Self.now).entries
+    }
+
+    func testDetailListsBothWindowsOnOneTimelineAndOnlyEachWindowsEarliestCanBeUsed() {
+        let later = ZAIReset(window: .week, recordID: 22, expiresAt: Self.session12.expiresAt.addingTimeInterval(60), grantType: "GLOBAL")
+        let entries = entries([later, Self.session12, Self.weekly21, Self.session11])
+        XCTAssertEqual(entries.compactMap(\.item?.kind.title), ["Session Reset", "Weekly Reset", "Session Reset", "Weekly Reset"])
+        XCTAssertEqual(entries.map(\.number), [1, 2, 3, 4])
+        XCTAssertEqual(entries.compactMap(\.item?.usable), [true, true, false, false])
+        XCTAssertEqual(entries.compactMap(\.item?.confirmDetail).first, "Refills your session limit now. This can't be undone.")
+        XCTAssertNotEqual(entries[0].key, entries[1].key, "a shared expiry must not make one key")
         let replacement = ZAIReset(window: .fiveHour, recordID: 99, expiresAt: Self.session11.expiresAt, grantType: "GLOBAL")
-        let replaced = RateLimitResetsDetail.windows([replacement, Self.weekly21, Self.session12], now: Self.now)
-        XCTAssertNotEqual(replaced[0].entries[0].key, windows[0].entries[0].key, "a confirm never carries over to another record")
-        let unsorted = RateLimitResetsDetail.windows([Self.session12, Self.session11], now: Self.now)[0].entries
-        XCTAssertEqual(unsorted.map(\.date), unsorted.compactMap(\.key.reset?.expiresAt), "each date keeps its own record")
-        XCTAssertEqual(unsorted.first?.key.reset, Self.session11)
+        let replaced = self.entries([replacement, Self.weekly21, Self.session12])
+        XCTAssertNotEqual(replaced[0].key, entries[0].key, "a confirm never carries over to another record")
+        XCTAssertEqual(entries.map(\.date), entries.compactMap(\.item?.expiresAt), "each date keeps its own record")
     }
 
     func testUseRequestNamesTheExactRecordAndWindow() async throws {
@@ -89,8 +94,7 @@ final class ZAIResetTests: XCTestCase {
 
         XCTAssertEqual(snapshot.lines.last, ZAIResetsMapper.line([Self.session11, Self.weekly21, Self.session12]))
         let service = try XCTUnwrap(runtime.resetClaimService { .refreshed })
-        XCTAssertEqual(service.windowResets, [Self.session11, Self.weekly21, Self.session12])
-        XCTAssertFalse(service.isClaimable, "the flat timeline stays read-only")
+        XCTAssertEqual(service.items.map(\.claim), [.zai(Self.session11), .zai(Self.weekly21), .zai(Self.session12)])
         XCTAssertEqual(runtime.widgetDescriptors.map(\.key), ["session", "weekly", "webSearches", "rateLimitResets"])
     }
 
@@ -128,7 +132,7 @@ final class ZAIResetTests: XCTestCase {
         XCTAssertEqual(container.dataStore.data(for: row).unboundedDetail, "1 available")
         let service = try XCTUnwrap(container.resetClaim(for: account.cardID))
 
-        let outcome = await service.claim(try XCTUnwrap(service.windowResets.first), requestID: "request-1")
+        let outcome = await service.claim(try XCTUnwrap(service.items.first), requestID: "request-1")
 
         XCTAssertEqual(outcome, .success)
         for _ in 0..<500 where container.dataStore.data(for: row).unboundedDetail != "0 available" {

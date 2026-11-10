@@ -5,15 +5,18 @@ enum ZAIResetWindow: String, CaseIterable, Sendable {
     case fiveHour = "FIVE_HOUR"
     case week = "WEEK"
 
-    var title: String {
+    var kind: ResetKind {
         switch self {
-        case .fiveHour: "Session"
-        case .week: "Weekly"
+        case .fiveHour: .session
+        case .week: .weekly
         }
     }
 
     var confirmDetail: String {
-        "Refills your \(title.lowercased()) limit now. This can't be undone."
+        switch self {
+        case .fiveHour: "Refills your session limit now. This can't be undone."
+        case .week: "Refills your weekly limit now. This can't be undone."
+        }
     }
 
     fileprivate var listKey: String {
@@ -57,6 +60,18 @@ enum ZAIResetsMapper {
             }
         }
         return resets.sorted { ($0.expiresAt, $0.recordID) < ($1.expiresAt, $1.recordID) }
+    }
+
+    /// One timeline across both windows. Z.ai spends a window's resets earliest first, so only the
+    /// earliest of each window offers Use.
+    static func items(_ resets: [ZAIReset]) -> [ResetItem] {
+        var seen: Set<ZAIResetWindow> = []
+        return resets.sorted { ($0.expiresAt, $0.recordID) < ($1.expiresAt, $1.recordID) }.map { reset in
+            ResetItem(
+                kind: reset.window.kind, expiresAt: reset.expiresAt, claim: .zai(reset),
+                usable: seen.insert(reset.window).inserted, confirmDetail: reset.window.confirmDetail
+            )
+        }
     }
 
     static func line(_ resets: [ZAIReset]) -> MetricLine {

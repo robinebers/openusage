@@ -59,7 +59,7 @@ extension WidgetData {
 
     private static func resetReading(_ resetsAt: Date, as mode: ResetDisplayMode, now: Date) -> String? {
         switch mode {
-        case .relative: Formatters.compactDuration(resetsAt.timeIntervalSince(now))
+        case .relative: Formatters.countdown(to: resetsAt, now: now)
         case .absolute: Formatters.compactClock(resetsAt, now: now)
         }
     }

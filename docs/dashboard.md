@@ -54,7 +54,8 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 
 - Click any amount, on either tab, to flip every row between used and left. Click any reset to flip
   between a countdown and the exact time. **Settings → Display** has the same two switches.
-- Countdowns update every 30 seconds.
+- Countdowns update every 30 seconds. A reset a calendar month or more away counts down in months
+  and days, like `3m 12d`.
 - Hover over a bar to see where your current pace lands at reset. The same pace drives the
   [notifications](settings.md).
 - A tick on the bar marks where it would be by now at an even pace through the window: under Used

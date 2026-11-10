@@ -59,8 +59,12 @@ resets popover says so, and you can spend the reset in Claude Code instead.
 - Extra Usage shows spend against the monthly limit, or the amount spent when there is no limit, in
   the account's billing currency. It hides while extra usage is off. On an Enterprise plan, where
   this is the whole monthly bill, the row reads Spend.
-- **Limit Resets** counts the account's rate-limit resets. Click the count to see when each expires.
-  Choose **Use**, then **Reset**, to spend one.
+- **Limit Resets** counts the account's rate-limit resets. Click the count to see each one by kind
+  (Session, Weekly, Fable or Full Reset), with its countdown and the time to use it by. The kind
+  comes from the reset's own fields, the same way Claude Code reads them. Choose **Use**, then
+  **Reset**, to spend the reset you picked. The confirmation says which limits it refills. **Use**
+  shows only on a reset Anthropic says can be used now. If Anthropic wants another reset used first,
+  the popover says which, and nothing is spent.
 
 ## ChatGPT
 
@@ -69,7 +73,7 @@ resets popover says so, and you can spend the reset in Claude Code instead.
 - The command line calls this provider `codex`.
 - Extra Usage shows your credits in dollars, at 4¢ a credit, even at `$0`. It hides while ChatGPT
   reports credits off.
-- Rate-limit resets work like Claude's.
+- Rate-limit resets work like Claude's. Each one is a Full Reset.
 - Credit Limit shows the credits a workspace lets you spend and when that resets. It shows only when
   the workspace sets one.
 
@@ -196,8 +200,8 @@ The right-click menu adds a **Credits** link.
 - Paste an API key from the [Z.ai key list](https://z.ai/manage-apikey/apikey-list).
 - The card shows the GLM Coding Plan session and weekly windows and the web-search quota.
 - A key without a GLM Coding Plan has no quota, and the card says so.
-- **Limit Resets** counts the banked Session and Weekly resets. Click the count to see them by window.
-  **Use** spends the earliest of a window.
+- **Limit Resets** counts the banked Session and Weekly resets. Click the count to see them in one
+  list, each titled Session Reset or Weekly Reset. **Use** spends the earliest of each kind.
 - The right-click menu adds an **API Keys** link.
 
 ## Errors

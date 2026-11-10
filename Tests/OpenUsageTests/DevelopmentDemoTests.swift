@@ -15,6 +15,35 @@ final class DevelopmentDemoTests: XCTestCase {
         XCTAssertNotEqual(other, first, "another seed must draw other data")
     }
 
+    func testSampleResetsShowEveryKind() async throws {
+        let fable = "Refills your Fable limit now and gives back what Fable used of your weekly limit. This can't be undone."
+        let weekly = "Refills your weekly and Fable limits now. This can't be undone."
+        var claudeLayouts: Set<[ResetKind]> = []
+        var zaiKinds: Set<ResetKind> = []
+        for seed in 1...30 {
+            let container = await makeContainer(seed: seed)
+            for account in container.dataStore.accounts(in: container.layout.displayGroups) {
+                let items = container.resetClaim(for: account.provider.id)?.items ?? []
+                XCTAssertEqual(items.map(\.expiresAt), items.map(\.expiresAt).sorted(), "seed \(seed)")
+                switch account.provider.kind {
+                case .claude:
+                    guard !items.isEmpty else { continue }
+                    XCTAssertEqual(items.map(\.confirmDetail), items.map { $0.kind == .fable ? fable : weekly }, "seed \(seed)")
+                    XCTAssertTrue(items.allSatisfy(\.usable), "seed \(seed)")
+                    claudeLayouts.insert(items.map(\.kind))
+                case .codex:
+                    XCTAssertTrue(items.allSatisfy { $0.kind == .full && $0.usable }, "seed \(seed)")
+                case .zai:
+                    zaiKinds.formUnion(items.map(\.kind))
+                default:
+                    XCTAssertEqual(items, [], "seed \(seed) \(account.provider.kind)")
+                }
+            }
+        }
+        XCTAssertEqual(claudeLayouts, [[.weekly], [.fable, .fable], [.weekly, .fable, .fable]])
+        XCTAssertEqual(zaiKinds, [.session, .weekly])
+    }
+
     func testEveryShuffleShowsEachLimitStateOnEveryProvider() async throws {
         for seed in Array(1...30) + [DemoSession.seeds.upperBound] {
             let container = await makeContainer(seed: seed)

@@ -223,7 +223,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         })
         let sentBefore = http.requests.count
 
-        let outcome = await service.claim(creditExpiringAt: Self.start, redeemRequestID: "redeem-1")
+        let outcome = await service.claim(ResetItem(kind: .full, expiresAt: Self.start, claim: .claudeGrant("g")), requestID: "redeem-1")
         await fulfillment(of: [refreshed], timeout: 1)
 
         XCTAssertEqual(outcome, .success)
@@ -253,13 +253,15 @@ final class ClaudeRequestCadenceTests: XCTestCase {
             defer { refreshed.fulfill() }
             return await store.refresh(providerID: runtime.provider.id, force: true)
         })
-        let outcome = await service.claim(creditExpiringAt: Self.start, redeemRequestID: "redeem-1")
+        let outcome = await service.claim(ResetItem(kind: .full, expiresAt: Self.start, claim: .claudeGrant("a")), requestID: "redeem-1")
         await fulfillment(of: [refreshed], timeout: 1)
         XCTAssertEqual(outcome, .success)
 
         await store.refreshHourlyReads()
 
-        XCTAssertEqual(runtime.resetClaimService { .refreshed }?.isClaimable, true, "grant b's reset waits for the hourly grants read")
+        let status = runtime.claude.session?.resetGrants.check?.status
+        XCTAssertNil(status?.claimableGrant("a"), "grant a's last reset is spent")
+        XCTAssertNotNil(status?.claimableGrant("b"), "grant b's reset stays after the hourly grants read")
     }
 
     func testTheHeldResetsRowDropsAGrantOnceItsDeadlinePasses() async throws {

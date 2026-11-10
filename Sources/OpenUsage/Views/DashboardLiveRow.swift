@@ -92,18 +92,12 @@ struct DashboardLiveRow: View {
         RateLimitResetsDetail(
             count: line.data.resetCreditCount,
             expiries: line.data.expiriesAt,
+            items: resetClaim?.items ?? [],
             showsActions: hover.openedExplicitly,
             onHoverChange: { inside in hover.detailHover(inside) },
             onPinChange: { pinned in hover.setPinned(pinned) },
-            claim: resetClaim.flatMap { service in
-                service.isClaimable ? { expiry, redeemRequestID in
-                    await service.claim(creditExpiringAt: expiry, redeemRequestID: redeemRequestID)
-                } : nil
-            },
-            confirmDetail: resetClaim?.confirmDetail,
-            windowResets: resetClaim?.windowResets ?? [],
-            claimWindowReset: resetClaim.map { service in
-                { reset, requestID in await service.claim(reset, requestID: requestID) }
+            claim: resetClaim.map { service in
+                { item, requestID in await service.claim(item, requestID: requestID) }
             }
         )
     }

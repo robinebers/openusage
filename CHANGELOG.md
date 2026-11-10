@@ -3,6 +3,9 @@
 ## Unreleased
 
 ### Changed
+- Limit Resets now names each reset (Session, Weekly, Fable or Full Reset) and shows when to use it
+  by. Claude, ChatGPT and Z.ai list their resets the same way, and **Use** spends the reset you picked.
+- Reset countdowns a month or more away read in months and days, like `3m 12d`, instead of `119d 12h`.
 - **⌘R** rereads every CLIProxyAPI hub's login list first, so a login turned off on the hub disappears
   instead of failing with "no working sign-in".
 - A hub's "logins OpenUsage doesn't support yet" count leaves out logins turned off on the hub and files

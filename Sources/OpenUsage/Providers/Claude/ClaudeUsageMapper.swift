@@ -18,7 +18,8 @@ enum ClaudeUsageMapper {
         return ClaudeResetGrantStatus.parse(body["cedar_ember"])
     }
 
-    static func resetClaimOutcome(from response: HTTPResponse) -> ResetClaimOutcome {
+    /// `next` names the reset Anthropic wants used first, for a claim it refuses as `not_next_grant`.
+    static func resetClaimOutcome(from response: HTTPResponse, next: ResetKind? = nil) -> ResetClaimOutcome {
         // Anthropic answers a token whose scopes don't cover an endpoint with a 403 whose message reads
         // "OAuth token does not meet scope requirement …"; that is the sign-in's grant, not an expiry.
         if response.statusCode == 403, String(decoding: response.body, as: UTF8.self).contains("scope requirement") {
@@ -34,7 +35,8 @@ enum ClaudeUsageMapper {
             switch code {
             case "reset", "already_used": .success
             case "not_limited": .nothingToReset
-            case "ineligible", "no_grant", "unknown_grant", "not_next_grant": .noCredit
+            case "ineligible", "no_grant", "unknown_grant": .noCredit
+            case "not_next_grant": .notNextReset(next: next)
             case "reset_unconfirmed", "stamp_indeterminate": .unconfirmed
             case "cooldown", "paused", "low_priority_active": .unavailableNow(until: cooldownUntil)
             default: nil
