@@ -144,7 +144,7 @@ final class ClaudeResetClaimTests: XCTestCase {
         let outcome = await runtime.claimClaudeResetGrant(Self.grantID, redeemRequestID: Self.requestID)
 
         XCTAssertEqual(outcome, .failed(.notPermitted))
-        XCTAssertEqual(outcome.message(), "This sign-in can't use resets. Sign in again from the account's page.")
+        XCTAssertEqual(outcome.message(), "This sign-in can't use resets. Remove the account and add it again.")
         let claims = http.requests.filter { $0.url.path.hasSuffix("/reset_rate_limits") }
         XCTAssertEqual(claims.map { $0.headers["Authorization"] }, ["Bearer token-a", "Bearer token-b"])
         XCTAssertEqual(try claims.map(requestID), [Self.requestID, Self.requestID])

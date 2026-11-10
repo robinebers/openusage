@@ -49,8 +49,8 @@ A narrower grant applies the next time you add an account. To get it for an exis
 the account and add it again.
 
 A Claude account signed in before OpenUsage asked for `user:inference` keeps reading usage, but
-Anthropic refuses its reset claims with HTTP 401. The resets popover then asks you to sign in again from
-the account's page.
+Anthropic refuses its reset claims with HTTP 401. The resets popover then asks you to remove the account
+and add it again.
 
 ## Claude
 
