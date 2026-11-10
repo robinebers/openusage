@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// Keeps each connected CLIProxyAPI hub's mirrored accounts in step with its login list, and holds what
-/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, and about once an hour.
+/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, on Refresh, and about
+/// once an hour.
 @MainActor
 @Observable
 final class CLIProxyHubSync {
@@ -114,6 +115,6 @@ final class CLIProxyHubSync {
             return
         }
         syncedAt[hubID] = now()
-        statuses[hubID] = .synced(unsupported: logins.count { $0.kind == nil })
+        statuses[hubID] = .synced(unsupported: logins.count(where: \.isUnsupported))
     }
 }

@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Changed
+- **⌘R** rereads every CLIProxyAPI hub's login list first, so a login turned off on the hub disappears
+  instead of failing with "no working sign-in".
+- A hub's "logins OpenUsage doesn't support yet" count leaves out logins turned off on the hub and files
+  that aren't logins.
 - Priority and All Usage switch as soon as you press a tab, with no sliding, and the **Next update**
   footer no longer flashes the new tab's rows behind it while the panel resizes. Reported by
   [@Atchferox](https://github.com/Atchferox) ([#1574](https://github.com/robinebers/openusage/issues/1574#issuecomment-6737337990)).

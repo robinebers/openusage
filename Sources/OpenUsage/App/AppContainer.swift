@@ -146,6 +146,13 @@ final class AppContainer {
         await dataStore.refresh(providerIDs: providers.map(\.provider.id).filter(ids.contains), force: true)
     }
 
+    /// The Refresh button: every hub's login list is read first, so a login turned off on its hub is gone
+    /// before the usage read instead of failing in it.
+    func refreshNow() async {
+        await hubs.syncDue(maxAge: 0)
+        await dataStore.refreshAll(force: true)
+    }
+
     func startRefreshing() {
         guard refreshTask == nil else { return }
         refreshTask = Task {
