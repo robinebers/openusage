@@ -210,7 +210,7 @@ struct DashboardAccountRows: View {
         VStack(alignment: .leading, spacing: 0) {
             DashboardAccountCaption(account: account, plan: plan, hasSiblingAccounts: hasSiblingAccounts)
             DashboardLineStack(account: account) { line in
-                DashboardMetricRow(model: line.data.dashboardRow())
+                DashboardMetricRow(model: line.dashboardRow())
             }
         }
     }

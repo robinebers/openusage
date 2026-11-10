@@ -1,6 +1,8 @@
 struct ProviderMetrics: Identifiable {
     let provider: Provider
     let metrics: [WidgetDescriptor]
+    /// Unify Multiple Accounts is on for the account's provider.
+    var unifiesAccounts = false
     var id: String { provider.id }
 }
 
@@ -12,6 +14,8 @@ struct LayoutState: Codable, Equatable {
     var metricOrderByProvider: [String: [String]] = [:]
     /// Accounts that already had their chance at a 0.7.x layout, so the user's later order is never replaced.
     var seededProviderIDs: Set<String> = []
+    /// Providers whose accounts show as one card, with each limit once.
+    var unifiedProviderKinds: Set<ProviderKind> = []
 }
 
 extension LayoutState {
@@ -23,5 +27,6 @@ extension LayoutState {
         providerOrder = try container.decode([String].self, forKey: .providerOrder)
         metricOrderByProvider = try container.decode([String: [String]].self, forKey: .metricOrderByProvider)
         seededProviderIDs = try container.decode(Set<String>.self, forKey: .seededProviderIDs)
+        unifiedProviderKinds = try container.decodeIfPresent(Set<ProviderKind>.self, forKey: .unifiedProviderKinds) ?? []
     }
 }

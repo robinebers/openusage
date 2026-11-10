@@ -37,16 +37,24 @@ struct WidgetGroupedListView: View {
 
     private func plans(for family: DashboardFamily) -> [String: String] {
         Dictionary(uniqueKeysWithValues: family.accounts.compactMap { account in
-            dataStore.plan(for: account.id).map { (account.id, $0) }
+            plan(for: account).map { (account.id, $0) }
         })
     }
 
-    private func status(for accountID: String) -> AccountStatus {
-        AccountStatus(
-            refreshing: dataStore.refreshingProviderIDs.contains(accountID),
-            notice: dataStore.notice(for: accountID),
-            staleness: dataStore.stalenessHint(for: accountID),
-            onFix: { popover.openAccounts(accountID) }
+    private func plan(for account: DashboardAccount) -> String? {
+        account.members.isEmpty ? dataStore.plan(for: account.id) : "Unified"
+    }
+
+    /// A unified account shows the first of its accounts that needs the user, and Fix opens that one.
+    private func status(for account: DashboardAccount) -> AccountStatus {
+        let ids = account.accountIDs
+        let noticed = ids.first { dataStore.notice(for: $0) != nil }
+        let stale = ids.first { dataStore.stalenessHint(for: $0) != nil }
+        return AccountStatus(
+            refreshing: ids.contains(where: dataStore.refreshingProviderIDs.contains),
+            notice: noticed.flatMap(dataStore.notice(for:)),
+            staleness: stale.flatMap(dataStore.stalenessHint(for:)),
+            onFix: { popover.openAccounts(noticed ?? stale ?? ids[0]) }
         )
     }
 
@@ -59,8 +67,39 @@ struct WidgetGroupedListView: View {
         }
     }
 
+    @ViewBuilder
     private func accountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
-        let accountStatus = status(for: account.id)
+        if account.members.isEmpty {
+            separateAccountSection(account, in: family)
+        } else {
+            unifiedSection(account, in: family)
+        }
+    }
+
+    private func unifiedSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DashboardAccountCaption(account: account, plan: plan(for: account), status: status(for: account))
+            DashboardLineStack(account: account) { line in
+                DashboardUnifiedRow(
+                    line: line,
+                    resetClaim: container.resetClaim(for:),
+                    onToggleMeterStyle: { dataStore.meterStyle.toggle() },
+                    onToggleResetDisplay: { dataStore.resetDisplayMode.toggle() }
+                )
+                .contextMenu {
+                    DashboardMenu(
+                        sections: [DashboardMenus.metric(line.metricIDs, pinned: line.metricIDs.contains(where: layout.isMetricPinned))]
+                            + DashboardMenus.provider(family),
+                        perform: perform
+                    )
+                }
+            }
+        }
+        .id(account.id)
+    }
+
+    private func separateAccountSection(_ account: DashboardAccount, in family: DashboardFamily) -> some View {
+        let accountStatus = status(for: account)
         return VStack(alignment: .leading, spacing: 0) {
             DashboardAccountCaption(account: account, plan: dataStore.plan(for: account.id),
                                     status: accountStatus, hasSiblingAccounts: family.accounts.count > 1)
@@ -94,7 +133,7 @@ struct WidgetGroupedListView: View {
             .contentShape(Rectangle())
             .contextMenu {
                 DashboardMenu(
-                    sections: [DashboardMenus.metric(line.id, pinned: layout.isMetricPinned(line.id))]
+                    sections: [DashboardMenus.metric([line.id], pinned: layout.isMetricPinned(line.id))]
                         + DashboardMenus.account(account, status: status.notice ?? status.staleness),
                     perform: perform
                 )
@@ -117,10 +156,12 @@ struct WidgetGroupedListView: View {
             popover.openAccounts(accountID)
         case .shareScreenshot(let accountIDs):
             shareScreenshot(accountIDs)
-        case .setPinned(let metricID, let pinned):
-            layout.setMetric(metricID, pinned: pinned)
-        case .hide(let metricID):
-            layout.setMetric(metricID, shown: false)
+        case .setPinned(let metricIDs, let pinned):
+            layout.setMetrics(metricIDs, pinned: pinned)
+        case .hide(let metricIDs):
+            layout.setMetrics(metricIDs, shown: false)
+        case .unifyAccounts(let kind, let unifies):
+            withAnimation(Motion.spring) { _ = layout.setUnifiesAccounts(unifies, of: kind) }
         }
     }
 

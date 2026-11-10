@@ -22,7 +22,7 @@ final class DashboardMenusTests: XCTestCase {
 
         XCTAssertEqual(commands(DashboardMenus.provider(family)), [
             [.refresh(["claude@1", "claude@2"])],
-            [.manageAccounts],
+            [.manageAccounts, .unifyAccounts(.claude, true)],
             [.shareScreenshot(["claude@1", "claude@2"])],
             claudeLinks,
         ])
@@ -71,12 +71,12 @@ final class DashboardMenusTests: XCTestCase {
     }
 
     func testAMetricIsPinnedOrUnpinnedWithThePinSymbolsAndCanBeHidden() {
-        let hide = DashboardMenuItem(title: "Hide", command: .hide("claude@1.weekly"), systemImage: "eye.slash")
-        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: false), [
-            DashboardMenuItem(title: "Pin", command: .setPinned("claude@1.weekly", true), systemImage: "pin"), hide,
+        let hide = DashboardMenuItem(title: "Hide", command: .hide(["claude@1.weekly"]), systemImage: "eye.slash")
+        XCTAssertEqual(DashboardMenus.metric(["claude@1.weekly"], pinned: false), [
+            DashboardMenuItem(title: "Pin", command: .setPinned(["claude@1.weekly"], true), systemImage: "pin"), hide,
         ])
-        XCTAssertEqual(DashboardMenus.metric("claude@1.weekly", pinned: true), [
-            DashboardMenuItem(title: "Unpin", command: .setPinned("claude@1.weekly", false), systemImage: "pin.slash"), hide,
+        XCTAssertEqual(DashboardMenus.metric(["claude@1.weekly"], pinned: true), [
+            DashboardMenuItem(title: "Unpin", command: .setPinned(["claude@1.weekly"], false), systemImage: "pin.slash"), hide,
         ])
     }
 

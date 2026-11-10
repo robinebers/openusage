@@ -54,6 +54,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
   where an even pace would be.
 - **Your layout.** Pin the metrics you care about, hide the rest with a right-click, and drag
   everything into your order.
+- **Unify multiple accounts.** Show a provider's accounts as one card, with one bar per limit.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
 - **Share.** Copy a picture of your usage to the clipboard.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of

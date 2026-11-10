@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Right-click a provider with several accounts and choose **Unify Multiple Accounts** to show them as one
+  card, with one bar per limit. Hover over a row to see each account.
+
 ## v0.8.0-beta.7
 
 ### Changed

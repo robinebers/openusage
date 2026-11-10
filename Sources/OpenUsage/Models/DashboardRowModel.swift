@@ -6,12 +6,14 @@ struct DashboardRowModel: Equatable {
         case value(String, detail: String? = nil, severity: WidgetData.MeterSeverity = .normal)
     }
 
-    let label: String
+    var label: String
     let mark: Mark
     /// Clock times run wider than countdowns, so they get the wider reset lane.
     var showsClockTimes = false
     /// Where the bar would reach by now at an even pace, or nil when it has no mark.
     var paceMark: Double?
+    /// The stretch of a unified bar held by accounts that are used up.
+    var usedUp: ClosedRange<Double>?
 
     /// A limit that's used up with nothing left to draw. Under Used its bar is full and stays at full strength.
     var isFaded: Bool {
