@@ -198,13 +198,16 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(entry?.accessibilityLabel, "Reset 1, Weekly Reset, \(absolute), expires in 3d 0h")
     }
 
-    func testResetsPopoverPastDueAndImminentEntriesReadSoonWithNoCountdown() {
+    func testResetsPopoverPastDueAndImminentEntriesKeepTheirTimeAndReadExpiring() {
         for offset in [-60.0, 180.0] {
-            let entries = RateLimitResetsDetail.entries(from: [(now.addingTimeInterval(offset), nil)], now: now)
+            let expiry = now.addingTimeInterval(offset)
+            let entries = RateLimitResetsDetail.entries(from: [(expiry, nil)], now: now)
+            let time = "\(Formatters.monthDayLabel(expiry)) at \(TimeFormatSetting.current.shortTime(expiry))"
 
             XCTAssertEqual(entries.count, 1)
-            XCTAssertEqual(entries[0].expiry, "Expiring soon")
-            XCTAssertNil(entries[0].countdown)
+            XCTAssertEqual(entries[0].expiry, time)
+            XCTAssertEqual(entries[0].countdown, "Expiring")
+            XCTAssertEqual(entries[0].accessibilityLabel, "Reset 1, \(time), expiring")
             XCTAssertEqual(entries[0].severity, .critical)
         }
     }

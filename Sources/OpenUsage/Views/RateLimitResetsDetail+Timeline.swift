@@ -42,11 +42,14 @@ extension RateLimitResetsDetail {
         let date: Date
         let key: Key
         let severity: WidgetData.MeterSeverity
-        /// The date and time it expires, or "Expiring soon" for a reset about to lapse.
+        /// The date and time it expires.
         let expiry: String
+        /// The time left, or "Expiring" for a reset about to lapse.
         let countdown: String?
         /// The reset this row spends; nil while the provider's list hasn't been read.
         let item: ResetItem?
+
+        nonisolated static let expiring = "Expiring"
 
         /// A row is its record plus its place among that record's rows, so two resets sharing an expiry
         /// stay apart and a confirmation never carries over to another record.
@@ -57,8 +60,8 @@ extension RateLimitResetsDetail {
         }
 
         var accessibilityLabel: String {
-            ["Reset \(number)", item?.kind.title, expiry]
-                .compactMap { $0 }.joined(separator: ", ") + (countdown.map { ", expires in \($0)" } ?? "")
+            ["Reset \(number)", item?.kind.title, expiry, countdown.map { $0 == Self.expiring ? "expiring" : "expires in \($0)" }]
+                .compactMap { $0 }.joined(separator: ", ")
         }
     }
 
@@ -74,16 +77,14 @@ extension RateLimitResetsDetail {
             let ordinal = seen[base, default: 0]
             seen[base] = ordinal + 1
             let relative = Formatters.whenLabel(at: row.date, mode: .relative, now: now)
-            let absolute = Formatters.whenLabel(at: row.date, mode: .absolute, now: now)
-            let imminent = relative == nil || relative == Formatters.imminent || absolute == nil
             return Entry(
                 id: index,
                 number: index + 1,
                 date: row.date,
                 key: Entry.Key(claim: row.item?.claim, date: row.date, ordinal: ordinal),
                 severity: WidgetData.expirySeverity(secondsRemaining: row.date.timeIntervalSince(now)),
-                expiry: imminent ? "Expiring soon" : absolute!,
-                countdown: imminent ? nil : relative,
+                expiry: "\(Formatters.monthDayLabel(row.date)) at \(TimeFormatSetting.current.shortTime(row.date))",
+                countdown: relative == Formatters.imminent ? Entry.expiring : relative,
                 item: row.item
             )
         }
