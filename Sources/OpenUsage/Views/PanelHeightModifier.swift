@@ -1,7 +1,7 @@
 import SwiftUI
 import os
 
-/// Built as a `GeometryEffect` (like `DenyShakeEffect`) rather than a plain `ViewModifier`: a custom
+/// Built as a `GeometryEffect` rather than a plain `ViewModifier`: a custom
 /// `ViewModifier` that implements `body` is inferred `@MainActor` (because `ViewModifier.body` is), which
 /// would make `animatableData` `@MainActor` and violate `Animatable`'s `nonisolated` requirement.
 /// `GeometryEffect` supplies its own `body`, so the struct stays nonisolated and the `Animatable`

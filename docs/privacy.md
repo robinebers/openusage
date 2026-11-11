@@ -19,7 +19,7 @@ only the provider APIs those accounts need.
 
 ## Privacy Mode
 
-**Settings → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
 While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
 panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
 off, they leave email addresses out. It is off by default. A single still screenshot (⌘⇧3, ⌘⇧4) can't
@@ -40,8 +40,8 @@ be detected, so use the copy button to share a picture.
   holds no account details, credentials, or usage values.
 - **Provider account counts** say how many accounts are configured for each provider, split between
   direct accounts and accounts imported from CLIProxyAPI. They use the same random install id as the
-  app use ping and don't report refresh activity. Turn them off in **Settings → Privacy → Help Make
-  OpenUsage Better**. They are on by default for new installs, and existing installs keep their
+  app use ping and don't report refresh activity. Turn them off in **Settings → Advanced → Privacy →
+  Help Make OpenUsage Better**. They are on by default for new installs, and existing installs keep their
   stored choice.
 - Telemetry never includes account names, emails, credentials, usage values, error messages, or file
   paths.

@@ -68,8 +68,8 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 
 Claude, ChatGPT, and Z.ai accounts show a **Limit Resets** row while they have rate-limit resets
 available. Hover over the count to see the expiry dates, or click it to keep them open. To spend a
-reset, choose **Use**, then **Reset**. Z.ai lists its Session and Weekly resets apart, and only the
-earliest of each can be used.
+reset, choose **Use**, then **Reset**. On Z.ai, only the earliest Session reset and the earliest
+Weekly reset can be used.
 
 ### Unify Multiple Accounts
 

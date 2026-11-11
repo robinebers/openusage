@@ -62,8 +62,8 @@ Each alert has two separate switches. **Priority** lists the limit in Priority.
 
 Priority is on by default for all four, and Notify is off. Turning the first Notify on asks macOS
 for permission. If notifications are off for OpenUsage, click **System Settings** in the notice to
-open **Notifications → OpenUsage** and allow them. Each notification fires once per metric per reset
-window. Click one to open All Usage.
+open **Notifications → OpenUsage** and allow them. An alert notifies once per reset window. All but
+Use It or Lose It notify again once the limit recovers. Click a notification to open All Usage.
 
 ## Privacy
 

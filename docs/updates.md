@@ -6,15 +6,15 @@ installing it.
 - **Automatic checks.** About once an hour. A found update shows an **Update Available** banner at the
   top of the panel. Click **Install Update** to open the update window, which lists what's new in that version. Closing the banner snoozes it
   until the next check finds the update.
-- **Manual check.** **Check for Updates…** in the dashboard's **⋯** menu or in **Settings → Updates**.
-- **Turn it off.** **Settings → Updates → Check Automatically** stops the background checks. Manual
-  checks still work.
+- **Manual check.** **Check for Updates…** in the dashboard's **⋯** menu or in **Settings → General → Updates**.
+- **Turn it off.** **Settings → General → Updates → Check Automatically** stops the background checks.
+  Manual checks still work.
 - OpenUsage shows a Dock icon while the update window is open, then hides it again.
 
 ## Beta updates
 
-**Settings → Updates → Beta Updates** adds pre-release builds on top of stable releases. Turn it off to
-go back to stable only. You stay on your current version until the next stable release catches up.
+**Settings → General → Updates → Beta Updates** adds pre-release builds on top of stable releases. Turn
+it off to go back to stable only. You stay on your current version until the next stable release catches up.
 
 ## Where updates come from
 
