@@ -25,6 +25,8 @@
   no longer shows the whole team pool's spend, and **Team Spend** no longer shows one member's.
 - **⌘Z** and **⌘,** in the panel follow your keyboard layout, so they work on QWERTZ, AZERTY and Dvorak
   keyboards, and **⌘Y** or **⌘W** no longer undo a layout change there.
+- When a CLIProxyAPI hub can't be removed because the Keychain refused, its page now says why instead of
+  closing the dialog with no word, as an account's page already does.
 - Grok's **Extra Usage** shows its pay-as-you-go cap in dollars, like `$25 cap`, instead of the cents xAI
   reports (`2500 cap`).
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
