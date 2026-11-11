@@ -49,6 +49,7 @@ enum AppLog {
     static func error(_ tag: String, _ message: @autoclosure () -> String) { emit(.error, tag, message) }
     static func warn(_ tag: String, _ message: @autoclosure () -> String) { emit(.warn, tag, message) }
     static func info(_ tag: String, _ message: @autoclosure () -> String) { emit(.info, tag, message) }
+    static func notice(_ tag: String, _ message: @autoclosure () -> String) { emit(.notice, tag, message) }
 
     static func error(_ tag: LogTag, _ message: @autoclosure () -> String) { error(tag.rawValue, message()) }
     static func warn(_ tag: LogTag, _ message: @autoclosure () -> String) { warn(tag.rawValue, message()) }

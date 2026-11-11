@@ -9,6 +9,9 @@ struct ProviderSnapshot: Hashable, Sendable, Codable {
     var usageBreakdowns: [String: UsageBreakdown]?
     /// Row titles this reading renames, keyed by line label. Older snapshots carry none.
     var lineTitles: [String: String]?
+    /// Claude's last reset-grants answer, so each reset keeps its kind and Use at launch. Older snapshots
+    /// carry none.
+    var resetGrants: ClaudeResetGrantStatus?
     var notice: String?
     var refreshedAt: Date
 

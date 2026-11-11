@@ -83,7 +83,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         let items: [ResetItem]
         switch account.kind {
         case .claude:
-            items = claude.session?.resetGrants.check?.status?.items(now: now()) ?? []
+            items = claudeResetGrants(claude.session)?.items(now: now()) ?? []
         case .codex:
             items = expiries.map { ResetItem(kind: .full, expiresAt: $0, claim: .codexCredit($0)) }
         case .zai:
@@ -460,6 +460,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         let usage = try await refresh(credential)
         var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
         snapshot.lineTitles = usage.lineTitles.isEmpty ? nil : usage.lineTitles
+        if account.kind == .claude { snapshot.resetGrants = claudeResetGrants(claude.session) }
         HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
         return snapshot
     }

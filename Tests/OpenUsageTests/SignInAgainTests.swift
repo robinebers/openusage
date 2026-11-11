@@ -157,7 +157,7 @@ final class PR1535ClaudeTests: XCTestCase {
         limited.value = true
         _ = await container.dataStore.refresh(providerID: account.cardID, force: true)
         let requestsBeforeRelaunch = http.requests.count
-        XCTAssertEqual(requestsBeforeRelaunch, 2)
+        XCTAssertEqual(requestsBeforeRelaunch, 3, "the new sign-in's usage and grants reads, then the 429")
         let relaunched = AppContainer.forTesting(accounts: accounts, defaults: defaults, http: http)
         _ = await relaunched.dataStore.refresh(providerID: account.cardID, force: true)
         XCTAssertEqual(http.requests.count, requestsBeforeRelaunch, "The new runtime's 429 hold did not survive relaunch.")
