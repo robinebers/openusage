@@ -55,7 +55,7 @@ Save the approved changelog to `/tmp/notes-v{version}.md` and create the release
 gh release create v{version} --draft --target main --title "OpenUsage {version}" --notes-file /tmp/notes-v{version}.md
 ```
 
-`release.yml` reads this release's body as the notes in Sparkle's update window, before it builds anything, and fails the release when the release is missing or its body is empty. When it attaches the DMG, it publishes this draft instead of creating a new release. If you abandon the version, delete the draft.
+`release.yml` reads this release's body as the notes in Sparkle's update window, before it builds anything, and fails the release when the release is missing or its body is empty. When it attaches the DMG, it publishes this draft instead of creating a new release. If you abandon the version, delete the draft before you push the tag. Once the tag is pushed, cancel the Release run and confirm it stopped (`gh run view <run-id>`) before you edit or delete the draft, or CI can publish a release with blank notes.
 
 ### 5. Tag and push
 
