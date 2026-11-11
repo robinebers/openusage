@@ -158,11 +158,15 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(off.overflow, 0)
     }
 
-    func testAPinnedLimitThatIsRunningOutShowsOnceAsRunningOut() {
-        let strip = content(.upToFive, pinned: ["claude@1.Low", "claude@1.Quiet"], alwaysShows: true,
-                            account(personal, limit("Quiet", used: 10), limit("Low", used: 95)))
-        XCTAssertEqual(strip.items.map(\.shortLabel), ["Quiet", "Low"])
-        XCTAssertEqual(strip.overflow, 0)
+    func testAPinnedLimitThatIsRunningOutShowsOnceUnderPinnedAndStillShowsAsRunningOut() {
+        let accounts = [account(personal, limit("Low", used: 95), limit("Quiet", used: 10), limit("Lower", used: 97))]
+        let pinned: Set<String> = ["claude@1.Low", "claude@1.Quiet"]
+        let always = content(.upToFive, pinned: pinned, alwaysShows: true, accounts[0])
+        XCTAssertEqual(always.items.map(\.shortLabel), ["Low", "Quiet", "Lower"], "Pinned in dashboard order, then Running Out")
+        XCTAssertEqual(always.overflow, 0)
+
+        let off = content(.upToFive, pinned: pinned, accounts[0])
+        XCTAssertEqual(off.items.map(\.shortLabel), ["Lower", "Low"], "off, everything running out, pinned or not, most urgent first")
     }
 
     func testNoAccountsShowTheAppIconEvenWithPins() {

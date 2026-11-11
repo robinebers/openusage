@@ -73,12 +73,12 @@ final class UseItOrLoseItPriorityTests: XCTestCase {
         }
     }
 
-    func testAPinnedLimitAboutToResetUnusedMovesOutOfPinned() {
+    func testAPinnedLimitAboutToResetUnusedStaysPinned() {
         let accounts = [account(personal, limit("Weekly", used: 30, resetsIn: 18 * hour))]
         let board = PriorityBoard.make(accounts: accounts, pinned: ["claude@1.Weekly"], useItOrLoseIt: true, now: now)
-        XCTAssertEqual(ids(board.useItOrLoseIt), ["claude@1.Weekly"])
-        XCTAssertEqual(board.useItOrLoseIt.map(\.isPinned), [true])
-        XCTAssertTrue(board.pinned.isEmpty)
+        XCTAssertEqual(board.pinned.map(\.id), ["claude@1.Weekly"])
+        XCTAssertEqual(board.pinned.first?.item?.resetsInText(now: now), "Resets in 18h")
+        XCTAssertTrue(board.useItOrLoseIt.isEmpty)
         XCTAssertTrue(board.showsClearRow)
     }
 

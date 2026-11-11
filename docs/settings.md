@@ -38,8 +38,8 @@ Click a limit's amount or reset on the dashboard to flip either one.
 
 ## Thresholds
 
-- **Warning.** A limit with this much left or less turns orange and moves to Running Out. 20% to
-  70% left, 30% by default.
+- **Warning.** A limit with this much left or less turns orange and moves to Running Out, or stays
+  under Pinned if you pinned it. 20% to 70% left, 30% by default.
 - **Critical.** A limit with this much left or less turns red. 5% to 25% left, 10% by default.
 
 Warning and Critical always count what's left, even with Show Usage As set to Used, and they also
@@ -54,11 +54,12 @@ Each alert has two separate switches. **Priority** lists the limit in Priority.
 - **Warning** and **Critical.** A limit drops to its threshold or less left. Priority always lists
   it, so that switch stays on.
 - **Burning Fast.** A limit would run out before it resets at your current pace, however much it
-  has left. Priority lists it under Running Out. After it notifies you, it waits until the limit's
-  pace eases to 90% of the limit before it can notify again.
+  has left. Priority lists it under Running Out, or under Pinned if you pinned it. After it notifies
+  you, it waits until the limit's pace eases to 90% of the limit before it can notify again.
 - **Use It or Lose It.** A limit resets within 24 hours with over 50% left. Only for windows longer
   than a day, such as weekly and monthly limits, never the 5-hour session or a dollar spending cap.
-  Priority lists it in its own section, and in the menu bar only with Always Show In Menu Bar on.
+  Priority lists it in its own section, or under Pinned if you pinned it, and in the menu bar only
+  with Always Show In Menu Bar on.
 
 Priority is on by default for all four, and Notify is off. Turning the first Notify on asks macOS
 for permission. If notifications are off for OpenUsage, click **System Settings** in the notice to

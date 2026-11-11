@@ -70,7 +70,7 @@ struct PriorityItem: Identifiable {
     let provider: Provider
     let line: DashboardLine
     let reason: Reason
-    /// The user pinned it, or for a unified limit any account's copy of it. A pinned item is listed under Running Out, Used Up, or Use It or Lose It instead of Pinned.
+    /// The user pinned it, or for a unified limit any account's copy of it. A pinned item stays under Pinned unless it's used up.
     let isPinned: Bool
 
     var id: String { line.id }
@@ -99,10 +99,12 @@ struct PriorityItem: Identifiable {
     }
 }
 
-/// A metric the user pinned to the top of Priority, listed there while no other section lists it.
+/// A metric the user pinned to the top of Priority, listed there until it's used up.
 struct PinnedMetric: Identifiable {
     let provider: Provider
     let line: DashboardLine
+    /// Why Running Out or Use It or Lose It would list it if it weren't pinned. Its row shows the same state there.
+    var item: PriorityItem?
 
     var id: String { line.id }
     var data: WidgetData { line.data }
@@ -128,9 +130,12 @@ struct PriorityBoard {
         var id: String { provider.id }
     }
 
-    /// In dashboard order. A pinned metric another section lists is listed only there, and comes back here
-    /// once it isn't.
+    /// In dashboard order. A pinned metric that's used up is listed only under Used Up, and comes back here
+    /// once it resets.
     let pinned: [PinnedMetric]
+    /// Every limit running out, pinned or not, most urgent first. The menu bar shows these.
+    let runningOut: [PriorityItem]
+    /// The Running Out section: what's running out and isn't pinned.
     let attention: [PriorityItem]
     let usedUp: [PriorityItem]
     /// Limits with over half left that reset within a day, soonest reset first. In the menu bar only with Always Show In Menu Bar on.
@@ -145,8 +150,8 @@ struct PriorityBoard {
     /// Multiple running-low limits can change places as their windows age, even without a new reading, and a
     /// limit burning fast can slow off the list.
     func requiresRankingClock(at now: Date) -> Bool {
-        if attention.contains(where: { if case .burningFast = $0.reason { true } else { false } }) { return true }
-        return attention.count > 1 && attention.contains { item in
+        if runningOut.contains(where: { if case .burningFast = $0.reason { true } else { false } }) { return true }
+        return runningOut.count > 1 && runningOut.contains { item in
             guard let reset = item.data.resetsAt, let period = item.data.periodDurationMs else { return false }
             return reset > now && period > 0
         }
@@ -192,14 +197,19 @@ struct PriorityBoard {
         } else {
             .noReportedLimits
         }
-        let listed = Set(ranked.map(\.id))
+        let runningOut = ranked.filter { $0.reason.section == .runningOut }
+        let usedUp = ranked.filter { $0.reason.section == .usedUp }
+        let usedUpIDs = Set(usedUp.map(\.id))
         return PriorityBoard(
-            pinned: lines.filter { $0.1.metricIDs.contains(where: pinnedIDs.contains) && !listed.contains($0.1.id) }.map(PinnedMetric.init),
-            attention: ranked.filter { $0.reason.section == .runningOut },
-            usedUp: ranked.filter { $0.reason.section == .usedUp },
-            useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt },
+            pinned: lines.filter { $0.1.metricIDs.contains(where: pinnedIDs.contains) && !usedUpIDs.contains($0.1.id) }.map { provider, line in
+                PinnedMetric(provider: provider, line: line, item: ranked.first { $0.id == line.id })
+            },
+            runningOut: runningOut,
+            attention: runningOut.filter { !$0.isPinned },
+            usedUp: usedUp,
+            useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt && !$0.isPinned },
             notices: notices, waiting: waiting, summary: summary,
-            showsClearRow: !awaitingUsage && notices.isEmpty && !ranked.contains { $0.reason.section == .runningOut }
+            showsClearRow: !awaitingUsage && notices.isEmpty && runningOut.isEmpty
         )
     }
 
