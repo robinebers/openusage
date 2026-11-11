@@ -269,7 +269,7 @@ final class WidgetDataStore {
         for descriptor in registry.providers.flatMap({ registry.descriptors(for: $0.id) }) {
             let data = data(for: descriptor)
             guard let reset = data.resetsAt,
-                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data)) else { continue }
+                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data, now: at)) else { continue }
             burning[descriptor.id] = reset
         }
         if burning != burningFastWindows { burningFastWindows = burning }
