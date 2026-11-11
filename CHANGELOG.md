@@ -23,6 +23,8 @@
   time has passed.
 - Cursor's **Extra Usage** reads the spend from the same budget as its limit, so a team member's own cap
   no longer shows the whole team pool's spend, and **Team Spend** no longer shows one member's.
+- **⌘Z** and **⌘,** in the panel follow your keyboard layout, so they work on QWERTZ, AZERTY and Dvorak
+  keyboards, and **⌘Y** or **⌘W** no longer undo a layout change there.
 - Grok's **Extra Usage** shows its pay-as-you-go cap in dollars, like `$25 cap`, instead of the cents xAI
   reports (`2500 cap`).
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
