@@ -187,11 +187,11 @@ final class WidgetDataStore {
             }
         }
         guard let provider = providersByID[providerID] else { return .skipped }
-        if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
         let work = Task { [providerRefreshTimeout, offlineRetryDelays] in
             var retries = offlineRetryDelays[...]
             while true {
+                if rereadHourly { provider.forgetHourlyReads() }
                 let result = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { () -> Result<ProviderSnapshot, RefreshFailure> in
                     guard !Task.isCancelled else { return .failure(RefreshFailure(error: CancellationError())) }
                     return await provider.refresh()

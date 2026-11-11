@@ -259,6 +259,27 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty)
     }
 
+    /// A ⌘R that finds no network path keeps asking for Claude's profile when its retry gets through.
+    func testAForcedRefreshKeepsItsRereadsWhenItsOfflineRetryGetsThrough() async throws {
+        let offline = TestSwitch(false)
+        let hub = Self.hub { url, _ in (200, url == ClaudeUsageClient.profileURL.absoluteString ? "{}" : Self.claudeUsage, [:]) }
+        let http = RoutingHTTPClient { request in
+            if offline.value { offline.value = false; throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), offlineRetryDelays: [0.05])
+        let profileReads = { try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }.count }
+        await store.refreshAll()
+        let before = try profileReads()
+
+        offline.value = true
+        let outcome = await store.refresh(providerID: runtimes[0].provider.id, force: true, rereadHourly: true)
+
+        XCTAssertEqual(outcome, .refreshed)
+        XCTAssertEqual(try profileReads(), before + 1, "the retry still reads what ⌘R asked for")
+    }
+
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
         let http = Self.hub { _, _ in (200, Self.claudeUsage, [:]) }
         let (runtimes, store, hub) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
