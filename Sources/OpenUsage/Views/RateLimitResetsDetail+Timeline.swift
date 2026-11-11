@@ -42,8 +42,9 @@ extension RateLimitResetsDetail {
         let date: Date
         let key: Key
         let severity: WidgetData.MeterSeverity
-        /// "Use by <time>", or "Expiring soon" for a reset about to lapse.
-        let useBy: String
+        /// The date and time it expires.
+        let expiry: String
+        /// The time left; nil for a reset about to lapse, which reads "Expiring".
         let countdown: String?
         /// The reset this row spends; nil while the provider's list hasn't been read.
         let item: ResetItem?
@@ -57,8 +58,8 @@ extension RateLimitResetsDetail {
         }
 
         var accessibilityLabel: String {
-            ["Reset \(number)", item?.kind.title, useBy.prefix(1).lowercased() + useBy.dropFirst()]
-                .compactMap { $0 }.joined(separator: ", ") + (countdown.map { ", expires in \($0)" } ?? "")
+            ["Reset \(number)", item?.kind.title, expiry, countdown.map { "expires in \($0)" } ?? "expiring"]
+                .compactMap { $0 }.joined(separator: ", ")
         }
     }
 
@@ -74,16 +75,14 @@ extension RateLimitResetsDetail {
             let ordinal = seen[base, default: 0]
             seen[base] = ordinal + 1
             let relative = Formatters.whenLabel(at: row.date, mode: .relative, now: now)
-            let absolute = Formatters.whenLabel(at: row.date, mode: .absolute, now: now)
-            let imminent = relative == nil || relative == Formatters.imminent || absolute == nil
             return Entry(
                 id: index,
                 number: index + 1,
                 date: row.date,
                 key: Entry.Key(claim: row.item?.claim, date: row.date, ordinal: ordinal),
                 severity: WidgetData.expirySeverity(secondsRemaining: row.date.timeIntervalSince(now)),
-                useBy: imminent ? "Expiring soon" : "Use by \(absolute!)",
-                countdown: imminent ? nil : relative,
+                expiry: Formatters.dateAndTime(row.date),
+                countdown: relative == Formatters.imminent ? nil : relative,
                 item: row.item
             )
         }

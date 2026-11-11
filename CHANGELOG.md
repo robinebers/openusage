@@ -7,6 +7,8 @@
   Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
 
 ### Changed
+- The **Limit Resets** popover shows when each reset expires as just the date and time, without "Use by".
+  A reset with 5 minutes or less left keeps its time, and its countdown reads **Expiring**.
 - **Unify Accounts** in Settings → Display shows each provider's mark before its name, with an info icon
   explaining what it does.
 - Settings tabs are regrouped: **Display** keeps **Menu Bar Icons** (formerly Priority) and **Usage**,

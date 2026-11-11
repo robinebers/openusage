@@ -26,8 +26,12 @@ enum Formatters {
             let time = TimeFormatSetting.current.shortTime(date)
             if dayDiff <= 0 { return "today at \(time)" }
             if dayDiff == 1 { return "tomorrow at \(time)" }
-            return "\(monthDayLabel(date)) at \(time)"
+            return dateAndTime(date)
         }
+    }
+
+    static func dateAndTime(_ date: Date) -> String {
+        "\(monthDayLabel(date)) at \(TimeFormatSetting.current.shortTime(date))"
     }
 
     static let imminent = "soon"

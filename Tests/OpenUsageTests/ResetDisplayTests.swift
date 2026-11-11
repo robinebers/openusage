@@ -182,29 +182,32 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(entries.map(\.number), [1, 2])
         XCTAssertEqual(entries[0].severity, .critical)
         XCTAssertEqual(entries[1].severity, .normal)
-        XCTAssertTrue(entries[1].useBy.hasPrefix("Use by "), entries[1].useBy)
-        XCTAssertTrue(entries[1].useBy.contains(" at "), entries[1].useBy)
+        XCTAssertEqual(entries[1].expiry, Formatters.whenLabel(at: entries[1].date, mode: .absolute, now: now))
+        XCTAssertTrue(entries[1].expiry.contains(" at "), entries[1].expiry)
         XCTAssertEqual(entries[1].countdown, "12d 18h")
     }
 
-    func testResetsPopoverRowReadsItsKindCountdownAndUseByTime() {
+    func testResetsPopoverRowReadsItsKindCountdownAndExpiryWithoutUseBy() {
         let expiry = now.addingTimeInterval(3 * 24 * 3600)
         let item = ResetItem(kind: .weekly, expiresAt: expiry, claim: .claudeGrant("g"))
         let entry = RateLimitResetsDetail.content(count: 1, expiries: [], items: [item], now: now).entries.first
         let absolute = Formatters.whenLabel(at: expiry, mode: .absolute, now: now)!
         XCTAssertEqual(entry?.item?.kind.title, "Weekly Reset")
-        XCTAssertEqual(entry?.useBy, "Use by \(absolute)")
+        XCTAssertEqual(entry?.expiry, absolute)
         XCTAssertEqual(entry?.countdown, "3d 0h")
-        XCTAssertEqual(entry?.accessibilityLabel, "Reset 1, Weekly Reset, use by \(absolute), expires in 3d 0h")
+        XCTAssertEqual(entry?.accessibilityLabel, "Reset 1, Weekly Reset, \(absolute), expires in 3d 0h")
     }
 
-    func testResetsPopoverPastDueAndImminentEntriesReadSoonWithNoCountdown() {
+    func testResetsPopoverPastDueAndImminentEntriesKeepTheirTimeAndReadExpiring() {
         for offset in [-60.0, 180.0] {
-            let entries = RateLimitResetsDetail.entries(from: [(now.addingTimeInterval(offset), nil)], now: now)
+            let expiry = now.addingTimeInterval(offset)
+            let entries = RateLimitResetsDetail.entries(from: [(expiry, nil)], now: now)
+            let time = Formatters.dateAndTime(expiry)
 
             XCTAssertEqual(entries.count, 1)
-            XCTAssertEqual(entries[0].useBy, "Expiring soon")
+            XCTAssertEqual(entries[0].expiry, time)
             XCTAssertNil(entries[0].countdown)
+            XCTAssertEqual(entries[0].accessibilityLabel, "Reset 1, \(time), expiring")
             XCTAssertEqual(entries[0].severity, .critical)
         }
     }
