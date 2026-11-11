@@ -49,6 +49,8 @@ struct RefreshFailure: Error, Hashable, Sendable {
     enum Kind: Hashable, Sendable {
         case rateLimited(retryAfter: TimeInterval?)
         case unreachable
+        /// No network path, which can pass within seconds. See `URLError.meansOffline`.
+        case offline
         case refused
     }
 
@@ -60,6 +62,8 @@ extension RefreshFailure {
     init(error: Error) {
         let kind: Kind = switch error {
         case ProviderError.rateLimited(let retryAfter): .rateLimited(retryAfter: retryAfter)
+        case let error as URLError where error.meansOffline: .offline
+        case ProviderError.offline: .offline
         case is URLError, ProviderError.connectionFailed, ProviderError.unreachable: .unreachable
         default: .refused
         }

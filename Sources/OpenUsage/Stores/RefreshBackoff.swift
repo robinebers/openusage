@@ -13,7 +13,7 @@ struct RefreshBackoff: Equatable {
     static func after(_ failure: RefreshFailure, previous: RefreshBackoff?, now: Date) -> RefreshBackoff {
         let failures = previous?.failures ?? 0
         switch failure.kind {
-        case .unreachable:
+        case .unreachable, .offline:
             return RefreshBackoff(failures: failures, retryAt: now + RefreshSetting.failureBackoffBase, providerAsked: false, message: failure.message)
         case .refused:
             return RefreshBackoff(failures: failures + 1, retryAt: now + delay(failures: failures + 1), providerAsked: false, message: failure.message)

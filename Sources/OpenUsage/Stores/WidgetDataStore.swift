@@ -10,6 +10,7 @@ final class WidgetDataStore {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let providerRefreshTimeout: TimeInterval
+    private let offlineRetryDelays: [TimeInterval]
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -31,6 +32,8 @@ final class WidgetDataStore {
     var lastRefreshAt: Date?
 
     private(set) var backoffs: [String: RefreshBackoff] = [:]
+    /// Offline failures in a row since each account's last good read. See `retryOffline`.
+    @ObservationIgnored private var offlineFailures: [String: Int] = [:]
 
     var meterStyle: WidgetDisplayMode {
         didSet { defaults.set(meterStyle.rawValue, forKey: Self.meterStyleKey) }
@@ -86,6 +89,7 @@ final class WidgetDataStore {
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
+        offlineRetryDelays: [TimeInterval] = RefreshSetting.offlineRetryDelays,
     ) {
         precondition(providerRefreshTimeout > 0)
         self.registry = registry
@@ -94,6 +98,7 @@ final class WidgetDataStore {
         self.defaults = defaults
         self.now = now
         self.providerRefreshTimeout = providerRefreshTimeout
+        self.offlineRetryDelays = offlineRetryDelays
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
@@ -121,6 +126,7 @@ final class WidgetDataStore {
         snapshots = next
         if removed { cache.save(next) }
         backoffs = backoffs.filter { ids.contains($0.key) }
+        offlineFailures = offlineFailures.filter { ids.contains($0.key) }
     }
 
     func refreshAll(force: Bool = false) async {
@@ -209,7 +215,9 @@ final class WidgetDataStore {
         }
         let snapshot: ProviderSnapshot
         switch result {
-        case .failure(let failure): return recordFailure(failure, providerID: providerID)
+        case .failure(let failure):
+            if failure.kind == .offline, retryOffline(providerID, failure: failure) { return .failed }
+            return recordFailure(failure, providerID: providerID)
         case .success(let refreshed): snapshot = refreshed
         }
         store(snapshot, for: providerID)
@@ -243,6 +251,22 @@ final class WidgetDataStore {
         return .failed
     }
 
+    /// Tries an account that found no network path again a few seconds later, without flagging it. Right
+    /// after launch, macOS refuses a hub on the local network for a moment before it lets OpenUsage in, and
+    /// nothing else would try again for 5 minutes. Once these retries run out, the failure counts.
+    private func retryOffline(_ providerID: String, failure: RefreshFailure) -> Bool {
+        let attempt = offlineFailures[providerID, default: 0]
+        guard attempt < offlineRetryDelays.count else { return false }
+        offlineFailures[providerID] = attempt + 1
+        let delay = offlineRetryDelays[attempt]
+        AppLog.warn(.refresh, "\(providerID) offline: \(failure.message) Retrying in \(Int(delay.rounded(.up)))s.")
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            await self?.refresh(providerID: providerID)
+        }
+        return true
+    }
+
     private func durationMilliseconds(since start: TimeInterval) -> Int {
         max(0, Int((ProcessInfo.processInfo.systemUptime - start) * 1000))
     }
@@ -258,6 +282,7 @@ final class WidgetDataStore {
 
     private func store(_ snapshot: ProviderSnapshot, for providerID: String) {
         backoffs[providerID] = nil
+        offlineFailures[providerID] = nil
         snapshots[providerID] = snapshot
         cache.save(snapshots)
     }

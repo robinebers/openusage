@@ -222,6 +222,44 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(items.map(\.usable), [true, true], "and each reset can be used")
     }
 
+    /// Robin's MacBook on Nov 11: right after launch macOS kept the app off the local network for a moment,
+    /// URLSession answered "not connected to the internet", and every hub account sat under Needs Attention
+    /// with a 5-minute wait until he forced a refresh 21 seconds later.
+    func testAHubAccountThatLaunchedBeforeTheLocalNetworkOpenedRecoversOnItsOwnWithoutBeingFlagged() async throws {
+        let launch = Date()
+        let calls = TestSwitch(0)
+        let hub = Self.hub { url, _ in
+            (200, url == ClaudeUsageClient.resetGrantsURL.absoluteString ? Self.claudeGrants : Self.claudeUsage, [:])
+        }
+        let http = RoutingHTTPClient { request in
+            calls.value += 1
+            if calls.value == 1 { throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let account = runtimes[0].provider
+        let defaults = isolatedDefaults()
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+        cache.save([account.id: ProviderSnapshot(provider: account, plan: nil, lines: [], refreshedAt: launch.addingTimeInterval(-3 * 3600))])
+        let store = WidgetDataStore.forTesting(runtimes, cache: cache, defaults: defaults, offlineRetryDelays: [0.05])
+        let groups = [ProviderMetrics(provider: account, metrics: WidgetRegistry.from(runtimes).descriptors(for: account.id))]
+
+        await store.refreshAll()
+        XCTAssertEqual(calls.value, 1, "the launch read failed before it left the Mac")
+        XCTAssertNil(store.problem(for: account.id), "a read that never left the Mac flags nothing")
+        XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty, "nothing under Needs Attention")
+
+        let deadline = Date().addingTimeInterval(5)
+        while store.snapshots[account.id].map({ $0.refreshedAt < launch }) ?? true, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let recovered = try XCTUnwrap(store.snapshots[account.id])
+        XCTAssertGreaterThanOrEqual(recovered.refreshedAt, launch, "the account read usage again without a forced refresh")
+        XCTAssertFalse(recovered.lines.isEmpty)
+        XCTAssertNil(store.problem(for: account.id))
+        XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty)
+    }
+
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
         let http = Self.hub { _, _ in (200, Self.claudeUsage, [:]) }
         let (runtimes, store, hub) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
