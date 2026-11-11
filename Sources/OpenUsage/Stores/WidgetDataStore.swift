@@ -192,7 +192,10 @@ final class WidgetDataStore {
         let work = Task { [providerRefreshTimeout, offlineRetryDelays] in
             var retries = offlineRetryDelays[...]
             while true {
-                let result = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { await provider.refresh() }
+                let result = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { () -> Result<ProviderSnapshot, RefreshFailure> in
+                    guard !Task.isCancelled else { return .failure(RefreshFailure(error: CancellationError())) }
+                    return await provider.refresh()
+                }
                     ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(providerRefreshTimeout))s", kind: .refused))
                 guard case .failure(let failure) = result, failure.kind == .offline, let delay = retries.popFirst() else { return result }
                 AppLog.warn(.refresh, "\(providerID) offline: \(failure.message) Retrying in \(Int(delay.rounded(.up)))s.")
