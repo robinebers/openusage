@@ -113,7 +113,7 @@ final class CursorTeamPoolTests: XCTestCase {
 
         let personal = try onDemand([
             "individualLimit": 10000, "individualUsed": 0, "individualRemaining": 10000,
-            "pooledLimit": 50000, "pooledUsed": 12000, "pooledRemaining": 38000, "limitType": "user"
+            "pooledLimit": 50000, "pooledUsed": 12000, "pooledRemaining": 38000, "totalSpend": 12000, "limitType": "user"
         ])
         XCTAssertEqual(personal.used, 0, "the member spent nothing of their own cap, whatever the team pool spent")
         XCTAssertEqual(personal.limit, 100)
@@ -126,8 +126,11 @@ final class CursorTeamPoolTests: XCTestCase {
         XCTAssertEqual(pool.limit, 500)
         XCTAssertEqual(pool.title, "Team Spend")
 
-        let inferred = try onDemand(["individualLimit": 10000, "individualRemaining": 7500, "pooledUsed": 12000])
+        let inferred = try onDemand(["individualLimit": 10000, "individualRemaining": 7500, "pooledUsed": 12000, "totalSpend": 12000])
         XCTAssertEqual(inferred.used, 25, "spend falls back to the same budget's limit minus what's left")
+
+        let ownTotal = try onDemand(["individualLimit": 5000, "individualUsed": 0, "individualRemaining": 4500, "totalSpend": 1200])
+        XCTAssertEqual(ownTotal.used, 12, "a personal cap with no team pool still takes totalSpend when individualUsed reads 0")
     }
 
     private func map(_ plan: [String: Any]) throws -> ProviderUsage {

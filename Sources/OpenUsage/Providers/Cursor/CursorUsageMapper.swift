@@ -136,13 +136,19 @@ enum CursorUsageMapper {
 
         if let spendLimitUsage {
             let individualLimit = ProviderParse.number(spendLimitUsage["individualLimit"])
-            let pooledLimit = ProviderParse.number(spendLimitUsage["pooledLimit"])
-            let budget = individualLimit != nil ? "individual" : pooledLimit != nil ? "pooled" : nil
-            let limit = individualLimit ?? pooledLimit ?? 0
-            let remaining = budget.flatMap { ProviderParse.number(spendLimitUsage["\($0)Remaining"]) }
-            let spentKeys = budget.map { ["\($0)Used"] } ?? ["individualUsed", "pooledUsed", "totalSpend"]
+            let hasTeamSpend = facts.isTeamByShape || ProviderParse.number(spendLimitUsage["pooledUsed"]) ?? 0 > 0
+            let budget: (limit: Double, spent: [String], remaining: String?) = if let individualLimit {
+                (individualLimit, hasTeamSpend ? ["individualUsed"] : ["individualUsed", "totalSpend"], "individualRemaining")
+            } else if facts.pooledLimit > 0 {
+                (facts.pooledLimit, ["pooledUsed"], "pooledRemaining")
+            } else {
+                (0, ["individualUsed", "pooledUsed", "totalSpend"], nil)
+            }
+            let limit = budget.limit
             let spent = onDemandSpendCents(
-                reported: spentKeys.compactMap { ProviderParse.number(spendLimitUsage[$0]) }, limit: limit, remaining: remaining
+                reported: budget.spent.compactMap { ProviderParse.number(spendLimitUsage[$0]) },
+                limit: limit,
+                remaining: budget.remaining.flatMap { ProviderParse.number(spendLimitUsage[$0]) }
             )
             if limit > 0 {
                 lines.append(.progress(
