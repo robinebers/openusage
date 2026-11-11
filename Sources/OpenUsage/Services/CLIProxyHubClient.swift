@@ -98,7 +98,7 @@ struct CLIProxyHubClient: Sendable {
             throw CancellationError()
         } catch {
             AppLog.warn(LogTag.auth("cliproxy"), "\(host) \(path) unreachable: \(error.localizedDescription)")
-            throw ProviderError.unreachable("Can’t reach the CLIProxyAPI hub at \(host).")
+            throw ProviderError.unreachable("Can’t reach the CLIProxyAPI hub at \(host).", offline: (error as? URLError)?.meansOffline == true)
         }
         guard let refusal = HubRefusal(response) else { return response }
         AppLog.error(

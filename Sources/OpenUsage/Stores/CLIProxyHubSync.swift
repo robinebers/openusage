@@ -42,7 +42,7 @@ final class CLIProxyHubSync {
         let logins: [HubLogin]
         do {
             logins = try await client.logins(hubID: hub.id, url: url, key: key)
-        } catch ProviderError.unreachable(let message) {
+        } catch ProviderError.unreachable(let message, _) {
             guard let plain = await client.plainHTTPAddress(of: url) else { throw ProviderError.unreachable(message) }
             throw ProviderError.unavailable("This hub doesn’t use https. Try \(plain.absoluteString).")
         }

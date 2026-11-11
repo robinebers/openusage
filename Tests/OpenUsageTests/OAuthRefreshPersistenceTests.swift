@@ -83,7 +83,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
                 { HTTPResponse(statusCode: 429, headers: ["retry-after": "120"], body: Data()) },
                 { _ in ProviderError.rateLimited(retryAfter: 120).localizedDescription }, .rateLimited(retryAfter: 120)
             ),
-            ({ throw URLError(.notConnectedToInternet) }, { _ in nil }, .unreachable),
+            ({ throw URLError(.notConnectedToInternet) }, { _ in nil }, .offline),
             ({ .json(#"{"token_type":"Bearer"}"#) }, { _ in ProviderError.invalidResponse.localizedDescription }, nil)
         ]
         let renewals: [(kind: ProviderKind, tokenURL: URL)] = [

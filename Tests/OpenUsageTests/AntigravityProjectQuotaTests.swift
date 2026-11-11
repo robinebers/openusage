@@ -71,7 +71,7 @@ final class AntigravityProjectQuotaTests: XCTestCase {
         let failure = await AccountProviderRuntime(account: account, vault: vault, http: http).refresh().failure
 
         XCTAssertEqual(http.requests.filter { $0.url.path == AntigravityUsageClient.quotaSummaryPath }.count, 2)
-        XCTAssertEqual(failure?.kind, .unreachable)
+        XCTAssertEqual(failure?.kind, .offline)
     }
 
     func testBothBasesRateLimitedKeepTheirRetryAfter() async throws {
