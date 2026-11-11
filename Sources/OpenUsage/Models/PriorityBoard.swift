@@ -165,12 +165,14 @@ struct PriorityBoard {
         status: (DashboardAccount) -> ReadStatus = { $0.lines.contains(where: \.data.hasData) ? .current : .waiting }
     ) -> PriorityBoard {
         let lines = accounts.flatMap { account in account.lines.map { (account.provider, $0) } }
-        let items = lines.compactMap { provider, line in
-            PriorityItem.Reason(line, now: now, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt).map {
-                PriorityItem(provider: provider, line: line, reason: $0, isPinned: line.metricIDs.contains(where: pinnedIDs.contains))
+        let readings = lines.map { provider, line in
+            let isPinned = line.metricIDs.contains(where: pinnedIDs.contains)
+            let item = PriorityItem.Reason(line, now: now, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt).map {
+                PriorityItem(provider: provider, line: line, reason: $0, isPinned: isPinned)
             }
+            return (pin: isPinned ? PinnedMetric(provider: provider, line: line, item: item) : nil, item: item)
         }
-        let ranked = items.enumerated().sorted { lhs, rhs in
+        let ranked = readings.compactMap(\.item).enumerated().sorted { lhs, rhs in
             let (left, right) = (lhs.element.reason.rank, rhs.element.reason.rank)
             return (left.tier, left.closeness, lhs.offset) < (right.tier, right.closeness, rhs.offset)
         }.map(\.element)
@@ -198,15 +200,11 @@ struct PriorityBoard {
             .noReportedLimits
         }
         let runningOut = ranked.filter { $0.reason.section == .runningOut }
-        let usedUp = ranked.filter { $0.reason.section == .usedUp }
-        let usedUpIDs = Set(usedUp.map(\.id))
         return PriorityBoard(
-            pinned: lines.filter { $0.1.metricIDs.contains(where: pinnedIDs.contains) && !usedUpIDs.contains($0.1.id) }.map { provider, line in
-                PinnedMetric(provider: provider, line: line, item: ranked.first { $0.id == line.id })
-            },
+            pinned: readings.compactMap(\.pin).filter { $0.item?.reason.section != .usedUp },
             runningOut: runningOut,
             attention: runningOut.filter { !$0.isPinned },
-            usedUp: usedUp,
+            usedUp: ranked.filter { $0.reason.section == .usedUp },
             useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt && !$0.isPinned },
             notices: notices, waiting: waiting, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && runningOut.isEmpty
