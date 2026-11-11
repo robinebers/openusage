@@ -368,6 +368,35 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertFalse(kinds(http).contains("claim"))
     }
 
+    func testSavedResetKindsStayWhenTheFirstGrantsReadAfterALaunchFails() async throws {
+        let clock = TestClock(Self.start)
+        let defaults = isolatedDefaults()
+        let failing = TestSwitch(false)
+        let http = Self.anthropic(grants: {
+            failing.value
+                ? .json("{}", status: 500)
+                : .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#)
+        })
+        let account = Account(kind: .claude, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "token-a", refreshToken: "refresh-a")), for: account.id)
+        func launch() -> (AccountProviderRuntime, WidgetDataStore) {
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+            return (runtime, WidgetDataStore.forTesting([runtime], defaults: defaults, now: { clock.now }))
+        }
+        let (_, firstLaunch) = launch()
+        await firstLaunch.refreshAll()
+
+        failing.value = true
+        clock.set(Self.start.addingTimeInterval(RefreshSetting.interval))
+        let (relaunched, store) = launch()
+        await store.refreshAll()
+
+        let items = relaunched.resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        XCTAssertEqual(items.map(\.kind.title), ["Weekly Reset"], "the saved kinds stay after the read fails")
+        XCTAssertNotNil(store.snapshots[relaunched.provider.id]?.resetGrants, "and are saved again for the next launch")
+    }
+
     func testEachLoginReadsItsOwnGrants() async throws {
         let clock = TestClock(Self.start)
         let http = RoutingHTTPClient { request in

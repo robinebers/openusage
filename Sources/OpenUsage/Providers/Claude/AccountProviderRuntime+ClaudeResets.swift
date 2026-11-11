@@ -1,27 +1,28 @@
 import Foundation
 
 struct ClaudeResetGrantsCheck {
-    var checkedAt: Date
     var status: ClaudeResetGrantStatus?
 }
 
 struct ClaudeResetGrantsState {
+    /// This launch's last answer; a failed read keeps it.
     var check: ClaudeResetGrantsCheck?
-    /// The read underway, which every card on the login waits for instead of sending its own.
-    var reading: Task<Void, Never>?
+    var askedAt: Date?
+    /// The read underway, which every card on the login and Use wait for instead of sending their own.
+    var reading: Task<Void, Error>?
     var claimEpoch = 0
     /// Each grant's claim whose answer never arrived, by grant id, with the request id it was sent under.
     var unsettledClaims: [String: String] = [:]
 
     func isOlder(than age: TimeInterval, at now: Date) -> Bool {
-        check.map { now.timeIntervalSince($0.checkedAt) >= age } ?? true
+        askedAt.map { now.timeIntervalSince($0) >= age } ?? true
     }
 
     /// The grants are read again on the next pass rather than in the refresh right behind the claim, so
     /// the claim's own answer stands until then.
     mutating func settleClaim(grantID: String, outcome: ResetClaimOutcome, resetsLeft: Int?, at now: Date) {
         claimEpoch += 1
-        check?.checkedAt = now.addingTimeInterval(RefreshSetting.interval - RefreshSetting.secondaryReadInterval)
+        askedAt = now.addingTimeInterval(RefreshSetting.interval - RefreshSetting.secondaryReadInterval)
         guard outcome == .success, var status = check?.status,
               let index = status.grants.firstIndex(where: { $0.id == grantID })
         else { return }
@@ -31,28 +32,29 @@ struct ClaudeResetGrantsState {
 }
 
 extension AccountProviderRuntime {
-    /// Reads the login's reset grants. A failure here only costs the row, never the bars. A read that can't
-    /// connect before the first answer, such as a Mac waking with no network, stays due for the next pass.
-    func readClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async {
-        if let reading = session.resetGrants.reading { return await reading.value }
-        let reading = Task { _ = try? await self.checkClaudeResetGrants(session, accessToken: accessToken) }
+    /// Reads the login's reset grants, or waits for the read already underway. A failure only costs the row,
+    /// never the bars. A read that can't connect before the first answer, such as a Mac waking with no
+    /// network, stays due for the next pass.
+    func readClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async throws {
+        if let reading = session.resetGrants.reading { return try await reading.value }
+        let reading = Task { try await self.checkClaudeResetGrants(session, accessToken: accessToken) }
         session.resetGrants.reading = reading
-        await reading.value
-        session.resetGrants.reading = nil
+        defer { session.resetGrants.reading = nil }
+        try await reading.value
     }
 
-    /// Reads the grants and records the answer. Throws what failed, once the failure is recorded.
     private func checkClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async throws {
         let tag = LogTag.plugin("claude")
         let now = self.now()
-        let previous = session.resetGrants.check
+        let answered = session.resetGrants.check != nil
         let epoch = session.resetGrants.claimEpoch
         do {
             let client = ClaudeUsageClient(httpClient: http)
             let response = try await session.send(at: now) { try await client.fetchResetGrants(accessToken: accessToken) }
             let status = try ClaudeUsageMapper.mapResetGrantStatus(response)
             if session.resetGrants.claimEpoch == epoch {
-                session.resetGrants.check = ClaudeResetGrantsCheck(checkedAt: now, status: status)
+                session.resetGrants.check = ClaudeResetGrantsCheck(status: status)
+                session.resetGrants.askedAt = now
             }
             let grants = status?.availableGrants(now: now) ?? []
             AppLog.notice(
@@ -61,12 +63,12 @@ extension AccountProviderRuntime {
             )
         } catch {
             guard !Task.isCancelled, session.resetGrants.claimEpoch == epoch else { throw error }
-            let offlineBeforeAnswer = previous == nil && ResetClaimFailure(error) == .connection
+            let offlineBeforeAnswer = !answered && ResetClaimFailure(error) == .connection
             AppLog.warn(
                 tag,
                 "\(account.cardID) reset grants lookup failed; retrying \(offlineBeforeAnswer ? "on the next pass" : "in an hour"): \(error.localizedDescription)"
             )
-            session.resetGrants.check = offlineBeforeAnswer ? nil : ClaudeResetGrantsCheck(checkedAt: now, status: previous?.status)
+            if !offlineBeforeAnswer { session.resetGrants.askedAt = now }
             throw error
         }
     }
@@ -82,9 +84,8 @@ extension AccountProviderRuntime {
             let credential = try await loadCredential()
             session = claude.session ?? claudeSession(for: credential)
             tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
-            if let reading = session.resetGrants.reading { await reading.value }
             // A reset listed from the saved answer is checked against a fresh one before anything is spent.
-            if session.resetGrants.check == nil { try await checkClaudeResetGrants(session, accessToken: tokens.accessToken) }
+            if session.resetGrants.check == nil { try await readClaudeResetGrants(session, accessToken: tokens.accessToken) }
         } catch {
             AppLog.error(tag, "\(cardID) reset claim: couldn't prepare the claim: \(error.localizedDescription)")
             return .failed(ResetClaimFailure(error))

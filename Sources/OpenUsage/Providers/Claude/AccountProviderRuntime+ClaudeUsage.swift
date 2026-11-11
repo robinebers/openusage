@@ -29,7 +29,7 @@ extension AccountProviderRuntime {
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
         let grantsAge = forced ? RefreshSetting.forcedResetGrantsMinimumAge : RefreshSetting.secondaryReadInterval
         if session.resetGrants.isOlder(than: grantsAge, at: now()) {
-            await readClaudeResetGrants(session, accessToken: tokens.accessToken)
+            try? await readClaudeResetGrants(session, accessToken: tokens.accessToken)
         }
         if session.wait(at: now()) == nil,
            forced || (account.hub != nil && session.planRead.value == nil && session.planRead.isDue(at: now())) {
