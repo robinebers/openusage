@@ -29,7 +29,8 @@ struct ClaudeResetGrantsState {
 extension AccountProviderRuntime {
     /// Reads the login's reset grants, at most once an hour in the secondary-reads slot. Claude Code itself
     /// only asks occasionally, and sending the reset-grants request on every refresh brought sustained 429s
-    /// on the usage endpoint. A failure here only costs the row, never the bars.
+    /// on the usage endpoint. A failure here only costs the row, never the bars. A failure before the first
+    /// answer, such as a Mac waking with no network, leaves the read due, so it is retried on the next pass.
     func readClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async {
         let now = self.now()
         let previous = session.resetGrants.check
@@ -45,9 +46,9 @@ extension AccountProviderRuntime {
             guard !Task.isCancelled, session.resetGrants.claimEpoch == epoch else { return }
             AppLog.warn(
                 LogTag.plugin("claude"),
-                "\(account.cardID) reset grants lookup failed; retrying in an hour: \(error.localizedDescription)"
+                "\(account.cardID) reset grants lookup failed; retrying \(previous == nil ? "on the next pass" : "in an hour"): \(error.localizedDescription)"
             )
-            session.resetGrants.check = ClaudeResetGrantsCheck(checkedAt: now, status: previous?.status)
+            session.resetGrants.check = previous.map { ClaudeResetGrantsCheck(checkedAt: now, status: $0.status) }
         }
     }
 
