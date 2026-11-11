@@ -15,10 +15,8 @@
   **Priority** and a **Notify** switch. The **Will Run Out** notification is now Burning Fast's Notify.
 
 ### Fixed
-- A Claude account's **Limit Resets** shows each reset's kind and **Use** at launch from the last saved
-  answer, and reads the resets again right after usage instead of up to half an hour later, so a
-  CLIProxyAPI hub account that launched while the hub was unreachable names its resets as soon as the
-  hub is back.
+- A Claude account's **Limit Resets** shows each reset's kind and **Use** at launch, and a CLIProxyAPI hub
+  account that launched with the hub unreachable names its resets as soon as the hub is back.
 - A Claude account's **Limit Resets** no longer waits an hour to show each reset's kind and **Use** when
   its first reset read can't connect, such as after the Mac wakes with no network. It keeps the saved
   count and reads again on the next refresh.

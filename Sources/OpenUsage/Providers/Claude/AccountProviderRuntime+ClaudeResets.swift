@@ -82,6 +82,7 @@ extension AccountProviderRuntime {
             let credential = try await loadCredential()
             session = claude.session ?? claudeSession(for: credential)
             tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
+            if let reading = session.resetGrants.reading { await reading.value }
             // A reset listed from the saved answer is checked against a fresh one before anything is spent.
             if session.resetGrants.check == nil { try await checkClaudeResetGrants(session, accessToken: tokens.accessToken) }
         } catch {

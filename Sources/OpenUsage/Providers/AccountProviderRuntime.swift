@@ -460,7 +460,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         let usage = try await refresh(credential)
         var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
         snapshot.lineTitles = usage.lineTitles.isEmpty ? nil : usage.lineTitles
-        snapshot.resetGrants = usage.resetGrants
+        if account.kind == .claude { snapshot.resetGrants = claudeResetGrants(claude.session) }
         HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
         return snapshot
     }

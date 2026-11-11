@@ -31,14 +31,13 @@ extension AccountProviderRuntime {
         if session.resetGrants.isOlder(than: grantsAge, at: now()) {
             await readClaudeResetGrants(session, accessToken: tokens.accessToken)
         }
-        if forced || (account.hub != nil && session.planRead.value == nil && session.planRead.isDue(at: now())) {
+        if session.wait(at: now()) == nil,
+           forced || (account.hub != nil && session.planRead.value == nil && session.planRead.isDue(at: now())) {
             try? await readClaudeProfile(session, tokens: tokens)
         }
         if let resets = claudeResetsLine(session) { lines.append(resets) }
         let plan = session.planRead.value
-        var usage = ProviderUsage(plan: plan, lines: lines, lineTitles: ClaudeUsageMapper.lineTitles(plan: plan))
-        usage.resetGrants = claudeResetGrants(session)
-        return usage
+        return ProviderUsage(plan: plan, lines: lines, lineTitles: ClaudeUsageMapper.lineTitles(plan: plan))
     }
 
     func restoreClaude(_ snapshot: ProviderSnapshot) {
