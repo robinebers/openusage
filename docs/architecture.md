@@ -67,7 +67,7 @@ into data for the views.
 - An account is skipped if its snapshot is less than an interval old or it is in backoff
   (`RefreshBackoff`). Each account has a two-minute deadline.
 - Halfway between passes, `refreshHourlyReads` runs reads a provider must not get in the same burst
-  as usage, such as Claude's plan and reset grants.
+  as usage, such as Claude's plan. Claude's reset grants are read right after usage, at most hourly.
 - ⌘R runs `refreshAll(force: true)`, which skips the cache and redoes the hourly reads.
 
 ## Command line

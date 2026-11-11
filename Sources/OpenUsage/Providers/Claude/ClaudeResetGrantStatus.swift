@@ -1,7 +1,7 @@
 import Foundation
 
-struct ClaudeResetGrantStatus: Equatable, Sendable {
-    struct Grant: Equatable, Sendable {
+struct ClaudeResetGrantStatus: Hashable, Sendable, Codable {
+    struct Grant: Hashable, Sendable, Codable {
         var id: String
         var resetsLeft: Int
         var endsAt: Date?

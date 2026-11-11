@@ -8,6 +8,7 @@ import XCTest
 final class CLIProxyHubTunnelTests: XCTestCase {
     nonisolated private static let hubURL = URL(string: "http://mini.local:8317")!
     nonisolated private static let claudeUsage = #"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#
+    nonisolated private static let claudeGrants = #"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true},{"id":"f","type":"full","gives_back_weekly":true,"clears":["seven_day_overage_included"],"resets_left":1,"ends_at":"2099-02-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#
     nonisolated private static let antigravitySummary = #"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-weekly","remainingFraction":0.75,"resetTime":"2099-01-01T00:00:00Z","window":"weekly"}]}]}"#
     nonisolated private static let devinStatus = #"{"userStatus":{"planStatus":{"planInfo":{"planName":"Max"},"weeklyQuotaRemainingPercent":40}}}"#
     nonisolated private static let grokCredits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2099-01-01T00:00:00Z","end":"2099-01-08T00:00:00Z"},"creditUsagePercent":25}}"#
@@ -189,6 +190,36 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(again.count, 1, "the slot doesn't read the profile again within the hour")
         let next = await runtimes[0].refresh()
         XCTAssertEqual(try next.get().plan, "Ultra")
+    }
+
+    /// Robin's dev app on Nov 11: launched while macOS kept it off the local network, so the hub was
+    /// unreachable for every pass until it was allowed.
+    func testAHubClaudeAccountThatLaunchedWithTheHubDownReadsItsResetKindsOnThePassTheHubComesBack() async throws {
+        let clock = TestClock(Date())
+        let unreachable = TestSwitch(true)
+        let hub = Self.hub { url, _ in
+            (200, url == ClaudeUsageClient.resetGrantsURL.absoluteString ? Self.claudeGrants : Self.claudeUsage, [:])
+        }
+        let http = RoutingHTTPClient { request in
+            if unreachable.value { throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), now: { clock.now })
+        for _ in 0..<3 {
+            await store.refreshAll()
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+            await store.refreshHourlyReads()
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+        }
+        XCTAssertEqual(store.errorMessage(for: runtimes[0].provider.id), "Can’t reach the CLIProxyAPI hub at mini.local:8317.")
+
+        unreachable.value = false
+        await store.refreshAll()
+
+        let items = runtimes[0].resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        XCTAssertEqual(items.map(\.kind.title), ["Weekly Reset", "Fable Reset"], "the first pass after the hub comes back reads the kinds")
+        XCTAssertEqual(items.map(\.usable), [true, true], "and each reset can be used")
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {

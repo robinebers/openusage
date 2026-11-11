@@ -67,7 +67,8 @@ and add it again.
   comes from the reset's own fields, the same way Claude Code reads them. Choose **Use**, then
   **Reset**, to spend the reset you picked. The confirmation says which limits it refills. **Use**
   shows only on a reset Anthropic says can be used now. If Anthropic wants another reset used first,
-  the popover says which, and nothing is spent.
+  the popover says which, and nothing is spent. At launch the kinds and **Use** come from the last
+  saved answer; **Use** checks the reset with Anthropic again before it spends anything.
 
 ## ChatGPT
 
