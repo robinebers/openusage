@@ -129,7 +129,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Pinned")
             ForEach(board.pinned) { pin in
-                limitRow(pin.provider, pin.data, severity: .normal)
+                limitRow(pin.provider, pin.data, severity: pin.item?.reason.severity ?? .normal, callout: pin.item.flatMap(callout))
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { metricMenu(pin.line.metricIDs, pinned: true) }
@@ -142,8 +142,7 @@ struct PriorityBoardList: View {
             sectionLabel("Running Out")
             if board.attention.isEmpty { clearRow }
             ForEach(board.attention) { item in
-                limitRow(item.provider, item.data, severity: item.reason.severity,
-                         callout: item.runOutText(now: now).map { ($0, Theme.severityTextColor(.warning)) })
+                limitRow(item.provider, item.data, severity: item.reason.severity, callout: callout(item))
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { metricMenu(item.line.metricIDs, pinned: item.isPinned) }
@@ -168,8 +167,7 @@ struct PriorityBoardList: View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Use It or Lose It")
             ForEach(board.useItOrLoseIt) { item in
-                limitRow(item.provider, item.data, severity: item.reason.severity,
-                         callout: item.resetsInText(now: now).map { ($0, Theme.severityTextColor(.normal)) })
+                limitRow(item.provider, item.data, severity: item.reason.severity, callout: callout(item))
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .contextMenu { metricMenu(item.line.metricIDs, pinned: item.isPinned) }
@@ -202,6 +200,11 @@ struct PriorityBoardList: View {
         } else {
             label()
         }
+    }
+
+    private func callout(_ item: PriorityItem) -> (text: String, color: Color)? {
+        if let text = item.runOutText(now: now) { return (text, Theme.severityTextColor(.warning)) }
+        return item.resetsInText(now: now).map { ($0, Theme.severityTextColor(.normal)) }
     }
 
     /// `callout` takes the reset's place: when a limit listed only for burning fast runs out, or when one listed to

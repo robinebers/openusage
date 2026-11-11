@@ -12,8 +12,8 @@ How each provider signs in and what its card shows.
 
 | Provider | Sign-in | Card shows |
 |---|---|---|
-| Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Rate Limit Resets |
-| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Rate Limit Resets, Today, Yesterday, Last 30 Days |
+| Claude | Browser (claude.ai OAuth) | Session, Weekly, Sonnet, Fable, Extra Usage, Limit Resets |
+| ChatGPT | Browser (OpenAI OAuth), with a device-code fallback | Session, Weekly, Spark, Spark Weekly, Extra Usage, Credit Limit, Limit Resets, Today, Yesterday, Last 30 Days |
 | Cursor | Browser (cursor.com) | Total Usage, Cursor Models, Other Models, Extra Usage, Grok Bot, Requests, Credits, Today, Yesterday, Last 30 Days |
 | Amp | Device code (Amp) | Agent Usage, Orb Hours, Amp Free, Credits |
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
@@ -23,18 +23,18 @@ How each provider signs in and what its card shows.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Muse Code | Device code (Meta) | Session, Weekly |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
-| OpenCode | API key | Session, Weekly, Monthly |
+| OpenCode | Device code (OpenCode Console) | Session, Weekly, Monthly |
 | OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Key Limit, Budget, Free Requests |
-| Z.ai | API key | Session, Weekly, Web Searches, Rate Limit Resets |
+| Z.ai | API key | Session, Weekly, Web Searches, Limit Resets |
 
 ## What you grant
 
 Each OAuth sign-in asks for the least the card needs. A refresh never asks for more than the sign-in
-did. The token is stored in the app's Keychain.
+did, except Claude's: it asks for today's scopes and falls back to the old ones when Anthropic refuses. The token is stored in the app's Keychain.
 
 | Provider | Scopes requested | Notes |
 |---|---|---|
-| Claude | `user:profile` | The token cannot run inference, create API keys, or reach Claude Code sessions, MCP servers, or uploads. |
+| Claude | `user:profile`, `user:inference` | Anthropic only lets a token with `user:inference` spend a reset, so OpenUsage asks for it. That scope also lets the token run Claude on your plan; OpenUsage never does. The token cannot create API keys or reach Claude Code sessions, MCP servers, or uploads. |
 | ChatGPT | `openid profile email offline_access` | Plain OpenID Connect. The email names the account. |
 | Cursor | none | Cursor's sign-in returns a dashboard session with no scopes. |
 | Amp | none | The same device sign-in the Amp CLI uses. The token lasts five minutes, so OpenUsage renews it before each read. |
@@ -43,14 +43,15 @@ did. The token is stored in the app's Keychain.
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
 | Devin | `openid profile email` | OpenUsage trades the token for the account's API key, the same key Windsurf's editor plugins use. |
 | Grok | `openid email offline_access grok-cli:access` | OpenUsage doesn't ask for `api:access`, which would let the token run Grok models. |
+| OpenCode | none | The same device sign-in the OpenCode CLI uses to connect a Console account, scoped to the workspace you pick. |
 | Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
 
 A narrower grant applies the next time you add an account. To get it for an existing account, remove
-the account and add it again. Claude is the exception: a refreshed Claude token carries only
-`user:profile`.
+the account and add it again.
 
-Spending a Claude reset with a `user:profile`-only sign-in is untested. If Anthropic refuses it, the
-resets popover says so, and you can spend the reset in Claude Code instead.
+A Claude account signed in before OpenUsage asked for `user:inference` keeps reading usage, but
+Anthropic refuses its reset claims with HTTP 401. The resets popover then asks you to remove the account
+and add it again.
 
 ## Claude
 
@@ -62,11 +63,13 @@ resets popover says so, and you can spend the reset in Claude Code instead.
   the account's billing currency. It hides while extra usage is off. On an Enterprise plan, where
   this is the whole monthly bill, the row reads Spend.
 - **Limit Resets** counts the account's rate-limit resets. Click the count to see each one by kind
-  (Session, Weekly, Fable or Full Reset), with its countdown and the time to use it by. The kind
-  comes from the reset's own fields, the same way Claude Code reads them. Choose **Use**, then
+  (Session, Weekly, Fable or Full Reset), with its countdown and the date and time it expires. With 5
+  minutes or less left, the countdown reads Expiring. The kind comes from the reset's own fields, the
+  same way Claude Code reads them. Choose **Use**, then
   **Reset**, to spend the reset you picked. The confirmation says which limits it refills. **Use**
   shows only on a reset Anthropic says can be used now. If Anthropic wants another reset used first,
-  the popover says which, and nothing is spent.
+  the popover says which, and nothing is spent. At launch the kinds and **Use** come from the last
+  saved answer; **Use** checks the reset with Anthropic again before it spends anything.
 
 ## ChatGPT
 
@@ -184,8 +187,14 @@ UTC day, and on ⌘R.
 
 ## OpenCode
 
-- Paste an API key from the [OpenCode console](https://opencode.ai/console).
-- The card shows the session, weekly, and monthly caps, and the plan (Go).
+- Sign in with an OpenCode Console device code, the sign-in the OpenCode CLI uses. Pick the workspace on
+  the page that opens. The account takes your Console email, and each workspace is its own account.
+- The card shows the session, weekly, and monthly caps, and the plan the Console names: Go, Go Plus, or
+  Go Teams. If the plan read fails, the card keeps its caps and shows no plan until the next try an hour
+  later.
+- An account added earlier with an API key keeps reading its caps but shows no plan, since the key can't
+  read it. Its page offers **Sign In Again…**, which switches it to the sign-in and keeps its name, order,
+  and settings.
 
 ## OpenRouter
 

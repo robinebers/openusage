@@ -23,7 +23,11 @@ Usage is read on every refresh. These reads happen at most once an hour, and on 
 
 - The plan name, and Cursor's membership.
 - ChatGPT's reset credits. The count still updates every refresh.
-- Claude's reset grants. ⌘R rereads them only after 15 minutes.
+- Claude's reset grants, read right after usage when they are due. ⌘R rereads them only after 15
+  minutes. A read that can't connect, such as after the Mac wakes with no network, is tried again on
+  the next refresh. The last answer is saved with the usage, so each reset's kind and **Use** show at
+  launch.
+- Z.ai's banked resets. Spending one rereads them at once.
 
 Usage history:
 
@@ -51,7 +55,12 @@ An account that failed waits before the next try:
 
 - 5 minutes, doubling with each failure in a row, up to an hour.
 - One request an hour if its key or sign-in keeps being refused.
-- No extra wait if it never reached the provider, such as with no internet.
+- No extra wait if it never reached the provider, such as when the hub is down or the Mac
+  stays offline.
+- If the Mac had no network path, the account tries again on its own after 2, 4, 8, 16, and 32
+  seconds, and isn't flagged meanwhile. This covers the moment after launch when macOS keeps
+  OpenUsage off the local network, so a [hub](cliproxyapi.md) on it can't be reached yet. If every
+  retry fails, it counts as a failed refresh.
 - A manual refresh skips the wait.
 
 When a provider rate-limits OpenUsage (HTTP 429, or GitHub's HTTP 403), the account waits as long as

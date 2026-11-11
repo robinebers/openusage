@@ -52,7 +52,7 @@ struct DashboardUnifiedRow: View {
 }
 
 /// Every account with the limit, each with its own bar, amount and reset. A used-up account stays red.
-private struct UnifiedLimitDetail: View {
+struct UnifiedLimitDetail: View {
     let line: DashboardLine
 
     var body: some View {
@@ -62,7 +62,7 @@ private struct UnifiedLimitDetail: View {
                     Text(line.data.title)
                         .font(.system(size: 13, weight: .semibold))
                     Spacer(minLength: 0)
-                    Text("\(line.members.count) Accounts")
+                    Text(line.members.count == 1 ? "1 Account" : "\(line.members.count) Accounts")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -84,7 +84,7 @@ private struct UnifiedLimitDetail: View {
 }
 
 /// Each account's resets under its name. Using one claims it on that account.
-private struct UnifiedResetsDetail: View {
+struct UnifiedResetsDetail: View {
     let line: DashboardLine
     let resetClaim: (String) -> ResetClaimService?
     let showsActions: Bool
@@ -102,13 +102,12 @@ private struct UnifiedResetsDetail: View {
                     .concealingAccountName(of: member.provider)
                     .padding(.horizontal, 14)
                     .padding(.top, 12)
-                    .padding(.bottom, -6)
+                    .padding(.bottom, 8)
                 RateLimitResetsDetail(
                     count: member.line.data.resetCreditCount,
                     expiries: member.line.data.expiriesAt,
                     items: service?.items ?? [],
                     showsActions: showsActions,
-                    onHoverChange: { _ in },
                     onPinChange: onPinChange,
                     claim: service.map { service in
                         { item, requestID in await service.claim(item, requestID: requestID) }
@@ -116,6 +115,7 @@ private struct UnifiedResetsDetail: View {
                 )
             }
         }
+        .padding(.bottom, 14)
         .fixedSize(horizontal: false, vertical: true)
     }
 }

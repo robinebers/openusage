@@ -1,8 +1,8 @@
 import Foundation
 
 extension AccountProviderRuntime {
-    /// Reads the banked resets at most once an hour, in the secondary-reads slot. A failure here only
-    /// costs the Limit Resets row, never the meters.
+    /// Reads the banked resets at most once an hour. A failure here only costs the Limit Resets row,
+    /// never the meters.
     func zaiResets(apiKey: String) async -> [ZAIReset]? {
         guard zaiResetsRead.isDue(at: now()) else { return unexpiredZAIResets }
         do {

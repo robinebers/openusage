@@ -10,6 +10,7 @@ final class WidgetDataStore {
     private let defaults: UserDefaults
     private let now: () -> Date
     private let providerRefreshTimeout: TimeInterval
+    private let offlineRetryDelays: [TimeInterval]
 
     private static let meterStyleKey = "meterStyle"
     private static let resetDisplayModeKey = "resetDisplayMode"
@@ -86,6 +87,7 @@ final class WidgetDataStore {
         defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
+        offlineRetryDelays: [TimeInterval] = RefreshSetting.offlineRetryDelays,
     ) {
         precondition(providerRefreshTimeout > 0)
         self.registry = registry
@@ -94,6 +96,7 @@ final class WidgetDataStore {
         self.defaults = defaults
         self.now = now
         self.providerRefreshTimeout = providerRefreshTimeout
+        self.offlineRetryDelays = offlineRetryDelays
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
@@ -112,10 +115,11 @@ final class WidgetDataStore {
 
     func apply(providers: [ProviderRuntime], registry: WidgetRegistry) {
         self.registry = registry
+        let previous = providersByID
         providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         let ids = Set(providersByID.keys)
-        for (id, task) in inFlight where !ids.contains(id) { task.cancel() }
-        inFlight = inFlight.filter { ids.contains($0.key) }
+        for (id, task) in inFlight where providersByID[id] !== previous[id] { task.cancel() }
+        inFlight = inFlight.filter { providersByID[$0.key] === previous[$0.key] }
         let next = snapshots.filter { ids.contains($0.key) }
         let removed = next.count < snapshots.count
         snapshots = next
@@ -183,11 +187,20 @@ final class WidgetDataStore {
             }
         }
         guard let provider = providersByID[providerID] else { return .skipped }
-        if rereadHourly { provider.forgetHourlyReads() }
         let start = ProcessInfo.processInfo.systemUptime
-        let work = Task { [providerRefreshTimeout] in
-            await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { await provider.refresh() }
-                ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(providerRefreshTimeout))s", kind: .refused))
+        let work = Task { [providerRefreshTimeout, offlineRetryDelays] in
+            var retries = offlineRetryDelays[...]
+            while true {
+                if rereadHourly { provider.forgetHourlyReads() }
+                let result = await ProviderRefreshDeadline.run(timeout: providerRefreshTimeout) { () -> Result<ProviderSnapshot, RefreshFailure> in
+                    guard !Task.isCancelled else { return .failure(RefreshFailure(error: CancellationError())) }
+                    return await provider.refresh()
+                }
+                    ?? .failure(RefreshFailure(message: "Refresh timed out after \(Int(providerRefreshTimeout))s", kind: .refused))
+                guard case .failure(let failure) = result, failure.kind == .offline, let delay = retries.popFirst() else { return result }
+                AppLog.warn(.refresh, "\(providerID) offline: \(failure.message) Retrying in \(Int(delay.rounded(.up)))s.")
+                guard (try? await Task.sleep(for: .seconds(delay))) != nil else { return result }
+            }
         }
         inFlight[providerID] = work
         defer { if inFlight[providerID] == work { inFlight[providerID] = nil } }
@@ -269,7 +282,7 @@ final class WidgetDataStore {
         for descriptor in registry.providers.flatMap({ registry.descriptors(for: $0.id) }) {
             let data = data(for: descriptor)
             guard let reset = data.resetsAt,
-                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data)) else { continue }
+                  BurningFast.isBurning(data, now: at, wasBurning: previous.wasBurning(descriptor.id, data, now: at)) else { continue }
             burning[descriptor.id] = reset
         }
         if burning != burningFastWindows { burningFastWindows = burning }

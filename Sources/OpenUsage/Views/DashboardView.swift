@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DashboardView: View {
+    /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
+    /// view tree alive after the first visit so later screen switches don't rebuild those controls.
     @State private var hasVisitedSettings = false
     @Environment(AppContainer.self) private var container
     @Environment(LayoutStore.self) private var layout
@@ -19,8 +21,6 @@ struct DashboardView: View {
     /// the outgoing screen on the slide's first frame and leave it fading in place over the incoming one.
     @State private var settledSlideID = 0
     @State private var dashboardScrollPosition = ScrollPosition(edge: .top)
-    /// Settings is expensive to mount because each menu picker creates an `NSPopUpButton`. Keep its
-    /// view tree alive after the first visit so later screen switches don't rebuild those controls.
     private static let reorderSpace = "popoverReorderSpace"
 
     var body: some View {

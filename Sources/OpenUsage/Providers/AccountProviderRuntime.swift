@@ -83,7 +83,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         let items: [ResetItem]
         switch account.kind {
         case .claude:
-            items = claude.session?.resetGrants.check?.status?.items(now: now()) ?? []
+            items = claudeResetGrants(claude.session)?.items(now: now()) ?? []
         case .codex:
             items = expiries.map { ResetItem(kind: .full, expiresAt: $0, claim: .codexCredit($0)) }
         case .zai:
@@ -350,14 +350,38 @@ final class AccountProviderRuntime: ProviderRuntime {
         return usage
     }
 
+    /// An account added with an API key reads usage alone; the API key can't read the plan.
     private func refreshOpenCode(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let key) = credential else { throw ProviderError.invalidResponse }
-        let response = try await OpenCodeUsageClient(http: http).fetchUsage(apiKey: key)
+        let client = OpenCodeUsageClient(http: http)
+        var signIn: OAuthTokens?
+        let response: HTTPResponse
+        if case .apiKey(let key) = credential {
+            response = try await client.fetchUsage(token: key, orgID: nil)
+        } else {
+            let read = try await authorizedRead(credential, grant: OpenCodeLogin.refresh) { tokens in
+                try await client.fetchUsage(token: tokens.accessToken, orgID: tokens.extras[OpenCodeLogin.orgKey])
+            }
+            signIn = read.tokens
+            response = read.response
+        }
         if response.statusCode == 403, OpenCodeUsageMapper.errorType(in: response) == "EntitlementError" {
             throw ProviderError.unavailable("No OpenCode Go subscription on this account.")
         }
         try ProviderError.requireSuccess(response, kind: .opencodeGo)
-        return ProviderUsage(plan: OpenCodeUsageMapper.plan, lines: try OpenCodeUsageMapper.meterLines(response))
+        let lines = try OpenCodeUsageMapper.meterLines(response)
+        if let signIn, planRead.isDue(at: now()) {
+            var plan: String?
+            do {
+                let status = try await client.fetchGoStatus(accessToken: signIn.accessToken, orgID: signIn.extras[OpenCodeLogin.orgKey])
+                try ProviderError.requireSuccess(status, kind: .opencodeGo)
+                plan = try OpenCodeUsageMapper.plan(goStatus: status.body)
+            } catch {
+                AppLog.warn(LogTag.plugin("opencode"), "plan lookup failed; retrying in an hour: \(error.localizedDescription)")
+            }
+            planRead = SecondaryRead()
+            planRead.record(plan, at: now())
+        }
+        return ProviderUsage(plan: planRead.value, lines: lines)
     }
 
     private func refreshZAI(_ credential: AccountCredential) async throws -> ProviderUsage {
@@ -436,6 +460,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         let usage = try await refresh(credential)
         var snapshot = ProviderSnapshot(provider: provider, plan: usage.plan, lines: usage.lines, notice: usage.notice)
         snapshot.lineTitles = usage.lineTitles.isEmpty ? nil : usage.lineTitles
+        if account.kind == .claude { snapshot.resetGrants = claudeResetGrants(claude.session) }
         HistoryRow.append(to: &snapshot, for: widgetDescriptors, in: usage.history)
         return snapshot
     }

@@ -23,7 +23,7 @@ Removing an account removes its shared values too. Widget data never goes to the
 
 ## Privacy Mode
 
-**Settings → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
 While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
 panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
 off, they leave email addresses out. It is off by default and doesn't hide macOS widgets. A single
@@ -40,14 +40,19 @@ still screenshot (⌘⇧3, ⌘⇧4) can't be detected, so use the copy button to
 - The **app use** ping says the app was active today, with the app and macOS version, which providers
   you have accounts for, and which metrics they have. Metric ids name the provider and metric
   (`claude.session`), never the account. A random install id lets the team count daily users.
-- A **crash report** holds the stack trace of OpenUsage's own code and the app and macOS version. It
-  holds no account details, credentials, or usage values.
+- A **crash report** holds the crash's reason text, the stack trace where it crashed, and the full file
+  paths of the binaries on that stack. These usually include OpenUsage's own path, so when the app runs
+  from inside your home folder (such as `~/Downloads`) a report can include your Mac user folder's name.
+  It also holds the app and macOS version.
 - **Provider account counts** say how many accounts are configured for each provider, split between
   direct accounts and accounts imported from CLIProxyAPI. They use the same random install id as the
-  app use ping and don't report refresh activity. Turn them off in **Settings → Privacy → Help Make
-  OpenUsage Better**. They are on by default for new installs, and existing installs keep their
+  app use ping and don't report refresh activity. Turn them off in **Settings → Advanced → Privacy →
+  Help Make OpenUsage Better**. They are on by default for new installs, and existing installs keep their
   stored choice.
-- Telemetry never includes account names, emails, credentials, usage values, error messages, or file
-  paths.
+- Every event above also carries what the analytics library adds on its own: the Mac model, the screen
+  size and network reachability when known, your language, and your time zone.
+- The app use ping and provider account counts never include account names, emails, credentials, usage
+  values, error messages, or file paths. A crash report's reason text and file paths are sent as they
+  are, so any name in them, such as a folder name, is sent too.
 - OpenUsage never identifies you to the analytics service. The analytics choice and install id are
   stored apart from other settings, so an update never turns analytics back on or changes the id.

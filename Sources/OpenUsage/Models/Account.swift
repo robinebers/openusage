@@ -69,10 +69,9 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
 
     var authMethods: [ProviderAuthMethod] {
         switch self {
-        case .claude, .codex, .cursor, .amp, .antigravity, .devin, .grok, .muse: [.oauth]
+        case .claude, .codex, .cursor, .amp, .antigravity, .devin, .grok, .muse, .opencodeGo: [.oauth]
         case .copilot: [.oauth, .organizationToken]
         case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
-        case .opencodeGo: [.apiKey(keyPage: URL(string: "https://opencode.ai/console")!)]
         case .openrouter: [.apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)]
         case .zai: [.apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)]
         }

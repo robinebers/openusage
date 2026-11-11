@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OpenUsage
 
@@ -157,11 +158,15 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(off.overflow, 0)
     }
 
-    func testAPinnedLimitThatIsRunningOutShowsOnceAsRunningOut() {
-        let strip = content(.upToFive, pinned: ["claude@1.Low", "claude@1.Quiet"], alwaysShows: true,
-                            account(personal, limit("Quiet", used: 10), limit("Low", used: 95)))
-        XCTAssertEqual(strip.items.map(\.shortLabel), ["Quiet", "Low"])
-        XCTAssertEqual(strip.overflow, 0)
+    func testAPinnedLimitThatIsRunningOutShowsOnceUnderPinnedAndStillShowsAsRunningOut() {
+        let accounts = [account(personal, limit("Low", used: 95), limit("Quiet", used: 10), limit("Lower", used: 97))]
+        let pinned: Set<String> = ["claude@1.Low", "claude@1.Quiet"]
+        let always = content(.upToFive, pinned: pinned, alwaysShows: true, accounts[0])
+        XCTAssertEqual(always.items.map(\.shortLabel), ["Low", "Quiet", "Lower"], "Pinned in dashboard order, then Running Out")
+        XCTAssertEqual(always.overflow, 0)
+
+        let off = content(.upToFive, pinned: pinned, accounts[0])
+        XCTAssertEqual(off.items.map(\.shortLabel), ["Lower", "Low"], "off, everything running out, pinned or not, most urgent first")
     }
 
     func testNoAccountsShowTheAppIconEvenWithPins() {
@@ -198,10 +203,23 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertTrue(PriorityIconsPreview.sample(limit: .iconOnly).isEmpty)
     }
 
-    func testThePreviewShrinksAWideStripToFitAndKeepsItsProportions() {
-        let wide = PriorityIconsPreview.fittedSize(of: NSSize(width: 400, height: 24), in: 268)
-        XCTAssertEqual(wide.width, 268)
-        XCTAssertEqual(wide.height, 16.08, accuracy: 0.01)
+    func testThePreviewDrawsTheWholeStripAtOneSizeWhateverTheRowOffers() throws {
+        let settingsRowWidth: CGFloat = 296
+        let store = WidgetDataStore.forTesting([], defaults: isolatedDefaults())
+        for limit in MenuBarLimit.allCases {
+            store.menuBarLimit = limit
+            let inRow = try inkWidth(of: PriorityIconsPreview().environment(store), offered: settingsRowWidth)
+            let wider = try inkWidth(of: PriorityIconsPreview().environment(store), offered: settingsRowWidth + 60)
+            XCTAssertEqual(inRow, wider, "\(limit) is sized by the row it sits in")
+            XCTAssertLessThan(inRow, settingsRowWidth, "\(limit) doesn't fit its Settings row")
+        }
+    }
+
+    private func inkWidth(of view: some View, offered width: CGFloat) throws -> CGFloat {
+        let renderer = ImageRenderer(content: view)
+        renderer.proposedSize = ProposedViewSize(width: width, height: nil)
+        let image = try XCTUnwrap(renderer.cgImage)
+        return try XCTUnwrap(MenuBarStripRenderer.visibleBounds(of: image)).width / renderer.scale
     }
 
     func testTheShortLabelDropsATrailingGenericWordWhenAWordRemains() {

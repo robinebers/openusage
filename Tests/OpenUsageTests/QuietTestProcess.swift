@@ -101,11 +101,11 @@ class QuietWindowTestCase: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        if !QuietTestProcess.focusTestsRequested { QuietTestProcess.startSampling() }
+        if !QuietTestProcess.focusTestsRequested { MainActor.assumeIsolated { QuietTestProcess.startSampling() } }
     }
 
     override func tearDown() {
-        if !QuietTestProcess.focusTestsRequested, let taken = QuietTestProcess.stopSampling() {
+        if !QuietTestProcess.focusTestsRequested, let taken = MainActor.assumeIsolated({ QuietTestProcess.stopSampling() }) {
             XCTFail("the test \(taken), which takes the keyboard from whoever is typing")
         }
         super.tearDown()

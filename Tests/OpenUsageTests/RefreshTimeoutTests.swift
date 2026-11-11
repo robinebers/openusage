@@ -8,7 +8,7 @@ final class RefreshTimeoutTests: XCTestCase {
     func testHungProviderRefreshFailsAndStopsTheSpinner() async throws {
         let (provider, descriptor) = makeProvider()
         let runtime = HangingProviderRuntime(provider: provider, descriptors: [descriptor])
-        let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, timeout: 0.05)
+        let store = makeStore(runtime: runtime, timeout: 0.05)
 
         let outcome = await store.refresh(providerID: provider.id, force: true)
 
@@ -32,7 +32,7 @@ final class RefreshTimeoutTests: XCTestCase {
                 lines: [.progress(label: "Session", used: 42, limit: 100, format: .percent)]
             )
         )
-        let store = makeStore(provider: provider, descriptor: descriptor, runtime: runtime, timeout: 0.05)
+        let store = makeStore(runtime: runtime, timeout: 0.05)
 
         let outcome = await store.refresh(providerID: provider.id, force: true)
 
@@ -124,12 +124,7 @@ final class RefreshTimeoutTests: XCTestCase {
         return (provider, descriptor)
     }
 
-    private func makeStore(
-        provider: Provider,
-        descriptor: WidgetDescriptor,
-        runtime: ProviderRuntime,
-        timeout: TimeInterval
-    ) -> WidgetDataStore {
+    private func makeStore(runtime: ProviderRuntime, timeout: TimeInterval) -> WidgetDataStore {
         let defaults = isolatedDefaults()
         return WidgetDataStore.forTesting([runtime], defaults: defaults, providerRefreshTimeout: timeout)
     }

@@ -144,7 +144,9 @@ extension WidgetDataStore {
         cache: ProviderSnapshotCache? = nil,
         defaults: UserDefaults,
         now: @escaping () -> Date = Date.init,
-        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout
+        providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
+        // None by default: their waits are real time and would outlive the test, so an offline failure counts at once.
+        offlineRetryDelays: [TimeInterval] = []
     ) -> WidgetDataStore {
         WidgetDataStore(
             registry: registry ?? .from(runtimes),
@@ -152,7 +154,8 @@ extension WidgetDataStore {
             cache: cache ?? ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots"),
             defaults: defaults,
             now: now,
-            providerRefreshTimeout: providerRefreshTimeout
+            providerRefreshTimeout: providerRefreshTimeout,
+            offlineRetryDelays: offlineRetryDelays
         )
     }
 }

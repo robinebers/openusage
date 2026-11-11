@@ -19,15 +19,11 @@ final class CLIProxyHubSync {
     @ObservationIgnored private let accounts: AccountStore
     @ObservationIgnored private let client: CLIProxyHubClient
     @ObservationIgnored private let isEnabled: Bool
-    @ObservationIgnored private let now: () -> Date
 
-    init(
-        accounts: AccountStore, client: CLIProxyHubClient, isEnabled: Bool = CLIProxyHub.isEnabled, now: @escaping () -> Date = Date.init
-    ) {
+    init(accounts: AccountStore, client: CLIProxyHubClient, isEnabled: Bool = CLIProxyHub.isEnabled) {
         self.accounts = accounts
         self.client = client
         self.isEnabled = isEnabled
-        self.now = now
     }
 
     func status(of hubID: UUID) -> Status { isEnabled ? statuses[hubID] ?? .checking : .failed(CLIProxyHub.offMessage) }
@@ -46,7 +42,7 @@ final class CLIProxyHubSync {
         let logins: [HubLogin]
         do {
             logins = try await client.logins(hubID: hub.id, url: url, key: key)
-        } catch ProviderError.unreachable(let message) {
+        } catch ProviderError.unreachable(let message, _) {
             guard let plain = await client.plainHTTPAddress(of: url) else { throw ProviderError.unreachable(message) }
             throw ProviderError.unavailable("This hub doesn’t use https. Try \(plain.absoluteString).")
         }
@@ -78,7 +74,7 @@ final class CLIProxyHubSync {
     /// Re-reads every hub not read within `maxAge`.
     func syncDue(maxAge: TimeInterval = RefreshSetting.secondaryReadInterval) async {
         guard isEnabled else { return }
-        let due = accounts.hubs.filter { hub in syncedAt[hub.id].map { now().timeIntervalSince($0) >= maxAge } ?? true }
+        let due = accounts.hubs.filter { hub in syncedAt[hub.id].map { Date().timeIntervalSince($0) >= maxAge } ?? true }
         await withTaskGroup(of: Void.self) { group in
             for hub in due { group.addTask { await self.sync(hub.id) } }
         }
@@ -94,7 +90,7 @@ final class CLIProxyHubSync {
 
     private func read(_ hubID: UUID) async {
         guard let hub = accounts.hubs.first(where: { $0.id == hubID }) else { return }
-        syncedAt[hubID] = now()
+        syncedAt[hubID] = Date()
         do {
             let key = try accounts.hubKeys.key(for: hubID, at: hub.url)
             record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hubID)
@@ -114,7 +110,7 @@ final class CLIProxyHubSync {
             statuses[hubID] = .failed(error.localizedDescription)
             return
         }
-        syncedAt[hubID] = now()
+        syncedAt[hubID] = Date()
         statuses[hubID] = .synced(unsupported: logins.count(where: \.isUnsupported))
     }
 }

@@ -110,8 +110,6 @@ struct UsageHistory: Hashable, Sendable {
     let asOf: Date
     /// Keyed by day start; a day that is absent was not read.
     var days: [Date: UsageDay] = [:]
-    /// A supplementary report can fail on dates the primary history read successfully.
-    var unreadDatesByMeasure: [UsageMeasure: Set<Date>] = [:]
     /// A window's totals as the provider reported them; each measure they report wins over the sum of days.
     var reported: [UsageWindow: UsageTotals] = [:]
 
@@ -142,10 +140,9 @@ struct UsageHistory: Hashable, Sendable {
     }
 
     /// Sources record a successfully read date even when the provider had no activity to report.
-    func unreadDays(in window: UsageWindow, including measure: UsageMeasure?) -> Int {
+    func unreadDays(in window: UsageWindow) -> Int {
         guard reported[window] == nil, let offsets = window.dayOffsets else { return 0 }
-        let extra = measure.flatMap { unreadDatesByMeasure[$0] } ?? []
-        return Self.dayStarts(offsets, now: asOf, calendar: calendar).count { days[$0] == nil || extra.contains($0) }
+        return Self.dayStarts(offsets, now: asOf, calendar: calendar).count { days[$0] == nil }
     }
 
     private func days(in window: UsageWindow) -> [UsageDay] {
@@ -248,7 +245,7 @@ struct UsageBreakdown: Codable, Hashable, Sendable {
         }
         let figures: [ModelFigure] = (dollars == nil ? [] : [.cost]) + (hasTokens ? [.tokens] : [])
         let available: [ModelFigure] = figures.isEmpty && share != nil ? [.share] : figures
-        unreadDays = history.unreadDays(in: window, including: figures.isEmpty ? share : nil)
+        unreadDays = history.unreadDays(in: window)
         rankings = Dictionary(uniqueKeysWithValues: available.map { ($0, Self.rank(everyModel, by: $0)) })
     }
 

@@ -118,7 +118,7 @@ enum CopilotUsageMapper {
         return dayOnlyFormatter.date(from: raw)
     }
 
-    private nonisolated(unsafe) static let dayOnlyFormatter: DateFormatter = {
+    private static let dayOnlyFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")

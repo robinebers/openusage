@@ -36,8 +36,7 @@ struct ZAIUsageClient: Sendable {
                 "Accept": "application/json",
                 "Content-Type": "application/json"
             ],
-            body: try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
-            timeout: 15
+            body: try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         ))
     }
 
@@ -48,8 +47,7 @@ struct ZAIUsageClient: Sendable {
             headers: [
                 "Authorization": "Bearer \(apiKey)",
                 "Accept": "application/json"
-            ],
-            timeout: 15
+            ]
         ))
     }
 }

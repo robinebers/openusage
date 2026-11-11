@@ -11,7 +11,7 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         (.copilot, .oauth(OAuthTokens(accessToken: "token"))),
         (.devin, .oauth(OAuthTokens(accessToken: "key"))),
         (.ollama, .apiKey("key")),
-        (.opencodeGo, .apiKey("key")),
+        (.opencodeGo, .oauth(OAuthTokens(accessToken: "token"))),
         (.openrouter, .apiKey("key")),
         (.zai, .apiKey("key"))
     ]

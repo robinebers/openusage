@@ -1,23 +1,28 @@
 import Foundation
 
 struct ClaudeResetGrantsCheck {
-    var checkedAt: Date
     var status: ClaudeResetGrantStatus?
 }
 
 struct ClaudeResetGrantsState {
+    /// This launch's last answer; a failed read keeps it.
     var check: ClaudeResetGrantsCheck?
+    var askedAt: Date?
+    /// The read underway, which every card on the login and Use wait for instead of sending their own.
+    var reading: Task<Void, Error>?
     var claimEpoch = 0
     /// Each grant's claim whose answer never arrived, by grant id, with the request id it was sent under.
     var unsettledClaims: [String: String] = [:]
 
     func isOlder(than age: TimeInterval, at now: Date) -> Bool {
-        check.map { now.timeIntervalSince($0.checkedAt) >= age } ?? true
+        askedAt.map { now.timeIntervalSince($0) >= age } ?? true
     }
 
-    mutating func settleClaim(grantID: String, outcome: ResetClaimOutcome, resetsLeft: Int?) {
+    /// The grants are read again on the next pass rather than in the refresh right behind the claim, so
+    /// the claim's own answer stands until then.
+    mutating func settleClaim(grantID: String, outcome: ResetClaimOutcome, resetsLeft: Int?, at now: Date) {
         claimEpoch += 1
-        check?.checkedAt = .distantPast
+        askedAt = now.addingTimeInterval(RefreshSetting.interval - RefreshSetting.secondaryReadInterval)
         guard outcome == .success, var status = check?.status,
               let index = status.grants.firstIndex(where: { $0.id == grantID })
         else { return }
@@ -27,27 +32,44 @@ struct ClaudeResetGrantsState {
 }
 
 extension AccountProviderRuntime {
-    /// Reads the login's reset grants, at most once an hour in the secondary-reads slot. Claude Code itself
-    /// only asks occasionally, and sending the reset-grants request on every refresh brought sustained 429s
-    /// on the usage endpoint. A failure here only costs the row, never the bars.
-    func readClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async {
+    /// Reads the login's reset grants, or waits for the read already underway. A failure only costs the row,
+    /// never the bars. A read that can't connect before the first answer, such as a Mac waking with no
+    /// network, stays due for the next pass.
+    func readClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async throws {
+        if let reading = session.resetGrants.reading { return try await reading.value }
+        let reading = Task { try await self.checkClaudeResetGrants(session, accessToken: accessToken) }
+        session.resetGrants.reading = reading
+        defer { session.resetGrants.reading = nil }
+        try await reading.value
+    }
+
+    private func checkClaudeResetGrants(_ session: ClaudeSession, accessToken: String) async throws {
+        let tag = LogTag.plugin("claude")
         let now = self.now()
-        let previous = session.resetGrants.check
+        let answered = session.resetGrants.check != nil
         let epoch = session.resetGrants.claimEpoch
         do {
             let client = ClaudeUsageClient(httpClient: http)
             let response = try await session.send(at: now) { try await client.fetchResetGrants(accessToken: accessToken) }
             let status = try ClaudeUsageMapper.mapResetGrantStatus(response)
             if session.resetGrants.claimEpoch == epoch {
-                session.resetGrants.check = ClaudeResetGrantsCheck(checkedAt: now, status: status)
+                session.resetGrants.check = ClaudeResetGrantsCheck(status: status)
+                session.resetGrants.askedAt = now
             }
-        } catch {
-            guard !Task.isCancelled, session.resetGrants.claimEpoch == epoch else { return }
-            AppLog.warn(
-                LogTag.plugin("claude"),
-                "\(account.cardID) reset grants lookup failed; retrying in an hour: \(error.localizedDescription)"
+            let grants = status?.availableGrants(now: now) ?? []
+            AppLog.notice(
+                tag,
+                "\(account.cardID) reset grants read: \(grants.count) grants, \(grants.reduce(0) { $0 + $1.resetsLeft }) resets left, \(grants.count(where: \.usableNow)) usable now"
             )
-            session.resetGrants.check = ClaudeResetGrantsCheck(checkedAt: now, status: previous?.status)
+        } catch {
+            guard !Task.isCancelled, session.resetGrants.claimEpoch == epoch else { throw error }
+            let offlineBeforeAnswer = !answered && ResetClaimFailure(error) == .connection
+            AppLog.warn(
+                tag,
+                "\(account.cardID) reset grants lookup failed; retrying \(offlineBeforeAnswer ? "on the next pass" : "in an hour"): \(error.localizedDescription)"
+            )
+            if !offlineBeforeAnswer { session.resetGrants.askedAt = now }
+            throw error
         }
     }
 
@@ -56,9 +78,19 @@ extension AccountProviderRuntime {
     func claimClaudeResetGrant(_ grantID: String, redeemRequestID: String) async -> ResetClaimOutcome {
         let tag = LogTag.plugin("claude")
         let cardID = account.cardID
-        guard let session = claude.session, let status = session.resetGrants.check?.status,
-              let chosen = status.claimableGrant(grantID)
-        else {
+        let session: ClaudeSession
+        let tokens: OAuthTokens
+        do {
+            let credential = try await loadCredential()
+            session = claude.session ?? claudeSession(for: credential)
+            tokens = try await freshTokens(credential, grant: ClaudeLogin.refresh)
+            // A reset listed from the saved answer is checked against a fresh one before anything is spent.
+            if session.resetGrants.check == nil { try await readClaudeResetGrants(session, accessToken: tokens.accessToken) }
+        } catch {
+            AppLog.error(tag, "\(cardID) reset claim: couldn't prepare the claim: \(error.localizedDescription)")
+            return .failed(ResetClaimFailure(error))
+        }
+        guard let status = session.resetGrants.check?.status, let chosen = status.claimableGrant(grantID) else {
             AppLog.warn(tag, "\(cardID) reset claim: the chosen grant has no reset left in the last reset-grants check")
             return .noCredit
         }
@@ -70,10 +102,8 @@ extension AccountProviderRuntime {
             return .failed(.refused)
         }
 
-        let tokens: OAuthTokens
         let organizationUUID: String
         do {
-            tokens = try await freshTokens(try await loadCredential(), grant: ClaudeLogin.refresh)
             if session.organizationUUID == nil { try await readClaudeProfile(session, tokens: tokens) }
             guard let uuid = session.organizationUUID else { throw ProviderError.invalidResponse }
             organizationUUID = uuid
@@ -103,7 +133,10 @@ extension AccountProviderRuntime {
             session.resetGrants.unsettledClaims[grantID] = requestID
         }
         let next = status.nextGrantID.flatMap { id in status.grants.first { $0.id == id } }?.kind
-        let outcome = ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
+        // A renewable sign-in was already renewed and retried, so a 401 that survives is a scope refusal.
+        let outcome: ResetClaimOutcome = response.statusCode == 401 && tokens.refreshToken != nil
+            ? .failed(.notPermitted)
+            : ClaudeUsageMapper.resetClaimOutcome(from: response, next: next == chosen.kind ? nil : next)
         if outcome == .success {
             AppLog.info(tag, "\(cardID) reset claim: claimed (HTTP \(response.statusCode))")
         } else {
@@ -112,7 +145,7 @@ extension AccountProviderRuntime {
         switch outcome {
         case .success, .unconfirmed, .noCredit, .notNextReset:
             let resetsLeft = ProviderParse.number(body?["resets_left"]).flatMap { ProviderParse.int($0.rounded(.down)) }
-            session.resetGrants.settleClaim(grantID: grantID, outcome: outcome, resetsLeft: resetsLeft)
+            session.resetGrants.settleClaim(grantID: grantID, outcome: outcome, resetsLeft: resetsLeft, at: now())
         case .nothingToReset, .unavailableNow, .failed:
             break
         }

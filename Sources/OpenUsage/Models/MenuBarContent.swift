@@ -32,7 +32,7 @@ enum MenuBarContentBuilder {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
         let counted = alwaysShows
             ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt).map { ($0.provider, $0.line) }
-            : board.attention.map { ($0.provider, $0.line) }
+            : board.runningOut.map { ($0.provider, $0.line) }
         let usedUp = alwaysShows ? board.usedUp.map { ($0.provider, $0.line) } : []
         let shown = (counted + usedUp).prefix(limit.count).map { provider, line in
             let label = line.data.title

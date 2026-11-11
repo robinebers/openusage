@@ -99,6 +99,40 @@ final class CursorTeamPoolTests: XCTestCase {
         XCTAssertNotNil(mapped.lines.first { $0.label == "Credits" })
     }
 
+    func testExtraUsageReadsItsSpendFromTheSameBudgetAsItsLimit() throws {
+        func onDemand(_ spend: [String: Any]) throws -> (used: Double, limit: Double, title: String?) {
+            let mapped = try CursorUsageMapper.mapUsage(
+                usage: ["enabled": true, "planUsage": ["totalPercentUsed": 10], "spendLimitUsage": spend],
+                planName: "Team", creditGrants: nil, stripeBalanceCents: 0
+            )
+            guard case .progress(_, let used, let limit, _, _, _) = mapped.lines.first(where: { $0.label == "On-demand" }) else {
+                throw NSError(domain: "no On-demand row", code: 0)
+            }
+            return (used, limit, mapped.lineTitles["On-demand"])
+        }
+
+        let personal = try onDemand([
+            "individualLimit": 10000, "individualUsed": 0, "individualRemaining": 10000,
+            "pooledLimit": 50000, "pooledUsed": 12000, "pooledRemaining": 38000, "totalSpend": 12000, "limitType": "user"
+        ])
+        XCTAssertEqual(personal.used, 0, "the member spent nothing of their own cap, whatever the team pool spent")
+        XCTAssertEqual(personal.limit, 100)
+        XCTAssertNil(personal.title)
+
+        let pool = try onDemand([
+            "pooledLimit": 50000, "pooledUsed": 12000, "pooledRemaining": 38000, "individualUsed": 3400, "limitType": "team"
+        ])
+        XCTAssertEqual(pool.used, 120, "the pool's spend, not one member's")
+        XCTAssertEqual(pool.limit, 500)
+        XCTAssertEqual(pool.title, "Team Spend")
+
+        let inferred = try onDemand(["individualLimit": 10000, "individualRemaining": 7500, "pooledUsed": 12000, "totalSpend": 12000])
+        XCTAssertEqual(inferred.used, 25, "spend falls back to the same budget's limit minus what's left")
+
+        let ownTotal = try onDemand(["individualLimit": 5000, "individualUsed": 0, "individualRemaining": 4500, "totalSpend": 1200])
+        XCTAssertEqual(ownTotal.used, 12, "a personal cap with no team pool still takes totalSpend when individualUsed reads 0")
+    }
+
     private func map(_ plan: [String: Any]) throws -> ProviderUsage {
         try CursorUsageMapper.mapUsage(
             usage: [

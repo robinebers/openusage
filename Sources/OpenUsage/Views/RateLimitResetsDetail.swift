@@ -11,7 +11,6 @@ struct RateLimitResetsDetail: View {
     let expiries: [Date]
     var items: [ResetItem] = []
     var showsActions = false
-    var onHoverChange: (Bool) -> Void
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ item: ResetItem, _ requestID: String) async -> ResetClaimOutcome)?
 
@@ -53,18 +52,12 @@ struct RateLimitResetsDetail: View {
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
         .frame(width: Self.width)
         // Report the ideal (content-hugging) height as the fixed size, so collapsing the confirm card
         // back to a node shrinks the popover again — without this, NSPopover keeps the largest
         // height it has ever measured (it grows on Use but never scales back on Cancel).
         .fixedSize(horizontal: false, vertical: true)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: onHoverChange(true)
-            case .ended: onHoverChange(false)
-            }
-        }
         .onChange(of: items) { _, newValue in
             itemsVersion += 1
             claimed = [:]
@@ -177,7 +170,7 @@ struct RateLimitResetsDetail: View {
         }
     }
 
-    /// A node is two lines: the kind and countdown, then the use-by time. The dot sits on the first line.
+    /// A node is two lines: the kind and countdown, then the expiry. The dot sits on the first line.
     private let nodeTopPadding: CGFloat = 5
     private let firstLineHeight: CGFloat = 20
     private var firstLineCenterY: CGFloat { nodeTopPadding + firstLineHeight / 2 }
@@ -197,7 +190,7 @@ struct RateLimitResetsDetail: View {
                         trailing(entry)
                     }
                     .frame(height: firstLineHeight)
-                    Text(entry.useBy)
+                    Text(entry.expiry)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -208,7 +201,7 @@ struct RateLimitResetsDetail: View {
             } else {
                 // The expiries alone, until the provider's list says what each reset is.
                 HStack(spacing: 8) {
-                    Text(entry.useBy)
+                    Text(entry.expiry)
                         .font(.callout)
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -237,8 +230,8 @@ struct RateLimitResetsDetail: View {
                     .disabled(blocked)
                     .hoverTooltip(blocked ? "Nothing to reset right now" : nil)
                     .transition(.opacity)
-            } else if let countdown = entry.countdown {
-                Text(countdown)
+            } else {
+                Text(entry.countdown ?? "Expiring")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()

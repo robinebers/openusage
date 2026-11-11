@@ -79,7 +79,7 @@ final class ZeroBalanceAndExtraUsageTests: XCTestCase {
         XCTAssertNil(off)
 
         let on = await shownRow(.grok, try lines(#","onDemandCap":{"val":2500}"#), key: "payAsYouGo")
-        XCTAssertEqual(on?.unboundedDetail, "2500 cap")
+        XCTAssertEqual(on?.unboundedDetail, "$25 cap")
     }
 
     func testDevinExtraUsageShowsAReportedZeroBalanceAndHidesWhenWindsurfReportsNone() async throws {

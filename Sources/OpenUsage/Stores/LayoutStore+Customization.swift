@@ -75,7 +75,7 @@ extension LayoutStore {
         next.remove(at: from)
         guard let adjusted = next.firstIndex(of: target) else { return nil }
         let insert = from < to ? adjusted + 1 : adjusted
-        next.insert(dragged, at: min(insert, next.count))
+        next.insert(dragged, at: insert)
         return next
     }
 }

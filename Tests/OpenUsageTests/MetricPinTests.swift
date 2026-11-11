@@ -67,8 +67,10 @@ final class MetricPinTests: QuietWindowTestCase {
 
         XCTAssertTrue(layout.setMetric("cursor.usage", pinned: true))
         let allPinned = data.priorityBoard(in: layout.displayGroups, pinned: layout.state.priorityPinIDs, now: Date())
-        XCTAssertEqual(allPinned.attention.map(\.id), ["cursor.usage"], "a pinned limit that is running out is listed under Running Out")
-        XCTAssertEqual(allPinned.pinned.map(\.id), ["codex.weekly", "claude.weekly", "claude.session"], "and only there")
+        XCTAssertEqual(allPinned.pinned.map(\.id), ["codex.weekly", "claude.weekly", "claude.session", "cursor.usage"],
+                       "a pinned limit that is running out stays under Pinned")
+        XCTAssertTrue(allPinned.attention.isEmpty, "and only there")
+        XCTAssertEqual(allPinned.usedUp.map(\.id), ["codex.session"])
         XCTAssertFalse(allPinned.showsClearRow)
     }
 

@@ -4,10 +4,8 @@ import XCTest
 final class MeterSeverityTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private func percentData(used: Double, limit: Double? = 100,
-                             displayMode: WidgetDisplayMode = .used) -> WidgetData {
-        WidgetData(title: "Session", kind: .percent,
-                   used: used, limit: limit, displayMode: displayMode)
+    private func percentData(used: Double, limit: Double? = 100) -> WidgetData {
+        WidgetData(title: "Session", kind: .percent, used: used, limit: limit)
     }
 
     func testTheBandsUseRoundedPercentagesLeft() {

@@ -5,7 +5,7 @@ description: Cut a release of OpenUsage (Swift menu-bar app): pick a version, ge
 
 # Release Swift
 
-Pushing a `v*` tag on `main` runs `.github/workflows/release.yml`, which builds, signs, notarizes, attaches `OpenUsage-<version>.dmg` to the GitHub Release, and updates the Sparkle `appcast.xml` on `gh-pages`. CI creates the release with an EMPTY body, so this skill generates the changelog, records it in `CHANGELOG.md`, and publishes the notes onto the release.
+Pushing a `v*` tag on `main` runs `.github/workflows/release.yml`, which builds, signs, notarizes, attaches `OpenUsage-<version>.dmg` to the GitHub Release, and updates the Sparkle `appcast.xml` on `gh-pages`. This skill generates the changelog and creates the GitHub Release as a draft with those notes before it pushes the tag. CI reads the notes from that release for Sparkle's update window, then publishes the same release with the DMG.
 
 ## Channels
 
@@ -47,36 +47,31 @@ Output the changelog in a code block (template below) for review.
 
 Wait for explicit approval of the changelog before changing any files. Accept edits if offered.
 
-### 4. Record it in CHANGELOG.md
+### 4. Create the draft release with the notes
 
-Prepend the approved section right after the `# Changelog` header. Commit on `main`:
-
-Name the section exactly `## v{version}` and commit it before tagging: `release.yml` embeds it as the notes in Sparkle's update window and fails the release when it is missing or empty. The Test Build uses `## v{base_version}`, or `## Unreleased` until that exists.
+Save the approved changelog to `/tmp/notes-v{version}.md` and create the release as a draft before tagging. Add `--prerelease` for a beta:
 
 ```sh
-git switch main && git pull
-git add CHANGELOG.md && git commit -m "docs: changelog for v{version}"
+gh release create v{version} --draft --target main --title "OpenUsage {version}" --notes-file /tmp/notes-v{version}.md
 ```
+
+`release.yml` reads this release's body as the notes in Sparkle's update window, before it builds anything, and fails the release when the release is missing or its body is empty. When it attaches the DMG, it publishes this draft instead of creating a new release. If you abandon the version, delete the draft before you push the tag. Once the tag is pushed, cancel the Release run and confirm it stopped (`gh run view <run-id>`) before you edit or delete the draft, or CI can publish a release with blank notes.
 
 ### 5. Tag and push
 
 ```sh
+git switch main && git pull
 git tag -a v{version} -m "v{version}"
-git push origin main
 git push origin v{version}
 ```
 
-### 6. Publish the notes
-
-CI creates the release with an empty body, so attach the approved notes after it finishes:
+### 6. Watch the run
 
 ```sh
 gh run watch
-gh release view v{version} >/dev/null 2>&1   # confirm CI created the release
-gh release edit v{version} --notes-file /tmp/notes-v{version}.md
 ```
 
-Never leave a release blank.
+CI publishes the draft with the DMG attached. If the run fails, the draft stays a draft: fix the cause and rerun the Release workflow for the tag.
 
 ### 7. Verify (never leave a draft)
 

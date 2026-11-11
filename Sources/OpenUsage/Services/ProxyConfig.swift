@@ -73,7 +73,7 @@ struct ProxyConfig: Equatable, Sendable {
 
     var proxyConfiguration: ProxyConfiguration {
         let endpoint = NWEndpoint.hostPort(host: .init(host), port: .init(rawValue: port)!)
-        var configuration = switch scheme {
+        let configuration = switch scheme {
         case .socks5: ProxyConfiguration(socksv5Proxy: endpoint)
         case .http: ProxyConfiguration(httpCONNECTProxy: endpoint)
         case .https: ProxyConfiguration(httpCONNECTProxy: endpoint, tlsOptions: NWProtocolTLS.Options())

@@ -1,10 +1,10 @@
 import Foundation
 
 enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
-    /// The two levels keep their old raw values, so a saved switch stays on or off through the renames.
+    /// These keep their old raw values, so a saved switch stays on or off through the renames.
     case critical = "underTenPercent"
     case warning = "healthyToClose"
-    case closeToRunningOut
+    case burningFast = "closeToRunningOut"
     case useItOrLoseIt
 }
 
@@ -12,7 +12,7 @@ extension PaceMilestone {
     var settingKey: String { "openusage.notifications.\(rawValue)" }
 
     /// The two levels follow what's left, the same rule as Priority. Only this one follows the pace.
-    var isPace: Bool { self == .closeToRunningOut }
+    var isPace: Bool { self == .burningFast }
 
     var isLevel: Bool { self == .critical || self == .warning }
 
@@ -20,7 +20,7 @@ extension PaceMilestone {
         switch self {
         case .critical: return "Critical"
         case .warning: return "Warning"
-        case .closeToRunningOut: return "Will Run Out"
+        case .burningFast: return "Burning Fast"
         case .useItOrLoseIt: return "Use It or Lose It"
         }
     }
@@ -29,7 +29,7 @@ extension PaceMilestone {
         switch self {
         case .critical: return "\(limits.critical)% or less left for this window."
         case .warning: return "\(limits.warning)% or less left for this window."
-        case .closeToRunningOut: return "May run out before the limit resets."
+        case .burningFast: return "May run out before the limit resets."
         case .useItOrLoseIt: return "Over 50% left, resets in under 24 hours."
         }
     }
@@ -72,9 +72,10 @@ enum PaceNotificationLogic {
         severity: WidgetData.MeterSeverity,
         resetsAt: Date?,
         unusedNearReset: Bool,
-        previous: NotificationState
+        previous: NotificationState,
+        now: Date
     ) -> Transition {
-        var next = carriedOver(previous, resetsAt: resetsAt)
+        var next = carriedOver(previous, resetsAt: resetsAt, now: now)
         let currentBucket = bucket(for: state)
 
         if state == .noData {
@@ -96,9 +97,9 @@ enum PaceNotificationLogic {
 
         if currentBucket != .untracked {
             let previousBucket = next.previousBucket
-            if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.closeToRunningOut) }
+            if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.burningFast) }
             // Re-arms only once the pace eases to 90% of the limit, where Priority stops listing it as burning fast.
-            if currentBucket == .healthy { next.firedMilestones.remove(.closeToRunningOut) }
+            if currentBucket == .healthy { next.firedMilestones.remove(.burningFast) }
             next.previousBucket = currentBucket
         }
 
@@ -113,9 +114,9 @@ enum PaceNotificationLogic {
         return Transition(fire: fire, newState: next)
     }
 
-    static func carriedOver(_ previous: NotificationState, resetsAt: Date?) -> NotificationState {
+    static func carriedOver(_ previous: NotificationState, resetsAt: Date?, now: Date) -> NotificationState {
         var next = previous
-        if resetWindowAdvanced(resetsAt: resetsAt, previousReset: previous.resetsAt) {
+        if resetWindowAdvanced(resetsAt: resetsAt, previousReset: previous.resetsAt, now: now) {
             next.firedMilestones = []
             next.previousSeverity = .normal
             next.previousBucket = .untracked
@@ -137,9 +138,11 @@ enum PaceNotificationLogic {
 
     static let resetWindowJitterTolerance: TimeInterval = 1
 
-    static func resetWindowAdvanced(resetsAt: Date?, previousReset: Date?) -> Bool {
+    /// A new window starts only once the old reset has passed. A reset that moves forward before then, like
+    /// OpenCode's rolling Session, is the same window.
+    static func resetWindowAdvanced(resetsAt: Date?, previousReset: Date?, now: Date) -> Bool {
         guard let resetsAt else { return false }
         guard let previousReset else { return true }
-        return resetsAt.timeIntervalSince(previousReset) > resetWindowJitterTolerance
+        return previousReset <= now && resetsAt.timeIntervalSince(previousReset) > resetWindowJitterTolerance
     }
 }

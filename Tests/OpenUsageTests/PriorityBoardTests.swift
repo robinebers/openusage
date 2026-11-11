@@ -202,7 +202,7 @@ final class PriorityBoardTests: XCTestCase {
         XCTAssertFalse(PriorityBoard.make(accounts: [account(work, healthy)], now: now).hasRows)
     }
 
-    func testAPinnedMetricRunningOutOrUsedUpIsListedOnlyThereUntilItIsNot() {
+    func testAPinnedMetricRunningOutStaysPinnedAndOnlyAUsedUpOneMovesToUsedUp() {
         let pins: Set<String> = ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"]
         func pinnedBoard(sessionUsed: Double, monthlyUsed: Double) -> PriorityBoard {
             PriorityBoard.make(accounts: [account(personal,
@@ -213,23 +213,21 @@ final class PriorityBoardTests: XCTestCase {
         }
 
         let runningOut = pinnedBoard(sessionUsed: 95, monthlyUsed: 100)
-        XCTAssertEqual(ids(runningOut.attention), ["claude@1.Session"])
-        XCTAssertEqual(runningOut.attention.map(\.isPinned), [true], "its menu offers Unpin")
-        XCTAssertEqual(ids(runningOut.usedUp), ["claude@1.Monthly"])
-        XCTAssertEqual(runningOut.usedUp.map(\.isPinned), [true], "so does a used-up pin's")
-        XCTAssertEqual(runningOut.pinned.map(\.id), ["claude@1.Weekly"])
-        XCTAssertFalse(runningOut.showsClearRow)
+        XCTAssertEqual(runningOut.pinned.map(\.id), ["claude@1.Session", "claude@1.Weekly"], "pinned beats running out")
+        XCTAssertEqual(runningOut.pinned.map { $0.item?.reason.severity }, [.critical, nil], "its ring keeps the warning")
+        XCTAssertTrue(runningOut.attention.isEmpty, "listed once")
+        XCTAssertEqual(ids(runningOut.runningOut), ["claude@1.Session"], "still running out for the menu bar")
+        XCTAssertEqual(ids(runningOut.usedUp), ["claude@1.Monthly"], "a used-up pin moves to Used Up")
+        XCTAssertEqual(runningOut.usedUp.map(\.isPinned), [true], "its menu offers Unpin")
+        XCTAssertFalse(runningOut.showsClearRow, "a pin running out isn't all clear")
+        XCTAssertEqual(runningOut.summary, .listed)
 
         let recovered = pinnedBoard(sessionUsed: 20, monthlyUsed: 0)
         XCTAssertTrue(recovered.attention.isEmpty)
         XCTAssertTrue(recovered.usedUp.isEmpty)
         XCTAssertEqual(recovered.pinned.map(\.id), ["claude@1.Session", "claude@1.Weekly", "claude@1.Monthly"],
                        "back under Pinned in dashboard order")
-
-        let allRunningOut = PriorityBoard.make(accounts: [account(personal, paced("Session", used: 95, left: hour))],
-                                               pinned: ["claude@1.Session"], now: now)
-        XCTAssertTrue(allRunningOut.pinned.isEmpty, "no Pinned section while every pin is running out")
-        XCTAssertEqual(ids(allRunningOut.attention), ["claude@1.Session"])
+        XCTAssertTrue(recovered.showsClearRow)
     }
 
     func testABalanceWithAnythingLeftIsNotListed() throws {

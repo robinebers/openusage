@@ -135,7 +135,7 @@ vtool -set-build-version macos "$MIN_SYSTEM_VERSION" 26.0 -replace -output "$APP
 mv "$APP_BINARY.tmp" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 # Stage every SwiftPM resource bundle produced by the build (the app's own
-# OpenUsage_OpenUsage.bundle, which carries the provider SVGs + model manifest)
+# OpenUsage_OpenUsage.bundle, which carries the provider SVGs)
 # into Contents/Resources, the standard app layout. Bundle.openUsageResources
 # (see Support/ResourceBundle.swift) loads it from there.
 shopt -s nullglob

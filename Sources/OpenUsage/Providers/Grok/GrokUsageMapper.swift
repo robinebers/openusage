@@ -15,7 +15,8 @@ enum GrokUsageMapper {
             lines.append(.percent("Weekly limit", used, resetsAt: config.periodEnd, periodMs: config.periodDurationMs))
         }
         if config.onDemandCap > 0 {
-            lines.append(.badge(label: "Pay as you go", text: "\(formatUnits(config.onDemandCap)) cap"))
+            let cap = MetricFormatter.number(ProviderParse.centsToDollars(config.onDemandCap), kind: .dollars, style: .row)
+            lines.append(.badge(label: "Pay as you go", text: "\(cap) cap"))
         }
         return ProviderUsage(lines: lines)
     }
@@ -29,12 +30,5 @@ enum GrokUsageMapper {
         }
         let trimmed = plan.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private static func formatUnits(_ value: Double) -> String {
-        if value.rounded() == value {
-            return String(Int(value))
-        }
-        return String(value)
     }
 }

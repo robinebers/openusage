@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import OpenUsage
 
@@ -117,8 +118,8 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         let low = family([("AM1", [("weekly", limit("Weekly", left: 10, resetsIn: day))]),
                           ("AM2", [("weekly", limit("Weekly", left: 20, resetsIn: day))])])
         let board = PriorityBoard.make(accounts: low.accounts, pinned: ["claude@2.weekly"], now: now)
-        XCTAssertEqual(board.attention.map(\.id), ["claude.unified.weekly"])
-        XCTAssertTrue(board.attention[0].isPinned, "pinning one account's copy pins the unified limit")
+        XCTAssertEqual(board.pinned.map(\.id), ["claude.unified.weekly"], "pinning one account's copy pins the unified limit")
+        XCTAssertTrue(board.attention.isEmpty)
 
         let strip = MenuBarContentBuilder.build(board: board, limit: .upToThree)
         XCTAssertEqual(strip.items.map(\.value), ["15%"])
@@ -145,6 +146,49 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         let unified = family([("AM1", [("weekly", weekly)]), ("AM2", [("weekly", weekly)])], waiting: ["claude@2"])
         XCTAssertEqual(line("weekly", in: unified).members.map(\.provider.id), ["claude@1"])
         XCTAssertEqual(line("weekly", in: unified).metricIDs, ["claude@1.weekly", "claude@2.weekly"])
+    }
+
+    func testALimitOnlyOneAccountReportsHeadsItsAccountListOneAccount() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
+        let weekly = limit("Weekly", left: 40, resetsIn: day)
+        let fable = limit("Fable", left: 80, resetsIn: day)
+        let unified = family([("AM1", [("weekly", weekly), ("fable", fable)]), ("AM2", [("weekly", weekly)])])
+        func texts(in element: Any) -> [String] {
+            guard let node = element as? NSObject else { return [] }
+            let text = node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.staticText.rawValue
+                ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
+            return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
+        }
+        for (key, heading) in [("fable", "1 Account"), ("weekly", "2 Accounts")] {
+            let (window, host) = show(UnifiedLimitDetail(line: line(key, in: unified)))
+            defer { window.close() }
+            try await waitUntil { texts(in: host).contains(heading) }
+            XCTAssertTrue(texts(in: host).contains(heading), "\(key) is headed \(texts(in: host))")
+        }
+    }
+
+    func testEachAccountsResetsFollowThePreviousAccountsAsOneList() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
+        func frames(in element: Any) -> [(text: String, frame: CGRect)] {
+            guard let node = element as? NSObject else { return [] }
+            let text = node.value(forKey: "accessibilityLabel") as? String ?? node.value(forKey: "accessibilityValue") as? String
+            let own = text.flatMap { text in (node.value(forKey: "accessibilityFrame") as? CGRect).map { (text, $0) } }
+            return [own].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(frames)
+        }
+        let resets = line("resets", in: robins)
+        XCTAssertEqual(resets.members.map(\.provider.accountName), ["Personal", "AM1", "AM2"])
+        let (window, host) = show(UnifiedResetsDetail(line: resets, resetClaim: { _ in nil }, showsActions: false, onPinChange: { _ in }))
+        defer { window.close() }
+        try await waitUntil { frames(in: host).contains { $0.text == "AM2" } }
+        let shown = frames(in: host)
+        for (lastRow, account) in [("Reset 4", "AM1"), ("Reset 1", "AM2")] {
+            // Screen coordinates: the row above a name has the larger y.
+            let header = try XCTUnwrap(shown.first { $0.text == account }?.frame, "\(account) keeps its name")
+            let above = try XCTUnwrap(shown.filter { $0.text.hasPrefix(lastRow) && $0.frame.minY > header.maxY }.map(\.frame).min { $0.minY < $1.minY })
+            XCTAssertLessThanOrEqual(above.minY - header.maxY, 14, "\(account) sits right under the account before it")
+        }
     }
 
     func testCappedAndUncappedSpendingAddUpPerCurrencyAndKeepEveryAccount() {

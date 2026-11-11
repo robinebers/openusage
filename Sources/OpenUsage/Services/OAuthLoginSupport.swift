@@ -58,11 +58,14 @@ struct OAuthTokenResponse: Decodable {
     let refreshToken: String?
     let expiresIn: Double?
     let idToken: String?
+    /// The workspace an OpenCode Console sign-in is scoped to.
+    let orgID: String?
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case expiresIn = "expires_in"
         case idToken = "id_token"
+        case orgID = "org_id"
     }
     var expiry: Date? { expiresIn.map { Date().addingTimeInterval($0) } }
 
@@ -92,7 +95,7 @@ extension OAuthTokenResponse {
     }
 
     /// RFC 6749 sends `error` as a string; OpenAI also sends `error.code` or a top-level `code`.
-    private static func errorCode(_ body: Data) -> String? {
+    static func errorCode(_ body: Data) -> String? {
         let json = ProviderParse.jsonObject(body)
         let error = json?["error"]
         return error as? String ?? (error as? [String: Any])?["code"] as? String ?? json?["code"] as? String

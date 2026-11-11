@@ -25,7 +25,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
-        let snapshot = try await runtime.refresh().get()
+        _ = try await runtime.refresh().get()
 
         let tokenRequest = try XCTUnwrap(http.requests.first { $0.url.host() == "oauth2.googleapis.com" })
         XCTAssertEqual(String(decoding: tokenRequest.body ?? Data(), as: UTF8.self),
@@ -83,7 +83,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
                 { HTTPResponse(statusCode: 429, headers: ["retry-after": "120"], body: Data()) },
                 { _ in ProviderError.rateLimited(retryAfter: 120).localizedDescription }, .rateLimited(retryAfter: 120)
             ),
-            ({ throw URLError(.notConnectedToInternet) }, { _ in nil }, .unreachable),
+            ({ throw URLError(.notConnectedToInternet) }, { _ in nil }, .offline),
             ({ .json(#"{"token_type":"Bearer"}"#) }, { _ in ProviderError.invalidResponse.localizedDescription }, nil)
         ]
         let renewals: [(kind: ProviderKind, tokenURL: URL)] = [

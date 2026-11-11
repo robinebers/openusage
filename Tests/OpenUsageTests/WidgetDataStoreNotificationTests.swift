@@ -81,14 +81,15 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         _ store: WidgetDataStore,
         runtime: StubRuntime,
         used: Double? = nil,
-        resetsAt: Date? = nil
+        resetsAt: Date? = nil,
+        now: Date? = nil
     ) async {
         if let used {
             let next = snapshot(used: used, resetsAt: resetsAt)
             runtime.answer = { _ in .success(next) }
         }
         await store.refreshAll(force: true)
-        await notify(base)
+        await notify(now ?? base)
     }
 
     func testTwoAccountsOfOneProviderNameThemselvesInTheSubtitle() async {
@@ -152,7 +153,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertEqual(recorder.posts.count, 1)
     }
 
-    func testCloseToRunningOutFiresThroughTheStore() async {
+    func testBurningFastFiresThroughTheStore() async {
         let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
@@ -162,6 +163,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
+        XCTAssertTrue(recorder.posts.contains { $0.1 == "Burning Fast" })
+        XCTAssertEqual(PaceMilestone.burningFast.settingKey, "openusage.notifications.closeToRunningOut", "a saved switch keeps its key through the rename")
         XCTAssertTrue(recorder.posts.contains { $0.3 == "May run out before the limit resets." })
         XCTAssertTrue(recorder.posts.contains { $0.2 == "Cursor Session" })
     }
@@ -181,11 +184,39 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertEqual(recorder.posts.filter { $0.0 == "test.closeToRunningOut" }.count, 1)
     }
 
+    func testAResetThatMovesForwardBeforeItPassesDoesNotRefireThroughTheStore() async {
+        let settings = isolatedDefaults()
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
+        await evaluate(store, runtime: runtime)
+        await evaluate(store, runtime: runtime, used: 75)
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"])
+
+        await evaluate(store, runtime: runtime, used: 75, resetsAt: resetsAt.addingTimeInterval(600))
+
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"], "a rolling reset that moves forward is the same window")
+    }
+
+    func testAResetThatMovesForwardAfterItPassedStartsANewWindowThroughTheStore() async {
+        let settings = isolatedDefaults()
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
+        await evaluate(store, runtime: runtime)
+        await evaluate(store, runtime: runtime, used: 75)
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"])
+
+        await evaluate(store, runtime: runtime, used: 75, resetsAt: resetsAt.addingTimeInterval(week), now: resetsAt.addingTimeInterval(60))
+
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning", "Warning"])
+    }
+
     func testAllTogglesOffSuppressesAllPosts() async {
         let settings = isolatedDefaults()
         settings.set(false, forKey: PaceMilestone.critical.settingKey)
         settings.set(false, forKey: PaceMilestone.warning.settingKey)
-        settings.set(false, forKey: PaceMilestone.closeToRunningOut.settingKey)
+        settings.set(false, forKey: PaceMilestone.burningFast.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
@@ -195,7 +226,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     func testAnOffTriggerDoesNotConsumeTheEdge() async {
         let settings = isolatedDefaults()
-        settings.set(true, forKey: PaceMilestone.closeToRunningOut.settingKey)
+        settings.set(true, forKey: PaceMilestone.burningFast.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)

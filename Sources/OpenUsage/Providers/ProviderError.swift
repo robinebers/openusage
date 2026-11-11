@@ -8,8 +8,9 @@ enum ProviderError: Error, LocalizedError, Equatable {
     case rateLimited(retryAfter: TimeInterval?)
     case unavailable(String)
     case keyRejected(String)
-    /// A server between OpenUsage and the provider, such as a CLIProxyAPI hub, can't be reached.
-    case unreachable(String)
+    /// A server between OpenUsage and the provider, such as a CLIProxyAPI hub, can't be reached. `offline`
+    /// when the request never left this Mac. See `URLError.meansOffline`.
+    case unreachable(String, offline: Bool = false)
 
     var errorDescription: String? {
         switch self {
@@ -20,7 +21,7 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .rateLimited: "The provider asked OpenUsage to wait before asking again."
         case .unavailable(let message): message
         case .keyRejected(let message): "\(message) Replace it on the account's page."
-        case .unreachable(let message): message
+        case .unreachable(let message, _): message
         }
     }
 
@@ -48,4 +49,10 @@ enum ProviderError: Error, LocalizedError, Equatable {
     static func failed(_ response: HTTPResponse, now: Date = Date()) -> ProviderError {
         isRateLimit(response) ? .rateLimited(retryAfter: response.retryAfter(now: now)) : .requestFailed(response.statusCode)
     }
+}
+
+extension URLError {
+    /// This Mac had no network path for the request, so it never reached a server. Right after launch,
+    /// macOS answers a local-network address this way until it lets OpenUsage onto the local network.
+    var meansOffline: Bool { code == .notConnectedToInternet || code == .networkConnectionLost }
 }

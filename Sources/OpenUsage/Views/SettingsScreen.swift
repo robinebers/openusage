@@ -16,7 +16,7 @@ struct SettingsScreen: View {
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
     @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
     @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
-    @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
+    @AppStorage(PaceMilestone.burningFast.settingKey) private var burningFastAlert = false
     @AppStorage(PaceMilestone.useItOrLoseIt.settingKey) private var useItOrLoseIt = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
@@ -50,7 +50,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if criticalAlert || warningAlert || closeToRunningOut || useItOrLoseIt { checkNotificationPermission() }
+                if criticalAlert || warningAlert || burningFastAlert || useItOrLoseIt { checkNotificationPermission() }
             }
         }
     }
@@ -148,7 +148,7 @@ struct SettingsScreen: View {
             alertRow("Critical", info: "When a limit turns critically low", priority: nil, notify: $criticalAlert) {
                 severityDot(.critical)
             }
-            alertRow("Burning Fast", info: "Will run out before it resets", priority: $dataStore.showsBurningFast, notify: $closeToRunningOut) {
+            alertRow("Burning Fast", info: "Will run out before it resets", priority: $dataStore.showsBurningFast, notify: $burningFastAlert) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.severityColor(.warning))
@@ -306,12 +306,12 @@ struct SettingsScreen: View {
 }
 
 /// Sample icons at the number the setting picks, so every choice looks different whatever is running
-/// out right now. Shrunk to sit in a row however many it holds.
+/// out right now. Drawn live at one scale that fits the most it can hold in a row.
 struct PriorityIconsPreview: View {
     @Environment(WidgetDataStore.self) private var dataStore
 
     private static let height: CGFloat = 30
-    private static let largestScale: CGFloat = 0.85
+    private static let scale: CGFloat = 0.8
     private static let samples: [(kind: ProviderKind, badge: String?, label: String, value: String)] = [
         (.claude, "P", "Weekly", "38%"), (.claude, "A1", "Session", "26%"), (.codex, nil, "Weekly", "31%"),
         (.cursor, nil, "Extra", "$310"), (.antigravity, nil, "Gemini", "12%"), (.grok, nil, "Weekly", "9%"),
@@ -332,24 +332,21 @@ struct PriorityIconsPreview: View {
         return MenuBarContent(items: shown, overflow: samples.count - shown.count)
     }
 
-    static func fittedSize(of strip: NSSize, in width: CGFloat) -> NSSize {
-        let scale = min(largestScale, width / strip.width)
-        return NSSize(width: strip.width * scale, height: strip.height * scale)
-    }
-
     var body: some View {
         let content = Self.sample(limit: dataStore.menuBarLimit)
-        let strip = MenuBarStripRenderer.image(for: content) ?? MenuBarStripRenderer.appIcon
-        GeometryReader { proxy in
-            let size = Self.fittedSize(of: strip.size, in: proxy.size.width)
-            Image(nsImage: strip)
-                .renderingMode(.template)
-                .resizable()
-                .frame(width: size.width, height: size.height)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(height: Self.height)
-        .accessibilityLabel("Menu Bar Preview")
+        Color.primary
+            .frame(height: Self.height)
+            .mask {
+                Group {
+                    if content.isEmpty {
+                        Image(nsImage: MenuBarStripRenderer.appIcon)
+                    } else {
+                        MenuBarTextStrip(content: content)
+                    }
+                }
+                .scaleEffect(Self.scale)
+            }
+            .accessibilityLabel("Menu Bar Preview")
     }
 }
 

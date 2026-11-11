@@ -6,13 +6,15 @@ struct ClaudeAccountState {
     var forcedReadsPending = false
     var restoredPlan: String?
     var restoredResets: MetricLine?
+    var restoredGrants: ClaudeResetGrantStatus?
 }
 
 extension AccountProviderRuntime {
     /// One usage read per pass, shared with any other card on the same login and never sent inside its
-    /// 429 window. The profile and the reset grants are read in the secondary-reads slot instead, apart
-    /// from it: Anthropic answers a grants read sent right after a usage read with a 429. A hub account
-    /// reads its profile with its first usage read, so it shows its plan as soon as it appears.
+    /// 429 window. The reset grants are read right behind it whenever they're due, as claude.ai's usage
+    /// page reads them with usage: at most once an hour, and on ⌘R once the last read is 15 minutes old,
+    /// since Anthropic answers frequent grants reads with 429s. The profile is read in the secondary-reads
+    /// slot; a hub account reads it with its first usage read, so it shows its plan as soon as it appears.
     func refreshClaude(_ credential: AccountCredential) async throws -> ProviderUsage {
         let session = claudeSession(for: credential)
         let forced = claude.forcedReadsPending
@@ -25,12 +27,12 @@ extension AccountProviderRuntime {
             return try await isCheckingNewSignIn ? session.send(at: now(), request) : session.usage(at: now(), request)
         }
         var lines = try ClaudeUsageMapper.mapUsageResponse(response)
-        if forced {
-            if session.resetGrants.isOlder(than: RefreshSetting.forcedResetGrantsMinimumAge, at: now()) {
-                await readClaudeResetGrants(session, accessToken: tokens.accessToken)
-            }
-            try? await readClaudeProfile(session, tokens: tokens)
-        } else if account.hub != nil, session.planRead.value == nil, session.planRead.isDue(at: now()) {
+        let grantsAge = forced ? RefreshSetting.forcedResetGrantsMinimumAge : RefreshSetting.secondaryReadInterval
+        if session.resetGrants.isOlder(than: grantsAge, at: now()) {
+            try? await readClaudeResetGrants(session, accessToken: tokens.accessToken)
+        }
+        if session.wait(at: now()) == nil,
+           forced || (account.hub != nil && session.planRead.value == nil && session.planRead.isDue(at: now())) {
             try? await readClaudeProfile(session, tokens: tokens)
         }
         if let resets = claudeResetsLine(session) { lines.append(resets) }
@@ -41,25 +43,36 @@ extension AccountProviderRuntime {
     func restoreClaude(_ snapshot: ProviderSnapshot) {
         claude.restoredPlan = snapshot.plan
         claude.restoredResets = snapshot.line(label: ClaudeResetGrantStatus.lineLabel)
+        claude.restoredGrants = snapshot.resetGrants
     }
 
+    /// Reads the plan once an hour, apart from the usage read. Every reason a due read doesn't go out is
+    /// logged, so a plan that never arrives can be traced.
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? {
         guard account.kind == .claude else { return nil }
+        let tag = LogTag.plugin("claude")
         let launched = claude.session == nil ? try? await loadCredential() : nil
-        guard let session = claude.session ?? launched.map({ claudeSession(for: $0) }) else { return nil }
-        let profileDue = session.planRead.isDue(at: now())
-        let grantsDue = session.resetGrants.isOlder(than: RefreshSetting.secondaryReadInterval, at: now())
-        guard profileDue || grantsDue, session.wait(at: now()) == nil,
-              let tokens = try? await freshTokens(try await loadCredential(), grant: ClaudeLogin.refresh)
-        else { return nil }
-        if profileDue { try? await readClaudeProfile(session, tokens: tokens) }
-        if grantsDue { await readClaudeResetGrants(session, accessToken: tokens.accessToken) }
+        guard let session = claude.session ?? launched.map({ claudeSession(for: $0) }) else {
+            AppLog.notice(tag, "\(account.cardID) hourly plan read skipped: no stored sign-in")
+            return nil
+        }
+        guard session.planRead.isDue(at: now()) else { return nil }
+        if let wait = session.wait(at: now()) {
+            AppLog.notice(tag, "\(account.cardID) hourly plan read skipped: Claude asked to wait \(Int(wait))s")
+            return nil
+        }
+        let tokens: OAuthTokens
+        do {
+            tokens = try await freshTokens(try await loadCredential(), grant: ClaudeLogin.refresh)
+        } catch {
+            AppLog.notice(tag, "\(account.cardID) hourly plan read skipped: \(error.localizedDescription)")
+            return nil
+        }
+        try? await readClaudeProfile(session, tokens: tokens)
         var updated = snapshot
         updated.plan = session.planRead.value
         let titles = ClaudeUsageMapper.lineTitles(plan: updated.plan)
         updated.lineTitles = titles.isEmpty ? nil : titles
-        updated.lines.removeAll { $0.label == ClaudeResetGrantStatus.lineLabel }
-        if let resets = claudeResetsLine(session) { updated.lines.append(resets) }
         return updated == snapshot ? nil : updated
     }
 
@@ -86,7 +99,7 @@ extension AccountProviderRuntime {
         }
     }
 
-    private func claudeSession(for credential: AccountCredential) -> ClaudeSession {
+    func claudeSession(for credential: AccountCredential) -> ClaudeSession {
         let session = claude.sessions.session(for: credential.identity ?? "card:\(account.cardID)")
         if session.planRead.value == nil, let plan = claude.restoredPlan {
             session.planRead.record(plan, at: now())
@@ -99,5 +112,11 @@ extension AccountProviderRuntime {
     private func claudeResetsLine(_ session: ClaudeSession) -> MetricLine? {
         guard let check = session.resetGrants.check else { return claude.restoredResets }
         return check.status?.line(now: now())
+    }
+
+    /// The login's last grants answer, or the saved one until this launch reads its own.
+    func claudeResetGrants(_ session: ClaudeSession?) -> ClaudeResetGrantStatus? {
+        guard let check = session?.resetGrants.check else { return claude.restoredGrants }
+        return check.status
     }
 }

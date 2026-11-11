@@ -1,33 +1,32 @@
 import XCTest
 @testable import OpenUsage
 
-/// Anthropic budgets its usage endpoint per account and answers a reset-grants read sent right after a
-/// usage read with a 429, so a pass reads plain usage only, the profile and the grants come in the
+/// Anthropic budgets its usage endpoint per account and answers frequent reset-grants reads with 429s, so
+/// a pass reads the grants right behind usage at most once an hour, the profile comes in the
 /// secondary-reads slot, a 429 holds every request to the login until its window ends (across a relaunch
-/// too), and two cards for one login share one usage read.
+/// too), and two cards for one login share one usage read and one grants read.
 @MainActor
 final class ClaudeRequestCadenceTests: XCTestCase {
     private nonisolated static let start = OpenUsageISO8601.date(from: "2026-10-09T12:00:00.000Z")!
     private nonisolated static let orgUUID = "6a9f1c2e-1b4d-4c3a-9e8f-0123456789ab"
 
-    func testTheLaunchPassSendsOneRequestAndTheSlotReadsTheProfileAndGrants() async throws {
+    func testTheLaunchPassReadsUsageAndGrantsAndTheSlotReadsTheProfile() async throws {
         let clock = TestClock(Self.start)
         let http = Self.anthropic()
         let runtime = try makeRuntime(http: http, clock: clock)
         let store = WidgetDataStore.forTesting([runtime], defaults: isolatedDefaults(), now: { clock.now })
 
         await store.refreshAll()
-        XCTAssertEqual(kinds(http), ["usage"])
+        XCTAssertEqual(kinds(http), ["usage", "grants"])
+        XCTAssertEqual(resetsAvailable(store.snapshots[runtime.provider.id]?.lines ?? []), 1, "the launch pass shows the grants")
 
         clock.set(Self.start.addingTimeInterval(RefreshSetting.interval / 2))
         await store.refreshHourlyReads()
-        XCTAssertEqual(kinds(http), ["usage", "profile", "grants"])
-        let snapshot = try XCTUnwrap(store.snapshots[runtime.provider.id])
-        XCTAssertEqual(snapshot.plan, "Max")
-        XCTAssertEqual(resetsAvailable(snapshot.lines), 1, "the row updates in the slot, not a pass later")
+        XCTAssertEqual(kinds(http), ["usage", "grants", "profile"])
+        XCTAssertEqual(store.snapshots[runtime.provider.id]?.plan, "Max")
     }
 
-    func testTheSlotReadsTheProfileAndGrantsHourly() async throws {
+    func testTheGrantsAndTheProfileAreReadHourly() async throws {
         let clock = TestClock(Self.start)
         let http = Self.anthropic()
         let runtime = try makeRuntime(http: http, clock: clock)
@@ -38,14 +37,14 @@ final class ClaudeRequestCadenceTests: XCTestCase {
             clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
             _ = await runtime.refreshHourlyReads(of: snapshot)
         }
-        XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants"])
+        XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["grants", "profile"])
 
         clock.set(Self.start.addingTimeInterval(RefreshSetting.interval / 2 + RefreshSetting.secondaryReadInterval))
         _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
-        XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["profile", "grants", "profile", "grants"])
+        XCTAssertEqual(kinds(http).filter { $0 != "usage" }, ["grants", "profile", "grants", "profile"])
     }
 
-    func testTheFirstSlotAfterALaunchFromTheCacheReadsTheProfileAndGrants() async throws {
+    func testALaunchFromTheCacheReadsThePlanInTheFirstSlotAndTheGrantsWithTheNextUsageRead() async throws {
         let clock = TestClock(Self.start)
         let http = Self.anthropic()
         let runtime = try makeRuntime(http: http, clock: clock)
@@ -53,8 +52,9 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         runtime.restore(cached)
 
         _ = await runtime.refreshHourlyReads(of: cached)
-
-        XCTAssertEqual(kinds(http), ["profile", "grants"], "a launch served from the cache still reads the plan and grants in the first slot")
+        XCTAssertEqual(kinds(http), ["profile"], "a launch served from the cache still reads the plan in the first slot")
+        _ = await runtime.refresh()
+        XCTAssertEqual(kinds(http), ["profile", "usage", "grants"])
     }
 
     func testASlotWithNothingDueLeavesTheKeychainAlone() async throws {
@@ -112,11 +112,11 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         let http = Self.anthropic(grants: { HTTPResponse(statusCode: 429, headers: ["retry-after": "3000"], body: Data()) })
         let runtime = try makeRuntime(http: http, clock: clock)
 
-        _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
+        _ = try await runtime.refresh().get()
         clock.set(Self.start.addingTimeInterval(RefreshSetting.interval))
         let gated = await runtime.refresh()
 
-        XCTAssertEqual(kinds(http), ["usage", "profile", "grants"])
+        XCTAssertEqual(kinds(http), ["usage", "grants"])
         XCTAssertEqual(gated.failure?.kind, .rateLimited(retryAfter: 3000 - RefreshSetting.interval))
     }
 
@@ -148,7 +148,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         )
     }
 
-    func testTwoCardsForOneLoginSendOneUsageRequest() async throws {
+    func testTwoCardsForOneLoginSendOneUsageRequestAndOneGrantsRequest() async throws {
         let clock = TestClock(Self.start)
         let http = RoutingHTTPClient { request in
             try await Task.sleep(for: .milliseconds(100))
@@ -165,7 +165,8 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
         await store.refreshAll()
 
-        XCTAssertEqual(http.requests.count, 1)
+        XCTAssertEqual(http.requests.filter { !$0.isClaudeResetGrantsCheck }.count, 1)
+        XCTAssertEqual(http.requests.filter(\.isClaudeResetGrantsCheck).count, 1, "the second card waits for the first card's grants read")
         for runtime in runtimes {
             XCTAssertEqual(store.snapshots[runtime.provider.id]?.line(label: "Session"), .percent("Session", 42, resetsAt: Self.farFuture, periodMs: MetricPeriod.sessionMs))
         }
@@ -202,7 +203,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
         clock.set(Self.start.addingTimeInterval(5 * 60))
         await store.refreshAll(force: true)
-        XCTAssertEqual(kinds(http), ["usage", "profile", "grants", "usage", "profile"])
+        XCTAssertEqual(kinds(http), ["usage", "grants", "profile", "usage", "profile"])
 
         clock.set(Self.start.addingTimeInterval(RefreshSetting.forcedResetGrantsMinimumAge))
         await store.refreshAll(force: true)
@@ -257,11 +258,12 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         await fulfillment(of: [refreshed], timeout: 1)
         XCTAssertEqual(outcome, .success)
 
-        await store.refreshHourlyReads()
+        clock.set(Self.start.addingTimeInterval(RefreshSetting.interval))
+        await store.refreshAll()
 
         let status = runtime.claude.session?.resetGrants.check?.status
         XCTAssertNil(status?.claimableGrant("a"), "grant a's last reset is spent")
-        XCTAssertNotNil(status?.claimableGrant("b"), "grant b's reset stays after the hourly grants read")
+        XCTAssertNotNil(status?.claimableGrant("b"), "grant b's reset stays after the next pass's grants read")
     }
 
     func testTheHeldResetsRowDropsAGrantOnceItsDeadlinePasses() async throws {
@@ -270,11 +272,11 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         let http = Self.anthropic(grants: { Self.grants(resetsLeft: 1, endsAt: deadline) })
         let runtime = try makeRuntime(http: http, clock: clock)
 
-        let first = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
+        let first = try await runtime.refresh().get()
         clock.set(Self.start.addingTimeInterval(15 * 60))
         let later = try await runtime.refresh().get()
 
-        XCTAssertEqual(resetsAvailable(first?.lines ?? []), 1)
+        XCTAssertEqual(resetsAvailable(first.lines), 1)
         XCTAssertEqual(resetsAvailable(later.lines), 0)
     }
 
@@ -285,20 +287,114 @@ final class ClaudeRequestCadenceTests: XCTestCase {
             down.value ? HTTPResponse(statusCode: 500, headers: [:], body: Data()) : Self.grants(resetsLeft: 1)
         })
         let runtime = try makeRuntime(http: http, clock: clock)
-        _ = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
+        _ = try await runtime.refresh().get()
 
         down.value = true
         clock.set(Self.start.addingTimeInterval(RefreshSetting.secondaryReadInterval))
-        let failed = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
+        let failed = try await runtime.refresh().get()
         clock.set(clock.now.addingTimeInterval(RefreshSetting.interval))
-        let next = await runtime.refreshHourlyReads(of: try await runtime.refresh().get())
+        let next = try await runtime.refresh().get()
 
-        let shown = try await runtime.refresh().get()
-
-        XCTAssertNil(failed, "the row the last good read showed stays")
-        XCTAssertNil(next)
-        XCTAssertEqual(resetsAvailable(shown.lines), 1)
+        XCTAssertEqual(resetsAvailable(failed.lines), 1, "the row the last good read showed stays")
+        XCTAssertEqual(resetsAvailable(next.lines), 1)
         XCTAssertEqual(kinds(http).filter { $0 == "grants" }.count, 2, "a failed read waits for the next hour")
+    }
+
+    func testAGrantsReadThatFailsBeforeAnyAnswerKeepsTheCachedRowAndRetriesOnTheNextPass() async throws {
+        let clock = TestClock(Self.start)
+        let offline = TestSwitch(true)
+        let online = Self.anthropic(grants: {
+            .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day","seven_day_overage_included"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true},{"id":"f","type":"full","gives_back_weekly":true,"clears":["seven_day_overage_included"],"resets_left":1,"ends_at":"2099-02-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#)
+        })
+        let http = RoutingHTTPClient { request in
+            if offline.value, request.isClaudeResetGrantsCheck { throw URLError(.notConnectedToInternet) }
+            return try await online.send(request)
+        }
+        let runtime = try makeRuntime(http: http, clock: clock)
+        let expiries = ["2099-01-01T00:00:00Z", "2099-02-01T00:00:00Z"].compactMap(OpenUsageISO8601.date(from:))
+        let cached = ProviderSnapshot(providerID: runtime.provider.id, displayName: runtime.provider.displayName, lines: [
+            .values(label: ClaudeResetGrantStatus.lineLabel, values: [MetricValue(number: 2, kind: .count, label: "available")], expiriesAt: expiries)
+        ])
+        runtime.restore(cached)
+
+        let atWake = try await runtime.refresh().get()
+        offline.value = false
+        clock.set(clock.now.addingTimeInterval(RefreshSetting.interval))
+        _ = try await runtime.refresh().get()
+
+        let items = runtime.resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        let rows = RateLimitResetsDetail.content(count: 2, expiries: expiries, items: items).entries
+        XCTAssertEqual(atWake.line(label: ClaudeResetGrantStatus.lineLabel), cached.lines.first, "the cached row stays while the grants read can't connect")
+        XCTAssertEqual(rows.map { $0.item?.kind.title }, ["Weekly Reset", "Fable Reset"], "the next pass reads the kinds")
+        XCTAssertEqual(items.map(\.usable), [true, true], "and each reset can be used")
+    }
+
+    func testSavedResetKindsShowAtLaunchAndUseChecksTheGrantFreshBeforeSpending() async throws {
+        let clock = TestClock(Self.start)
+        let defaults = isolatedDefaults()
+        let left = TestSwitch(1)
+        let reachable = TestSwitch(true)
+        let anthropic = Self.anthropic(
+            grants: { .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day"],"resets_left":\#(left.value),"ends_at":"2099-01-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#) },
+            claim: { .json(#"{"result":"reset","resets_left":0}"#) }
+        )
+        let http = RoutingHTTPClient { request in
+            guard reachable.value else { throw URLError(.notConnectedToInternet) }
+            return try await anthropic.send(request)
+        }
+        let account = Account(kind: .claude, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "token-a", refreshToken: "refresh-a")), for: account.id)
+        func launch() -> (AccountProviderRuntime, WidgetDataStore) {
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+            return (runtime, WidgetDataStore.forTesting([runtime], defaults: defaults, now: { clock.now }))
+        }
+        let (_, firstLaunch) = launch()
+        await firstLaunch.refreshAll()
+
+        reachable.value = false
+        let (relaunched, _) = launch()
+        let items = relaunched.resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        XCTAssertEqual(items.map(\.kind.title), ["Weekly Reset"], "the saved kinds show before anything is read")
+        XCTAssertEqual(items.map(\.usable), [true], "and so does Use")
+
+        let offline = await relaunched.claimClaudeResetGrant("w", redeemRequestID: "redeem-1")
+        reachable.value = true
+        left.value = 0
+        let spentElsewhere = await relaunched.claimClaudeResetGrant("w", redeemRequestID: "redeem-2")
+
+        XCTAssertEqual(offline, .failed(.connection), "the saved answer alone spends nothing")
+        XCTAssertEqual(spentElsewhere, .noCredit, "a fresh check that finds the reset gone spends nothing")
+        XCTAssertFalse(kinds(http).contains("claim"))
+    }
+
+    func testSavedResetKindsStayWhenTheFirstGrantsReadAfterALaunchFails() async throws {
+        let clock = TestClock(Self.start)
+        let defaults = isolatedDefaults()
+        let failing = TestSwitch(false)
+        let http = Self.anthropic(grants: {
+            failing.value
+                ? .json("{}", status: 500)
+                : .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#)
+        })
+        let account = Account(kind: .claude, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.oauth(OAuthTokens(accessToken: "token-a", refreshToken: "refresh-a")), for: account.id)
+        func launch() -> (AccountProviderRuntime, WidgetDataStore) {
+            let runtime = AccountProviderRuntime(account: account, vault: vault, http: http, now: { clock.now })
+            return (runtime, WidgetDataStore.forTesting([runtime], defaults: defaults, now: { clock.now }))
+        }
+        let (_, firstLaunch) = launch()
+        await firstLaunch.refreshAll()
+
+        failing.value = true
+        clock.set(Self.start.addingTimeInterval(RefreshSetting.interval))
+        let (relaunched, store) = launch()
+        await store.refreshAll()
+
+        let items = relaunched.resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        XCTAssertEqual(items.map(\.kind.title), ["Weekly Reset"], "the saved kinds stay after the read fails")
+        XCTAssertNotNil(store.snapshots[relaunched.provider.id]?.resetGrants, "and are saved again for the next launch")
     }
 
     func testEachLoginReadsItsOwnGrants() async throws {
@@ -318,7 +414,7 @@ final class ClaudeRequestCadenceTests: XCTestCase {
 
         var rows: [Double?] = []
         for runtime in runtimes {
-            rows.append(resetsAvailable(await runtime.refreshHourlyReads(of: try await runtime.refresh().get())?.lines ?? []))
+            rows.append(resetsAvailable(try await runtime.refresh().get().lines))
         }
 
         XCTAssertEqual(rows, [1, 2])

@@ -8,6 +8,7 @@ struct HubDetailView: View {
     @Environment(LayoutStore.self) private var layout
     @Environment(PopoverState.self) private var popover
     @State private var isConfirmingRemoval = false
+    @State private var removalError: String?
 
     var body: some View {
         if let hub = container.accounts.hubs.first(where: { $0.id == hubID }) {
@@ -44,6 +45,9 @@ struct HubDetailView: View {
                     removeRow(hub, accountCount: mirrored.count)
                 }
                 .cardSurface()
+                if let removalError {
+                    ErrorText(removalError)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -66,14 +70,18 @@ struct HubDetailView: View {
             isPresented: $isConfirmingRemoval,
             titleVisibility: .visible
         ) {
-            Button("Remove Hub and \(CLIProxyHub.count(accountCount, "Account"))", role: .destructive) {
-                container.hubs.remove(hubID)
-                if !container.accounts.hubs.contains(where: { $0.id == hubID }) {
-                    withAnimation(Motion.navigation) { popover.customizeHubID = nil }
-                }
-            }
+            Button("Remove Hub and \(CLIProxyHub.count(accountCount, "Account"))", role: .destructive) { removeHub() }
         } message: {
             Text("Its \(CLIProxyHub.count(accountCount, "account")) and its management key are deleted from this Mac. Nothing changes on the hub.")
+        }
+    }
+
+    private func removeHub() {
+        container.hubs.remove(hubID)
+        if container.accounts.hubs.contains(where: { $0.id == hubID }) {
+            removalError = container.accounts.lastError ?? "The hub could not be removed."
+        } else {
+            withAnimation(Motion.navigation) { popover.customizeHubID = nil }
         }
     }
 }

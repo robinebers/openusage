@@ -12,6 +12,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         _ state: WidgetData.MeterState,
         fraction: Double = 0.9,
         resetsAt: Date? = nil,
+        now: Date? = nil,
         from previous: NotificationState = NotificationState()
     ) -> PaceNotificationLogic.Transition {
         PaceNotificationLogic.transitions(
@@ -19,7 +20,8 @@ final class PaceNotificationLogicTests: XCTestCase {
             severity: WidgetData(title: "Weekly", kind: .percent, used: (1 - fraction) * 100, limit: 100).severity,
             resetsAt: resetsAt ?? reset,
             unusedNearReset: false,
-            previous: previous
+            previous: previous,
+            now: now ?? reset.addingTimeInterval(-3600)
         )
     }
 
@@ -35,13 +37,13 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertEqual(step(healthy, fraction: 0.05, from: primed).fire, [.critical, .warning])
     }
 
-    func testWillRunOutReArmsOnlyOnceThePaceEasesToNinetyPercent() {
+    func testBurningFastReArmsOnlyOnceThePaceEasesToNinetyPercent() {
         var state = step(running, from: step(healthy).newState).newState
-        state.firedMilestones.insert(.closeToRunningOut)
+        state.firedMilestones.insert(.burningFast)
         state = step(close, from: state).newState
         XCTAssertTrue(step(running, from: state).fire.isEmpty, "easing to 95% and back doesn't fire it again")
         state = step(healthy, from: state).newState
-        XCTAssertEqual(step(running, from: state).fire, [.closeToRunningOut])
+        XCTAssertEqual(step(running, from: state).fire, [.burningFast])
     }
 
     func testUnderTenPercentFiresOncePerWindow() {
@@ -59,18 +61,22 @@ final class PaceNotificationLogicTests: XCTestCase {
         XCTAssertTrue(step(.unpaced, fraction: 0.99).fire.isEmpty)
         let recovered = step(healthy, fraction: 0.50, from: first.newState).newState
         let red = step(running, fraction: 0.02, from: recovered)
-        XCTAssertTrue(red.fire.contains(.closeToRunningOut))
+        XCTAssertTrue(red.fire.contains(.burningFast))
         XCTAssertTrue(red.fire.contains(.critical))
     }
 
     func testResetRolloverClearsFiredSetSoItCanFireAgain() {
-        var state = step(healthy).newState
-        state = step(running, from: state).newState
+        var state = step(close).newState
+        state.firedMilestones.insert(.burningFast)
         XCTAssertTrue(step(running, from: state).fire.isEmpty)
-        let newReset = reset.addingTimeInterval(3600)
-        let rolled = step(healthy, resetsAt: newReset, from: state).newState
-        let refired = step(running, resetsAt: newReset, from: rolled)
-        XCTAssertEqual(refired.fire, [.closeToRunningOut])
+        let refired = step(running, resetsAt: reset.addingTimeInterval(3600), now: reset, from: state)
+        XCTAssertEqual(refired.fire, [.burningFast])
+    }
+
+    func testAResetThatMovesForwardBeforeItPassesKeepsTheWindowsAlerts() {
+        var state = step(running, fraction: 0.2).newState
+        state.firedMilestones.formUnion([.burningFast, .warning])
+        XCTAssertTrue(step(running, fraction: 0.2, resetsAt: reset.addingTimeInterval(600), from: state).fire.isEmpty)
     }
 
     func testRecoveryThenReworseningRefires() {
@@ -81,7 +87,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         let orange = step(healthy, fraction: 0.25, from: state)
         XCTAssertEqual(orange.fire, [.warning])
         let red2 = step(running, fraction: 0.25, from: orange.newState)
-        XCTAssertEqual(red2.fire, [.closeToRunningOut])
+        XCTAssertEqual(red2.fire, [.burningFast])
     }
 
     func testUnderTenPercentReArmsAfterRecoveryAboveTen() {
@@ -99,12 +105,12 @@ final class PaceNotificationLogicTests: XCTestCase {
         let first = step(.unpaced, fraction: 0.08, from: primed)
         XCTAssertTrue(first.fire.contains(.critical))
         XCTAssertFalse(first.fire.contains(.warning))
-        XCTAssertFalse(first.fire.contains(.closeToRunningOut))
+        XCTAssertFalse(first.fire.contains(.burningFast))
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
-        var state = step(healthy).newState
-        state = step(.noData, fraction: 0.5, from: state).newState
-        XCTAssertEqual(step(healthy, fraction: 0.25, from: state).fire, [.warning])
+        var state = step(healthy, fraction: 0.25).newState
+        state = step(.noData, from: state).newState
+        XCTAssertTrue(step(healthy, fraction: 0.25, from: state).fire.isEmpty)
     }
 }

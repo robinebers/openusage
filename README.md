@@ -110,7 +110,8 @@ To learn the code, read the [architecture overview](docs/architecture.md),
 <details>
 <summary><strong>Releasing</strong></summary>
 
-Push a `v*` tag on `main` to build, sign, notarize, and publish a release:
+Create the GitHub Release for the tag as a draft with its notes, then push a `v*` tag on `main` to
+build, sign, notarize, and publish it. A tag without a release that has notes fails before the build.
 
 - A plain tag (`v0.8.0`) ships to everyone.
 - A pre-release tag (`v0.8.0-beta.1`) ships to the beta channel.

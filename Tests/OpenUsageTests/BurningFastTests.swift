@@ -54,12 +54,14 @@ final class BurningFastTests: XCTestCase {
         XCTAssertEqual(ids(off.attention), ["claude@1.Weekly", "codex@1.Credits"], "with the setting off only low limits are listed")
     }
 
-    func testAPinnedLimitBurningFastMovesToRunningOut() {
+    func testAPinnedLimitBurningFastStaysPinnedWithWhenItRunsOut() {
         let accounts = [account(personal, paced("Weekly", used: 60, elapsed: 0.5))]
         let board = PriorityBoard.make(accounts: accounts, pinned: ["claude@1.Weekly"], burningFast: BurningFast(), now: now)
-        XCTAssertEqual(ids(board.attention), ["claude@1.Weekly"])
-        XCTAssertEqual(board.attention.map(\.isPinned), [true])
-        XCTAssertTrue(board.pinned.isEmpty)
+        XCTAssertEqual(board.pinned.map(\.id), ["claude@1.Weekly"])
+        XCTAssertEqual(board.pinned.first?.item?.runOutText(now: now), "Out in 2d 8h")
+        XCTAssertTrue(board.attention.isEmpty)
+        XCTAssertEqual(ids(board.runningOut), ["claude@1.Weekly"])
+        XCTAssertTrue(board.requiresRankingClock(at: now))
         XCTAssertFalse(board.showsClearRow)
     }
 

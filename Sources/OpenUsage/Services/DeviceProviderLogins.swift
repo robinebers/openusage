@@ -138,6 +138,38 @@ struct AmpLogin: ProviderLogin {
     }
 }
 
+/// OpenCode Console's device sign-in, under the OpenCode CLI's own public client: the flow `opencode` runs to
+/// connect a Console account. The token is scoped to the workspace picked on the confirm page and reads
+/// both Go usage and the Go plan; the account takes the member's email, and each workspace is its own account.
+struct OpenCodeLogin: ProviderLogin {
+    static let clientID = "opencode-cli"
+    static let tokenURL = URL(string: "https://opencode.ai/console/auth/device/token")!
+    /// Where the sign-in keeps the workspace it chose; every read names it.
+    static let orgKey = "org_id"
+    var http: any HTTPClient = URLSessionHTTPClient()
+
+    func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
+        let token = try await deviceAuthorization(
+            provider: "OpenCode",
+            startURL: URL(string: "https://opencode.ai/console/auth/device/code")!,
+            tokenURL: Self.tokenURL,
+            clientID: Self.clientID,
+            scopes: nil,
+            startFields: ["supports_org_scope": "true"],
+            deniedMessage: "OpenCode device sign-in was denied.",
+            http: http,
+            prompt: prompt
+        )
+        guard let orgID = token.orgID else { throw LoginError.invalidResponse }
+        let response = try await LoginHTTP.get(
+            URL(string: "https://opencode.ai/console/api/user")!, bearerToken: token.accessToken, using: http, headers: ["x-org-id": orgID]
+        )
+        let user = try LoginHTTP.decode(OpenCodeUser.self, from: response)
+        let extras = [OAuthTokens.identityKey: "opencode:\(user.id):\(orgID)", Self.orgKey: orgID]
+        return (user.email, .oauth(token.tokens(extras: extras)))
+    }
+}
+
 struct CursorLogin: ProviderLogin {
     var http: any HTTPClient = URLSessionHTTPClient()
 
@@ -250,7 +282,8 @@ enum ProviderLoginCatalog {
         case .devin: DevinLogin()
         case .grok: GrokLogin()
         case .muse: MuseLogin()
-        case .ollama, .opencodeGo, .openrouter, .zai: APIKeyLogin(kind: kind)
+        case .opencodeGo: OpenCodeLogin()
+        case .ollama, .openrouter, .zai: APIKeyLogin(kind: kind)
         }
     }
 }
@@ -261,18 +294,20 @@ private func deviceAuthorization(
     tokenURL: URL,
     clientID: String,
     scopes: String?,
+    startFields: [String: String] = [:],
     headers: [String: String] = [:],
     verificationPage: URL? = nil,
     deniedMessage: String,
     http: any HTTPClient,
     prompt: @Sendable (LoginPrompt) async -> Void
 ) async throws -> OAuthTokenResponse {
-    var fields = ["client_id": clientID]
+    var fields = startFields
+    fields["client_id"] = clientID
     fields["scope"] = scopes
     let start = try await LoginHTTP.postForm(startURL, fields: fields, using: http, headers: headers)
     let device = try LoginHTTP.decode(DeviceCode.self, from: start)
     let page = verificationPage?.appending(queryItems: [URLQueryItem(name: "user_code", value: device.userCode)])
-    let candidates = [page] + [device.verificationURIComplete, device.verificationURI].map { $0.flatMap(URL.init(string:)) }
+    let candidates = [page] + [device.verificationURIComplete, device.verificationURI].map { $0.flatMap { URL(string: $0, relativeTo: startURL)?.absoluteURL } }
     guard let verificationURL = candidates.compactMap({ $0 }).first(where: { $0.scheme == "https" && $0.host?.isEmpty == false }) else {
         throw LoginError.invalidResponse
     }
@@ -299,7 +334,7 @@ private func deviceAuthorization(
 private struct DeviceCode: Decodable {
     let deviceCode: String
     let userCode: String
-    let verificationURI: String
+    let verificationURI: String?
     let verificationURIComplete: String?
     let expiresIn: Int
     let interval: TimeInterval?
@@ -326,6 +361,11 @@ private struct CursorTokenResponse: Decodable, Sendable {
 private struct CursorProfile: Decodable {
     let email: String?
     let name: String?
+}
+
+private struct OpenCodeUser: Decodable {
+    let id: String
+    let email: String
 }
 
 private struct GrokIDClaims: Decodable {

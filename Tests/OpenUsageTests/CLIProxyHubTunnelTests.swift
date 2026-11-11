@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import XCTest
 @testable import OpenUsage
 
@@ -8,6 +9,7 @@ import XCTest
 final class CLIProxyHubTunnelTests: XCTestCase {
     nonisolated private static let hubURL = URL(string: "http://mini.local:8317")!
     nonisolated private static let claudeUsage = #"{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00.000Z"}}"#
+    nonisolated private static let claudeGrants = #"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true},{"id":"f","type":"full","gives_back_weekly":true,"clears":["seven_day_overage_included"],"resets_left":1,"ends_at":"2099-02-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#
     nonisolated private static let antigravitySummary = #"{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-weekly","remainingFraction":0.75,"resetTime":"2099-01-01T00:00:00Z","window":"weekly"}]}]}"#
     nonisolated private static let devinStatus = #"{"userStatus":{"planStatus":{"planInfo":{"planName":"Max"},"weeklyQuotaRemainingPercent":40}}}"#
     nonisolated private static let grokCredits = #"{"config":{"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","start":"2099-01-01T00:00:00Z","end":"2099-01-08T00:00:00Z"},"creditUsagePercent":25}}"#
@@ -191,6 +193,112 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         XCTAssertEqual(try next.get().plan, "Ultra")
     }
 
+    /// Robin's dev app on Nov 11: launched while macOS kept it off the local network, so the hub was
+    /// unreachable for every pass until it was allowed.
+    func testAHubClaudeAccountThatLaunchedWithTheHubDownReadsItsResetKindsOnThePassTheHubComesBack() async throws {
+        let clock = TestClock(Date())
+        let unreachable = TestSwitch(true)
+        let hub = Self.hub { url, _ in
+            (200, url == ClaudeUsageClient.resetGrantsURL.absoluteString ? Self.claudeGrants : Self.claudeUsage, [:])
+        }
+        let http = RoutingHTTPClient { request in
+            if unreachable.value { throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), now: { clock.now })
+        for _ in 0..<3 {
+            await store.refreshAll()
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+            await store.refreshHourlyReads()
+            clock.set(clock.now.addingTimeInterval(RefreshSetting.interval / 2))
+        }
+        XCTAssertEqual(store.errorMessage(for: runtimes[0].provider.id), "Can’t reach the CLIProxyAPI hub at mini.local:8317.")
+
+        unreachable.value = false
+        await store.refreshAll()
+
+        let items = runtimes[0].resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        XCTAssertEqual(items.map(\.kind.title), ["Weekly Reset", "Fable Reset"], "the first pass after the hub comes back reads the kinds")
+        XCTAssertEqual(items.map(\.usable), [true, true], "and each reset can be used")
+    }
+
+    /// Robin's MacBook on Nov 11: right after launch macOS kept the app off the local network for a moment,
+    /// URLSession answered "not connected to the internet", and every hub account sat under Needs Attention
+    /// with a 5-minute wait until he forced a refresh 21 seconds later.
+    func testAHubAccountThatLaunchedBeforeTheLocalNetworkOpenedRecoversOnItsOwnWithoutBeingFlagged() async throws {
+        let launch = Date()
+        let calls = TestSwitch(0)
+        let hub = Self.hub { url, _ in
+            (200, url == ClaudeUsageClient.resetGrantsURL.absoluteString ? Self.claudeGrants : Self.claudeUsage, [:])
+        }
+        let http = RoutingHTTPClient { request in
+            calls.value += 1
+            if calls.value == 1 { throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let account = runtimes[0].provider
+        let defaults = isolatedDefaults()
+        let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
+        cache.save([account.id: ProviderSnapshot(provider: account, plan: nil, lines: [], refreshedAt: launch.addingTimeInterval(-3 * 3600))])
+        let store = WidgetDataStore.forTesting(runtimes, cache: cache, defaults: defaults, offlineRetryDelays: [0.3])
+        let groups = [ProviderMetrics(provider: account, metrics: WidgetRegistry.from(runtimes).descriptors(for: account.id))]
+
+        async let launchPass: Void = store.refreshAll()
+        while calls.value < 1 { try await Task.sleep(for: .milliseconds(5)) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(calls.value, 1, "the launch read failed before it left the Mac, and the retry waits")
+        XCTAssertNil(store.problem(for: account.id), "a read that never left the Mac flags nothing")
+        XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty, "nothing under Needs Attention")
+
+        await launchPass
+        let recovered = try XCTUnwrap(store.snapshots[account.id])
+        XCTAssertGreaterThanOrEqual(recovered.refreshedAt, launch, "the account read usage again without a forced refresh")
+        XCTAssertFalse(recovered.lines.isEmpty)
+        XCTAssertNil(store.problem(for: account.id))
+        XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty)
+    }
+
+    /// A ⌘R that finds no network path keeps asking for Claude's profile when its retry gets through.
+    func testAForcedRefreshKeepsItsRereadsWhenItsOfflineRetryGetsThrough() async throws {
+        let offline = TestSwitch(false)
+        let hub = Self.hub { url, _ in (200, url == ClaudeUsageClient.profileURL.absoluteString ? "{}" : Self.claudeUsage, [:]) }
+        let http = RoutingHTTPClient { request in
+            if offline.value { offline.value = false; throw URLError(.notConnectedToInternet) }
+            return try await hub.send(request)
+        }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), offlineRetryDelays: [0.05])
+        let profileReads = { try http.requests.map(Self.apiCall).filter { $0.url == ClaudeUsageClient.profileURL.absoluteString }.count }
+        await store.refreshAll()
+        let before = try profileReads()
+
+        offline.value = true
+        let outcome = await store.refresh(providerID: runtimes[0].provider.id, force: true, rereadHourly: true)
+
+        XCTAssertEqual(outcome, .refreshed)
+        XCTAssertEqual(try profileReads(), before + 1, "the retry still reads what ⌘R asked for")
+    }
+
+    /// Robin's MacBook on Nov 11: Network.framework logged the hub's path as "unsatisfied (Local network prohibited)",
+    /// and URLSession answered "The Internet connection appears to be offline". A test can't make macOS deny it, so
+    /// this hands the classifier the reason such a path carries.
+    func testAHubRequestMacOSKeepsOffTheLocalNetworkIsItsOwnErrorAndARealOfflineIsNot() {
+        let offline = URLError(.notConnectedToInternet, userInfo: [NSUnderlyingErrorKey: NSError(domain: kCFErrorDomainCFNetwork as String, code: -1009)])
+        let classify = { CLIProxyHubClient.unreachable(host: "mini.local:8317", path: "auth-files", error: offline, pathReason: $0) }
+
+        let denied = classify(nw_path_unsatisfied_reason_local_network_denied)
+        XCTAssertEqual(
+            denied.localizedDescription,
+            "macOS is keeping OpenUsage from the CLIProxyAPI hub at mini.local:8317. Allow OpenUsage under System Settings → Privacy & Security → Local Network."
+        )
+        XCTAssertEqual(RefreshFailure(error: denied).kind, .offline, "retried like any read that never left the Mac")
+
+        XCTAssertEqual(offline.networkPathUnsatisfiedReason, nw_path_unsatisfied_reason_not_available)
+        XCTAssertEqual(classify(offline.networkPathUnsatisfiedReason), .unreachable("Can’t reach the CLIProxyAPI hub at mini.local:8317.", offline: true))
+    }
+
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {
         let http = Self.hub { _, _ in (200, Self.claudeUsage, [:]) }
         let (runtimes, store, hub) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
@@ -296,7 +404,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
 
     nonisolated private static func listing(_ logins: [HubLogin]) -> String {
         let files = logins.map { login in
-            ["id": login.id, "auth_index": login.authIndex, "provider": login.provider, "email": login.label, "account_type": "oauth", "disabled": login.isDisabled] as [String: Any]
+            ["id": login.id, "auth_index": login.authIndex as Any, "provider": login.provider, "email": login.label, "account_type": "oauth", "disabled": login.isDisabled] as [String: Any]
         }
         return String(decoding: try! JSONSerialization.data(withJSONObject: ["files": files]), as: UTF8.self)
     }

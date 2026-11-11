@@ -31,7 +31,8 @@ final class QuotaNotificationEvaluator {
                 severity: data.severity,
                 resetsAt: data.resetsAt,
                 unusedNearReset: PaceNotificationLogic.isUnusedNearReset(data, now: now),
-                previous: previous
+                previous: previous,
+                now: now
             )
             var next = result.newState
             var paceDelivered = false
@@ -51,7 +52,7 @@ final class QuotaNotificationEvaluator {
                     next.firedMilestones.insert(milestone)
                 }
             }
-            let held = PaceNotificationLogic.carriedOver(previous, resetsAt: data.resetsAt)
+            let held = PaceNotificationLogic.carriedOver(previous, resetsAt: data.resetsAt, now: now)
             if result.fire.contains(where: \.isPace) && !paceDelivered {
                 next.previousBucket = held.previousBucket
             }
