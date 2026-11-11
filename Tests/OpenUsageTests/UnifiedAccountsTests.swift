@@ -118,8 +118,8 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         let low = family([("AM1", [("weekly", limit("Weekly", left: 10, resetsIn: day))]),
                           ("AM2", [("weekly", limit("Weekly", left: 20, resetsIn: day))])])
         let board = PriorityBoard.make(accounts: low.accounts, pinned: ["claude@2.weekly"], now: now)
-        XCTAssertEqual(board.attention.map(\.id), ["claude.unified.weekly"])
-        XCTAssertTrue(board.attention[0].isPinned, "pinning one account's copy pins the unified limit")
+        XCTAssertEqual(board.pinned.map(\.id), ["claude.unified.weekly"], "pinning one account's copy pins the unified limit")
+        XCTAssertTrue(board.attention.isEmpty)
 
         let strip = MenuBarContentBuilder.build(board: board, limit: .upToThree)
         XCTAssertEqual(strip.items.map(\.value), ["15%"])

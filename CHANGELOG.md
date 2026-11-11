@@ -7,6 +7,8 @@
   Settings → Display or from the provider's right-click menu. Hover over a row to see each account.
 
 ### Changed
+- A pinned limit stays under **Pinned** on Priority while it's running out, burning fast or about to
+  reset unused, in its warning color. Only a used-up limit leaves Pinned, for **Used Up**.
 - The **Limit Resets** popover shows when each reset expires as just the date and time, without "Use by".
   A reset with 5 minutes or less left keeps its time, and its countdown reads **Expiring**.
 - **Unify Accounts** in Settings → Display shows each provider's mark before its name, with an info icon
