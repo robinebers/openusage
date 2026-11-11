@@ -56,14 +56,18 @@ jobs:
             echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
 
-      # Runs before the build so a release without CHANGELOG.md notes stops before anything is published.
+      # Reads the notes from the tag's GitHub Release, which the release-swift skill creates as a draft
+      # before it pushes the tag. Runs before the build so a release without notes stops before anything
+      # is published.
       - name: Extract release notes
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           set -o pipefail
           mkdir -p feed
-          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "v$VERSION" "feed/OpenUsage-$VERSION.md"
+          git show "$GITHUB_WORKFLOW_SHA:script/release_notes.sh" | bash -s -- "$TAG" "feed/OpenUsage-$VERSION.md"
 
       # Imports the Developer ID cert into a temporary keychain and adds it to the search list (cleaned up
       # automatically in a post step). Replaces a hand-rolled `security create-keychain`/`import` block.
