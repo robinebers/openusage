@@ -16,8 +16,8 @@
 
 ### Fixed
 - A Claude account's **Limit Resets** no longer waits an hour to show each reset's kind and **Use** when
-  its first reset read fails, such as after the Mac wakes with no network. It keeps the saved count and
-  reads again on the next refresh.
+  its first reset read can't connect, such as after the Mac wakes with no network. It keeps the saved
+  count and reads again on the next refresh.
 - Grok's **Extra Usage** shows its pay-as-you-go cap in dollars, like `$25 cap`, instead of the cents xAI
   reports (`2500 cap`).
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
