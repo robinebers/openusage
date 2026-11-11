@@ -10,10 +10,11 @@ enum PopoverKey {
 
 extension PopoverKey {
     /// Esc and Return sit on the same key in every layout, so they match by key code. ⌘, and ⌘Z match the
-    /// character typed, so they follow the layout: on QWERTZ the Z key sits where QWERTY has Y.
+    /// character typed with ⌘ held, so they follow the layout, including one like Dvorak – QWERTY ⌘ that
+    /// switches to QWERTY while ⌘ is down: on QWERTZ the Z key sits where QWERTY has Y.
     init?(_ event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        switch (event.keyCode, modifiers, event.charactersIgnoringModifiers?.lowercased()) {
+        switch (event.keyCode, modifiers, event.characters?.lowercased()) {
         case (53, _, _): self = .escape
         case (36, [], _): self = .return
         case (_, [.command], ","): self = .settings

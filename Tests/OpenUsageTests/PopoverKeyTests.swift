@@ -3,10 +3,12 @@ import XCTest
 @testable import OpenUsage
 
 final class PopoverKeyTests: XCTestCase {
-    private func key(_ keyCode: UInt16, _ typed: String, _ flags: NSEvent.ModifierFlags = .command) throws -> PopoverKey? {
+    private func key(
+        _ keyCode: UInt16, _ typed: String, layout unmodified: String? = nil, _ flags: NSEvent.ModifierFlags = .command
+    ) throws -> PopoverKey? {
         let event = try XCTUnwrap(NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0, windowNumber: 0, context: nil,
-            characters: typed, charactersIgnoringModifiers: typed, isARepeat: false, keyCode: keyCode
+            characters: typed, charactersIgnoringModifiers: unmodified ?? typed, isARepeat: false, keyCode: keyCode
         ))
         return PopoverKey(event)
     }
@@ -22,6 +24,8 @@ final class PopoverKeyTests: XCTestCase {
         XCTAssertNil(try key(43, ";"), "AZERTY ⌘;")
         XCTAssertEqual(try key(44, "z"), .undo, "Dvorak ⌘Z")
         XCTAssertEqual(try key(13, ","), .settings, "Dvorak ⌘,")
+        XCTAssertEqual(try key(6, "z", layout: ";"), .undo, "Dvorak – QWERTY ⌘ types QWERTY while ⌘ is held")
+        XCTAssertNil(try key(44, "/", layout: "z"), "Dvorak – QWERTY ⌘ ⌘/")
     }
 
     func testEscAndReturnStayOnTheirKeys() throws {
