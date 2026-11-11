@@ -146,7 +146,7 @@ struct UsageBreakdownContent: View {
                 if let onPickFigure, breakdown.modelFigures.count > 1 {
                     CapsuleSegments(
                         options: breakdown.modelFigures.map { ($0, $0.label) },
-                        selection: Binding(get: { shownFigure }, set: onPickFigure),
+                        selection: Binding(get: { shownFigure }, set: { onPickFigure($0) }),
                         height: 22,
                         fontSize: 11,
                         segmentWidth: 48

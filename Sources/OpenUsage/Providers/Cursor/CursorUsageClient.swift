@@ -20,10 +20,6 @@ struct CursorUsageClient: Sendable {
 
     var http: any HTTPClient
 
-    init(http: any HTTPClient = URLSessionHTTPClient()) {
-        self.http = http
-    }
-
     func refreshToken(_ refreshToken: String) async throws -> HTTPResponse {
         try await LoginHTTP.postJSON(Self.refreshURL, fields: [
             "grant_type": "refresh_token",

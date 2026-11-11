@@ -296,7 +296,7 @@ final class CLIProxyHubTunnelTests: XCTestCase {
 
     nonisolated private static func listing(_ logins: [HubLogin]) -> String {
         let files = logins.map { login in
-            ["id": login.id, "auth_index": login.authIndex, "provider": login.provider, "email": login.label, "account_type": "oauth", "disabled": login.isDisabled] as [String: Any]
+            ["id": login.id, "auth_index": login.authIndex as Any, "provider": login.provider, "email": login.label, "account_type": "oauth", "disabled": login.isDisabled] as [String: Any]
         }
         return String(decoding: try! JSONSerialization.data(withJSONObject: ["files": files]), as: UTF8.self)
     }

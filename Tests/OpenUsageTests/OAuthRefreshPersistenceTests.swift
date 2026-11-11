@@ -25,7 +25,7 @@ final class OAuthRefreshPersistenceTests: XCTestCase {
         }
         let runtime = AccountProviderRuntime(account: account, vault: vault, http: http)
 
-        let snapshot = try await runtime.refresh().get()
+        _ = try await runtime.refresh().get()
 
         let tokenRequest = try XCTUnwrap(http.requests.first { $0.url.host() == "oauth2.googleapis.com" })
         XCTAssertEqual(String(decoding: tokenRequest.body ?? Data(), as: UTF8.self),

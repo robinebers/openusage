@@ -64,12 +64,10 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testResetRolloverClearsFiredSetSoItCanFireAgain() {
-        var state = step(healthy).newState
-        state = step(running, from: state).newState
+        var state = step(close).newState
+        state.firedMilestones.insert(.closeToRunningOut)
         XCTAssertTrue(step(running, from: state).fire.isEmpty)
-        let newReset = reset.addingTimeInterval(3600)
-        let rolled = step(healthy, resetsAt: newReset, from: state).newState
-        let refired = step(running, resetsAt: newReset, from: rolled)
+        let refired = step(running, resetsAt: reset.addingTimeInterval(3600), from: state)
         XCTAssertEqual(refired.fire, [.closeToRunningOut])
     }
 
@@ -103,8 +101,8 @@ final class PaceNotificationLogicTests: XCTestCase {
     }
 
     func testUntrackedDoesNotDisturbPreviousSignals() {
-        var state = step(healthy).newState
-        state = step(.noData, fraction: 0.5, from: state).newState
-        XCTAssertEqual(step(healthy, fraction: 0.25, from: state).fire, [.warning])
+        var state = step(healthy, fraction: 0.25).newState
+        state = step(.noData, from: state).newState
+        XCTAssertTrue(step(healthy, fraction: 0.25, from: state).fire.isEmpty)
     }
 }

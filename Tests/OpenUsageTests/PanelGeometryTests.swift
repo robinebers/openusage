@@ -29,6 +29,7 @@ final class PanelGeometryTests: XCTestCase {
         )
 
         XCTAssertEqual(maximum, 170)
+        XCTAssertEqual(PanelGeometry.maximumHeight(topLeft: NSPoint(x: 100, y: 150), visibleFrame: visible), 142)
     }
 
     func testFractionalAnchorAndHeightsKeepTopEdgeOnOneWholePoint() {

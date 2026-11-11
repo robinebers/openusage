@@ -18,12 +18,10 @@ final class PaceTests: XCTestCase {
     private func pacedData(
         used: Double,
         elapsed: Double = 0.5,
-        period: TimeInterval? = nil,
-        displayMode: WidgetDisplayMode = .used
+        period: TimeInterval? = nil
     ) -> WidgetData {
         let period = period ?? week
-        var data = WidgetData(title: "Weekly", kind: .percent,
-                              used: used, limit: 100, displayMode: displayMode)
+        var data = WidgetData(title: "Weekly", kind: .percent, used: used, limit: 100)
         data.resetsAt = resetsAt(elapsed: elapsed, period: period)
         data.periodDurationMs = Int(period * 1000)
         return data
