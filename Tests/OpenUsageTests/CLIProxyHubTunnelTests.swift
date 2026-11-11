@@ -241,18 +241,17 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let defaults = isolatedDefaults()
         let cache = ProviderSnapshotCache(userDefaults: defaults, storageKey: "snapshots")
         cache.save([account.id: ProviderSnapshot(provider: account, plan: nil, lines: [], refreshedAt: launch.addingTimeInterval(-3 * 3600))])
-        let store = WidgetDataStore.forTesting(runtimes, cache: cache, defaults: defaults, offlineRetryDelays: [0.05])
+        let store = WidgetDataStore.forTesting(runtimes, cache: cache, defaults: defaults, offlineRetryDelays: [0.3])
         let groups = [ProviderMetrics(provider: account, metrics: WidgetRegistry.from(runtimes).descriptors(for: account.id))]
 
-        await store.refreshAll()
-        XCTAssertEqual(calls.value, 1, "the launch read failed before it left the Mac")
+        async let launchPass: Void = store.refreshAll()
+        while calls.value < 1 { try await Task.sleep(for: .milliseconds(5)) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(calls.value, 1, "the launch read failed before it left the Mac, and the retry waits")
         XCTAssertNil(store.problem(for: account.id), "a read that never left the Mac flags nothing")
         XCTAssertTrue(store.priorityBoard(in: groups, now: Date()).notices.isEmpty, "nothing under Needs Attention")
 
-        let deadline = Date().addingTimeInterval(5)
-        while store.snapshots[account.id].map({ $0.refreshedAt < launch }) ?? true, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        await launchPass
         let recovered = try XCTUnwrap(store.snapshots[account.id])
         XCTAssertGreaterThanOrEqual(recovered.refreshedAt, launch, "the account read usage again without a forced refresh")
         XCTAssertFalse(recovered.lines.isEmpty)
