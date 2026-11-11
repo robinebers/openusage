@@ -136,9 +136,14 @@ enum CursorUsageMapper {
 
         if let spendLimitUsage {
             let individualLimit = ProviderParse.number(spendLimitUsage["individualLimit"])
-            let limit = individualLimit ?? ProviderParse.number(spendLimitUsage["pooledLimit"]) ?? 0
-            let remaining = ProviderParse.number(spendLimitUsage["individualRemaining"]) ?? ProviderParse.number(spendLimitUsage["pooledRemaining"]) ?? 0
-            let spent = onDemandSpendCents(from: spendLimitUsage, limit: limit, remaining: remaining)
+            let pooledLimit = ProviderParse.number(spendLimitUsage["pooledLimit"])
+            let budget = individualLimit != nil ? "individual" : pooledLimit != nil ? "pooled" : nil
+            let limit = individualLimit ?? pooledLimit ?? 0
+            let remaining = budget.flatMap { ProviderParse.number(spendLimitUsage["\($0)Remaining"]) }
+            let spentKeys = budget.map { ["\($0)Used"] } ?? ["individualUsed", "pooledUsed", "totalSpend"]
+            let spent = onDemandSpendCents(
+                reported: spentKeys.compactMap { ProviderParse.number(spendLimitUsage[$0]) }, limit: limit, remaining: remaining
+            )
             if limit > 0 {
                 lines.append(.progress(
                     label: "On-demand",
@@ -162,16 +167,11 @@ enum CursorUsageMapper {
         return ProviderUsage(plan: planLabel(planName), lines: lines, lineTitles: lineTitles)
     }
 
-    private static func onDemandSpendCents(from spendLimitUsage: [String: Any], limit: Double, remaining: Double) -> Double {
-        let reported = [
-            ProviderParse.number(spendLimitUsage["individualUsed"]),
-            ProviderParse.number(spendLimitUsage["pooledUsed"]),
-            ProviderParse.number(spendLimitUsage["totalSpend"])
-        ].compactMap { $0 }
+    private static func onDemandSpendCents(reported: [Double], limit: Double, remaining: Double?) -> Double {
         if let positive = reported.first(where: { $0 > 0 }) {
             return positive
         }
-        let inferred = max(0, limit - remaining)
+        let inferred = remaining.map { max(0, limit - $0) } ?? 0
         return inferred > 0 ? inferred : (reported.first ?? 0)
     }
 

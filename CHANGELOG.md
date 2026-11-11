@@ -18,6 +18,8 @@
 - A limit whose reset time moves forward before it arrives, like OpenCode's rolling Session, no longer
   sends its Warning, Critical or Burning Fast alert again. Its alerts start over once the old reset
   time has passed.
+- Cursor's **Extra Usage** reads the spend from the same budget as its limit, so a team member's own cap
+  no longer shows the whole team pool's spend, and **Team Spend** no longer shows one member's.
 - Grok's **Extra Usage** shows its pay-as-you-go cap in dollars, like `$25 cap`, instead of the cents xAI
   reports (`2500 cap`).
 - **Use** on a Claude reset now works: Claude sign-ins now ask for `user:inference`, which Anthropic
