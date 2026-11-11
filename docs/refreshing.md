@@ -23,7 +23,8 @@ Usage is read on every refresh. These reads happen at most once an hour, and on 
 
 - The plan name, and Cursor's membership.
 - ChatGPT's reset credits. The count still updates every refresh.
-- Claude's reset grants. ⌘R rereads them only after 15 minutes.
+- Claude's reset grants. ⌘R rereads them only after 15 minutes. Until the first read succeeds, a read that
+  can't connect, such as after the Mac wakes with no network, is tried again on the next refresh.
 - Z.ai's banked resets. Spending one rereads them at once.
 
 Usage history:

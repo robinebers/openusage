@@ -301,6 +301,35 @@ final class ClaudeRequestCadenceTests: XCTestCase {
         XCTAssertEqual(kinds(http).filter { $0 == "grants" }.count, 2, "a failed read waits for the next hour")
     }
 
+    func testAGrantsReadThatFailsBeforeAnyAnswerKeepsTheCachedRowAndRetriesOnTheNextPass() async throws {
+        let clock = TestClock(Self.start)
+        let offline = TestSwitch(true)
+        let online = Self.anthropic(grants: {
+            .json(#"{"cedar_ember":{"eligible":true,"grants":[{"id":"w","type":"weekly","clears":["seven_day","seven_day_overage_included"],"resets_left":1,"ends_at":"2099-01-01T00:00:00Z","usable_now":true},{"id":"f","type":"full","gives_back_weekly":true,"clears":["seven_day_overage_included"],"resets_left":1,"ends_at":"2099-02-01T00:00:00Z","usable_now":true}],"next_grant_id":"w"}}"#)
+        })
+        let http = RoutingHTTPClient { request in
+            if offline.value { throw URLError(.notConnectedToInternet) }
+            return try await online.send(request)
+        }
+        let runtime = try makeRuntime(http: http, clock: clock)
+        let expiries = ["2099-01-01T00:00:00Z", "2099-02-01T00:00:00Z"].compactMap(OpenUsageISO8601.date(from:))
+        let cached = ProviderSnapshot(providerID: runtime.provider.id, displayName: runtime.provider.displayName, lines: [
+            .values(label: ClaudeResetGrantStatus.lineLabel, values: [MetricValue(number: 2, kind: .count, label: "available")], expiriesAt: expiries)
+        ])
+        runtime.restore(cached)
+
+        let atWake = await runtime.refreshHourlyReads(of: cached)
+        offline.value = false
+        clock.set(clock.now.addingTimeInterval(RefreshSetting.interval))
+        _ = await runtime.refreshHourlyReads(of: cached)
+
+        let items = runtime.resetClaimService(refreshAccount: { .refreshed })?.items ?? []
+        let rows = RateLimitResetsDetail.content(count: 2, expiries: expiries, items: items).entries
+        XCTAssertNil(atWake, "the cached row stays while the Mac has no network")
+        XCTAssertEqual(rows.map { $0.item?.kind.title }, ["Weekly Reset", "Fable Reset"], "the next pass reads the kinds")
+        XCTAssertEqual(items.map(\.usable), [true, true], "and each reset can be used")
+    }
+
     func testEachLoginReadsItsOwnGrants() async throws {
         let clock = TestClock(Self.start)
         let http = RoutingHTTPClient { request in
