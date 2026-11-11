@@ -153,7 +153,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         XCTAssertEqual(recorder.posts.count, 1)
     }
 
-    func testCloseToRunningOutFiresThroughTheStore() async {
+    func testBurningFastFiresThroughTheStore() async {
         let settings = isolatedDefaults()
         allOn(settings)
         let recorder = Recorder()
@@ -163,6 +163,8 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
         await evaluate(store, runtime: runtime, used: 95)
         XCTAssertTrue(recorder.posts.contains { $0.0 == "test.closeToRunningOut" })
+        XCTAssertTrue(recorder.posts.contains { $0.1 == "Burning Fast" })
+        XCTAssertEqual(PaceMilestone.burningFast.settingKey, "openusage.notifications.closeToRunningOut", "a saved switch keeps its key through the rename")
         XCTAssertTrue(recorder.posts.contains { $0.3 == "May run out before the limit resets." })
         XCTAssertTrue(recorder.posts.contains { $0.2 == "Cursor Session" })
     }
@@ -214,7 +216,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         let settings = isolatedDefaults()
         settings.set(false, forKey: PaceMilestone.critical.settingKey)
         settings.set(false, forKey: PaceMilestone.warning.settingKey)
-        settings.set(false, forKey: PaceMilestone.closeToRunningOut.settingKey)
+        settings.set(false, forKey: PaceMilestone.burningFast.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 80, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)
@@ -224,7 +226,7 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
 
     func testAnOffTriggerDoesNotConsumeTheEdge() async {
         let settings = isolatedDefaults()
-        settings.set(true, forKey: PaceMilestone.closeToRunningOut.settingKey)
+        settings.set(true, forKey: PaceMilestone.burningFast.settingKey)
         let recorder = Recorder()
         let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
         await evaluate(store, runtime: runtime)

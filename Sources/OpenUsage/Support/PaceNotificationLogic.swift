@@ -1,10 +1,10 @@
 import Foundation
 
 enum PaceMilestone: String, CaseIterable, Hashable, Sendable {
-    /// The two levels keep their old raw values, so a saved switch stays on or off through the renames.
+    /// These keep their old raw values, so a saved switch stays on or off through the renames.
     case critical = "underTenPercent"
     case warning = "healthyToClose"
-    case closeToRunningOut
+    case burningFast = "closeToRunningOut"
     case useItOrLoseIt
 }
 
@@ -12,7 +12,7 @@ extension PaceMilestone {
     var settingKey: String { "openusage.notifications.\(rawValue)" }
 
     /// The two levels follow what's left, the same rule as Priority. Only this one follows the pace.
-    var isPace: Bool { self == .closeToRunningOut }
+    var isPace: Bool { self == .burningFast }
 
     var isLevel: Bool { self == .critical || self == .warning }
 
@@ -20,7 +20,7 @@ extension PaceMilestone {
         switch self {
         case .critical: return "Critical"
         case .warning: return "Warning"
-        case .closeToRunningOut: return "Will Run Out"
+        case .burningFast: return "Burning Fast"
         case .useItOrLoseIt: return "Use It or Lose It"
         }
     }
@@ -29,7 +29,7 @@ extension PaceMilestone {
         switch self {
         case .critical: return "\(limits.critical)% or less left for this window."
         case .warning: return "\(limits.warning)% or less left for this window."
-        case .closeToRunningOut: return "May run out before the limit resets."
+        case .burningFast: return "May run out before the limit resets."
         case .useItOrLoseIt: return "Over 50% left, resets in under 24 hours."
         }
     }
@@ -97,9 +97,9 @@ enum PaceNotificationLogic {
 
         if currentBucket != .untracked {
             let previousBucket = next.previousBucket
-            if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.closeToRunningOut) }
+            if currentBucket >= .runningOut, previousBucket < .runningOut { candidate(.burningFast) }
             // Re-arms only once the pace eases to 90% of the limit, where Priority stops listing it as burning fast.
-            if currentBucket == .healthy { next.firedMilestones.remove(.closeToRunningOut) }
+            if currentBucket == .healthy { next.firedMilestones.remove(.burningFast) }
             next.previousBucket = currentBucket
         }
 

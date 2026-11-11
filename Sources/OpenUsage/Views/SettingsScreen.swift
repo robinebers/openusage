@@ -16,7 +16,7 @@ struct SettingsScreen: View {
     @AppStorage(DashboardTab.defaultKey) private var defaultTab = DashboardTab.priority
     @AppStorage(PaceMilestone.critical.settingKey) private var criticalAlert = false
     @AppStorage(PaceMilestone.warning.settingKey) private var warningAlert = false
-    @AppStorage(PaceMilestone.closeToRunningOut.settingKey) private var closeToRunningOut = false
+    @AppStorage(PaceMilestone.burningFast.settingKey) private var burningFastAlert = false
     @AppStorage(PaceMilestone.useItOrLoseIt.settingKey) private var useItOrLoseIt = false
     @AppStorage(LogLevelSetting.key) private var logLevel = LogLevelSetting.info
     @State private var launchAtLogin = LaunchAtLoginSetting()
@@ -50,7 +50,7 @@ struct SettingsScreen: View {
                 scrollPosition.scrollTo(edge: .top)
                 launchAtLogin.refreshStatus()
                 commandLineTool.refreshStatus()
-                if criticalAlert || warningAlert || closeToRunningOut || useItOrLoseIt { checkNotificationPermission() }
+                if criticalAlert || warningAlert || burningFastAlert || useItOrLoseIt { checkNotificationPermission() }
             }
         }
     }
@@ -148,7 +148,7 @@ struct SettingsScreen: View {
             alertRow("Critical", info: "When a limit turns critically low", priority: nil, notify: $criticalAlert) {
                 severityDot(.critical)
             }
-            alertRow("Burning Fast", info: "Will run out before it resets", priority: $dataStore.showsBurningFast, notify: $closeToRunningOut) {
+            alertRow("Burning Fast", info: "Will run out before it resets", priority: $dataStore.showsBurningFast, notify: $burningFastAlert) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 9))
                     .foregroundStyle(Theme.severityColor(.warning))

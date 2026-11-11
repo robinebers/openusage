@@ -94,7 +94,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
         func isOn(_ label: String) -> Bool? { (switches()[label]?.value(forKey: "accessibilityValue") as? NSNumber)?.boolValue }
         func saved() -> [Bool] {
             [defaults.object(forKey: "priorityBurningFast") as? Bool ?? true, defaults.object(forKey: "priorityUseItOrLoseIt") as? Bool ?? true]
-                + [PaceMilestone.warning, .critical, .closeToRunningOut, .useItOrLoseIt].map { defaults.bool(forKey: $0.settingKey) }
+                + [PaceMilestone.warning, .critical, .burningFast, .useItOrLoseIt].map { defaults.bool(forKey: $0.settingKey) }
         }
         let alerts = ["Warning", "Critical", "Burning Fast", "Use It or Lose It"]
         try await waitUntil { switches().count == 8 }
