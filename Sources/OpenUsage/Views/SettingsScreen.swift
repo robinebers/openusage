@@ -306,12 +306,12 @@ struct SettingsScreen: View {
 }
 
 /// Sample icons at the number the setting picks, so every choice looks different whatever is running
-/// out right now. Shrunk to sit in a row however many it holds.
+/// out right now. Drawn live at one scale that fits the most it can hold in a row.
 struct PriorityIconsPreview: View {
     @Environment(WidgetDataStore.self) private var dataStore
 
     private static let height: CGFloat = 30
-    private static let largestScale: CGFloat = 0.85
+    private static let scale: CGFloat = 0.8
     private static let samples: [(kind: ProviderKind, badge: String?, label: String, value: String)] = [
         (.claude, "P", "Weekly", "38%"), (.claude, "A1", "Session", "26%"), (.codex, nil, "Weekly", "31%"),
         (.cursor, nil, "Extra", "$310"), (.antigravity, nil, "Gemini", "12%"), (.grok, nil, "Weekly", "9%"),
@@ -332,24 +332,21 @@ struct PriorityIconsPreview: View {
         return MenuBarContent(items: shown, overflow: samples.count - shown.count)
     }
 
-    static func fittedSize(of strip: NSSize, in width: CGFloat) -> NSSize {
-        let scale = min(largestScale, width / strip.width)
-        return NSSize(width: strip.width * scale, height: strip.height * scale)
-    }
-
     var body: some View {
         let content = Self.sample(limit: dataStore.menuBarLimit)
-        let strip = MenuBarStripRenderer.image(for: content) ?? MenuBarStripRenderer.appIcon
-        GeometryReader { proxy in
-            let size = Self.fittedSize(of: strip.size, in: proxy.size.width)
-            Image(nsImage: strip)
-                .renderingMode(.template)
-                .resizable()
-                .frame(width: size.width, height: size.height)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .frame(height: Self.height)
-        .accessibilityLabel("Menu Bar Preview")
+        Color.primary
+            .frame(height: Self.height)
+            .mask {
+                Group {
+                    if content.isEmpty {
+                        Image(nsImage: MenuBarStripRenderer.appIcon)
+                    } else {
+                        MenuBarTextStrip(content: content)
+                    }
+                }
+                .scaleEffect(Self.scale)
+            }
+            .accessibilityLabel("Menu Bar Preview")
     }
 }
 
