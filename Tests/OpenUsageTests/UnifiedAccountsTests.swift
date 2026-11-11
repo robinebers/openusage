@@ -168,6 +168,29 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         }
     }
 
+    func testEachAccountsResetsFollowThePreviousAccountsAsOneList() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
+        func frames(in element: Any) -> [(text: String, frame: CGRect)] {
+            guard let node = element as? NSObject else { return [] }
+            let text = node.value(forKey: "accessibilityLabel") as? String ?? node.value(forKey: "accessibilityValue") as? String
+            let own = text.flatMap { text in (node.value(forKey: "accessibilityFrame") as? CGRect).map { (text, $0) } }
+            return [own].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(frames)
+        }
+        let resets = line("resets", in: robins)
+        XCTAssertEqual(resets.members.map(\.provider.accountName), ["Personal", "AM1", "AM2"])
+        let (window, host) = show(UnifiedResetsDetail(line: resets, resetClaim: { _ in nil }, showsActions: false, onPinChange: { _ in }))
+        defer { window.close() }
+        try await waitUntil { frames(in: host).contains { $0.text == "AM2" } }
+        let shown = frames(in: host)
+        for (lastRow, account) in [("Reset 4", "AM1"), ("Reset 1", "AM2")] {
+            // Screen coordinates: the row above a name has the larger y.
+            let header = try XCTUnwrap(shown.first { $0.text == account }?.frame, "\(account) keeps its name")
+            let above = try XCTUnwrap(shown.filter { $0.text.hasPrefix(lastRow) && $0.frame.minY > header.maxY }.map(\.frame).min { $0.minY < $1.minY })
+            XCTAssertLessThanOrEqual(above.minY - header.maxY, 14, "\(account) sits right under the account before it")
+        }
+    }
+
     func testCappedAndUncappedSpendingAddUpPerCurrencyAndKeepEveryAccount() {
         func capped(_ spent: Double, of cap: Double, _ currency: String) -> WidgetData {
             WidgetData(title: "Extra Usage", kind: .dollars, currencyCode: currency, used: spent, limit: cap)

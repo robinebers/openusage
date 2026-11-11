@@ -94,11 +94,14 @@ struct DashboardLiveRow: View {
             expiries: line.data.expiriesAt,
             items: resetClaim?.items ?? [],
             showsActions: hover.openedExplicitly,
-            onHoverChange: { inside in hover.detailHover(inside) },
             onPinChange: { pinned in hover.setPinned(pinned) },
             claim: resetClaim.map { service in
                 { item, requestID in await service.claim(item, requestID: requestID) }
             }
         )
+        .padding(.vertical, 14)
+        .onContinuousHover { phase in
+            if case .active = phase { hover.detailHover(true) } else { hover.detailHover(false) }
+        }
     }
 }
