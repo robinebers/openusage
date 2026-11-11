@@ -3,7 +3,8 @@ import SwiftUI
 import XCTest
 @testable import OpenUsage
 
-/// An account's page offers Sign In Again only while Priority lists the account under Needs Attention.
+/// An account's page offers Sign In Again while Priority lists the account under Needs Attention, and always
+/// for an OpenCode account still on its API key.
 @MainActor
 final class SignInAgainVisibilityTests: QuietWindowTestCase {
     func testAWorkingAccountsPageHasNoSignInAgain() async throws {
@@ -16,6 +17,18 @@ final class SignInAgainVisibilityTests: QuietWindowTestCase {
         let page = try await hostPage(signInExpired: true)
         XCTAssertEqual(page.needsAttention, [ProviderError.signInExpired(.claude).localizedDescription])
         XCTAssertTrue(page.clickingDownThePageSignsInAgain(), "An account Priority lists under Needs Attention had no Sign In Again.")
+    }
+
+    func testAWorkingOpenCodeKeyAccountsPageOffersSignInAgain() async throws {
+        let usage = #"{"usage":{"rolling":{"percent":12,"resetsAt":"2026-07-12T13:30:00Z"},"weekly":{"percent":8,"resetsAt":"2026-07-13T00:00:00Z"},"monthly":{"percent":40,"resetsAt":"2026-08-04T11:18:32Z"}}}"#
+        let page = try await hostPage(kind: .opencodeGo, credential: .apiKey("key")) { _ in
+            HTTPResponse(statusCode: 200, headers: [:], body: Data(usage.utf8))
+        }
+        XCTAssertEqual(page.needsAttention, [])
+        let signedInWithKey = await page.container.signsInWithKey(page.id)
+        XCTAssertTrue(signedInWithKey)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(page.clickingDownThePageSignsInAgain(), "An OpenCode account still on its API key had no Sign In Again.")
     }
 
     @MainActor
@@ -42,10 +55,7 @@ final class SignInAgainVisibilityTests: QuietWindowTestCase {
 
     /// A Claude account's page after one usage read, which Claude refuses when `signInExpired`, along with the renewal.
     private func hostPage(signInExpired: Bool) async throws -> Page {
-        let defaults = isolatedDefaults()
-        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
-        let id = store.add(kind: .claude, label: "Personal", credential: .oauth(.init(accessToken: "old", refreshToken: "old-r"))).cardID
-        let http = RoutingHTTPClient { request in
+        try await hostPage(kind: .claude, credential: .oauth(.init(accessToken: "old", refreshToken: "old-r"))) { request in
             if !signInExpired {
                 return HTTPResponse(statusCode: 200, headers: [:], body: Data(#"{"five_hour":{"utilization":10}}"#.utf8))
             }
@@ -54,10 +64,21 @@ final class SignInAgainVisibilityTests: QuietWindowTestCase {
             }
             return HTTPResponse(statusCode: 401, headers: [:], body: Data())
         }
+    }
+
+    private func hostPage(
+        kind: ProviderKind,
+        credential: AccountCredential,
+        handler: @escaping @Sendable (HTTPRequest) async throws -> HTTPResponse
+    ) async throws -> Page {
+        let defaults = isolatedDefaults()
+        let store = AccountStore(defaults: defaults, vault: InMemoryCredentialVault())
+        let id = store.add(kind: kind, label: "Personal", credential: credential).cardID
+        let http = RoutingHTTPClient(handler: handler)
         let container = AppContainer.forTesting(accounts: store, defaults: defaults, http: http)
         try await waitUntil { container.layout.provider(id: id) != nil }
         container.dataStore.snapshots[id] = ProviderSnapshot(
-            providerID: id, displayName: "Claude", plan: "Ultra",
+            providerID: id, displayName: kind.displayName, plan: nil,
             lines: [.progress(label: "Session", used: 10, limit: 100, format: .percent)]
         )
         _ = await container.dataStore.refresh(providerID: id, force: true)

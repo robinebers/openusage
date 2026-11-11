@@ -23,6 +23,9 @@
   time of day, like `2026-08-23 00:00:00`.
 - Settings → Display could open with a blank area until you scrolled. Its menu bar preview is now drawn
   directly, at one fixed size ([#1574](https://github.com/robinebers/openusage/issues/1574)).
+- OpenCode cards show your real plan (Go, Go Plus, or Go Teams) instead of labeling every account **Go**.
+  New OpenCode accounts sign in with an OpenCode Console device code; an account added with an API key
+  switches with **Sign In Again…** on its page ([#1574](https://github.com/robinebers/openusage/issues/1574)).
 
 ## v0.8.0-beta.7
 

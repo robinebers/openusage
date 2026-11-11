@@ -10,6 +10,13 @@ final class OpenCodeUsageMapperTests: XCTestCase {
         ]
     ]
 
+    func testThePlanTakesTheNameOpenCodeGivesTheProduct() throws {
+        for (product, plan) in [("go", "Go"), ("go-plus", "Go Plus"), ("go-teams", "Go Teams")] {
+            XCTAssertEqual(try OpenCodeUsageMapper.plan(goStatus: Data(#"{"product":"\#(product)"}"#.utf8)), plan)
+        }
+        XCTAssertThrowsError(try OpenCodeUsageMapper.plan(goStatus: Data(#"{"product":null}"#.utf8)))
+    }
+
     func testMeterLinesMatchDashboardPercentsAndResets() throws {
         let lines = try OpenCodeUsageMapper.meterLines(body: sampleBody)
         XCTAssertEqual(lines.map(\.label), ["Session", "Weekly", "Monthly"])

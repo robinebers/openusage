@@ -23,7 +23,7 @@ How each provider signs in and what its card shows.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Muse Code | Device code (Meta) | Session, Weekly |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
-| OpenCode | API key | Session, Weekly, Monthly |
+| OpenCode | Device code (OpenCode Console) | Session, Weekly, Monthly |
 | OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Key Limit, Budget, Free Requests |
 | Z.ai | API key | Session, Weekly, Web Searches, Limit Resets |
 
@@ -43,6 +43,7 @@ did, except Claude's: it asks for today's scopes and falls back to the old ones 
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
 | Devin | `openid profile email` | OpenUsage trades the token for the account's API key, the same key Windsurf's editor plugins use. |
 | Grok | `openid email offline_access grok-cli:access` | OpenUsage doesn't ask for `api:access`, which would let the token run Grok models. |
+| OpenCode | none | The same device sign-in the OpenCode CLI uses to connect a Console account, scoped to the workspace you pick. |
 | Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
 
 A narrower grant applies the next time you add an account. To get it for an existing account, remove
@@ -184,8 +185,14 @@ UTC day, and on ⌘R.
 
 ## OpenCode
 
-- Paste an API key from the [OpenCode console](https://opencode.ai/console).
-- The card shows the session, weekly, and monthly caps, and the plan (Go).
+- Sign in with an OpenCode Console device code, the sign-in the OpenCode CLI uses. Pick the workspace on
+  the page that opens. The account takes your Console email, and each workspace is its own account.
+- The card shows the session, weekly, and monthly caps, and the plan the Console names: Go, Go Plus, or
+  Go Teams. If the plan read fails, the card keeps its caps and shows no plan until the next try an hour
+  later.
+- An account added earlier with an API key keeps reading its caps but shows no plan, since the key can't
+  read it. Its page offers **Sign In Again…**, which switches it to the sign-in and keeps its name, order,
+  and settings.
 
 ## OpenRouter
 

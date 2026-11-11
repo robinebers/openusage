@@ -1,8 +1,6 @@
 import Foundation
 
 enum OpenCodeUsageMapper {
-    static let plan = "Go"
-
     /// Maximum distance from exactly one full period for a zero-usage rolling reset to count as the
     /// untouched-window placeholder. OpenCode rounds `resetInSec` up to whole seconds and HTTP `Date`
     /// headers carry whole-second precision, so two seconds covers both rounding steps. A session that
@@ -27,6 +25,16 @@ enum OpenCodeUsageMapper {
             try window(usage["weekly"], label: "Weekly", periodMs: MetricPeriod.weekMs, capturedAt: capturedAt),
             try window(usage["monthly"], label: "Monthly", periodMs: MetricPeriod.monthMs, capturedAt: capturedAt)
         ]
+    }
+
+    /// The plan by the names OpenCode's own pages give it.
+    static func plan(goStatus body: Data) throws -> String {
+        switch ProviderParse.jsonObject(body)?["product"] as? String {
+        case "go": "Go"
+        case "go-plus": "Go Plus"
+        case "go-teams": "Go Teams"
+        default: throw ProviderError.invalidResponse
+        }
     }
 
     static func errorType(in response: HTTPResponse) -> String? {
