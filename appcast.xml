@@ -3,6 +3,86 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.0-beta.8</title>
+            <pubDate>Wed, 11 Nov 2026 10:05:02 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>888</sparkle:version>
+            <sparkle:shortVersionString>0.8.0-beta.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[## v0.8.0-beta.8
+
+### New Features
+- OpenCode: sign in to OpenCode Console and show the Go plan ([#1650](https://github.com/robinebers/openusage/pull/1650)) by @robinebers
+- Show each alert once with Priority and Notify switches ([#1649](https://github.com/robinebers/openusage/pull/1649)) by @robinebers
+- Add info icon and provider marks to Unify Accounts ([#1648](https://github.com/robinebers/openusage/pull/1648)) by @robinebers
+- Regroup the Display, Alerts and General tabs ([#1647](https://github.com/robinebers/openusage/pull/1647)) by @robinebers
+- Unify multiple accounts of one provider ([#1646](https://github.com/robinebers/openusage/pull/1646)) by @robinebers
+- Add Amp provider with device-code sign-in ([#1645](https://github.com/robinebers/openusage/pull/1645)) by @robinebers
+
+### Bug Fixes
+- CLIProxyAPI hub: say to allow Local Network when macOS blocks the hub ([#1672](https://github.com/robinebers/openusage/pull/1672)) by @robinebers
+- Rename the Will Run Out alert to Burning Fast ([#1671](https://github.com/robinebers/openusage/pull/1671)) by @robinebers
+- Retry a refresh that had no network path instead of flagging it ([#1670](https://github.com/robinebers/openusage/pull/1670)) by @robinebers
+- Claude: read reset grants with usage and keep their kinds in the cache ([#1666](https://github.com/robinebers/openusage/pull/1666)) by @robinebers
+- Keep a pinned limit under Pinned unless it's used up ([#1667](https://github.com/robinebers/openusage/pull/1667)) by @robinebers
+- Tighten the unified resets list and drop "Use by" ([#1665](https://github.com/robinebers/openusage/pull/1665)) by @robinebers
+- CLIProxyAPI hub: show why removing a hub failed on its page ([#1663](https://github.com/robinebers/openusage/pull/1663)) by @robinebers
+- Match ⌘Z and ⌘, on the typed character ([#1662](https://github.com/robinebers/openusage/pull/1662)) by @robinebers
+- Claude: retry a reset-grants read that fails before the first answer ([#1664](https://github.com/robinebers/openusage/pull/1664)) by @robinebers
+- Cursor: read Extra Usage spend from the same budget as its limit ([#1661](https://github.com/robinebers/openusage/pull/1661)) by @robinebers
+- Start a new alert window only once the old reset has passed ([#1660](https://github.com/robinebers/openusage/pull/1660)) by @robinebers
+- Draw the Display tab's menu bar preview live at a fixed size ([#1651](https://github.com/robinebers/openusage/pull/1651)) by @robinebers
+- OpenRouter: read activity dates that carry a time of day ([#1655](https://github.com/robinebers/openusage/pull/1655)) by @robinebers
+- Say 1 Account on a unified limit one account reports ([#1656](https://github.com/robinebers/openusage/pull/1656)) by @robinebers
+- Grok: show the pay-as-you-go cap in dollars ([#1657](https://github.com/robinebers/openusage/pull/1657)) by @robinebers
+- Claude: ask for user:inference so Use can spend a reset ([#1652](https://github.com/robinebers/openusage/pull/1652)) by @robinebers
+
+### Chores
+- Delete CHANGELOG.md and read notes from the GitHub Release ([#1668](https://github.com/robinebers/openusage/pull/1668)) by @robinebers
+- Lower the CI job timeout from 20 to 12 minutes ([#1669](https://github.com/robinebers/openusage/pull/1669)) by @robinebers
+- Say a closed update banner stays hidden until restart ([#1659](https://github.com/robinebers/openusage/pull/1659)) by @robinebers
+- List what a crash report and every event send ([#1658](https://github.com/robinebers/openusage/pull/1658)) by @robinebers
+- Match docs and comments to the app ([#1654](https://github.com/robinebers/openusage/pull/1654)) by @robinebers
+- Clear compiler warnings and dead code ([#1653](https://github.com/robinebers/openusage/pull/1653)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.0-beta.7...v0.8.0-beta.8](https://github.com/robinebers/openusage/compare/v0.8.0-beta.7...v0.8.0-beta.8)
+
+- [35e88e9](https://github.com/robinebers/openusage/commit/35e88e93bff8b808a84c3dce1cef9c6fb1219156) fix(cliproxy): say to allow Local Network when macOS blocks the hub (#1672) by @robinebers
+- [781237a](https://github.com/robinebers/openusage/commit/781237a2717dd36d65f992e2d48ee1a8dbbfcd4d) fix(alerts): rename the Will Run Out alert to Burning Fast (#1671) by @robinebers
+- [24a761f](https://github.com/robinebers/openusage/commit/24a761fc3910d6f38fefa4813f9ebe44fb52f921) fix(refresh): retry a refresh that had no network path instead of flagging it (#1670) by @robinebers
+- [b0cd177](https://github.com/robinebers/openusage/commit/b0cd177a0d84c790ca96b117d9dcccde099fa5a4) chore(release): delete CHANGELOG.md and read notes from the GitHub Release (#1668) by @robinebers
+- [647ff12](https://github.com/robinebers/openusage/commit/647ff1267445783489ce5d0c188f77cfdfc9228e) fix(claude): read reset grants with usage and keep their kinds in the cache (#1666) by @robinebers
+- [f9adb8b](https://github.com/robinebers/openusage/commit/f9adb8bcf129f125687e6d2dd814d628e79bb369) ci: lower the CI job timeout from 20 to 12 minutes (#1669) by @robinebers
+- [2d7f45c](https://github.com/robinebers/openusage/commit/2d7f45c4b999582476afcae25752ec0aa0d7e3fb) fix(priority): keep a pinned limit under Pinned unless it's used up (#1667) by @robinebers
+- [d899e15](https://github.com/robinebers/openusage/commit/d899e15c97e5568adc38319baeab5fb3d46d7a5e) fix(resets): tighten the unified resets list and drop "Use by" (#1665) by @robinebers
+- [8aafda2](https://github.com/robinebers/openusage/commit/8aafda28dfb34077031b502059d4d01e550c63a8) fix(hubs): show why removing a hub failed on its page (#1663) by @robinebers
+- [3a735d6](https://github.com/robinebers/openusage/commit/3a735d6942b3238165e9604a2503750a768362d4) fix(dashboard): match ⌘Z and ⌘, on the typed character (#1662) by @robinebers
+- [cbb3bf7](https://github.com/robinebers/openusage/commit/cbb3bf744952d11c2cd253e7ddb8f26af3608d01) fix(claude): retry a reset-grants read that fails before the first answer (#1664) by @robinebers
+- [b3f6e79](https://github.com/robinebers/openusage/commit/b3f6e7920d54318b4fb02ccd08d878abaea139e5) fix(cursor): read Extra Usage spend from the same budget as its limit (#1661) by @robinebers
+- [6586c9f](https://github.com/robinebers/openusage/commit/6586c9f869ae3a8e33dffbb06c72a743fab4557e) feat(opencode): sign in to OpenCode Console and show the Go plan (#1650) by @robinebers
+- [f84068b](https://github.com/robinebers/openusage/commit/f84068b35d39720b4ae2047ad6676b7707eaad3e) fix(alerts): start a new alert window only once the old reset has passed (#1660) by @robinebers
+- [387c222](https://github.com/robinebers/openusage/commit/387c222551f0c644159324afa257d36d411de184) docs(updates): say a closed update banner stays hidden until restart (#1659) by @robinebers
+- [31000e8](https://github.com/robinebers/openusage/commit/31000e850ce876862890bff564c62b1bf19fed1a) docs(privacy): list what a crash report and every event send (#1658) by @robinebers
+- [404d763](https://github.com/robinebers/openusage/commit/404d76382e32b4de2b36bb114ed264f50f4db2c2) fix(settings): draw the Display tab's menu bar preview live at a fixed size (#1651) by @robinebers
+- [776768c](https://github.com/robinebers/openusage/commit/776768c9c38739cc200d4d8c944b7f2f4291131e) docs: match docs and comments to the app (#1654) by @robinebers
+- [1f3b9fe](https://github.com/robinebers/openusage/commit/1f3b9fe4a4524368f1131644c0138b393e2ebbf7) chore: clear compiler warnings and dead code (#1653) by @robinebers
+- [6b3f365](https://github.com/robinebers/openusage/commit/6b3f3658cbd0b13c8a67de2751981c8481c39159) fix(openrouter): read activity dates that carry a time of day (#1655) by @robinebers
+- [635e002](https://github.com/robinebers/openusage/commit/635e00253a639162ca647af5094bf4a69fab4a36) fix(dashboard): say 1 Account on a unified limit one account reports (#1656) by @robinebers
+- [b7d81db](https://github.com/robinebers/openusage/commit/b7d81db2b99d13c145ad0f4c5e4583373d53510b) fix(grok): show the pay-as-you-go cap in dollars (#1657) by @robinebers
+- [ea46fc6](https://github.com/robinebers/openusage/commit/ea46fc619131063fc06038a193ce440536ee0367) fix(claude): ask for user:inference so Use can spend a reset (#1652) by @robinebers
+- [b48d389](https://github.com/robinebers/openusage/commit/b48d389d344fa978e8415000e3166b994ccf171b) feat(settings): show each alert once with Priority and Notify switches (#1649) by @robinebers
+- [086009a](https://github.com/robinebers/openusage/commit/086009af5fa90b4c3b8611aa213496f9e1cb4104) feat(settings): add info icon and provider marks to Unify Accounts (#1648) by @robinebers
+- [2ee7204](https://github.com/robinebers/openusage/commit/2ee72042bc5078435eef6c50f6c19e208f0467dd) feat(settings): regroup the Display, Alerts and General tabs (#1647) by @robinebers
+- [213a76c](https://github.com/robinebers/openusage/commit/213a76c999da1c7e6bbe3ad6ac0c6561fc979d6f) feat(dashboard): unify multiple accounts of one provider (#1646) by @robinebers
+- [d29b508](https://github.com/robinebers/openusage/commit/d29b508951f2f228594f74d067833bc9637d95a9) feat(amp): add Amp provider with device-code sign-in (#1645) by @robinebers
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.0-beta.8/OpenUsage-0.8.0-beta.8.dmg" length="20076814" type="application/octet-stream" sparkle:edSignature="LG7WMvYPtcTsTp+32Opb+01T8tRbXVK8Bv2nGvxfo7R384vKUPvNzGoHFeVGTgSKB04/QZdF1ON0Lwj24rS1Bg=="/>
+        </item>
+        <item>
             <title>0.8.0-beta.7</title>
             <pubDate>Tue, 10 Nov 2026 05:53:22 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
