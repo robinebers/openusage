@@ -49,7 +49,7 @@ enum ResetClaimFailure: Equatable, Sendable {
         switch error {
         case ProviderError.signInExpired:
             self = .signInExpired
-        case is URLError, ProviderError.connectionFailed, ProviderError.unreachable:
+        case is URLError, ProviderError.connectionFailed, ProviderError.unreachable, ProviderError.localNetworkDenied:
             self = .connection
         default:
             self = .refused

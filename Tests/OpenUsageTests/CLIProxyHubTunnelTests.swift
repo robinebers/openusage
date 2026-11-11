@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import XCTest
 @testable import OpenUsage
 
@@ -278,6 +279,34 @@ final class CLIProxyHubTunnelTests: XCTestCase {
 
         XCTAssertEqual(outcome, .refreshed)
         XCTAssertEqual(try profileReads(), before + 1, "the retry still reads what ⌘R asked for")
+    }
+
+    /// Robin's MacBook on Nov 11: Network.framework logged the hub's path as "unsatisfied (Local network prohibited)",
+    /// and URLSession answered "The Internet connection appears to be offline". A test can't make macOS deny it, so
+    /// this hands the classifier the reason such a path carries.
+    func testAHubRequestMacOSKeepsOffTheLocalNetworkIsItsOwnErrorAndARealOfflineIsNot() {
+        let offline = URLError(.notConnectedToInternet, userInfo: [NSUnderlyingErrorKey: NSError(domain: kCFErrorDomainCFNetwork as String, code: -1009)])
+        let classify = { CLIProxyHubClient.unreachable(host: "mini.local:8317", path: "auth-files", error: offline, pathReason: $0) }
+
+        let denied = classify(nw_path_unsatisfied_reason_local_network_denied)
+        XCTAssertEqual(denied, .localNetworkDenied(host: "mini.local:8317"))
+        XCTAssertEqual(RefreshFailure(error: denied).kind, .offline, "retried like any read that never left the Mac")
+
+        XCTAssertEqual(offline.networkPathUnsatisfiedReason, nw_path_unsatisfied_reason_not_available)
+        XCTAssertEqual(classify(offline.networkPathUnsatisfiedReason), .unreachable("Can’t reach the CLIProxyAPI hub at mini.local:8317.", offline: true))
+    }
+
+    func testAHubAccountMacOSKeepsOffTheLocalNetworkSaysToAllowItOnceItsRetriesRunOut() async throws {
+        let http = RoutingHTTPClient { _ in throw ProviderError.localNetworkDenied(host: "mini.local:8317") }
+        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
+        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), offlineRetryDelays: [0.01])
+
+        await store.refreshAll()
+
+        XCTAssertEqual(
+            store.errorMessage(for: runtimes[0].provider.id),
+            "macOS is keeping OpenUsage from the CLIProxyAPI hub at mini.local:8317. Allow OpenUsage under System Settings → Privacy & Security → Local Network."
+        )
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {

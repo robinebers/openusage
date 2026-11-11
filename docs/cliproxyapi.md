@@ -21,6 +21,10 @@ An address without a scheme uses https. Plain `http://` works only for this Mac,
 (`localhost`, private or link-local IPs, `.local` names), and Tailscale (`….ts.net`,
 `100.64.0.0/10`, `fd7a:115c:a1e0::/48`).
 
+A hub on the local network needs macOS's Local Network permission. macOS asks the first time
+OpenUsage reaches it. If it was turned off, allow OpenUsage under **System Settings → Privacy &
+Security → Local Network**.
+
 ## Hub accounts
 
 A hub account works like any other account and carries the CLIProxyAPI mark.
@@ -58,6 +62,7 @@ logins turned off on the hub and files that aren't logins, such as `local-models
 | The card or row says | Fix |
 |---|---|
 | Can't reach the CLIProxyAPI hub at <host> | Start the hub or check the address |
+| macOS is keeping OpenUsage from the CLIProxyAPI hub at <host> | Allow OpenUsage under **System Settings → Privacy & Security → Local Network** |
 | … rejected the management key | **Replace Management Key…** |
 | … blocked this Mac after too many wrong keys | Wait out the 30-minute ban, then replace the key |
 | … only allows management from its own machine | Turn on `allow-remote` in the hub's config |

@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 /// The two management endpoints OpenUsage calls on a CLIProxyAPI hub: the login listing, and
 /// `api-call`, which sends a request upstream with the hub's own token in place of `$TOKEN$`. Every
@@ -97,8 +98,8 @@ struct CLIProxyHubClient: Sendable {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            AppLog.warn(LogTag.auth("cliproxy"), "\(host) \(path) unreachable: \(error.localizedDescription)")
-            throw ProviderError.unreachable("Can’t reach the CLIProxyAPI hub at \(host).", offline: (error as? URLError)?.meansOffline == true)
+            let reason = (error as? URLError)?.networkPathUnsatisfiedReason ?? nw_path_unsatisfied_reason_not_available
+            throw Self.unreachable(host: host, path: path, error: error, pathReason: reason)
         }
         guard let refusal = HubRefusal(response) else { return response }
         AppLog.error(
@@ -106,6 +107,17 @@ struct CLIProxyHubClient: Sendable {
             "\(host) \(path) -> HTTP \(response.statusCode) (\(refusal)), hub \(response.header("X-CPA-VERSION") ?? "version unknown")"
         )
         throw refusal.error(host: host, upstream: upstream)
+    }
+
+    /// A hub request that got no answer. URLSession reports a hub that macOS Local Network privacy keeps
+    /// this Mac from as no internet connection, so only the network path's reason tells the two apart.
+    static func unreachable(host: String, path: String, error: Error, pathReason: nw_path_unsatisfied_reason_t) -> ProviderError {
+        if pathReason == nw_path_unsatisfied_reason_local_network_denied {
+            AppLog.warn(LogTag.auth("cliproxy"), "\(host) \(path) unreachable: macOS denied OpenUsage Local Network access")
+            return .localNetworkDenied(host: host)
+        }
+        AppLog.warn(LogTag.auth("cliproxy"), "\(host) \(path) unreachable: \(error.localizedDescription)")
+        return .unreachable("Can’t reach the CLIProxyAPI hub at \(host).", offline: (error as? URLError)?.meansOffline == true)
     }
 }
 
