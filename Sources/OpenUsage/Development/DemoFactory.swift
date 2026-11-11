@@ -193,7 +193,7 @@ enum DemoFactory {
         case .grok: ["SuperGrok", "SuperGrok Heavy"]
         case .muse: ["Free", "Pro"]
         case .ollama: ["Free", "Pro", "Max"]
-        case .opencodeGo: ["Go"]
+        case .opencodeGo: ["Go", "Go Plus", "Go Teams"]
         case .openrouter: ["Pay As You Go"]
         case .zai: ["Lite", "Pro", "Max"]
         }

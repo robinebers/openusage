@@ -13,6 +13,7 @@ struct AccountDetailView: View {
     @State private var activeMetricID: String?
     @State private var isConfirmingRemoval = false
     @State private var removalError: String?
+    @State private var signsInWithKey = false
 
     var body: some View {
         if let provider = layout.provider(id: providerID) {
@@ -21,11 +22,12 @@ struct AccountDetailView: View {
                     metricsCard
                     infoRow(icon: CLIProxyHub.markID, "Managed by \(host)")
                 } else {
-                    if let problem = dataStore.problem(for: providerID) {
+                    let problem = dataStore.problem(for: providerID)
+                    if let problem {
                         ProblemCard(message: problem)
-                        if container.accounts.account(cardID: providerID)?.authMethod == .oauth {
-                            signInAgainRow
-                        }
+                    }
+                    if container.accounts.account(cardID: providerID)?.authMethod == .oauth, problem != nil || signsInWithKey {
+                        signInAgainRow
                     }
                     metricsCard
                     if let domain = provider.domain {
@@ -44,6 +46,7 @@ struct AccountDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .task(id: providerID) { signsInWithKey = await container.signsInWithKey(providerID) }
         } else {
             EmptyView()
         }

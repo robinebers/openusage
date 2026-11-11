@@ -81,14 +81,15 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         _ store: WidgetDataStore,
         runtime: StubRuntime,
         used: Double? = nil,
-        resetsAt: Date? = nil
+        resetsAt: Date? = nil,
+        now: Date? = nil
     ) async {
         if let used {
             let next = snapshot(used: used, resetsAt: resetsAt)
             runtime.answer = { _ in .success(next) }
         }
         await store.refreshAll(force: true)
-        await notify(base)
+        await notify(now ?? base)
     }
 
     func testTwoAccountsOfOneProviderNameThemselvesInTheSubtitle() async {
@@ -179,6 +180,34 @@ final class WidgetDataStoreNotificationTests: XCTestCase {
         await evaluate(store, runtime: runtime, used: 95, resetsAt: resetsAt.addingTimeInterval(0.09))
 
         XCTAssertEqual(recorder.posts.filter { $0.0 == "test.closeToRunningOut" }.count, 1)
+    }
+
+    func testAResetThatMovesForwardBeforeItPassesDoesNotRefireThroughTheStore() async {
+        let settings = isolatedDefaults()
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
+        await evaluate(store, runtime: runtime)
+        await evaluate(store, runtime: runtime, used: 75)
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"])
+
+        await evaluate(store, runtime: runtime, used: 75, resetsAt: resetsAt.addingTimeInterval(600))
+
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"], "a rolling reset that moves forward is the same window")
+    }
+
+    func testAResetThatMovesForwardAfterItPassedStartsANewWindowThroughTheStore() async {
+        let settings = isolatedDefaults()
+        allOn(settings)
+        let recorder = Recorder()
+        let (store, runtime, _) = makeStore(used: 40, settings: settings, recorder: recorder)
+        await evaluate(store, runtime: runtime)
+        await evaluate(store, runtime: runtime, used: 75)
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning"])
+
+        await evaluate(store, runtime: runtime, used: 75, resetsAt: resetsAt.addingTimeInterval(week), now: resetsAt.addingTimeInterval(60))
+
+        XCTAssertEqual(recorder.posts.map(\.1), ["Warning", "Warning"])
     }
 
     func testAllTogglesOffSuppressesAllPosts() async {

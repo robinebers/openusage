@@ -99,6 +99,14 @@ final class AppContainer {
         }
     }
 
+    /// An OpenCode account still on the API key OpenCode took before its Console sign-in.
+    func signsInWithKey(_ providerID: String) async -> Bool {
+        guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime,
+              runtime.account.kind == .opencodeGo, runtime.account.hub == nil,
+              case .apiKey? = try? await runtime.loadCredential() else { return false }
+        return true
+    }
+
     /// Saves a pasted key only once the account's usage read accepts it and the account is still added,
     /// so a refused key never replaces one that works and a removed account's key never comes back.
     func replaceKey(_ key: String, for providerID: String) async throws {
@@ -110,7 +118,8 @@ final class AppContainer {
         guard let runtime = providers.first(where: { $0.provider.id == providerID }) as? AccountProviderRuntime else { return }
         let account = runtime.account
         if case .oauth = credential, let signedIn = credential.identity,
-           let saved = (try? accounts.credential(for: account.id))?.identity, saved != signedIn {
+           let saved = try? accounts.credential(for: account.id), case .oauth = saved,
+           let savedIdentity = saved.identity, savedIdentity != signedIn {
             throw ProviderError.unavailable("That's a different account. Sign in to this one, or use Add New Account.")
         }
         try accounts.checkForDuplicate(credential, kind: account.kind, organization: account.organization, excluding: account.id)
