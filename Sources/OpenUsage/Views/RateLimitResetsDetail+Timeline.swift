@@ -44,12 +44,10 @@ extension RateLimitResetsDetail {
         let severity: WidgetData.MeterSeverity
         /// The date and time it expires.
         let expiry: String
-        /// The time left, or "Expiring" for a reset about to lapse.
+        /// The time left; nil for a reset about to lapse, which reads "Expiring".
         let countdown: String?
         /// The reset this row spends; nil while the provider's list hasn't been read.
         let item: ResetItem?
-
-        nonisolated static let expiring = "Expiring"
 
         /// A row is its record plus its place among that record's rows, so two resets sharing an expiry
         /// stay apart and a confirmation never carries over to another record.
@@ -60,7 +58,7 @@ extension RateLimitResetsDetail {
         }
 
         var accessibilityLabel: String {
-            ["Reset \(number)", item?.kind.title, expiry, countdown.map { $0 == Self.expiring ? "expiring" : "expires in \($0)" }]
+            ["Reset \(number)", item?.kind.title, expiry, countdown.map { "expires in \($0)" } ?? "expiring"]
                 .compactMap { $0 }.joined(separator: ", ")
         }
     }
@@ -83,8 +81,8 @@ extension RateLimitResetsDetail {
                 date: row.date,
                 key: Entry.Key(claim: row.item?.claim, date: row.date, ordinal: ordinal),
                 severity: WidgetData.expirySeverity(secondsRemaining: row.date.timeIntervalSince(now)),
-                expiry: "\(Formatters.monthDayLabel(row.date)) at \(TimeFormatSetting.current.shortTime(row.date))",
-                countdown: relative == Formatters.imminent ? Entry.expiring : relative,
+                expiry: Formatters.dateAndTime(row.date),
+                countdown: relative == Formatters.imminent ? nil : relative,
                 item: row.item
             )
         }

@@ -230,8 +230,8 @@ struct RateLimitResetsDetail: View {
                     .disabled(blocked)
                     .hoverTooltip(blocked ? "Nothing to reset right now" : nil)
                     .transition(.opacity)
-            } else if let countdown = entry.countdown {
-                Text(countdown)
+            } else {
+                Text(entry.countdown ?? "Expiring")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
