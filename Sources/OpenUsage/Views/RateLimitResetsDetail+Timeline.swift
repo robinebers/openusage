@@ -42,8 +42,8 @@ extension RateLimitResetsDetail {
         let date: Date
         let key: Key
         let severity: WidgetData.MeterSeverity
-        /// "Use by <time>", or "Expiring soon" for a reset about to lapse.
-        let useBy: String
+        /// The date and time it expires, or "Expiring soon" for a reset about to lapse.
+        let expiry: String
         let countdown: String?
         /// The reset this row spends; nil while the provider's list hasn't been read.
         let item: ResetItem?
@@ -57,7 +57,7 @@ extension RateLimitResetsDetail {
         }
 
         var accessibilityLabel: String {
-            ["Reset \(number)", item?.kind.title, useBy.prefix(1).lowercased() + useBy.dropFirst()]
+            ["Reset \(number)", item?.kind.title, expiry]
                 .compactMap { $0 }.joined(separator: ", ") + (countdown.map { ", expires in \($0)" } ?? "")
         }
     }
@@ -82,7 +82,7 @@ extension RateLimitResetsDetail {
                 date: row.date,
                 key: Entry.Key(claim: row.item?.claim, date: row.date, ordinal: ordinal),
                 severity: WidgetData.expirySeverity(secondsRemaining: row.date.timeIntervalSince(now)),
-                useBy: imminent ? "Expiring soon" : "Use by \(absolute!)",
+                expiry: imminent ? "Expiring soon" : absolute!,
                 countdown: imminent ? nil : relative,
                 item: row.item
             )

@@ -11,6 +11,7 @@ struct RateLimitResetsDetail: View {
     let expiries: [Date]
     var items: [ResetItem] = []
     var showsActions = false
+    var verticalPadding: CGFloat = 14
     var onHoverChange: (Bool) -> Void
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ item: ResetItem, _ requestID: String) async -> ResetClaimOutcome)?
@@ -53,7 +54,8 @@ struct RateLimitResetsDetail: View {
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, verticalPadding)
         .frame(width: Self.width)
         // Report the ideal (content-hugging) height as the fixed size, so collapsing the confirm card
         // back to a node shrinks the popover again — without this, NSPopover keeps the largest
@@ -177,7 +179,7 @@ struct RateLimitResetsDetail: View {
         }
     }
 
-    /// A node is two lines: the kind and countdown, then the use-by time. The dot sits on the first line.
+    /// A node is two lines: the kind and countdown, then the expiry. The dot sits on the first line.
     private let nodeTopPadding: CGFloat = 5
     private let firstLineHeight: CGFloat = 20
     private var firstLineCenterY: CGFloat { nodeTopPadding + firstLineHeight / 2 }
@@ -197,7 +199,7 @@ struct RateLimitResetsDetail: View {
                         trailing(entry)
                     }
                     .frame(height: firstLineHeight)
-                    Text(entry.useBy)
+                    Text(entry.expiry)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -208,7 +210,7 @@ struct RateLimitResetsDetail: View {
             } else {
                 // The expiries alone, until the provider's list says what each reset is.
                 HStack(spacing: 8) {
-                    Text(entry.useBy)
+                    Text(entry.expiry)
                         .font(.callout)
                         .foregroundStyle(.primary)
                         .lineLimit(1)

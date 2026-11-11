@@ -63,7 +63,7 @@ and add it again.
   the account's billing currency. It hides while extra usage is off. On an Enterprise plan, where
   this is the whole monthly bill, the row reads Spend.
 - **Limit Resets** counts the account's rate-limit resets. Click the count to see each one by kind
-  (Session, Weekly, Fable or Full Reset), with its countdown and the time to use it by. The kind
+  (Session, Weekly, Fable or Full Reset), with its countdown and the date and time it expires. The kind
   comes from the reset's own fields, the same way Claude Code reads them. Choose **Use**, then
   **Reset**, to spend the reset you picked. The confirmation says which limits it refills. **Use**
   shows only on a reset Anthropic says can be used now. If Anthropic wants another reset used first,
