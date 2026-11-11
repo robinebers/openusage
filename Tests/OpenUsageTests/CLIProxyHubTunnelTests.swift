@@ -289,24 +289,14 @@ final class CLIProxyHubTunnelTests: XCTestCase {
         let classify = { CLIProxyHubClient.unreachable(host: "mini.local:8317", path: "auth-files", error: offline, pathReason: $0) }
 
         let denied = classify(nw_path_unsatisfied_reason_local_network_denied)
-        XCTAssertEqual(denied, .localNetworkDenied(host: "mini.local:8317"))
+        XCTAssertEqual(
+            denied.localizedDescription,
+            "macOS is keeping OpenUsage from the CLIProxyAPI hub at mini.local:8317. Allow OpenUsage under System Settings → Privacy & Security → Local Network."
+        )
         XCTAssertEqual(RefreshFailure(error: denied).kind, .offline, "retried like any read that never left the Mac")
 
         XCTAssertEqual(offline.networkPathUnsatisfiedReason, nw_path_unsatisfied_reason_not_available)
         XCTAssertEqual(classify(offline.networkPathUnsatisfiedReason), .unreachable("Can’t reach the CLIProxyAPI hub at mini.local:8317.", offline: true))
-    }
-
-    func testAHubAccountMacOSKeepsOffTheLocalNetworkSaysToAllowItOnceItsRetriesRunOut() async throws {
-        let http = RoutingHTTPClient { _ in throw ProviderError.localNetworkDenied(host: "mini.local:8317") }
-        let (runtimes, _, _) = try makeRuntimes(http: http, logins: [Self.login("a", "claude")])
-        let store = WidgetDataStore.forTesting(runtimes, defaults: isolatedDefaults(), offlineRetryDelays: [0.01])
-
-        await store.refreshAll()
-
-        XCTAssertEqual(
-            store.errorMessage(for: runtimes[0].provider.id),
-            "macOS is keeping OpenUsage from the CLIProxyAPI hub at mini.local:8317. Allow OpenUsage under System Settings → Privacy & Security → Local Network."
-        )
     }
 
     func testARelinkedLoginGetsAFreshRuntimeAndARenameKeepsIt() throws {

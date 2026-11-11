@@ -1,5 +1,4 @@
 import Foundation
-import Network
 
 enum ProviderError: Error, LocalizedError, Equatable {
     case signInExpired(ProviderKind)
@@ -12,8 +11,6 @@ enum ProviderError: Error, LocalizedError, Equatable {
     /// A server between OpenUsage and the provider, such as a CLIProxyAPI hub, can't be reached. `offline`
     /// when the request never left this Mac. See `URLError.meansOffline`.
     case unreachable(String, offline: Bool = false)
-    /// macOS Local Network privacy kept a request to a CLIProxyAPI hub on this Mac.
-    case localNetworkDenied(host: String)
 
     var errorDescription: String? {
         switch self {
@@ -25,8 +22,6 @@ enum ProviderError: Error, LocalizedError, Equatable {
         case .unavailable(let message): message
         case .keyRejected(let message): "\(message) Replace it on the account's page."
         case .unreachable(let message, _): message
-        case .localNetworkDenied(let host):
-            "macOS is keeping OpenUsage from the CLIProxyAPI hub at \(host). Allow OpenUsage under System Settings → Privacy & Security → Local Network."
         }
     }
 
@@ -60,15 +55,4 @@ extension URLError {
     /// This Mac had no network path for the request, so it never reached a server. Right after launch,
     /// macOS answers a local-network address this way until it lets OpenUsage onto the local network.
     var meansOffline: Bool { code == .notConnectedToInternet || code == .networkConnectionLost }
-
-    /// Why macOS gave the request no network path, from the path URLSession attaches under the undocumented
-    /// `_NSURLErrorNWPathKey`, on this error or the CFNetwork error under it.
-    var networkPathUnsatisfiedReason: nw_path_unsatisfied_reason_t {
-        var error: NSError? = self as NSError
-        while let current = error {
-            if let path = current.userInfo["_NSURLErrorNWPathKey"] as? nw_path_t { return nw_path_get_unsatisfied_reason(path) }
-            error = current.userInfo[NSUnderlyingErrorKey] as? NSError
-        }
-        return nw_path_unsatisfied_reason_not_available
-    }
 }
