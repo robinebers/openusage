@@ -11,8 +11,6 @@ struct RateLimitResetsDetail: View {
     let expiries: [Date]
     var items: [ResetItem] = []
     var showsActions = false
-    var verticalPadding: CGFloat = 14
-    var onHoverChange: (Bool) -> Void
     var onPinChange: ((Bool) -> Void)?
     var claim: ((_ item: ResetItem, _ requestID: String) async -> ResetClaimOutcome)?
 
@@ -55,18 +53,11 @@ struct RateLimitResetsDetail: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, verticalPadding)
         .frame(width: Self.width)
         // Report the ideal (content-hugging) height as the fixed size, so collapsing the confirm card
         // back to a node shrinks the popover again — without this, NSPopover keeps the largest
         // height it has ever measured (it grows on Use but never scales back on Cancel).
         .fixedSize(horizontal: false, vertical: true)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active: onHoverChange(true)
-            case .ended: onHoverChange(false)
-            }
-        }
         .onChange(of: items) { _, newValue in
             itemsVersion += 1
             claimed = [:]

@@ -108,8 +108,6 @@ struct UnifiedResetsDetail: View {
                     expiries: member.line.data.expiriesAt,
                     items: service?.items ?? [],
                     showsActions: showsActions,
-                    verticalPadding: 0,
-                    onHoverChange: { _ in },
                     onPinChange: onPinChange,
                     claim: service.map { service in
                         { item, requestID in await service.claim(item, requestID: requestID) }
