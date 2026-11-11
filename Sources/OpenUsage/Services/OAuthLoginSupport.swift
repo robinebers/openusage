@@ -58,11 +58,14 @@ struct OAuthTokenResponse: Decodable {
     let refreshToken: String?
     let expiresIn: Double?
     let idToken: String?
+    /// The workspace an OpenCode Console sign-in is scoped to.
+    let orgID: String?
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case expiresIn = "expires_in"
         case idToken = "id_token"
+        case orgID = "org_id"
     }
     var expiry: Date? { expiresIn.map { Date().addingTimeInterval($0) } }
 

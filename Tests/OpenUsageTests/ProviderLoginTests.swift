@@ -236,6 +236,41 @@ final class ProviderLoginTests: XCTestCase {
         XCTAssertEqual(usage.headers["Authorization"], "Bearer \(accessToken)")
     }
 
+    func testOpenCodeDeviceLoginRunsTheCLIsConsoleSignInAndNamesTheAccountByEmail() async throws {
+        let http = RoutingHTTPClient { request in
+            switch request.url.path {
+            case "/console/auth/device/code":
+                Self.response(#"{"device_code":"device","user_code":"OPEN-CODE","verification_uri_complete":"/console/device?user_code=OPEN-CODE&client_id=opencode-cli","expires_in":600,"interval":1}"#)
+            case "/console/auth/device/token":
+                Self.response(#"{"access_token":"console","refresh_token":"console-refresh","expires_in":3600,"token_type":"Bearer","org_id":"wrk_01"}"#)
+            case "/console/api/user":
+                Self.response(#"{"id":"usr_01","email":"dev@example.com","name":"Dev","role":"owner"}"#)
+            default:
+                Self.response("{}", status: 404)
+            }
+        }
+        let prompt = PromptCapture()
+
+        let result = try await OpenCodeLogin(http: http).login(prompt: { prompt.store($0) }, pastedCode: emptyInput())
+
+        XCTAssertEqual(result.label, "dev@example.com")
+        guard case .oauth(let tokens) = result.credential else { return XCTFail("expected a sign-in") }
+        XCTAssertEqual(tokens.accessToken, "console")
+        XCTAssertEqual(tokens.refreshToken, "console-refresh")
+        XCTAssertNotNil(tokens.expiresAt)
+        XCTAssertEqual(tokens.extras, [OAuthTokens.identityKey: "opencode:usr_01:wrk_01", OpenCodeLogin.orgKey: "wrk_01"])
+        XCTAssertEqual(prompt.value?.deviceCode?.userCode, "OPEN-CODE")
+        XCTAssertEqual(
+            prompt.value?.deviceCode?.verificationURL,
+            URL(string: "https://opencode.ai/console/device?user_code=OPEN-CODE&client_id=opencode-cli")
+        )
+        let start = try XCTUnwrap(http.requests.first { $0.url.path == "/console/auth/device/code" })
+        XCTAssertEqual(Self.formBody(start), ["client_id": "opencode-cli", "supports_org_scope": "true"])
+        let user = try XCTUnwrap(http.requests.first { $0.url.path == "/console/api/user" })
+        XCTAssertEqual(user.headers["Authorization"], "Bearer console")
+        XCTAssertEqual(user.headers["x-org-id"], "wrk_01")
+    }
+
     func testCursorLoginPollsForTokens() async throws {
         let http = RoutingHTTPClient { _ in
             Self.response(#"{"accessToken":"\#(Self.jwt(#"{"sub":"auth0|user_abc"}"#))","refreshToken":"cursor-refresh","authId":"auth0|user_abc"}"#)
