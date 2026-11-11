@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import OpenUsage
 
@@ -145,6 +146,26 @@ final class UnifiedAccountsTests: QuietWindowTestCase {
         let unified = family([("AM1", [("weekly", weekly)]), ("AM2", [("weekly", weekly)])], waiting: ["claude@2"])
         XCTAssertEqual(line("weekly", in: unified).members.map(\.provider.id), ["claude@1"])
         XCTAssertEqual(line("weekly", in: unified).metricIDs, ["claude@1.weekly", "claude@2.weekly"])
+    }
+
+    func testALimitOnlyOneAccountReportsHeadsItsAccountListOneAccount() async throws {
+        NSApplication.shared.setValue(true, forKey: "accessibilityEnhancedUserInterface")
+        defer { NSApplication.shared.setValue(false, forKey: "accessibilityEnhancedUserInterface") }
+        let weekly = limit("Weekly", left: 40, resetsIn: day)
+        let fable = limit("Fable", left: 80, resetsIn: day)
+        let unified = family([("AM1", [("weekly", weekly), ("fable", fable)]), ("AM2", [("weekly", weekly)])])
+        func texts(in element: Any) -> [String] {
+            guard let node = element as? NSObject else { return [] }
+            let text = node.value(forKey: "accessibilityRole") as? String == NSAccessibility.Role.staticText.rawValue
+                ? (node.value(forKey: "accessibilityValue") as? String ?? node.value(forKey: "accessibilityLabel") as? String) : nil
+            return [text].compactMap { $0 } + (node.value(forKey: "accessibilityChildren") as? [Any] ?? []).flatMap(texts)
+        }
+        for (key, heading) in [("fable", "1 Account"), ("weekly", "2 Accounts")] {
+            let (window, host) = show(UnifiedLimitDetail(line: line(key, in: unified)))
+            defer { window.close() }
+            try await waitUntil { texts(in: host).contains(heading) }
+            XCTAssertTrue(texts(in: host).contains(heading), "\(key) is headed \(texts(in: host))")
+        }
     }
 
     func testCappedAndUncappedSpendingAddUpPerCurrencyAndKeepEveryAccount() {

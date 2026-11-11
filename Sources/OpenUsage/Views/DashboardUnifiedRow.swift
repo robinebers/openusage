@@ -52,7 +52,7 @@ struct DashboardUnifiedRow: View {
 }
 
 /// Every account with the limit, each with its own bar, amount and reset. A used-up account stays red.
-private struct UnifiedLimitDetail: View {
+struct UnifiedLimitDetail: View {
     let line: DashboardLine
 
     var body: some View {
@@ -62,7 +62,7 @@ private struct UnifiedLimitDetail: View {
                     Text(line.data.title)
                         .font(.system(size: 13, weight: .semibold))
                     Spacer(minLength: 0)
-                    Text("\(line.members.count) Accounts")
+                    Text(line.members.count == 1 ? "1 Account" : "\(line.members.count) Accounts")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
