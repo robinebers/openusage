@@ -12,6 +12,7 @@ final class PaceNotificationLogicTests: XCTestCase {
         _ state: WidgetData.MeterState,
         fraction: Double = 0.9,
         resetsAt: Date? = nil,
+        now: Date? = nil,
         from previous: NotificationState = NotificationState()
     ) -> PaceNotificationLogic.Transition {
         PaceNotificationLogic.transitions(
@@ -19,7 +20,8 @@ final class PaceNotificationLogicTests: XCTestCase {
             severity: WidgetData(title: "Weekly", kind: .percent, used: (1 - fraction) * 100, limit: 100).severity,
             resetsAt: resetsAt ?? reset,
             unusedNearReset: false,
-            previous: previous
+            previous: previous,
+            now: now ?? reset.addingTimeInterval(-3600)
         )
     }
 
@@ -67,8 +69,14 @@ final class PaceNotificationLogicTests: XCTestCase {
         var state = step(close).newState
         state.firedMilestones.insert(.closeToRunningOut)
         XCTAssertTrue(step(running, from: state).fire.isEmpty)
-        let refired = step(running, resetsAt: reset.addingTimeInterval(3600), from: state)
+        let refired = step(running, resetsAt: reset.addingTimeInterval(3600), now: reset, from: state)
         XCTAssertEqual(refired.fire, [.closeToRunningOut])
+    }
+
+    func testAResetThatMovesForwardBeforeItPassesKeepsTheWindowsAlerts() {
+        var state = step(running, fraction: 0.2).newState
+        state.firedMilestones.formUnion([.closeToRunningOut, .warning])
+        XCTAssertTrue(step(running, fraction: 0.2, resetsAt: reset.addingTimeInterval(600), from: state).fire.isEmpty)
     }
 
     func testRecoveryThenReworseningRefires() {

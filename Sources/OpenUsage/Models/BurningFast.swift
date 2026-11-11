@@ -8,13 +8,13 @@ struct BurningFast: Equatable {
     var latched: [String: Date] = [:]
 
     func contains(_ line: DashboardLine, now: Date) -> Bool {
-        Self.isBurning(line.data, now: now, wasBurning: wasBurning(line.id, line.data))
+        Self.isBurning(line.data, now: now, wasBurning: wasBurning(line.id, line.data, now: now))
     }
 
     /// A new window starts afresh, whatever the last one did.
-    func wasBurning(_ id: String, _ data: WidgetData) -> Bool {
+    func wasBurning(_ id: String, _ data: WidgetData, now: Date) -> Bool {
         guard let reset = latched[id] else { return false }
-        return !PaceNotificationLogic.resetWindowAdvanced(resetsAt: data.resetsAt, previousReset: reset)
+        return !PaceNotificationLogic.resetWindowAdvanced(resetsAt: data.resetsAt, previousReset: reset, now: now)
     }
 
     static func isBurning(_ data: WidgetData, now: Date, wasBurning: Bool) -> Bool {
