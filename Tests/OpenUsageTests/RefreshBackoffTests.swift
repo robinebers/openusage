@@ -125,6 +125,22 @@ final class RefreshBackoffTests: XCTestCase {
         }
     }
 
+    func testAReplacedRuntimeStopsTheOldOnesOfflineRetries() async throws {
+        let old = makeRuntime([.failure(RefreshFailure(error: URLError(.notConnectedToInternet)))])
+        let store = WidgetDataStore.forTesting([old], defaults: isolatedDefaults(), offlineRetryDelays: [1])
+        let first = Task { await store.refresh(providerID: "test", force: true) }
+        while old.refreshCount < 1 { try await Task.sleep(for: .milliseconds(5)) }
+
+        let replacement = makeRuntime([ok(at: start)])
+        store.apply(providers: [replacement], registry: .from([replacement]))
+        let outcome = await store.refresh(providerID: provider.id, force: true)
+        let firstOutcome = await first.value
+
+        XCTAssertEqual(outcome, .refreshed, "the new runtime reads at once instead of waiting out the old one's retry")
+        XCTAssertEqual(firstOutcome, .skipped)
+        XCTAssertEqual(old.refreshCount, 1, "the old runtime sent nothing more")
+    }
+
     func testRetryAfterReadsSecondsAndHTTPDates() {
         func response(_ value: String?) -> HTTPResponse {
             HTTPResponse(statusCode: 429, headers: value.map { ["retry-after": $0] } ?? [:], body: Data())

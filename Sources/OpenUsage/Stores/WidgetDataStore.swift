@@ -115,10 +115,11 @@ final class WidgetDataStore {
 
     func apply(providers: [ProviderRuntime], registry: WidgetRegistry) {
         self.registry = registry
+        let previous = providersByID
         providersByID = Dictionary(uniqueKeysWithValues: providers.map { ($0.provider.id, $0) })
         let ids = Set(providersByID.keys)
-        for (id, task) in inFlight where !ids.contains(id) { task.cancel() }
-        inFlight = inFlight.filter { ids.contains($0.key) }
+        for (id, task) in inFlight where providersByID[id] !== previous[id] { task.cancel() }
+        inFlight = inFlight.filter { providersByID[$0.key] === previous[$0.key] }
         let next = snapshots.filter { ids.contains($0.key) }
         let removed = next.count < snapshots.count
         snapshots = next
