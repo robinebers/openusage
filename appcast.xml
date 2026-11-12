@@ -7,9 +7,26 @@
             <pubDate>Wed, 11 Nov 2026 10:05:02 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
             <sparkle:version>888</sparkle:version>
-            <sparkle:shortVersionString>0.8.0-beta.8</sparkle:shortVersionString>
+            <sparkle:shortVersionString>0.8.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown"><![CDATA[## v0.8.0-beta.8
+            <description sparkle:format="markdown"><![CDATA[## v0.8.0
+
+> ## ⚠️ Upgrading From 0.7.x: Read This First
+>
+> **This is a new OpenUsage. You have to add your accounts again.** Open the **Accounts** screen and sign in to each one. OpenUsage no longer picks up the sign-ins of the coding tools on your Mac, so most accounts don't carry over.
+>
+> **What carries over**
+> - The OpenRouter and Z.ai keys you saved in 0.7.x are added for you, unless you had turned that provider off.
+> - Your hidden metrics, metric order, and provider order apply to the first account you add for each provider.
+>
+> **What is gone**
+> - Spend and token estimates from local logs and model pricing. The app shows only what each provider's API reports for the accounts you sign in to.
+> - Account discovery. OpenUsage no longer reads other tools' credentials, config files, Keychain items, databases, or logs.
+> - iCloud sync of usage history, the local HTTP API, the log file, the Pi provider, and menu-bar stars.
+>
+> **If you script the `openusage` command:** the JSON changed. `providers` is keyed by account id (`codex@1a2b3c4d`), not by provider, and `schema` is now `openusage.limits.v2`.
+>
+> Background and discussion: [#1441](https://github.com/robinebers/openusage/issues/1441)
 
 ### New Features
 - OpenCode: sign in to OpenCode Console and show the Go plan ([#1650](https://github.com/robinebers/openusage/pull/1650)) by @robinebers
@@ -17,7 +34,66 @@
 - Add info icon and provider marks to Unify Accounts ([#1648](https://github.com/robinebers/openusage/pull/1648)) by @robinebers
 - Regroup the Display, Alerts and General tabs ([#1647](https://github.com/robinebers/openusage/pull/1647)) by @robinebers
 - Unify multiple accounts of one provider ([#1646](https://github.com/robinebers/openusage/pull/1646)) by @robinebers
-- Add Amp provider with device-code sign-in ([#1645](https://github.com/robinebers/openusage/pull/1645)) by @robinebers
+- Amp: add Amp provider with device-code sign-in ([#1645](https://github.com/robinebers/openusage/pull/1645)) by @robinebers
+- Name each reset and spend the one you pick ([#1642](https://github.com/robinebers/openusage/pull/1642)) by @validatedev
+- Switch tabs on press with no slide ([#1640](https://github.com/robinebers/openusage/pull/1640)) by @robinebers
+- Hide a metric from its right-click menu by @robinebers
+- Seeded random sample data for dev builds ([#1601](https://github.com/robinebers/openusage/pull/1601)) by @validatedev
+- Add Always Show In Menu Bar to mirror Priority's order ([#1616](https://github.com/robinebers/openusage/pull/1616)) by @robinebers
+- Blur account names while Hide From Screen Share sees a capture ([#1599](https://github.com/robinebers/openusage/pull/1599)) by @validatedev
+- Explain settings in info tooltips and list Used Up last ([#1609](https://github.com/robinebers/openusage/pull/1609)) by @robinebers
+- Show a provider's copy button beside its logo on card hover ([#1610](https://github.com/robinebers/openusage/pull/1610)) by @robinebers
+- Mark the even pace on bars and Priority rings ([#1606](https://github.com/robinebers/openusage/pull/1606)) by @robinebers
+- Copilot: sign in on GitHub Enterprise domains on GHE.com ([#1607](https://github.com/robinebers/openusage/pull/1607)) by @robinebers
+- Group Display's Priority settings under one heading ([#1604](https://github.com/robinebers/openusage/pull/1604)) by @robinebers
+- List limits to use before they reset by @robinebers
+- Add Use It or Lose It alert ([#1598](https://github.com/robinebers/openusage/pull/1598)) by @robinebers
+- List limits burning fast ([#1594](https://github.com/robinebers/openusage/pull/1594)) by @robinebers
+- Add Priority Limits for warning and critical levels ([#1588](https://github.com/robinebers/openusage/pull/1588)) by @robinebers
+- Replace refresh rollups with daily provider account counts ([#1581](https://github.com/robinebers/openusage/pull/1581)) by @robinebers
+- Muse Code: add Muse Code provider with device-code sign-in by @robinebers
+- Z.ai: show and use banked Session and Weekly resets ([#1576](https://github.com/robinebers/openusage/pull/1576)) by @robinebers
+- Nest CLIProxyAPI hub accounts under a hub page ([#1565](https://github.com/robinebers/openusage/pull/1565)) by @robinebers
+- Show skeleton rows until an account's first reading, and flag Needs Attention only after a failed refresh ([#1564](https://github.com/robinebers/openusage/pull/1564)) by @robinebers
+- Sign share images with a tinted OpenUsage footer band ([#1561](https://github.com/robinebers/openusage/pull/1561)) by @robinebers
+- Drop the big All Clear and always show the Running Out row ([#1560](https://github.com/robinebers/openusage/pull/1560)) by @robinebers
+- Put Priority Icons first in Display and list running-out pins only under Running Out ([#1559](https://github.com/robinebers/openusage/pull/1559)) by @robinebers
+- Keep the Running Out header above All Clear and pin from the row menu ([#1558](https://github.com/robinebers/openusage/pull/1558)) by @robinebers
+- Pin metrics to a Pinned section at the top of Priority ([#1553](https://github.com/robinebers/openusage/pull/1553)) by @robinebers
+- Show the app icon with a dot when an update is available ([#1554](https://github.com/robinebers/openusage/pull/1554)) by @robinebers
+- Welcome 0.7.x upgraders back on the empty dashboard ([#1546](https://github.com/robinebers/openusage/pull/1546)) by @robinebers
+- Tell 0.7.x upgraders why their accounts are gone ([#1544](https://github.com/robinebers/openusage/pull/1544)) by @robinebers
+- Bring back Log Level under Advanced → Debug ([#1542](https://github.com/robinebers/openusage/pull/1542)) by @robinebers
+- Hide and reorder an account's metrics from its page ([#1540](https://github.com/robinebers/openusage/pull/1540)) by @robinebers
+- Open the Default Tab after a successful Sign In Again ([#1537](https://github.com/robinebers/openusage/pull/1537)) by @robinebers
+- Rebuild the panel around Priority and All Usage ([#1535](https://github.com/robinebers/openusage/pull/1535)) by @robinebers
+- ChatGPT: show daily credits, tokens, turns and the credit limit ([#1524](https://github.com/robinebers/openusage/pull/1524)) by @robinebers
+- OpenRouter: show BYOK, budget, free requests and activity on the shared usage history ([#1523](https://github.com/robinebers/openusage/pull/1523)) by @robinebers
+- Ollama: show usage value, tokens and requests from /api/usage ([#1520](https://github.com/robinebers/openusage/pull/1520)) by @robinebers
+- Cursor: show tokens, usage events and per-range breakdowns on a shared usage history ([#1501](https://github.com/robinebers/openusage/pull/1501)) by @robinebers
+- CLIProxyAPI hub: turn the hub off behind CLIProxyHub.isEnabled until it is finished by @robinebers
+- CLIProxyAPI hub: mirror Antigravity, Devin, and Grok hub logins ([#1491](https://github.com/robinebers/openusage/pull/1491)) by @robinebers
+- CLIProxyAPI hub: move the hub mark from the plan to after the account name by @robinebers
+- CLIProxyAPI hub: mark a hub account's card with the CLIProxyAPI glyph after its plan by @robinebers
+- CLIProxyAPI hub: show a login once when it is on a hub and signed in directly by @robinebers
+- Mirror CLIProxyAPI hub logins as Claude and ChatGPT accounts by @robinebers
+- Cursor: show what Cursor charged today, yesterday, and in the last 30 days ([#1483](https://github.com/robinebers/openusage/pull/1483)) by @robinebers
+- Ollama: name Ollama accounts by their ollama.com email ([#1482](https://github.com/robinebers/openusage/pull/1482)) by @robinebers
+- Import 0.7.x's OpenRouter and Z.ai keys once ([#1484](https://github.com/robinebers/openusage/pull/1484)) by @robinebers
+- Add API Keys back to Ollama's and Z.ai's quick links ([#1478](https://github.com/robinebers/openusage/pull/1478)) by @robinebers
+- Devin: star Daily and Weekly by default ([#1475](https://github.com/robinebers/openusage/pull/1475)) by @robinebers
+- Name Cursor accounts by email and show a repeated provider name once ([#1472](https://github.com/robinebers/openusage/pull/1472)) by @robinebers
+- Carry over 0.7.x stars and order, and leave 0.7.x's keys untouched ([#1469](https://github.com/robinebers/openusage/pull/1469)) by @robinebers
+- Devin: restore Devin with a Windsurf token sign-in ([#1468](https://github.com/robinebers/openusage/pull/1468)) by @robinebers
+- Cursor: take Enterprise and Team membership from usage-summary ([#1465](https://github.com/robinebers/openusage/pull/1465)) by @robinebers
+- Restore the config-file proxy for provider requests ([#1464](https://github.com/robinebers/openusage/pull/1464)) by @robinebers
+- Open a Copilot organization's billing page from its account menu by @robinebers
+- Show Copilot Org Credits and Org Spend as an Organization Billing account ([#1456](https://github.com/robinebers/openusage/pull/1456)) by @robinebers
+- Name a Z.ai key that has no GLM Coding Plan ([#1451](https://github.com/robinebers/openusage/pull/1451)) by @robinebers
+- Hide usage from the menu bar while the screen is shared or recorded ([#1454](https://github.com/robinebers/openusage/pull/1454)) by @robinebers
+- Replace an API-key account's key from its page ([#1455](https://github.com/robinebers/openusage/pull/1455)) by @robinebers
+- Add Credits back to OpenRouter's quick links by @robinebers
+- Bring the new OpenUsage into main: accounts sign in, API-reported usage only ([#1444](https://github.com/robinebers/openusage/pull/1444)) by @robinebers
 
 ### Bug Fixes
 - CLIProxyAPI hub: say to allow Local Network when macOS blocks the hub ([#1672](https://github.com/robinebers/openusage/pull/1672)) by @robinebers
@@ -36,6 +112,98 @@
 - Say 1 Account on a unified limit one account reports ([#1656](https://github.com/robinebers/openusage/pull/1656)) by @robinebers
 - Grok: show the pay-as-you-go cap in dollars ([#1657](https://github.com/robinebers/openusage/pull/1657)) by @robinebers
 - Claude: ask for user:inference so Use can spend a reset ([#1652](https://github.com/robinebers/openusage/pull/1652)) by @robinebers
+- CLIProxyAPI hub: reread hubs on Refresh and count only real unsupported logins ([#1643](https://github.com/robinebers/openusage/pull/1643)) by @robinebers
+- Antigravity: show active Gemini quotas and session resets ([#1641](https://github.com/robinebers/openusage/pull/1641)) by @validatedev
+- Leave Used Up out of the +N count ([#1638](https://github.com/robinebers/openusage/pull/1638)) by @robinebers
+- Fit clock resets beside the percentage ([#1634](https://github.com/robinebers/openusage/pull/1634)) by @robinebers
+- Use Claude's current plan names in sample data ([#1631](https://github.com/robinebers/openusage/pull/1631)) by @xevrion
+- Open notification settings with one click ([#1617](https://github.com/robinebers/openusage/pull/1617)) by @validatedev
+- Leave the Command Line footer empty when there is nothing to report by @robinebers
+- Show the Terminal Helper link note as a warning by @robinebers
+- Move every explainer note into its row's info tooltip by @robinebers
+- Keep the system footer edge on macOS 27 and frost it on 26 by @robinebers
+- Frost content under the footer on macOS 26 and later by @robinebers
+- Name the setting Privacy Mode by @robinebers
+- Explain Hide From Screenshots and Recordings in an info tooltip by @robinebers
+- Blur copied cards only with Hide From Screenshots and Recordings on by @robinebers
+- Show minutes in reset times a few days out ([#1618](https://github.com/robinebers/openusage/pull/1618)) by @Quejicus
+- Move screens, pages, and tabs at the Mac's native pace ([#1615](https://github.com/robinebers/openusage/pull/1615)) by @robinebers
+- Move a used-up pin to Used Up ([#1589](https://github.com/robinebers/openusage/pull/1589)) by @robinebers
+- Claude: title an Enterprise plan's Extra Usage row Spend ([#1592](https://github.com/robinebers/openusage/pull/1592)) by @robinebers
+- Require a host on the prefilled verification link by @robinebers
+- Cursor: title a team-pool Extra Usage row Team Spend by @robinebers
+- Fall back to the plain verification link when the prefilled one is unusable by @robinebers
+- Muse Code: show Session and Weekly at 0% before first use and prefill the device code by @robinebers
+- Claude: show Extra Usage in the account's billing currency by @robinebers
+- CLIProxyAPI hub: allow http to Tailscale hubs and show one message on Connect ([#1563](https://github.com/robinebers/openusage/pull/1563)) by @robinebers
+- Keep a provider turned off in 0.7.x off on upgrade, and correct the notes ([#1562](https://github.com/robinebers/openusage/pull/1562)) by @robinebers
+- CLIProxyAPI hub: harden hub keys and the login mirror, then turn the hub on ([#1545](https://github.com/robinebers/openusage/pull/1545)) by @robinebers
+- Restore Check for Updates… in the Options menu ([#1556](https://github.com/robinebers/openusage/pull/1556)) by @robinebers
+- Always show balances at $0 and hide disabled Extra Usage ([#1557](https://github.com/robinebers/openusage/pull/1557)) by @robinebers
+- Always show time-range rows at 0 and disabled Extra Usage as no data ([#1555](https://github.com/robinebers/openusage/pull/1555)) by @robinebers
+- OpenRouter: drop BYOK from saved rows, share one popup empty state, name every account ([#1552](https://github.com/robinebers/openusage/pull/1552)) by @robinebers
+- Soft edge under the footer only, clean edge under the headers ([#1549](https://github.com/robinebers/openusage/pull/1549)) by @robinebers
+- OpenRouter: show dollars in history rows and tokens and BYOK in a Cursor-style popup ([#1550](https://github.com/robinebers/openusage/pull/1550)) by @robinebers
+- Fade content under the bars instead of the system glass edge ([#1548](https://github.com/robinebers/openusage/pull/1548)) by @robinebers
+- OpenRouter: drop the Credits bar, which has no limit behind it ([#1547](https://github.com/robinebers/openusage/pull/1547)) by @robinebers
+- Z.ai: read a 401 inside an OK response as a rejected key ([#1543](https://github.com/robinebers/openusage/pull/1543)) by @robinebers
+- Grok: stop asking for profile and api:access at sign-in ([#1541](https://github.com/robinebers/openusage/pull/1541)) by @robinebers
+- Show Sign In Again only when the account needs attention ([#1538](https://github.com/robinebers/openusage/pull/1538)) by @robinebers
+- Claude: make a new sign-in prove itself with its own request ([#1536](https://github.com/robinebers/openusage/pull/1536)) by @robinebers
+- Keep one Keychain read in flight per account and check Claude's due reads first ([#1517](https://github.com/robinebers/openusage/pull/1517)) by @robinebers
+- Re-read notification permission ([#1532](https://github.com/robinebers/openusage/pull/1532)) by @robinebers
+- Read 403 rate limits and dual 429s as rate limits ([#1529](https://github.com/robinebers/openusage/pull/1529)) by @robinebers
+- Show a hidden-metrics state, not onboarding, when accounts exist ([#1528](https://github.com/robinebers/openusage/pull/1528)) by @robinebers
+- Order accounts the same way on every screen and keep it after a removal ([#1522](https://github.com/robinebers/openusage/pull/1522)) by @robinebers
+- Claude: re-read reset grants once a grant is spent ([#1531](https://github.com/robinebers/openusage/pull/1531)) by @robinebers
+- Mask the pasted Devin token ([#1530](https://github.com/robinebers/openusage/pull/1530)) by @robinebers
+- Claude: fail a sign-in whose profile read failed instead of adding a duplicate ([#1525](https://github.com/robinebers/openusage/pull/1525)) by @robinebers
+- A waiting manual refresh respects a fresh 429 ([#1521](https://github.com/robinebers/openusage/pull/1521)) by @robinebers
+- Wait out Retry-After before renewing a sign-in early again ([#1526](https://github.com/robinebers/openusage/pull/1526)) by @robinebers
+- Claude: a late success keeps a newer 429 window ([#1527](https://github.com/robinebers/openusage/pull/1527)) by @robinebers
+- A replaced key clears the old key's 429 hold ([#1511](https://github.com/robinebers/openusage/pull/1511)) by @robinebers
+- Cursor: count an event without token usage as zero tokens ([#1519](https://github.com/robinebers/openusage/pull/1519)) by @robinebers
+- Keep card ids unique, undo across a rename, and device sign-in through a network error ([#1516](https://github.com/robinebers/openusage/pull/1516)) by @robinebers
+- Reject provider numbers too large for an Int ([#1518](https://github.com/robinebers/openusage/pull/1518)) by @robinebers
+- Keep renewed tokens when the Keychain write fails ([#1515](https://github.com/robinebers/openusage/pull/1515)) by @robinebers
+- Keep the loopback callback listening through stray requests ([#1513](https://github.com/robinebers/openusage/pull/1513)) by @robinebers
+- OpenRouter: accept a workspace-scoped management key ([#1512](https://github.com/robinebers/openusage/pull/1512)) by @robinebers
+- Carry over the enabled 0.7.x account's layout ([#1514](https://github.com/robinebers/openusage/pull/1514)) by @robinebers
+- Name the account-keyed limits JSON openusage.limits.v2 ([#1504](https://github.com/robinebers/openusage/pull/1504)) by @robinebers
+- Title notification rows after the alerts they send ([#1481](https://github.com/robinebers/openusage/pull/1481)) by @robinebers
+- Keep a stuck hourly read from stalling every refresh ([#1506](https://github.com/robinebers/openusage/pull/1506)) by @robinebers
+- Antigravity: renew a refused token once and retry a failed project lookup ([#1510](https://github.com/robinebers/openusage/pull/1510)) by @robinebers
+- Retry the 0.7.x key import until the key is saved ([#1507](https://github.com/robinebers/openusage/pull/1507)) by @robinebers
+- Cap Retry-After waits at an hour ([#1505](https://github.com/robinebers/openusage/pull/1505)) by @robinebers
+- CLIProxyAPI hub: keep stored hubs inert while the hub is off ([#1508](https://github.com/robinebers/openusage/pull/1508)) by @robinebers
+- Claude: show Max and Ultra plan names ([#1499](https://github.com/robinebers/openusage/pull/1499)) by @robinebers
+- CLIProxyAPI hub: keep a late rejection of a replaced key from stopping the new one by @robinebers
+- CLIProxyAPI hub: show a hub Claude plan on its first refresh and skip disabled logins by @robinebers
+- Stop dimming the strip when an account is stale ([#1493](https://github.com/robinebers/openusage/pull/1493)) by @robinebers
+- Refresh the account as soon as a reset claim lands ([#1488](https://github.com/robinebers/openusage/pull/1488)) by @robinebers
+- Stop caching provider responses ([#1486](https://github.com/robinebers/openusage/pull/1486)) by @robinebers
+- Grow the panel with the slide on macOS 15 ([#1490](https://github.com/robinebers/openusage/pull/1490)) by @robinebers
+- Read the front app's display name in test_quiet.sh ([#1487](https://github.com/robinebers/openusage/pull/1487)) by @robinebers
+- Close the nine P3 follow-ups from the release review ([#1471](https://github.com/robinebers/openusage/pull/1471)) by @robinebers
+- Keep stored accounts this build cannot read ([#1462](https://github.com/robinebers/openusage/pull/1462)) by @robinebers
+- OpenRouter: read usage by key kind and restore Credits and Key Limit ([#1467](https://github.com/robinebers/openusage/pull/1467)) by @robinebers
+- Host the dashboard below the panel's content view so SwiftUI never sizes the panel ([#1470](https://github.com/robinebers/openusage/pull/1470)) by @robinebers
+- Use the app's account names and staleness rule ([#1466](https://github.com/robinebers/openusage/pull/1466)) by @robinebers
+- Treat only a refused token renewal as an expired sign-in ([#1461](https://github.com/robinebers/openusage/pull/1461)) by @robinebers
+- Restore the Grok team plan and Claude's "spent" word ([#1463](https://github.com/robinebers/openusage/pull/1463)) by @robinebers
+- Send a random state, never the PKCE verifier ([#1460](https://github.com/robinebers/openusage/pull/1460)) by @robinebers
+- The panel is exactly as tall as its screen's content, with no minimum height ([#1458](https://github.com/robinebers/openusage/pull/1458)) by @robinebers
+- ChatGPT's Extra Usage row shows the credits' dollar value again ([#1452](https://github.com/robinebers/openusage/pull/1452)) by @robinebers
+- The openusage JSON drops its always-empty errors key by @robinebers
+
+### Refactor
+- Use the stock shortcut recorder and a single pulsing waiting mark ([#1596](https://github.com/robinebers/openusage/pull/1596)) by @robinebers
+- Reuse the login HTTP helpers and Foundation APIs ([#1590](https://github.com/robinebers/openusage/pull/1590)) by @robinebers
+- Drop dead code and one-caller wrappers ([#1585](https://github.com/robinebers/openusage/pull/1585)) by @robinebers
+- Muse Code: keep last values only when Muse leaves out all usage by @robinebers
+- CLIProxyAPI hub: gate only the Add Account choice and drop the hub doc while it is off by @robinebers
+- CLIProxyAPI hub: show a login on a hub and signed in directly twice by @robinebers
+- CLIProxyAPI hub: drop the resync mailbox and unused conformances by @robinebers
 
 ### Chores
 - Delete CHANGELOG.md and read notes from the GitHub Release ([#1668](https://github.com/robinebers/openusage/pull/1668)) by @robinebers
@@ -44,11 +212,43 @@
 - List what a crash report and every event send ([#1658](https://github.com/robinebers/openusage/pull/1658)) by @robinebers
 - Match docs and comments to the app ([#1654](https://github.com/robinebers/openusage/pull/1654)) by @robinebers
 - Clear compiler warnings and dead code ([#1653](https://github.com/robinebers/openusage/pull/1653)) by @robinebers
+- Read rendered text with fast OCR where accurate fails by @robinebers
+- Prepare the repository for Amp orbs and Mac satellites by @robinebers
+- Remove the shortcut recorder focus tests ([#1635](https://github.com/robinebers/openusage/pull/1635)) by @robinebers
+- Wait for test refreshes to settle before timing a tab switch ([#1626](https://github.com/robinebers/openusage/pull/1626)) by @robinebers
+- Bump github.com/posthog/posthog-ios from 3.93.1 to 3.93.4 ([#1629](https://github.com/robinebers/openusage/pull/1629)) by @dependabot[bot]
+- Bump github.com/posthog/posthog-ios from 3.92.7 to 3.93.1 ([#1595](https://github.com/robinebers/openusage/pull/1595)) by @dependabot[bot]
+- Share test fakes and drop duplicate account tests ([#1587](https://github.com/robinebers/openusage/pull/1587)) by @robinebers
+- Drop duplicate provider tests ([#1584](https://github.com/robinebers/openusage/pull/1584)) by @robinebers
+- Drop duplicate and tautological UI and store tests ([#1582](https://github.com/robinebers/openusage/pull/1582)) by @robinebers
+- Drop stale config, unused script lines and duplicated contributor docs ([#1591](https://github.com/robinebers/openusage/pull/1591)) by @robinebers
+- Make the Keychain error and Display tab tests pass in any language and on macOS 27 ([#1586](https://github.com/robinebers/openusage/pull/1586)) by @robinebers
+- Remove the General Question issue chooser link by @robinebers
+- Show CHANGELOG notes in Sparkle's update window ([#1573](https://github.com/robinebers/openusage/pull/1573)) by @robinebers
+- Add a manual Test Build workflow for signed DMGs without a release ([#1571](https://github.com/robinebers/openusage/pull/1571)) by @robinebers
+- List Cursor and Ollama history rows in the summary table ([#1570](https://github.com/robinebers/openusage/pull/1570)) by @robinebers
+- Put every docs page on a prose diet ([#1569](https://github.com/robinebers/openusage/pull/1569)) by @robinebers
+- Cut the README down to a short product page ([#1568](https://github.com/robinebers/openusage/pull/1568)) by @robinebers
+- Show Priority and All Usage in light and dark ([#1567](https://github.com/robinebers/openusage/pull/1567)) by @robinebers
+- Match the Unreleased notes to the Priority rebuild ([#1539](https://github.com/robinebers/openusage/pull/1539)) by @robinebers
+- Bump github.com/posthog/posthog-ios from 3.92.0 to 3.92.7 ([#1502](https://github.com/robinebers/openusage/pull/1502)) by @dependabot[bot]
+- Bump github.com/sparkle-project/sparkle ([#1503](https://github.com/robinebers/openusage/pull/1503)) by @dependabot[bot]
+- Time out the Build and Test job after 20 minutes ([#1534](https://github.com/robinebers/openusage/pull/1534)) by @robinebers
+- Send a double-click's clicks back to back ([#1533](https://github.com/robinebers/openusage/pull/1533)) by @robinebers
+- List the removed appearance settings and correct the cache wording ([#1509](https://github.com/robinebers/openusage/pull/1509)) by @robinebers
+- Note CLIProxyAPI hub accounts by @robinebers
+- Make the top bar and sign-in sheet tests pass on macOS 15 ([#1489](https://github.com/robinebers/openusage/pull/1489)) by @robinebers
+- List the removed Density setting and Reset All Customization ([#1480](https://github.com/robinebers/openusage/pull/1480)) by @robinebers
+- Say crash reports ignore the analytics opt-out ([#1479](https://github.com/robinebers/openusage/pull/1479)) by @robinebers
+- Correct the changelog's reorder, undo, and CLI breaking changes ([#1477](https://github.com/robinebers/openusage/pull/1477)) by @robinebers
+- Align the provider guide and test command with main ([#1476](https://github.com/robinebers/openusage/pull/1476)) by @robinebers
+- Expect 0.7.x's Credits star on the restored Credits meter ([#1473](https://github.com/robinebers/openusage/pull/1473)) by @robinebers
+- The changelog tells a 0.7.x script what it loses and how to read every account by @robinebers
 
 ---
 
 ### Changelog
-**Full Changelog**: [v0.8.0-beta.7...v0.8.0-beta.8](https://github.com/robinebers/openusage/compare/v0.8.0-beta.7...v0.8.0-beta.8)
+**Full Changelog**: [v0.7.16...v0.8.0](https://github.com/robinebers/openusage/compare/v0.7.16...v0.8.0)
 
 - [35e88e9](https://github.com/robinebers/openusage/commit/35e88e93bff8b808a84c3dce1cef9c6fb1219156) fix(cliproxy): say to allow Local Network when macOS blocks the hub (#1672) by @robinebers
 - [781237a](https://github.com/robinebers/openusage/commit/781237a2717dd36d65f992e2d48ee1a8dbbfcd4d) fix(alerts): rename the Will Run Out alert to Burning Fast (#1671) by @robinebers
@@ -78,9 +278,197 @@
 - [2ee7204](https://github.com/robinebers/openusage/commit/2ee72042bc5078435eef6c50f6c19e208f0467dd) feat(settings): regroup the Display, Alerts and General tabs (#1647) by @robinebers
 - [213a76c](https://github.com/robinebers/openusage/commit/213a76c999da1c7e6bbe3ad6ac0c6561fc979d6f) feat(dashboard): unify multiple accounts of one provider (#1646) by @robinebers
 - [d29b508](https://github.com/robinebers/openusage/commit/d29b508951f2f228594f74d067833bc9637d95a9) feat(amp): add Amp provider with device-code sign-in (#1645) by @robinebers
+- [38a2a7d](https://github.com/robinebers/openusage/commit/38a2a7d5a1e549a96e079d9a5c95a7d969f97d3f) docs: changelog for v0.8.0-beta.7 (#1644) by @robinebers
+- [974f393](https://github.com/robinebers/openusage/commit/974f3931755e9613a03fafd2a5b7fc97df217c5f) feat(resets): name each reset and spend the one you pick (#1642) by @validatedev
+- [618f018](https://github.com/robinebers/openusage/commit/618f01899d5fbf585ff52949a2b1bc04118cff7f) fix(cliproxyapi): reread hubs on Refresh and count only real unsupported logins (#1643) by @robinebers
+- [ee98159](https://github.com/robinebers/openusage/commit/ee9815937de6d52ae490f2d8de2412fadc26916d) fix(antigravity): show active Gemini quotas and session resets (#1641) by @validatedev
+- [6dcaad7](https://github.com/robinebers/openusage/commit/6dcaad7f405166d2e2adfa4e545a77dc135beb06) test: read rendered text with fast OCR where accurate fails by @robinebers
+- [388ee5f](https://github.com/robinebers/openusage/commit/388ee5feebbcfda0092e5fd02ca9b59f0f59b4c8) feat(dashboard): switch tabs on press with no slide (#1640) by @robinebers
+- [0a2c2c8](https://github.com/robinebers/openusage/commit/0a2c2c8002735c14bece56108941d9dffbbbe4be) Prepare the repository for Amp orbs and Mac satellites by @robinebers
+- [a4fd6dc](https://github.com/robinebers/openusage/commit/a4fd6dc45c06318d00291cbf684fe7ca87e78f62) docs: changelog for v0.8.0-beta.6 (#1639) by @robinebers
+- [b26af19](https://github.com/robinebers/openusage/commit/b26af193c1779417fcd1c3050e0c0a167260dc31) fix(menu-bar): leave Used Up out of the +N count (#1638) by @robinebers
+- [a86da8f](https://github.com/robinebers/openusage/commit/a86da8f17f3c2938d4d01fd3c43bbf9d2a910830) feat(dashboard): hide a metric from its right-click menu by @robinebers
+- [f7e38d7](https://github.com/robinebers/openusage/commit/f7e38d7608da061e609e6d0c8285531e56c2f950) docs: changelog for v0.8.0-beta.5 (#1636) by @robinebers
+- [c06de18](https://github.com/robinebers/openusage/commit/c06de18460024d2805d93fd06aadd33aee766cf4) test(settings): remove the shortcut recorder focus tests (#1635) by @robinebers
+- [9cdbb7b](https://github.com/robinebers/openusage/commit/9cdbb7b1a77a4b68604c54523fe35da7dd13fb13) fix(ui): fit clock resets beside the percentage (#1634) by @robinebers
+- [a9747b5](https://github.com/robinebers/openusage/commit/a9747b5297fa8ffca8f0410889b425b6a5ef9db2) fix(dev): use Claude's current plan names in sample data (#1631) by @xevrion
+- [c3f830c](https://github.com/robinebers/openusage/commit/c3f830c9d903d2ce04b0d256bcb39e6e6ab8f8ca) fix(settings): open notification settings with one click (#1617) by @validatedev
+- [76d75f1](https://github.com/robinebers/openusage/commit/76d75f128d0a3894f6dae99d9f64bd22e24cf78a) test(ui): wait for test refreshes to settle before timing a tab switch (#1626) by @robinebers
+- [ce1ffd3](https://github.com/robinebers/openusage/commit/ce1ffd32d340b99e09a7fc4aa7b0a7c0a1cfd12f) chore(deps): bump github.com/posthog/posthog-ios from 3.93.1 to 3.93.4 (#1629) by @dependabot[bot]
+- [0a3813a](https://github.com/robinebers/openusage/commit/0a3813a964f030c50f8c3f1ed13c2781c1f207e3) feat(dev): seeded random sample data for dev builds (#1601) by @validatedev
+- [7244255](https://github.com/robinebers/openusage/commit/72442555b61a3d1cf1dc0994e917300c19a2af5e) docs: changelog for v0.8.0-beta.4 (#1625) by @robinebers
+- [23bbf35](https://github.com/robinebers/openusage/commit/23bbf35f337c2203de4115ff7b05bc813a204f99) fix(settings): leave the Command Line footer empty when there is nothing to report by @robinebers
+- [f1bce15](https://github.com/robinebers/openusage/commit/f1bce15197e7e03824d6ac0252cf934aee7a6cda) feat(menu-bar): add Always Show In Menu Bar to mirror Priority's order (#1616) by @robinebers
+- [5879ce4](https://github.com/robinebers/openusage/commit/5879ce4394eb6d8776dd0d7ba32af3e271e4d822) fix(settings): show the Terminal Helper link note as a warning by @robinebers
+- [959072a](https://github.com/robinebers/openusage/commit/959072a432720651bf838e1ca66332a9817ea9fa) fix(settings): move every explainer note into its row's info tooltip by @robinebers
+- [94aedf8](https://github.com/robinebers/openusage/commit/94aedf87f7035bb284f5780d5450aad91758a645) fix(panel): keep the system footer edge on macOS 27 and frost it on 26 by @robinebers
+- [5cfcad4](https://github.com/robinebers/openusage/commit/5cfcad4e4861d783c1a047b02f41a77895e5254b) fix(panel): frost content under the footer on macOS 26 and later by @robinebers
+- [04ee766](https://github.com/robinebers/openusage/commit/04ee766b0f529bb868b052227d373172630c685e) fix(settings): name the setting Privacy Mode by @robinebers
+- [3d50beb](https://github.com/robinebers/openusage/commit/3d50beb74c10eca24142942c34c8c4f144f12eb3) fix(settings): explain Hide From Screenshots and Recordings in an info tooltip by @robinebers
+- [d6fa8c2](https://github.com/robinebers/openusage/commit/d6fa8c23df9cceef1b255ce259416617f1972df6) fix(privacy): blur copied cards only with Hide From Screenshots and Recordings on by @robinebers
+- [5104077](https://github.com/robinebers/openusage/commit/51040770d59e35809eabe87fdbdd26cee2d9d7fc) feat(privacy): blur account names while Hide From Screen Share sees a capture (#1599) by @validatedev
+- [01fc4aa](https://github.com/robinebers/openusage/commit/01fc4aafe9f1a3b98864d30a3b2f252a5f4a9a07) fix(ui): show minutes in reset times a few days out (#1618) by @Quejicus
+- [c35420a](https://github.com/robinebers/openusage/commit/c35420ad0471031b860ba093f1b66fa77204809f) fix(ui): move screens, pages, and tabs at the Mac's native pace (#1615) by @robinebers
+- [d0f36ab](https://github.com/robinebers/openusage/commit/d0f36abd357dd1954008383b9ad84abcbf574348) docs: changelog for v0.8.0-beta.3 (#1612) by @robinebers
+- [fdf7a23](https://github.com/robinebers/openusage/commit/fdf7a234b76b6a71522880cc9ab5b38044471698) feat(ui): explain settings in info tooltips and list Used Up last (#1609) by @robinebers
+- [214ba77](https://github.com/robinebers/openusage/commit/214ba770e90bda19c5b8519b53846a7240d7e072) feat(dashboard): show a provider's copy button beside its logo on card hover (#1610) by @robinebers
+- [852b1bd](https://github.com/robinebers/openusage/commit/852b1bda7b9dd13ecd0e2088ed8f6ab6591e686d) feat(dashboard): mark the even pace on bars and Priority rings (#1606) by @robinebers
+- [6178964](https://github.com/robinebers/openusage/commit/617896461a1fb0bb63e9cf0985b42c9efac49a41) feat(copilot): sign in on GitHub Enterprise domains on GHE.com (#1607) by @robinebers
+- [fad9164](https://github.com/robinebers/openusage/commit/fad916497d9e59a933dafe64a2d5c2e9379a135c) feat(settings): group Display's Priority settings under one heading (#1604) by @robinebers
+- [ecae332](https://github.com/robinebers/openusage/commit/ecae332cebf3934a83039b549dd30105a5b9ad54) feat(priority): list limits to use before they reset by @robinebers
+- [629f174](https://github.com/robinebers/openusage/commit/629f174051b652e8153541fa489ed4d4d2033a8a) docs: changelog for v0.8.0-beta.2 (#1600) by @robinebers
+- [7198074](https://github.com/robinebers/openusage/commit/71980745ffb0ab9fd0e7843cc0fe870123d423c1) chore(deps): bump github.com/posthog/posthog-ios from 3.92.7 to 3.93.1 (#1595) by @dependabot[bot]
+- [8c51921](https://github.com/robinebers/openusage/commit/8c519213a6c5c3f7f8873174d921d8a124ff79b5) refactor(ui): use the stock shortcut recorder and a single pulsing waiting mark (#1596) by @robinebers
+- [fd83e2c](https://github.com/robinebers/openusage/commit/fd83e2ce7429618ad1118c73ff17f235c92491eb) feat(notifications): add Use It or Lose It alert (#1598) by @robinebers
+- [6ccbd55](https://github.com/robinebers/openusage/commit/6ccbd5506c36d0189eec57bacebbaf54d6268051) feat(priority): list limits burning fast (#1594) by @robinebers
+- [4beb01a](https://github.com/robinebers/openusage/commit/4beb01a8aa63b2e3ce475bb6135f4e8a26c88bc0) refactor(providers): reuse the login HTTP helpers and Foundation APIs (#1590) by @robinebers
+- [844f902](https://github.com/robinebers/openusage/commit/844f902b0be16339b66be178daa6b18edddcbb73) test: share test fakes and drop duplicate account tests (#1587) by @robinebers
+- [876108b](https://github.com/robinebers/openusage/commit/876108b6ad708c0c7311123461202d1f60b62e02) refactor: drop dead code and one-caller wrappers (#1585) by @robinebers
+- [0524455](https://github.com/robinebers/openusage/commit/0524455d168444a3f11f8e40b23023f96c304c93) test: drop duplicate provider tests (#1584) by @robinebers
+- [4d4a05d](https://github.com/robinebers/openusage/commit/4d4a05d4c575149e0c419f0534ca325e9a4ff7ff) test: drop duplicate and tautological UI and store tests (#1582) by @robinebers
+- [def713c](https://github.com/robinebers/openusage/commit/def713ce4242aeab152f0aa47d74d14bf8541ab3) chore: drop stale config, unused script lines and duplicated contributor docs (#1591) by @robinebers
+- [3879241](https://github.com/robinebers/openusage/commit/3879241994d95879cdb53f478a4b64305caefb93) fix(priority): move a used-up pin to Used Up (#1589) by @robinebers
+- [e44d9d7](https://github.com/robinebers/openusage/commit/e44d9d76b368fc838b338b12f225b9652adc1fe5) fix(claude): title an Enterprise plan's Extra Usage row Spend (#1592) by @robinebers
+- [df0713a](https://github.com/robinebers/openusage/commit/df0713a716629954e914f4cf47d48aa9751ac901) feat(settings): add Priority Limits for warning and critical levels (#1588) by @robinebers
+- [4118be4](https://github.com/robinebers/openusage/commit/4118be4db59c691d75a22c1495241dd4f1d609d6) test: make the Keychain error and Display tab tests pass in any language and on macOS 27 (#1586) by @robinebers
+- [481f1ed](https://github.com/robinebers/openusage/commit/481f1ed06dc0c3f94a30f0cc0504d8858df4c232) feat(telemetry): replace refresh rollups with daily provider account counts (#1581) by @robinebers
+- [d40c588](https://github.com/robinebers/openusage/commit/d40c588b98656897ad44ba337dc995b4d56425e6) fix(login): require a host on the prefilled verification link by @robinebers
+- [c17aec9](https://github.com/robinebers/openusage/commit/c17aec97d930450f7df992d9c8efdbe7fb9defd5) fix(cursor): title a team-pool Extra Usage row Team Spend by @robinebers
+- [5971747](https://github.com/robinebers/openusage/commit/597174782e8a9e5b90b23d1bd2cdf70a1261f58c) chore: remove the General Question issue chooser link by @robinebers
+- [5532d2b](https://github.com/robinebers/openusage/commit/5532d2b66dd548668cbbde834e4caf4558ffae98) fix(login): fall back to the plain verification link when the prefilled one is unusable by @robinebers
+- [701753a](https://github.com/robinebers/openusage/commit/701753aaab522ddf4afc3add48e9ab939332ab00) fix(muse): show Session and Weekly at 0% before first use and prefill the device code by @robinebers
+- [8a88321](https://github.com/robinebers/openusage/commit/8a8832199eba6a1761f857053326e0b7200dd3b4) fix(claude): show Extra Usage in the account's billing currency by @robinebers
+- [afe383e](https://github.com/robinebers/openusage/commit/afe383ee90bbed86aef9ba045aa50d70a9e297d3) refactor(muse): keep last values only when Muse leaves out all usage by @robinebers
+- [996d427](https://github.com/robinebers/openusage/commit/996d4276664eb0da43931e29f7a4a84c9a99c30e) feat(muse): add Muse Code provider with device-code sign-in by @robinebers
+- [d4fcdee](https://github.com/robinebers/openusage/commit/d4fcdeee0c268bfd25c8f39b23f8ffb2d314a96e) feat(zai): show and use banked Session and Weekly resets (#1576) by @robinebers
+- [596ca10](https://github.com/robinebers/openusage/commit/596ca1041dc87f2c97881f46b109f563e341c8b8) docs: changelog for v0.8.0-beta.1 (#1575) by @robinebers
+- [87ef48f](https://github.com/robinebers/openusage/commit/87ef48fd62e5a347571590839e44b7477fbad4d8) ci(release): show CHANGELOG notes in Sparkle's update window (#1573) by @robinebers
+- [fcb5085](https://github.com/robinebers/openusage/commit/fcb5085f62b6d5ae82f97e075cc22f6ebaaed29d) ci(release): add a manual Test Build workflow for signed DMGs without a release (#1571) by @robinebers
+- [d6835e8](https://github.com/robinebers/openusage/commit/d6835e8fe01aeec687a11367bf147539a51bca50) docs(providers): list Cursor and Ollama history rows in the summary table (#1570) by @robinebers
+- [e33b32f](https://github.com/robinebers/openusage/commit/e33b32f70c6afb913419999579aae5e2c424ac42) docs: put every docs page on a prose diet (#1569) by @robinebers
+- [b192a36](https://github.com/robinebers/openusage/commit/b192a36c65dce02ea38c81f92165b4af9678cc11) docs(readme): cut the README down to a short product page (#1568) by @robinebers
+- [111b414](https://github.com/robinebers/openusage/commit/111b4144c88db30c401c2e52b034778b9d450920) docs(readme): show Priority and All Usage in light and dark (#1567) by @robinebers
+- [7b232e9](https://github.com/robinebers/openusage/commit/7b232e9cc81cd6beb5abce04bebd1c731b7e1818) feat(accounts): nest CLIProxyAPI hub accounts under a hub page (#1565) by @robinebers
+- [66d706c](https://github.com/robinebers/openusage/commit/66d706c62eb62929f07eee11c25d9fe50b4c68e9) feat(dashboard): show skeleton rows until an account's first reading, and flag Needs Attention only after a failed refresh (#1564) by @robinebers
+- [0c4ef6d](https://github.com/robinebers/openusage/commit/0c4ef6d20c8f6fa7548f18bfd4c342cda78512bb) fix(cliproxyapi): allow http to Tailscale hubs and show one message on Connect (#1563) by @robinebers
+- [61f39c2](https://github.com/robinebers/openusage/commit/61f39c2684230dff234f61cdad3f2fcc252686a5) fix(accounts): keep a provider turned off in 0.7.x off on upgrade, and correct the notes (#1562) by @robinebers
+- [1ae841d](https://github.com/robinebers/openusage/commit/1ae841df389afd17f81a2cb971a6b295766c2a64) fix(cliproxyapi): harden hub keys and the login mirror, then turn the hub on (#1545) by @robinebers
+- [4381761](https://github.com/robinebers/openusage/commit/4381761ba008e8ff58a21619ee9edbbe052b3e85) feat(share): sign share images with a tinted OpenUsage footer band (#1561) by @robinebers
+- [5fe11a9](https://github.com/robinebers/openusage/commit/5fe11a92dce051d3754cc68202e6df18db34f5d6) feat(priority): drop the big All Clear and always show the Running Out row (#1560) by @robinebers
+- [debd37a](https://github.com/robinebers/openusage/commit/debd37aa6ee8e701a982eefa365062e050a90a57) feat(priority): put Priority Icons first in Display and list running-out pins only under Running Out (#1559) by @robinebers
+- [759e6f1](https://github.com/robinebers/openusage/commit/759e6f168de2f68ecce77d2f20a6cf4c4b379137) feat(priority): keep the Running Out header above All Clear and pin from the row menu (#1558) by @robinebers
+- [cd3ba30](https://github.com/robinebers/openusage/commit/cd3ba300b5569f064978e83df5a1e171a0f1e195) fix(updates): restore Check for Updates… in the Options menu (#1556) by @robinebers
+- [88e4261](https://github.com/robinebers/openusage/commit/88e426151fb20b1535cddaf9e7cbc1d64ae07eba) fix(dashboard): always show balances at $0 and hide disabled Extra Usage (#1557) by @robinebers
+- [16d35bc](https://github.com/robinebers/openusage/commit/16d35bc9818148a5089a0676c625e6aaa165ea99) fix(dashboard): always show time-range rows at 0 and disabled Extra Usage as no data (#1555) by @robinebers
+- [313213a](https://github.com/robinebers/openusage/commit/313213a6cf914c669f3a47ef15674b1f68d77d28) feat(priority): pin metrics to a Pinned section at the top of Priority (#1553) by @robinebers
+- [161f19b](https://github.com/robinebers/openusage/commit/161f19bdb3acd58b504851fb70ecfebcf261ff2b) feat(menu-bar): show the app icon with a dot when an update is available (#1554) by @robinebers
+- [8b21637](https://github.com/robinebers/openusage/commit/8b216372fabb74865b06397be9a13c2809a93225) fix(openrouter): drop BYOK from saved rows, share one popup empty state, name every account (#1552) by @robinebers
+- [31f7109](https://github.com/robinebers/openusage/commit/31f71093c82a7b09a41081539c22eb329a895c95) fix(panel): soft edge under the footer only, clean edge under the headers (#1549) by @robinebers
+- [1acc905](https://github.com/robinebers/openusage/commit/1acc9059b5ac3a6468d501647a151466cdfa024a) fix(openrouter): show dollars in history rows and tokens and BYOK in a Cursor-style popup (#1550) by @robinebers
+- [c5a2f41](https://github.com/robinebers/openusage/commit/c5a2f410280ef2be7931929f0c5c03a0a2a5726f) fix(panel): fade content under the bars instead of the system glass edge (#1548) by @robinebers
+- [587ed16](https://github.com/robinebers/openusage/commit/587ed169ee638ee215b7756c016e83319ffae0a2) fix(openrouter): drop the Credits bar, which has no limit behind it (#1547) by @robinebers
+- [a375380](https://github.com/robinebers/openusage/commit/a3753802afd16b5c1b75e35e92e1d7ee9eeba10d) feat(dashboard): welcome 0.7.x upgraders back on the empty dashboard (#1546) by @robinebers
+- [03fa48b](https://github.com/robinebers/openusage/commit/03fa48b89961da2366e8f9efc762e47ea0233967) feat(dashboard): tell 0.7.x upgraders why their accounts are gone (#1544) by @robinebers
+- [a67a783](https://github.com/robinebers/openusage/commit/a67a783566cfe7a8726f8f5e4a3feb30a5a2899d) fix(zai): read a 401 inside an OK response as a rejected key (#1543) by @robinebers
+- [0231165](https://github.com/robinebers/openusage/commit/023116547b5f723d97e33cafd0e94f57fc888344) feat(settings): bring back Log Level under Advanced → Debug (#1542) by @robinebers
+- [6b5452c](https://github.com/robinebers/openusage/commit/6b5452cc06301f2afd1bc4941498814adb07d6a8) fix(grok): stop asking for profile and api:access at sign-in (#1541) by @robinebers
+- [a69d4da](https://github.com/robinebers/openusage/commit/a69d4da721c5e61263a95628e3584f74b0969781) feat(accounts): hide and reorder an account's metrics from its page (#1540) by @robinebers
+- [75e1ab1](https://github.com/robinebers/openusage/commit/75e1ab1cde56af20813840d4550c392d67bb49d5) fix(accounts): show Sign In Again only when the account needs attention (#1538) by @robinebers
+- [673842d](https://github.com/robinebers/openusage/commit/673842d5afa1bc5bc2227a944de6639fdabf8424) docs(changelog): match the Unreleased notes to the Priority rebuild (#1539) by @robinebers
+- [92140f0](https://github.com/robinebers/openusage/commit/92140f030b854de36d4fec2f89db66c15fbc29ca) feat(accounts): open the Default Tab after a successful Sign In Again (#1537) by @robinebers
+- [f39ac7a](https://github.com/robinebers/openusage/commit/f39ac7aa4e09b5d243ef31170546461d7257ea02) fix(claude): make a new sign-in prove itself with its own request (#1536) by @robinebers
+- [4f1b92f](https://github.com/robinebers/openusage/commit/4f1b92f36590923091a7d6730a6670866bee47ce) feat(dashboard): rebuild the panel around Priority and All Usage (#1535) by @robinebers
+- [0a761af](https://github.com/robinebers/openusage/commit/0a761af11539f001d891f848b7c5c68f8d65e7d2) chore(deps): bump github.com/posthog/posthog-ios from 3.92.0 to 3.92.7 (#1502) by @dependabot[bot]
+- [cde20d3](https://github.com/robinebers/openusage/commit/cde20d393ea1d8a5840e07d1c311717b39f05312) chore(deps): bump github.com/sparkle-project/sparkle (#1503) by @dependabot[bot]
+- [0118a32](https://github.com/robinebers/openusage/commit/0118a321b680873607aaedb3714ce67493ae6aec) ci: time out the Build and Test job after 20 minutes (#1534) by @robinebers
+- [daa3ff0](https://github.com/robinebers/openusage/commit/daa3ff0da5c28a059785f78d029aa755e9c07aed) fix(refresh): keep one Keychain read in flight per account and check Claude's due reads first (#1517) by @robinebers
+- [42fd173](https://github.com/robinebers/openusage/commit/42fd17310559f3825fca27806117e7167de0a5d8) fix(settings): re-read notification permission (#1532) by @robinebers
+- [2114be5](https://github.com/robinebers/openusage/commit/2114be5694307784c530db75dd2c8ae27b2e5ccc) fix(providers): read 403 rate limits and dual 429s as rate limits (#1529) by @robinebers
+- [5144e17](https://github.com/robinebers/openusage/commit/5144e17ab1f69de0615569565f3bdee1f5a02ed8) test(dashboard): send a double-click's clicks back to back (#1533) by @robinebers
+- [0455ae9](https://github.com/robinebers/openusage/commit/0455ae9202bc08350cf9ae9f910393bda46b0cc2) fix(dashboard): show a hidden-metrics state, not onboarding, when accounts exist (#1528) by @robinebers
+- [a98a3ab](https://github.com/robinebers/openusage/commit/a98a3aba246416dc56579cca11c7c81aa30b0a82) fix(accounts): order accounts the same way on every screen and keep it after a removal (#1522) by @robinebers
+- [53d0414](https://github.com/robinebers/openusage/commit/53d04144348373b47682ad35d47325d6d7aad950) feat(codex): show daily credits, tokens, turns and the credit limit (#1524) by @robinebers
+- [8a0c696](https://github.com/robinebers/openusage/commit/8a0c6962f989ad44e94d2df9b4aebd7370bd3990) fix(claude): re-read reset grants once a grant is spent (#1531) by @robinebers
+- [b1ed495](https://github.com/robinebers/openusage/commit/b1ed49506700150d00119cf317b0dbca12e5f709) feat(openrouter): show BYOK, budget, free requests and activity on the shared usage history (#1523) by @robinebers
+- [bfed8f8](https://github.com/robinebers/openusage/commit/bfed8f856b21b0f870ccbb0e27b8566f4e1a97f9) fix(sign-in): mask the pasted Devin token (#1530) by @robinebers
+- [1adeac3](https://github.com/robinebers/openusage/commit/1adeac380479bcd23eb161f67a4f3d2ac811af4a) fix(claude): fail a sign-in whose profile read failed instead of adding a duplicate (#1525) by @robinebers
+- [638affc](https://github.com/robinebers/openusage/commit/638affcafa6e27e8958d6055ce56616a2de71def) fix(refresh): a waiting manual refresh respects a fresh 429 (#1521) by @robinebers
+- [502867a](https://github.com/robinebers/openusage/commit/502867af1c13c80b23d71755cba5c7a69634fb98) fix(auth): wait out Retry-After before renewing a sign-in early again (#1526) by @robinebers
+- [10ac77a](https://github.com/robinebers/openusage/commit/10ac77a1d81c6121790c504d6d5cd11f8d420c9a) fix(claude): a late success keeps a newer 429 window (#1527) by @robinebers
+- [f619b4a](https://github.com/robinebers/openusage/commit/f619b4a6cdad77ff0afbff3f19d084c197e0c990) fix(accounts): a replaced key clears the old key's 429 hold (#1511) by @robinebers
+- [d72e810](https://github.com/robinebers/openusage/commit/d72e810716b0470cf862fd11ff5199fca060fb99) feat(ollama): show usage value, tokens and requests from /api/usage (#1520) by @robinebers
+- [dc3bf01](https://github.com/robinebers/openusage/commit/dc3bf0178c06763ff33d929959680bf8de26fdea) fix(cursor): count an event without token usage as zero tokens (#1519) by @robinebers
+- [c170e3d](https://github.com/robinebers/openusage/commit/c170e3d5708d040989155912e510a3498eeccbf0) fix: keep card ids unique, undo across a rename, and device sign-in through a network error (#1516) by @robinebers
+- [b91d417](https://github.com/robinebers/openusage/commit/b91d417104f4dd4589aa7e57c2432589909d6e6f) fix(providers): reject provider numbers too large for an Int (#1518) by @robinebers
+- [e504a1c](https://github.com/robinebers/openusage/commit/e504a1c952ea62a672d82abdf838ca1599738f31) fix(auth): keep renewed tokens when the Keychain write fails (#1515) by @robinebers
+- [66f7c9c](https://github.com/robinebers/openusage/commit/66f7c9c4506a2673f75d4f798787aaf3fc1a9ecb) fix(sign-in): keep the loopback callback listening through stray requests (#1513) by @robinebers
+- [0208a4d](https://github.com/robinebers/openusage/commit/0208a4d5acd8424e4da09478aef841b28967fa93) fix(openrouter): accept a workspace-scoped management key (#1512) by @robinebers
+- [fd48f14](https://github.com/robinebers/openusage/commit/fd48f14eb574e9cb14fd1e8997fb2970f39e5266) fix(layout): carry over the enabled 0.7.x account's layout (#1514) by @robinebers
+- [fada9bc](https://github.com/robinebers/openusage/commit/fada9bc84b5799b9ab3cb86a568aaad9c1a0803d) fix(cli): name the account-keyed limits JSON openusage.limits.v2 (#1504) by @robinebers
+- [7268b48](https://github.com/robinebers/openusage/commit/7268b48989daa7493d7cc0571c3c2077755eb5d6) fix(settings): title notification rows after the alerts they send (#1481) by @robinebers
+- [a050846](https://github.com/robinebers/openusage/commit/a05084698e6369659f7ffe1a7dd3192220b69321) feat(cursor): show tokens, usage events and per-range breakdowns on a shared usage history (#1501) by @robinebers
+- [5505e59](https://github.com/robinebers/openusage/commit/5505e5971caf8a0ffe46cea8ee84c0245d1ddafa) fix(refresh): keep a stuck hourly read from stalling every refresh (#1506) by @robinebers
+- [df3901d](https://github.com/robinebers/openusage/commit/df3901d3bcf385f1380ea5e2daa79049f4bf3f50) docs: list the removed appearance settings and correct the cache wording (#1509) by @robinebers
+- [6133346](https://github.com/robinebers/openusage/commit/61333460be8e099b2fde39dd7c04d0b016627cce) fix(antigravity): renew a refused token once and retry a failed project lookup (#1510) by @robinebers
+- [498677a](https://github.com/robinebers/openusage/commit/498677a984cffaf3c76e10ea180ba3f30b4a07a8) fix(accounts): retry the 0.7.x key import until the key is saved (#1507) by @robinebers
+- [9d704d4](https://github.com/robinebers/openusage/commit/9d704d4f14b061e6cd42ee9fc04b6ec396d83fe3) fix(refresh): cap Retry-After waits at an hour (#1505) by @robinebers
+- [05baba8](https://github.com/robinebers/openusage/commit/05baba8663df628350f413465e5f8aee36c14912) fix(cliproxyapi): keep stored hubs inert while the hub is off (#1508) by @robinebers
+- [dd94b65](https://github.com/robinebers/openusage/commit/dd94b651cd70b1e373b9a89620463094f6414c41) fix(claude): show Max and Ultra plan names (#1499) by @robinebers
+- [a936e1e](https://github.com/robinebers/openusage/commit/a936e1e674a37f37caffbc705da9bd1c705f4263) fix(cliproxyapi): keep a late rejection of a replaced key from stopping the new one by @robinebers
+- [461e77c](https://github.com/robinebers/openusage/commit/461e77c398189877f402a07b71237be20027f04e) refactor(cliproxyapi): gate only the Add Account choice and drop the hub doc while it is off by @robinebers
+- [d83e0a6](https://github.com/robinebers/openusage/commit/d83e0a6594bd8bac7bb225b60c3ed3eb5d8a24ec) feat(cliproxyapi): turn the hub off behind CLIProxyHub.isEnabled until it is finished by @robinebers
+- [6cd3cac](https://github.com/robinebers/openusage/commit/6cd3cac84ad1e1add8e52332961999a5bb1eca4b) feat(cliproxyapi): mirror Antigravity, Devin, and Grok hub logins (#1491) by @robinebers
+- [3bfb106](https://github.com/robinebers/openusage/commit/3bfb106eb974f5459dfa9b58c0fa160792461616) feat(cliproxyapi): move the hub mark from the plan to after the account name by @robinebers
+- [a5c3a6e](https://github.com/robinebers/openusage/commit/a5c3a6e4b0cbdfbcb74a37fa7ab101244c332842) feat(cliproxyapi): mark a hub account's card with the CLIProxyAPI glyph after its plan by @robinebers
+- [e1c959c](https://github.com/robinebers/openusage/commit/e1c959c0c73474bb50e38e2855e7893fe2f490ee) fix(cliproxyapi): show a hub Claude plan on its first refresh and skip disabled logins by @robinebers
+- [c025046](https://github.com/robinebers/openusage/commit/c025046d79714669b41484473121823c5729436e) revert(cliproxyapi): show a login on a hub and signed in directly twice by @robinebers
+- [7e3982e](https://github.com/robinebers/openusage/commit/7e3982e6feca9688df8ead613f0073cc11a842ca) refactor(cliproxyapi): drop the resync mailbox and unused conformances by @robinebers
+- [cdd786c](https://github.com/robinebers/openusage/commit/cdd786cc30e3ee4099d8dad255861d3b42b9d044) feat(cliproxyapi): show a login once when it is on a hub and signed in directly by @robinebers
+- [8f3398b](https://github.com/robinebers/openusage/commit/8f3398b66f95708a802c7993e0428105ece63698) docs(changelog): note CLIProxyAPI hub accounts by @robinebers
+- [d965a74](https://github.com/robinebers/openusage/commit/d965a74f090c5b0013e19204a42d0f9a74bd799a) feat(accounts): mirror CLIProxyAPI hub logins as Claude and ChatGPT accounts by @robinebers
+- [3b615db](https://github.com/robinebers/openusage/commit/3b615db6f9401eabbde37d354a375a514ad9041e) fix(menu-bar): stop dimming the strip when an account is stale (#1493) by @robinebers
+- [91ea4a0](https://github.com/robinebers/openusage/commit/91ea4a0e0304ac8ee6b03585e313501d21a7645b) feat(cursor): show what Cursor charged today, yesterday, and in the last 30 days (#1483) by @robinebers
+- [0f2da90](https://github.com/robinebers/openusage/commit/0f2da90dcde5fdcdf9d0f731f97c22be302bc4a7) feat(ollama): name Ollama accounts by their ollama.com email (#1482) by @robinebers
+- [e4cd530](https://github.com/robinebers/openusage/commit/e4cd5304e16266f89aba833cf1ee7538610863d9) fix(resets): refresh the account as soon as a reset claim lands (#1488) by @robinebers
+- [520caec](https://github.com/robinebers/openusage/commit/520caec74b0b07da19fca7ee6b6281880d10bccf) fix(http): stop caching provider responses (#1486) by @robinebers
+- [36f5d96](https://github.com/robinebers/openusage/commit/36f5d96eb1024e2427c7653f91a024020b99dc04) fix(popover): grow the panel with the slide on macOS 15 (#1490) by @robinebers
+- [7950aa5](https://github.com/robinebers/openusage/commit/7950aa5fe42491e7060047c69453a4254d1b0544) test(macos15): make the top bar and sign-in sheet tests pass on macOS 15 (#1489) by @robinebers
+- [c926ffb](https://github.com/robinebers/openusage/commit/c926ffb807a708edfed7f2c67b1795f3aa74679c) fix(script): read the front app's display name in test_quiet.sh (#1487) by @robinebers
+- [75bbaa7](https://github.com/robinebers/openusage/commit/75bbaa7a54c8beee82ec6e4d612cff012fa3e8ad) feat(accounts): import 0.7.x's OpenRouter and Z.ai keys once (#1484) by @robinebers
+- [aa2e748](https://github.com/robinebers/openusage/commit/aa2e7481756846dfdec1d6cd8b94e3b4d56510b6) docs(changelog): list the removed Density setting and Reset All Customization (#1480) by @robinebers
+- [06636b6](https://github.com/robinebers/openusage/commit/06636b65bd70d30f657a978b11225aa13b71871b) docs: say crash reports ignore the analytics opt-out (#1479) by @robinebers
+- [26bf253](https://github.com/robinebers/openusage/commit/26bf253a40f08c290355baffd5642251301f430c) feat(accounts): add API Keys back to Ollama's and Z.ai's quick links (#1478) by @robinebers
+- [815d8d3](https://github.com/robinebers/openusage/commit/815d8d34fd3de38ffd13b6099954a13888f1f0b9) docs: correct the changelog's reorder, undo, and CLI breaking changes (#1477) by @robinebers
+- [17ad52a](https://github.com/robinebers/openusage/commit/17ad52a760ea5a217eb791933bea0eacb1205f3c) docs: align the provider guide and test command with main (#1476) by @robinebers
+- [8ed39cf](https://github.com/robinebers/openusage/commit/8ed39cf7799d530d76b4406e16f18fd2ec2a4895) feat(devin): star Daily and Weekly by default (#1475) by @robinebers
+- [61944da](https://github.com/robinebers/openusage/commit/61944daec2ded79b5efe9a2d6a9e37c76dbd7f5d) fix(release): close the nine P3 follow-ups from the release review (#1471) by @robinebers
+- [8093f14](https://github.com/robinebers/openusage/commit/8093f14eeb579b46599c05edf0ca9a2fc3c21ab7) feat(accounts): name Cursor accounts by email and show a repeated provider name once (#1472) by @robinebers
+- [f34d5b8](https://github.com/robinebers/openusage/commit/f34d5b8c0e75b7e63b2f7d00f04e63101445ee36) test(layout): expect 0.7.x's Credits star on the restored Credits meter (#1473) by @robinebers
+- [2114114](https://github.com/robinebers/openusage/commit/2114114cc55ffcb2f092b73616951fe0aa3bbf6f) feat(layout): carry over 0.7.x stars and order, and leave 0.7.x's keys untouched (#1469) by @robinebers
+- [d0ca505](https://github.com/robinebers/openusage/commit/d0ca5054dc9695bc4028eb7a70fc47771f4aed9b) feat(devin): restore Devin with a Windsurf token sign-in (#1468) by @robinebers
+- [44637bb](https://github.com/robinebers/openusage/commit/44637bb44b02ecca2a88c258ebe14850265d0b74) feat(cursor): take Enterprise and Team membership from usage-summary (#1465) by @robinebers
+- [e20a473](https://github.com/robinebers/openusage/commit/e20a4737e7b20e0927c45fe0fac8616873e936a2) fix(accounts): keep stored accounts this build cannot read (#1462) by @robinebers
+- [7058825](https://github.com/robinebers/openusage/commit/7058825aad094f37f68418455fbacb074122a6ba) fix(openrouter): read usage by key kind and restore Credits and Key Limit (#1467) by @robinebers
+- [9d58bb2](https://github.com/robinebers/openusage/commit/9d58bb269317c356b3996b18a9e2a5c6d1d8097e) Host the dashboard below the panel's content view so SwiftUI never sizes the panel (#1470) by @robinebers
+- [c354c8a](https://github.com/robinebers/openusage/commit/c354c8aa82510826bc2e55b0257711ae4d2c2013) feat(proxy): restore the config-file proxy for provider requests (#1464) by @robinebers
+- [ee3bf06](https://github.com/robinebers/openusage/commit/ee3bf06ed79084218e310ba72cb11194feced13e) fix(cli): use the app's account names and staleness rule (#1466) by @robinebers
+- [f9bb8bb](https://github.com/robinebers/openusage/commit/f9bb8bbc7cfbbce644bda388362294fd5a291ee9) fix(oauth): treat only a refused token renewal as an expired sign-in (#1461) by @robinebers
+- [886b3c4](https://github.com/robinebers/openusage/commit/886b3c4365cabecee0421a07e4bacbbe79850e24) fix(providers): restore the Grok team plan and Claude's "spent" word (#1463) by @robinebers
+- [28ffb97](https://github.com/robinebers/openusage/commit/28ffb97a15728eb7833b178107bbbf98913be6aa) fix(oauth): send a random state, never the PKCE verifier (#1460) by @robinebers
+- [8f9720b](https://github.com/robinebers/openusage/commit/8f9720b4eb01f914cb8bf851f950044d6728a236) The panel is exactly as tall as its screen's content, with no minimum height (#1458) by @robinebers
+- [e872965](https://github.com/robinebers/openusage/commit/e8729655ec157350f4cc419af5a535bd3c107d09) Open a Copilot organization's billing page from its account menu by @robinebers
+- [81e13c3](https://github.com/robinebers/openusage/commit/81e13c3a68575682733fc6063faed226c3c57f23) Show Copilot Org Credits and Org Spend as an Organization Billing account (#1456) by @robinebers
+- [d72b83b](https://github.com/robinebers/openusage/commit/d72b83baeded57c824ec849972ff21b5652f3210) ChatGPT's Extra Usage row shows the credits' dollar value again (#1452) by @robinebers
+- [38d29fc](https://github.com/robinebers/openusage/commit/38d29fc11acdd4b272d5650116dd705224072772) Name a Z.ai key that has no GLM Coding Plan (#1451) by @robinebers
+- [428d142](https://github.com/robinebers/openusage/commit/428d142e03ff7c0e7845e3162cc4b0b276bc667b) Hide usage from the menu bar while the screen is shared or recorded (#1454) by @robinebers
+- [d9ca8ef](https://github.com/robinebers/openusage/commit/d9ca8ef74fa61895d206d6d358c192cfe21e4ef6) Replace an API-key account's key from its page (#1455) by @robinebers
+- [bb5644e](https://github.com/robinebers/openusage/commit/bb5644e9a049ef09f8b1a465707be92fe1664845) The changelog tells a 0.7.x script what it loses and how to read every account by @robinebers
+- [cdea8a1](https://github.com/robinebers/openusage/commit/cdea8a1ed0d44738f51e670382edd1008cc2f2a8) The openusage JSON drops its always-empty errors key by @robinebers
+- [5d5b73a](https://github.com/robinebers/openusage/commit/5d5b73af3a4971170e4eb420c980ea6cb9a5645f) Add Credits back to OpenRouter's quick links by @robinebers
+- [7129ab2](https://github.com/robinebers/openusage/commit/7129ab29aa5ff31bae93f86f13aff497c6bd5e0a) Bring the new OpenUsage into main: accounts sign in, API-reported usage only (#1444) by @robinebers
 
 ]]></description>
-            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.0-beta.8/OpenUsage-0.8.0-beta.8.dmg" length="20076814" type="application/octet-stream" sparkle:edSignature="LG7WMvYPtcTsTp+32Opb+01T8tRbXVK8Bv2nGvxfo7R384vKUPvNzGoHFeVGTgSKB04/QZdF1ON0Lwj24rS1Bg=="/>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.0/OpenUsage-0.8.0.dmg" length="20076775" type="application/octet-stream" sparkle:edSignature="wpXW83mDsUqY0KNAbL0OP/c6kS8ycdJUoWOUgeLuDQu90jdYIt6ibwb6tNe3zZGvsAr8A4bCEhhRnNPG2UVjCA=="/>
         </item>
         <item>
             <title>0.8.0-beta.7</title>
