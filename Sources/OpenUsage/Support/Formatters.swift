@@ -15,7 +15,7 @@ enum Formatters {
         case .relative:
             let seconds = date.timeIntervalSince(now)
             if seconds <= 5 * 60 { return imminent }
-            return countdown(to: date, now: now, calendar: calendar)
+            return duration(from: now, to: date, calendar: calendar)
         case .absolute:
             guard date.timeIntervalSince(now) > 0 else { return imminent }
             let dayDiff = calendar.dateComponents(
@@ -45,27 +45,21 @@ enum Formatters {
         return monthDayLabel(date)
     }
 
-    /// The time left until `date`: calendar months and days once it is a month or more away, like
-    /// "3m 12d", and `compactDuration` below that.
-    static func countdown(to date: Date, now: Date = Date(), calendar: Calendar = .current) -> String? {
-        let left = calendar.dateComponents([.month, .day], from: now, to: date)
-        if let months = left.month, months >= 1 { return "\(months)m \(left.day ?? 0)d" }
-        return compactDuration(date.timeIntervalSince(now))
-    }
-
-    static func compactDuration(_ seconds: TimeInterval) -> String? {
+    /// The time from `start` to `end`, rounded up to the minute, in its largest unit and the next one down,
+    /// like "4h 12m", "3mo 17d", or "1y 2mo". Years and months are calendar ones; a zero second unit is left out.
+    static func duration(from start: Date, to end: Date, calendar: Calendar = .current) -> String? {
+        let seconds = end.timeIntervalSince(start)
         guard seconds.isFinite, seconds > 0 else { return nil }
-        let totalMinutes = max(1, ProviderParse.int((seconds / 60).rounded(.up)) ?? .max)
-        let days = totalMinutes / (24 * 60)
-        let hours = (totalMinutes % (24 * 60)) / 60
-        let minutes = totalMinutes % 60
-
-        if days > 0 {
-            return "\(days)d \(hours)h"
-        }
-        if hours > 0 {
-            return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h"
-        }
-        return "\(minutes)m"
+        let end = start.addingTimeInterval((seconds / 60).rounded(.up) * 60)
+        let months = calendar.dateComponents([.year, .month], from: start, to: end)
+        let monthsEnd = calendar.date(byAdding: months, to: start) ?? start
+        let minutes = ProviderParse.int((end.timeIntervalSince(monthsEnd) / 60).rounded()) ?? .max
+        let parts = [
+            (months.year ?? 0, "y"), (months.month ?? 0, "mo"),
+            (minutes / (24 * 60), "d"), (minutes % (24 * 60) / 60, "h"), (minutes % 60, "m")
+        ]
+        guard let first = parts.firstIndex(where: { $0.0 > 0 }) else { return nil }
+        let shown = parts[first...].prefix(2).filter { $0.0 > 0 }
+        return shown.map { "\($0.0)\($0.1)" }.joined(separator: " ")
     }
 }
