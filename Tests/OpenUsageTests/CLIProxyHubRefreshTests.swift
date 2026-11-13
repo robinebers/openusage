@@ -65,24 +65,24 @@ final class CLIProxyHubRefreshTests: XCTestCase {
         XCTAssertFalse(container.isRefreshingNow)
     }
 
-    func testALoginDeletedOnTheHubLeavesWithTheReadThatFollowsTheFirstMiss() async throws {
-        let deleted = OSAllocatedUnfairLock(initialState: false)
-        let http = RoutingHTTPClient { _ in .json(deleted.withLock { $0 } ? Self.listing() : Self.listing(Self.claude(disabled: false))) }
+    func testALoginDeletedOnTheHubLeavesAtTheNextRead() async throws {
+        let codex = #"{"account_type":"oauth","auth_index":"5c0b1f2e9a7d3c41","email":"bob@example.com","id":"codex-bob@example.com.json","provider":"codex","type":"codex"}"#
+        let body = OSAllocatedUnfairLock(initialState: Self.listing(Self.claude(disabled: false), codex))
+        let http = RoutingHTTPClient { _ in .json(body.withLock { $0 }) }
         let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
-        let sync = CLIProxyHubSync(
-            accounts: store, client: CLIProxyHubClient(http: http, gate: CLIProxyHubGate()), isEnabled: true,
-            confirmationDelay: .milliseconds(100)
-        )
+        let sync = CLIProxyHubSync(accounts: store, client: CLIProxyHubClient(http: http, gate: CLIProxyHubGate()), isEnabled: true)
         try await sync.connect(url: "http://mini.local:8317", key: "mgmt-key")
         let hub = try XCTUnwrap(store.hubs.first)
-        XCTAssertEqual(store.accounts(onHub: hub.id).count, 1)
+        XCTAssertEqual(store.accounts(onHub: hub.id).map(\.kind), [.claude, .codex])
 
-        deleted.withLock { $0 = true }
+        body.withLock { $0 = String($0.prefix(60)) }
         await sync.syncDue(maxAge: 0)
-        XCTAssertEqual(store.accounts(onHub: hub.id).count, 1, "one read that misses the login keeps it, in case the hub answered mid-restart")
+        XCTAssertEqual(store.accounts(onHub: hub.id).map(\.kind), [.claude, .codex], "a cut-short answer removes nothing")
+        guard case .failed = sync.status(of: hub.id) else { return XCTFail("a cut-short answer is a failed read") }
 
-        try await waitUntil { store.accounts(onHub: hub.id).isEmpty }
-        XCTAssertEqual(http.requests.count, 3, "connect, the read that missed the login, and the one that confirmed it")
+        body.withLock { $0 = Self.listing(codex) }
+        await sync.syncDue(maxAge: 0)
+        XCTAssertEqual(store.accounts(onHub: hub.id).map(\.kind), [.codex], "the login deleted on the hub is gone after one read")
     }
 
     func testTheHubCountsOnlyEnabledLoginsOpenUsageCantMirror() async throws {
