@@ -41,9 +41,12 @@ final class AppContainer {
         let claudeSessions = ClaudeSessions(defaults: defaults)
         self.claudeSessions = claudeSessions
         let hubGate = self.hubGate
+        let hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
+        self.hubs = hubs
         let makeRuntimes: RuntimeFactory = runtimeFactory ?? { currentAccounts, existing in
             ProviderCatalog.make(
                 accounts: currentAccounts, vault: accounts.credentialVault, hubKeys: accounts.hubKeys, http: http, hubGate: hubGate,
+                hubLoginMissing: { await hubs.relist($0) },
                 claudeSessions: claudeSessions, reusing: existing.compactMap { $0 as? AccountProviderRuntime }
             )
         }
@@ -61,7 +64,6 @@ final class AppContainer {
         self.layout = layout
         self.dataStore = dataStore
         self.renaming = AccountRenameStore(accounts: accounts)
-        self.hubs = CLIProxyHubSync(accounts: accounts, client: CLIProxyHubClient(http: http, gate: hubGate))
         let telemetry = TelemetryRecorder(
             sink: sink,
             defaults: telemetryDefaults,

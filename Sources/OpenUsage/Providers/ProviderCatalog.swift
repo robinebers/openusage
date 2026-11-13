@@ -12,6 +12,7 @@ enum ProviderCatalog {
         http: any HTTPClient = URLSessionHTTPClient(),
         hubGate: CLIProxyHubGate = CLIProxyHubGate(),
         hubsEnabled: Bool = CLIProxyHub.isEnabled,
+        hubLoginMissing: @escaping @Sendable (UUID) async -> Void = { _ in },
         claudeSessions: ClaudeSessions = ClaudeSessions(),
         reusing existing: [AccountProviderRuntime] = []
     ) -> [AccountProviderRuntime] {
@@ -21,7 +22,10 @@ enum ProviderCatalog {
                 let client: any HTTPClient = switch account.hub {
                 case nil: http
                 case let link? where hubsEnabled:
-                    HubTunnel(link: link, kind: account.kind, keys: hubKeys, client: CLIProxyHubClient(http: http, gate: hubGate))
+                    HubTunnel(
+                        link: link, kind: account.kind, keys: hubKeys,
+                        client: CLIProxyHubClient(http: http, gate: hubGate, loginMissing: hubLoginMissing)
+                    )
                 case _?: HubOff()
                 }
                 return AccountProviderRuntime(account: account, vault: vault, http: client, claudeSessions: claudeSessions)
