@@ -349,7 +349,7 @@ final class WidgetDataStore {
             return "\(name) asked OpenUsage to wait. Retrying at \(Formatters.compactClock(backoff.retryAt, now: date))."
         }
         if let snapshot = snapshots[providerID], snapshot.isStale(at: date),
-           let duration = Formatters.compactDuration(date.timeIntervalSince(snapshot.refreshedAt)) {
+           let duration = Formatters.duration(from: snapshot.refreshedAt, to: date) {
             return "Last updated \(duration) ago"
         }
         return backoff?.providerAsked == true ? "Waiting to retry after a rate limit." : nil

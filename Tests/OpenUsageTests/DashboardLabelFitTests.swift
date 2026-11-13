@@ -24,6 +24,13 @@ final class DashboardLabelFitTests: XCTestCase {
         }
     }
 
+    func testTheWidestCountdownsFitTheResetColumn() {
+        for countdown in ["11mo 29d", "29d 23h", "23h 59m"] {
+            let text = Text(countdown).font(DashboardMetricRow.resetFont).monospacedDigit().fixedSize()
+            XCTAssertLessThanOrEqual(NSHostingView(rootView: text).fittingSize.width, DashboardGrid.resetWidth, countdown)
+        }
+    }
+
     func testLongAccountNameLeavesThePlanReadable() throws {
         let width = PanelMetrics.width - 2 * PanelMetrics.margin - 2 * DashboardGrid.cardPadding
         let plan = "SuperGrok Heavy"

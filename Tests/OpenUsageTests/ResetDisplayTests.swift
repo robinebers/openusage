@@ -143,9 +143,9 @@ final class ResetDisplayTests: XCTestCase {
 
     func testALimitResettingMonthsOutCountsDownInMonthsAndDays() {
         var data = WidgetData(title: "Monthly", kind: .percent, used: 10, limit: 100)
-        data.resetsAt = Calendar.current.date(byAdding: .month, value: 2, to: now)
+        data.resetsAt = Calendar.current.date(byAdding: DateComponents(month: 3, day: 17), to: now)
 
-        XCTAssertEqual(data.compactResetText(now: now), "2m 0d")
+        XCTAssertEqual(data.compactResetText(now: now), "3mo 17d")
     }
 
     func testACapWithoutAResetDateHasNoResetUnderEitherClockSetting() {
@@ -194,8 +194,8 @@ final class ResetDisplayTests: XCTestCase {
         let absolute = Formatters.whenLabel(at: expiry, mode: .absolute, now: now)!
         XCTAssertEqual(entry?.item?.kind.title, "Weekly Reset")
         XCTAssertEqual(entry?.expiry, absolute)
-        XCTAssertEqual(entry?.countdown, "3d 0h")
-        XCTAssertEqual(entry?.accessibilityLabel, "Reset 1, Weekly Reset, \(absolute), expires in 3d 0h")
+        XCTAssertEqual(entry?.countdown, "3d")
+        XCTAssertEqual(entry?.accessibilityLabel, "Reset 1, Weekly Reset, \(absolute), expires in 3d")
     }
 
     func testResetsPopoverPastDueAndImminentEntriesKeepTheirTimeAndReadExpiring() {
@@ -242,29 +242,36 @@ final class ResetDisplayTests: XCTestCase {
         ])
     }
 
-    func testCountdownShowsCalendarMonthsAndDaysFromAMonthOut() {
+    func testDurationShowsTheLargestUnitAndTheNextOneDownWithMoForMonths() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Dubai")!
         let start = calendar.date(from: DateComponents(year: 2026, month: 11, day: 10, hour: 9))!
-        func countdown(_ components: DateComponents) -> String? {
-            Formatters.countdown(to: calendar.date(byAdding: components, to: start)!, now: start, calendar: calendar)
+        func duration(_ components: DateComponents) -> String? {
+            Formatters.duration(from: start, to: calendar.date(byAdding: components, to: start)!, calendar: calendar)
         }
-        XCTAssertEqual(countdown(DateComponents(day: 29, hour: 23)), "29d 23h", "just under a month keeps days and hours")
-        XCTAssertEqual(countdown(DateComponents(month: 1)), "1m 0d", "a calendar month, Nov 10 to Dec 10, not 30 days")
-        XCTAssertEqual(countdown(DateComponents(day: 30)), "1m 0d")
-        XCTAssertEqual(countdown(DateComponents(month: 3, day: 27, hour: 2)), "3m 27d")
-        XCTAssertEqual(countdown(DateComponents(year: 1, month: 2, day: 5)), "14m 5d")
-        XCTAssertEqual(countdown(DateComponents(hour: 2, minute: 6)), "2h 6m")
-        XCTAssertNil(Formatters.countdown(to: start.addingTimeInterval(-60), now: start, calendar: calendar))
+        XCTAssertEqual(duration(DateComponents(minute: 45)), "45m")
+        XCTAssertEqual(duration(DateComponents(hour: 4, minute: 12)), "4h 12m")
+        XCTAssertEqual(duration(DateComponents(day: 2, hour: 5)), "2d 5h")
+        XCTAssertEqual(duration(DateComponents(day: 17)), "17d", "no zero tail")
+        XCTAssertEqual(duration(DateComponents(day: 29, hour: 23)), "29d 23h", "just under a month keeps days and hours")
+        XCTAssertEqual(duration(DateComponents(month: 1)), "1mo", "a calendar month, Nov 10 to Dec 10, not 30 days")
+        XCTAssertEqual(duration(DateComponents(day: 30)), "1mo")
+        XCTAssertEqual(duration(DateComponents(month: 3, day: 17)), "3mo 17d")
+        XCTAssertEqual(duration(DateComponents(month: 3, day: 27, hour: 2)), "3mo 27d")
+        XCTAssertEqual(duration(DateComponents(month: 11, day: 29, hour: 23)), "11mo 29d")
+        XCTAssertEqual(duration(DateComponents(month: 14)), "1y 2mo", "12 months on roll into calendar years")
+        XCTAssertEqual(duration(DateComponents(year: 1, day: 5)), "1y", "the unit after years is months, and it's zero")
+        XCTAssertNil(Formatters.duration(from: start, to: start.addingTimeInterval(-60), calendar: calendar))
         XCTAssertEqual(Formatters.whenLabel(at: calendar.date(byAdding: .month, value: 4, to: start)!, mode: .relative,
-                                            now: start, calendar: calendar), "4m 0d", "the resets popover's countdown")
+                                            now: start, calendar: calendar), "4mo", "the resets popover's countdown")
     }
 
-    func testCompactDurationAlwaysShowsHoursAtDayScale() {
-        XCTAssertEqual(Formatters.compactDuration(4 * 24 * 3600 + 52 * 60), "4d 0h")
-        XCTAssertEqual(Formatters.compactDuration(9 * 24 * 3600 + 21 * 3600), "9d 21h")
-        XCTAssertEqual(Formatters.compactDuration(5 * 3600), "5h")
-        XCTAssertEqual(Formatters.compactDuration(52 * 60), "52m")
+    func testDurationRoundsUpToTheMinuteAndDropsZeroTails() {
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(4 * 24 * 3600 + 52 * 60)), "4d")
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(9 * 24 * 3600 + 21 * 3600)), "9d 21h")
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(5 * 3600)), "5h")
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(52 * 60 - 30)), "52m")
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(1)), "1m")
     }
 
     func testWeekdayTimeShowsMinutesSoTheHourNeverReadsAsADate() {
@@ -276,7 +283,7 @@ final class ResetDisplayTests: XCTestCase {
         XCTAssertEqual(TimeFormatSetting.twentyFourHour.weekdayTime(reset, base: Locale(identifier: "en_US"), timeZone: madrid), "Wed 08:31")
     }
 
-    func testCompactDurationOfAResetTooFarOffForAnIntShowsTheLongestCountdown() {
-        XCTAssertEqual(Formatters.compactDuration(1e300), "6405119470038038d 18h")
+    func testDurationOfAResetTooFarOffForAnIntStillReadsInYears() {
+        XCTAssertEqual(Formatters.duration(from: now, to: now.addingTimeInterval(1e300))?.hasSuffix("y"), true)
     }
 }
