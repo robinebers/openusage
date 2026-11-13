@@ -41,7 +41,7 @@ did, except Claude's: it asks for today's scopes and falls back to the old ones 
 | Antigravity | `cloud-platform`, `userinfo.email` | Google's quota API requires `cloud-platform`. |
 | Copilot | `read:user` (ignored by GitHub) | GitHub ignores the scopes a GitHub App asks for, so OpenUsage cannot narrow the token. It reads only your login and your quota with it. |
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
-| Devin | `openid profile email` | OpenUsage trades the token for the account's API key, the same key Windsurf's editor plugins use. |
+| Devin | none | The same sign-in page Windsurf's desktop app opens. OpenUsage trades the token for the account's API key, the same key the Devin CLI uses. |
 | Grok | `openid email offline_access grok-cli:access` | OpenUsage doesn't ask for `api:access`, which would let the token run Grok models. |
 | OpenCode | none | The same device sign-in the OpenCode CLI uses to connect a Console account, scoped to the workspace you pick. |
 | Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
@@ -146,8 +146,11 @@ beyond the included pool).
 
 ## Devin
 
-- Sign in on windsurf.com in your browser, then paste the token the page shows. The page mentions VS
-  Code, but the token works here too.
+- Sign in on windsurf.com in your browser, then paste the token the page shows. A Devin session token
+  (`devin-session-token$…`) works too: it is already the account's API key, so OpenUsage uses it as
+  it is.
+- A pasted session token reads usage from `server.codeium.com`. An account on another Windsurf
+  server (EU, FedStart, or a company's own) signs in on the page instead, which names its server.
 - Extra Usage shows the balance whenever Windsurf reports one, even `$0 left`. Windsurf leaves out a
   zero balance, and then the row hides.
 - A plan that hides its daily quota shows it in the Weekly row when the plan has no weekly quota.

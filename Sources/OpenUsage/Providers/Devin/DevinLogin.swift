@@ -1,9 +1,12 @@
 import Foundation
 
-/// Devin accounts sign in through the token page that Windsurf's editor plugins use.
+/// Devin accounts sign in through the token page that Windsurf's desktop app opens, or with a pasted
+/// Devin session token, which is already the account's API key.
 struct DevinLogin: ProviderLogin {
-    static let tokenPageURL = URL(string: "https://windsurf.com/profile")!
-    static let registerURL = URL(string: "https://api.codeium.com/register_user/")!
+    static let tokenPageURL = URL(string: "https://windsurf.com/windsurf/signin")!
+    static let clientID = "3GUryQ7ldAeKEuD2obYnppsnmj58eP5u"
+    static let registerURL = URL(string: "https://register.windsurf.com/exa.seat_management_pb.SeatManagementService/RegisterUser")!
+    static let sessionTokenPrefix = "devin-session-token$"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
@@ -12,10 +15,14 @@ struct DevinLogin: ProviderLogin {
         guard let value = await iterator.next() else { throw LoginError.cancelled }
         let pasted = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pasted.isEmpty else { throw LoginError.invalidCode }
-        var tokens = try await registeredKey(token: pasted) ?? OAuthTokens(accessToken: pasted)
+        let isSessionToken = pasted.hasPrefix(Self.sessionTokenPrefix)
+        var tokens = OAuthTokens(accessToken: pasted)
+        if !isSessionToken, let registered = try await registeredKey(token: pasted) { tokens = registered }
         let status = try await DevinUsageClient(http: http).fetchUserStatus(tokens)
         if ProviderError.isAuthFailure(status) {
-            throw LoginError.failed("Windsurf rejected that token. A token works for 5 minutes, so click Try Again to get a new one.")
+            throw LoginError.failed(isSessionToken
+                ? "Devin rejected that session token. Click Try Again and sign in on the page to get a new token."
+                : "Windsurf rejected that token. A token works for 5 minutes, so click Try Again to get a new one.")
         }
         let user = try LoginHTTP.decode(UserStatusResponse.self, from: status).userStatus
         if let email = user.email {
@@ -28,9 +35,10 @@ struct DevinLogin: ProviderLogin {
         var components = URLComponents(url: tokenPageURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "response_type", value: "token"),
+            URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: "show-auth-token"),
             URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "scope", value: "openid profile email"),
+            URLQueryItem(name: "prompt", value: "login"),
             URLQueryItem(name: "redirect_parameters_type", value: "query")
         ]
         return components.url!

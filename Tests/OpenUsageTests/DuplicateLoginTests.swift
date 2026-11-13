@@ -132,7 +132,7 @@ final class DuplicateLoginTests: XCTestCase {
     /// Every sign-in is issued a new API key, so only the account's identity can tell it was added before.
     private func signInToDevin(_ store: AccountStore, team: String) async throws -> AddAccountFlow {
         let http = RoutingHTTPClient { request in
-            let body = request.url.host() == "api.codeium.com"
+            let body = request.url.host() == "register.windsurf.com"
                 ? #"{"api_key":"devin-session-token$\#(UUID().uuidString)"}"#
                 : #"{"userStatus":{"email":"rob@example.com","teamId":"\#(team)"}}"#
             return HTTPResponse(statusCode: 200, headers: [:], body: Data(body.utf8))

@@ -8,6 +8,8 @@ private let userStatus = #"""
 """#
 private let refused = #"{"code":"unauthenticated","message":"invalid token"}"#
 private let selfServeStatusURL = "https://server.self-serve.windsurf.com/exa.seat_management_pb.SeatManagementService/GetUserStatus"
+private let defaultStatusURL = "https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus"
+private let registerURL = "https://register.windsurf.com/exa.seat_management_pb.SeatManagementService/RegisterUser"
 
 private func jsonBody(_ request: HTTPRequest?) -> [String: Any]? {
     request?.body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
@@ -26,10 +28,11 @@ final class DevinLoginTests: XCTestCase {
             guard case .browserToken(let url) = prompt.value else { return XCTFail("expected the token page, got \(String(describing: prompt.value))") }
             let page = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
             let query = Dictionary(uniqueKeysWithValues: (page.queryItems ?? []).map { ($0.name, $0.value ?? "") })
-            XCTAssertEqual("\(page.scheme ?? "")://\(page.host ?? "")\(page.path)", "https://windsurf.com/profile")
+            XCTAssertEqual("\(page.scheme ?? "")://\(page.host ?? "")\(page.path)", "https://windsurf.com/windsurf/signin")
             XCTAssertEqual(query["response_type"], "token")
+            XCTAssertEqual(query["client_id"], "3GUryQ7ldAeKEuD2obYnppsnmj58eP5u")
             XCTAssertEqual(query["redirect_uri"], "show-auth-token")
-            XCTAssertEqual(query["scope"], "openid profile email")
+            XCTAssertEqual(query["prompt"], "login")
             XCTAssertEqual(query["redirect_parameters_type"], "query")
             states.append(try XCTUnwrap(query["state"]))
             XCTAssertTrue(http.requests.isEmpty, "nothing is sent before a token is pasted")
@@ -40,7 +43,7 @@ final class DevinLoginTests: XCTestCase {
     func testAPastedTokenIsTradedForTheAPIKeyOnTheServerWindsurfNames() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.absoluteString {
-            case "https://api.codeium.com/register_user/":
+            case registerURL:
                 .json(#"{"api_key":"devin-session-token$abc","name":"Rob","api_server_url":"https://server.self-serve.windsurf.com"}"#)
             case selfServeStatusURL:
                 .json(userStatus)
@@ -56,28 +59,56 @@ final class DevinLoginTests: XCTestCase {
             OAuthTokens.identityKey: "devin:rob@example.com/devin-team$account-1",
             DevinUsageClient.apiServerURLKey: "https://server.self-serve.windsurf.com"
         ])))
-        XCTAssertEqual(http.requests.map(\.url.absoluteString), ["https://api.codeium.com/register_user/", selfServeStatusURL])
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [registerURL, selfServeStatusURL])
         XCTAssertEqual(jsonBody(http.requests.first) as? [String: String], ["firebase_id_token": "one-time-token"])
         XCTAssertEqual((jsonBody(http.requests.last)?["metadata"] as? [String: Any])?["apiKey"] as? String, "devin-session-token$abc")
     }
 
     func testAnAPIKeyPastedInsteadOfATokenSignsInOnTheDefaultServer() async throws {
         let http = RoutingHTTPClient { request in
-            request.url.host() == "api.codeium.com"
+            request.url.host() == "register.windsurf.com"
                 ? .json(refused, status: 401)
                 : .json(#"{"userStatus":{"email":"rob@example.com"}}"#)
         }
 
-        let result = try await signIn(pasting: "devin-session-token$pasted", http: http)
+        let result = try await signIn(pasting: "sk-ws-01-pasted", http: http)
 
+        XCTAssertEqual(result.credential, .oauth(OAuthTokens(
+            accessToken: "sk-ws-01-pasted",
+            extras: [OAuthTokens.identityKey: "devin:rob@example.com"]
+        )))
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [registerURL, defaultStatusURL])
+    }
+
+    /// #1684: the retired api.codeium.com/register_user/ answered every request with 404, which ended a
+    /// pasted Devin session token's sign-in. A session token is the API key, so it skips RegisterUser.
+    func testAPastedDevinSessionTokenSignsInWithoutRegisterUser() async throws {
+        let http = RoutingHTTPClient { request in
+            request.url.absoluteString == defaultStatusURL
+                ? .json(#"{"userStatus":{"email":"rob@example.com"}}"#)
+                : .json("404 page not found", status: 404)
+        }
+
+        let result = try await signIn(pasting: " devin-session-token$pasted\n", http: http)
+
+        XCTAssertEqual(result.label, "rob@example.com")
         XCTAssertEqual(result.credential, .oauth(OAuthTokens(
             accessToken: "devin-session-token$pasted",
             extras: [OAuthTokens.identityKey: "devin:rob@example.com"]
         )))
-        XCTAssertEqual(
-            http.requests.last?.url.absoluteString,
-            "https://server.codeium.com/exa.seat_management_pb.SeatManagementService/GetUserStatus"
-        )
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [defaultStatusURL])
+    }
+
+    func testADevinSessionTokenDevinRefusesSaysSo() async throws {
+        let http = RoutingHTTPClient { _ in .json(refused, status: 401) }
+
+        do {
+            _ = try await signIn(pasting: "devin-session-token$revoked", http: http)
+            XCTFail("a revoked session token signed in")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, "Devin rejected that session token. Click Try Again and sign in on the page to get a new token.")
+        }
+        XCTAssertEqual(http.requests.map(\.url.absoluteString), [defaultStatusURL])
     }
 
     func testATokenWindsurfRefusesAsksForANewOne() async throws {
