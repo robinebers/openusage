@@ -19,7 +19,7 @@ How each provider signs in and what its card shows.
 | Antigravity | Browser (Google OAuth) | Gemini 5h, Gemini, Argon, Claude 5h, Claude |
 | Copilot | Device code (GitHub or GHE.com) | Credits, Extra Usage, Chat, Completions |
 | Copilot organization | Organization and token | Org Credits, Org Spend |
-| Devin | Browser (Windsurf), then a pasted token | Daily, Weekly, Extra Usage |
+| Devin | Browser (devin.ai) | Daily, Weekly, Extra Usage |
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Muse Code | Device code (Meta) | Session, Weekly |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
@@ -41,7 +41,7 @@ did, except Claude's: it asks for today's scopes and falls back to the old ones 
 | Antigravity | `cloud-platform`, `userinfo.email` | Google's quota API requires `cloud-platform`. |
 | Copilot | `read:user` (ignored by GitHub) | GitHub ignores the scopes a GitHub App asks for, so OpenUsage cannot narrow the token. It reads only your login and your quota with it. |
 | Copilot organization | none; you create the token | A fine-grained personal access token with Organization permissions, Administration, Read-only, from an organization owner or billing manager. |
-| Devin | none | The same sign-in page Windsurf's desktop app opens. OpenUsage trades the token for the account's API key, the same key the Devin CLI uses. |
+| Devin | none | The same sign-in the Devin CLI uses, so the session token it returns can do what the CLI can. OpenUsage only reads your quota with it. |
 | Grok | `openid email offline_access grok-cli:access` | OpenUsage doesn't ask for `api:access`, which would let the token run Grok models. |
 | OpenCode | none | The same device sign-in the OpenCode CLI uses to connect a Console account, scoped to the workspace you pick. |
 | Muse Code | none | Meta's device sign-in takes no scopes. The usage read also returns the account's Model API key, which OpenUsage never reads or stores. |
@@ -146,11 +146,8 @@ beyond the included pool).
 
 ## Devin
 
-- Sign in on windsurf.com in your browser, then paste the token the page shows. A Devin session token
-  (`devin-session-token$…`) works too: it is already the account's API key, so OpenUsage uses it as
-  it is.
-- A pasted session token reads usage from `server.codeium.com`. An account on another Windsurf
-  server (EU, FedStart, or a company's own) signs in on the page instead, which names its server.
+- Sign in to Devin in the browser that opens. The sheet closes when you're signed in.
+- OpenUsage reads usage from `server.codeium.com`, the Devin CLI's default server.
 - Extra Usage shows the balance whenever Windsurf reports one, even `$0 left`. Windsurf leaves out a
   zero balance, and then the row hides.
 - A plan that hides its daily quota shows it in the Weekly row when the plan has no weekly quota.
