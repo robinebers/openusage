@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// Keeps each connected CLIProxyAPI hub's mirrored accounts in step with its login list, and holds what
-/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, on Refresh, and about
-/// once an hour.
+/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, on Refresh, about
+/// once an hour, and a minute after a read that misses a login, so a login deleted on the hub leaves then.
 @MainActor
 @Observable
 final class CLIProxyHubSync {
@@ -16,14 +16,20 @@ final class CLIProxyHubSync {
     private(set) var statuses: [UUID: Status] = [:]
     @ObservationIgnored private var syncedAt: [UUID: Date] = [:]
     @ObservationIgnored private var inFlight: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var confirmations: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private let confirmationDelay: Duration
     @ObservationIgnored private let accounts: AccountStore
     @ObservationIgnored private let client: CLIProxyHubClient
     @ObservationIgnored private let isEnabled: Bool
 
-    init(accounts: AccountStore, client: CLIProxyHubClient, isEnabled: Bool = CLIProxyHub.isEnabled) {
+    init(
+        accounts: AccountStore, client: CLIProxyHubClient, isEnabled: Bool = CLIProxyHub.isEnabled,
+        confirmationDelay: Duration = .seconds(60)
+    ) {
         self.accounts = accounts
         self.client = client
         self.isEnabled = isEnabled
+        self.confirmationDelay = confirmationDelay
     }
 
     func status(of hubID: UUID) -> Status { isEnabled ? statuses[hubID] ?? .checking : .failed(CLIProxyHub.offMessage) }
@@ -68,6 +74,7 @@ final class CLIProxyHubSync {
         guard !accounts.hubs.contains(where: { $0.id == hubID }) else { return }
         statuses[hubID] = nil
         syncedAt[hubID] = nil
+        confirmations.removeValue(forKey: hubID)?.cancel()
         Task { [gate = client.gate] in await gate.reopen(hubID) }
     }
 
@@ -112,5 +119,18 @@ final class CLIProxyHubSync {
         }
         syncedAt[hubID] = Date()
         statuses[hubID] = .synced(unsupported: logins.count(where: \.isUnsupported))
+        if accounts.hasUnlistedAccounts(onHub: hubID) { confirmRemovals(on: hubID) }
+    }
+
+    /// A login one read missed is removed only when the next read misses it too, so that read comes a
+    /// minute later instead of at the next hourly read.
+    private func confirmRemovals(on hubID: UUID) {
+        guard confirmations[hubID] == nil else { return }
+        confirmations[hubID] = Task { [weak self, confirmationDelay] in
+            try? await Task.sleep(for: confirmationDelay)
+            guard let self, !Task.isCancelled else { return }
+            confirmations[hubID] = nil
+            await sync(hubID)
+        }
     }
 }

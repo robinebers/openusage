@@ -65,6 +65,26 @@ final class CLIProxyHubRefreshTests: XCTestCase {
         XCTAssertFalse(container.isRefreshingNow)
     }
 
+    func testALoginDeletedOnTheHubLeavesWithTheReadThatFollowsTheFirstMiss() async throws {
+        let deleted = OSAllocatedUnfairLock(initialState: false)
+        let http = RoutingHTTPClient { _ in .json(deleted.withLock { $0 } ? Self.listing() : Self.listing(Self.claude(disabled: false))) }
+        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
+        let sync = CLIProxyHubSync(
+            accounts: store, client: CLIProxyHubClient(http: http, gate: CLIProxyHubGate()), isEnabled: true,
+            confirmationDelay: .milliseconds(100)
+        )
+        try await sync.connect(url: "http://mini.local:8317", key: "mgmt-key")
+        let hub = try XCTUnwrap(store.hubs.first)
+        XCTAssertEqual(store.accounts(onHub: hub.id).count, 1)
+
+        deleted.withLock { $0 = true }
+        await sync.syncDue(maxAge: 0)
+        XCTAssertEqual(store.accounts(onHub: hub.id).count, 1, "one read that misses the login keeps it, in case the hub answered mid-restart")
+
+        try await waitUntil { store.accounts(onHub: hub.id).isEmpty }
+        XCTAssertEqual(http.requests.count, 3, "connect, the read that missed the login, and the one that confirmed it")
+    }
+
     func testTheHubCountsOnlyEnabledLoginsOpenUsageCantMirror() async throws {
         let http = RoutingHTTPClient { _ in .json(Self.listing(Self.claude(disabled: false), Self.unsupportedEntries)) }
         let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())

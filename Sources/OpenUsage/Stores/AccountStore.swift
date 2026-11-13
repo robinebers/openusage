@@ -157,6 +157,11 @@ final class AccountStore {
         accounts.filter { $0.hub?.hubID == hubID }
     }
 
+    /// Whether the hub's last listing lacked one of its accounts' logins, which the next listing removes.
+    func hasUnlistedAccounts(onHub hubID: UUID) -> Bool {
+        accounts(onHub: hubID).contains { unlistedHubAccounts.contains($0.id) }
+    }
+
     /// Saves a newly connected hub and its management key, bound to the hub's address. Its logins arrive with `mirror`.
     func addHub(_ hub: CLIProxyHub, key: String) throws {
         try hubKeys.save(HubKey(key: key, url: hub.url), for: hub.id)

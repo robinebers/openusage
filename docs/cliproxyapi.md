@@ -40,7 +40,8 @@ update in …**), and about once an hour. ⌘R reads the list before usage, so a
 hub is gone right away.
 
 - A login added on the hub appears at the bottom of its provider's accounts.
-- A login removed on the hub disappears once two reads in a row miss it.
+- A login removed on the hub disappears once two reads in a row miss it. After a read that misses a
+  login, OpenUsage reads the list again a minute later.
 - A login disabled on the hub disappears. Enabled again, it comes back as a new account.
 - A renamed login, or a ChatGPT login on another workspace, keeps its account, name, and Priority
   pins.
