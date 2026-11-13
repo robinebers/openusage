@@ -154,6 +154,8 @@ final class AntigravityUsageClientTests: XCTestCase {
 
         let request = try XCTUnwrap(http.requests.first)
         XCTAssertEqual(request.headers["Authorization"], "Bearer access")
+        XCTAssertEqual(request.headers["User-Agent"], AntigravityUsageClient.clientUserAgent)
+        XCTAssertTrue(request.headers["User-Agent"]?.contains("cl=1020628950") == true)
         XCTAssertEqual(request.body.flatMap(ProviderParse.jsonObject)?["project"] as? String, "fake-project-123")
     }
 
