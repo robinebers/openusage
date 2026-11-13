@@ -408,28 +408,7 @@ final class ProviderLoginTests: XCTestCase {
         { value in
             prompt.store(value)
             guard case .browser(let authorizeURL, _) = value else { return }
-            callback.store(await Self.completeLoopbackCallback(authorizeURL))
-        }
-    }
-
-    private static func completeLoopbackCallback(_ authorizeURL: URL) async -> Int? {
-        guard
-            let items = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)?.queryItems,
-            let redirect = items.first(where: { $0.name == "redirect_uri" })?.value,
-            let state = items.first(where: { $0.name == "state" })?.value,
-            var callback = URLComponents(string: redirect)
-        else { return nil }
-        callback.host = "127.0.0.1"
-        callback.queryItems = [
-            URLQueryItem(name: "code", value: "fake-authorization-code"),
-            URLQueryItem(name: "state", value: state)
-        ]
-        guard let url = callback.url else { return nil }
-        do {
-            let (_, response) = try await URLSession.shared.data(from: url)
-            return (response as? HTTPURLResponse)?.statusCode
-        } catch {
-            return nil
+            callback.store(await completeLoopbackCallback(authorizeURL))
         }
     }
 

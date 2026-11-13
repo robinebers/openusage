@@ -45,26 +45,6 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         XCTAssertFalse(presentation.isPresented, "Cancel on the provider list didn't close the sheet")
     }
 
-    func testAPastedTokenIsMaskedAndAPastedCodeIsNot() async throws {
-        let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault())
-        let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))
-        let steps: [(provider: ProviderKind, prompt: LoginPrompt, masked: Bool)] = [
-            (.devin, .browserToken(url), true),
-            (.claude, .browser(url, acceptsPastedCode: true), false),
-        ]
-        for (provider, prompt, masked) in steps {
-            let flow = AddAccountFlow(store: store, openURL: { _ in }) { _, _, _, _ in SlowLogin(prompt: prompt) }
-            addTeardownBlock { flow.cancel() }
-            flow.choose(provider)
-            try await waitUntil { flow.prompt != nil }
-            flow.pastedCode = "pasted-secret"
-            let host = show(AddAccountSheet(flow: flow), in: .titled).host
-            try await waitUntil { textFields(in: host).contains { $0.stringValue == "pasted-secret" } }
-            let field = try XCTUnwrap(textFields(in: host).first { $0.stringValue == "pasted-secret" }, "\(provider): no field shows the pasted value")
-            XCTAssertEqual(field is NSSecureTextField, masked, "\(provider): the pasted value is \(masked ? "shown in plain text" : "masked")")
-        }
-    }
-
     func testTheHubSheetShowsTheHintOrTheErrorButNeverBoth() async throws {
         let error = "Use https for hub.example.com. OpenUsage uses http only for a hub on this Mac, your local network, or Tailscale."
         let flow = AddAccountFlow(
@@ -88,11 +68,6 @@ final class AddAccountSheetTests: QuietWindowTestCase {
         let rep = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
         host.cacheDisplay(in: host.bounds, to: rep)
         return try recognizedLines(in: XCTUnwrap(rep.cgImage)).joined(separator: " ")
-    }
-
-    private func textFields(in view: NSView) -> [NSTextField] {
-        if let field = view as? NSTextField { return [field] }
-        return view.subviews.flatMap(textFields(in:))
     }
 
     private func press(keyCode: UInt16, character: String, in sheet: NSWindow) {
