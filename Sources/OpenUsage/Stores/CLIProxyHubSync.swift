@@ -2,8 +2,8 @@ import Foundation
 import Observation
 
 /// Keeps each connected CLIProxyAPI hub's mirrored accounts in step with its login list, and holds what
-/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, on Refresh, and about
-/// once an hour.
+/// the hub's row in Accounts shows. A hub is re-read at launch, when Accounts opens, on Refresh, about
+/// once an hour, and when the hub tells an account its login is gone.
 @MainActor
 @Observable
 final class CLIProxyHubSync {
@@ -88,15 +88,31 @@ final class CLIProxyHubSync {
         await task.value
     }
 
+    /// Re-reads a hub at once: one of its accounts was told by the hub that its login is gone.
+    func relist(_ hubID: UUID) async {
+        guard isEnabled else { return }
+        await sync(hubID)
+    }
+
+    /// A listing that found no network path is tried again like a usage read that found none, and the hub
+    /// isn't flagged until the last try fails. A failed listing is due again at the next pass.
     private func read(_ hubID: UUID) async {
-        guard let hub = accounts.hubs.first(where: { $0.id == hubID }) else { return }
-        syncedAt[hubID] = Date()
-        do {
-            let key = try accounts.hubKeys.key(for: hubID, at: hub.url)
-            record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hubID)
-        } catch {
-            guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
-            statuses[hubID] = .failed(error.localizedDescription)
+        var retries = RefreshSetting.offlineRetryDelays[...]
+        while let hub = accounts.hubs.first(where: { $0.id == hubID }) {
+            syncedAt[hubID] = Date()
+            do {
+                let key = try accounts.hubKeys.key(for: hubID, at: hub.url)
+                return record(try await client.logins(hubID: hubID, url: hub.url, key: key), for: hubID)
+            } catch {
+                guard accounts.hubs.contains(where: { $0.id == hubID }) else { return }
+                guard case ProviderError.unreachable(_, offline: true) = error, let delay = retries.popFirst() else {
+                    syncedAt[hubID] = nil
+                    statuses[hubID] = .failed(error.localizedDescription)
+                    return
+                }
+                AppLog.warn(LogTag.auth("cliproxy"), "\(CLIProxyHub.host(of: hub.url)) login list offline. Retrying in \(Int(delay))s.")
+                guard (try? await Task.sleep(for: .seconds(delay))) != nil else { return }
+            }
         }
     }
 

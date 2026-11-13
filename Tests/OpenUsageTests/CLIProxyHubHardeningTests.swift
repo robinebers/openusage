@@ -108,24 +108,21 @@ final class CLIProxyHubHardeningTests: XCTestCase {
         XCTAssertTrue(store.hubs.isEmpty)
     }
 
-    func testAListingThatLacksLoginsKeepsTheirAccountsUntilTheNextListingAgrees() throws {
+    func testALoginMissingFromAListingIsRemovedAtOnce() throws {
         let store = AccountStore(defaults: isolatedDefaults(), vault: InMemoryCredentialVault(), hubKeys: InMemoryHubKeyVault())
         let hub = CLIProxyHub(url: hubURL)
         try store.addHub(hub, key: "mgmt-key")
         try store.mirror([Self.login("a", "claude"), Self.login("b", "codex")], from: hub.id)
         let mirrored = store.accounts
 
-        try store.mirror(HubLogin.listing(from: Data(#"{"files":[]}"#.utf8)), from: hub.id)
-        XCTAssertEqual(store.accounts, mirrored, "one empty listing, as from a hub mid-restart, erases nothing")
-        try store.mirror([Self.login("a", "claude"), Self.login("b", "codex")], from: hub.id)
         let uncallable = #"{"files":[{"id":"a","provider":"claude"},{"id":"b","auth_index":"index-b","provider":"codex"}]}"#
         try store.mirror(HubLogin.listing(from: Data(uncallable.utf8)), from: hub.id)
         XCTAssertEqual(store.accounts, mirrored, "a login listed without an auth index keeps its account")
 
         try store.mirror([Self.login("a", "claude")], from: hub.id)
-        XCTAssertEqual(store.accounts, mirrored, "a login missing from one listing stays")
-        try store.mirror([Self.login("a", "claude")], from: hub.id)
-        XCTAssertEqual(store.accounts.map(\.id), [mirrored[0].id], "a login two listings in a row lack is removed")
+        XCTAssertEqual(store.accounts.map(\.id), [mirrored[0].id], "a login the listing lacks is removed")
+        try store.mirror(HubLogin.listing(from: Data(#"{"files":[]}"#.utf8)), from: hub.id)
+        XCTAssertTrue(store.accounts.isEmpty, "a hub that lists no logins has none")
     }
 
     func testAFailedKeychainWriteLeavesTheHubUnreadSoTheNextSyncRetries() async throws {
@@ -156,7 +153,6 @@ final class CLIProxyHubHardeningTests: XCTestCase {
         let hub = CLIProxyHub(url: hubURL)
         try store.addHub(hub, key: "mgmt-key")
         try store.mirror([Self.login("a", "claude")], from: hub.id)
-        try store.mirror([], from: hub.id)
 
         vault.deleteError.value = CredentialVaultError.missingCredential
         XCTAssertThrowsError(try store.mirror([], from: hub.id))
@@ -164,7 +160,7 @@ final class CLIProxyHubHardeningTests: XCTestCase {
         vault.deleteError.value = nil
         try store.mirror([], from: hub.id)
 
-        XCTAssertTrue(store.accounts.isEmpty, "the login two listings lacked is removed once the Keychain lets it go")
+        XCTAssertTrue(store.accounts.isEmpty, "the gone login is removed once the Keychain lets it go")
     }
 
     private static func login(_ id: String, _ provider: String) -> HubLogin {

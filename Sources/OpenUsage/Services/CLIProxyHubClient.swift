@@ -9,6 +9,8 @@ struct CLIProxyHubClient: Sendable {
 
     let http: any HTTPClient
     let gate: CLIProxyHubGate
+    /// Called with the hub's id, before the error is thrown, when the hub answers that a login is gone.
+    var loginMissing: @Sendable (UUID) async -> Void = { _ in }
 
     func logins(hubID: UUID, url: URL, key: String) async throws -> [HubLogin] {
         let response = try await management("GET", "auth-files", hubID: hubID, url: url, key: key)
@@ -106,6 +108,7 @@ struct CLIProxyHubClient: Sendable {
             LogTag.auth("cliproxy"),
             "\(host) \(path) -> HTTP \(response.statusCode) (\(refusal)), hub \(response.header("X-CPA-VERSION") ?? "version unknown")"
         )
+        if refusal == .loginMissing { await loginMissing(hubID) }
         throw refusal.error(host: host, upstream: upstream)
     }
 
