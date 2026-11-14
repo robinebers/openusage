@@ -1,0 +1,23 @@
+{
+  "$schema": "../exact/scripts/app.schema.json",
+  "name": "OpenUsage",
+  "short_name": "OpenUsage",
+  "id": "com.robinebers.openusage.exact",
+  "start_url": "/",
+  "display": "standalone",
+  "app": {
+    "id": "com.robinebers.openusage.exact",
+    "name": "OpenUsage"
+  },
+  "host": {
+    "web": {},
+    "macos": {
+      "minimumOS": "14.0",
+      "activationPolicy": "accessory",
+      "window": { "width": 380, "height": 560, "minWidth": 320, "minHeight": 420, "keepRunning": true }
+    }
+  },
+  "deploy": {
+    "store": { "web": "0", "macos": "0" }
+  }
+}

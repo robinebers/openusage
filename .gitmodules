@@ -1,0 +1,3 @@
+[submodule "exact"]
+	path = exact
+	url = https://github.com/expo/exact.git

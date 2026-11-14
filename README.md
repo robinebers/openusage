@@ -1,164 +1,79 @@
-# OpenUsage
+# OpenUsage × Expo Exact — rewrite experiment
 
-Track your AI coding subscriptions from the macOS menu bar.
+This branch is a **draft experiment**: a complete rewrite of OpenUsage 0.8.0 on
+[Expo Exact](https://github.com/expo/exact) instead of SwiftUI/AppKit. Nothing
+here is meant to merge; it exists to answer "what is Exact, and can it actually
+build a macOS menu-bar app?"
 
-OpenUsage shows how much of each AI plan you've used: session and weekly limits, credits, and
-balances, all in one panel. The limits closest to running out sit right in the menu bar.
+## What Exact is
 
-| | Light | Dark |
-| --- | --- | --- |
-| **Priority** | <img src="assets/priority-light.jpg" alt="OpenUsage Priority tab in light mode, with pinned limits, limits running out, and a used-up limit" width="400"> | <img src="assets/priority-dark.jpg" alt="OpenUsage Priority tab in dark mode, with pinned limits, limits running out, and a used-up limit" width="400"> |
-| **All Usage** | <img src="assets/all-usage-light.jpg" alt="OpenUsage All Usage tab in light mode, with Claude, ChatGPT, and Cursor usage" width="400"> | <img src="assets/all-usage-dark.jpg" alt="OpenUsage All Usage tab in dark mode, with Claude, ChatGPT, and Cursor usage" width="400"> |
+Exact is Expo's next-generation app runtime (public since Nov 2026, pre-1.0,
+no API stability). You write UI once in **Contract**, a declarative language
+(`app.contract`), and data logic in TypeScript (`app.ts`). There is no webview
+and no JS bridge: the same source runs as
 
-## Installation
+- **web** — a ~20 KB runtime + one ES module on the real DOM,
+- **macOS** — a Rust kernel driving real AppKit views through a Swift host
+  (`ExactKit`), laid out by Taffy,
+- **iOS** — the same idea on UIKit (skipped here: needs iOS Sim SDK 27.1, this
+  machine has 26.5),
+- **Linux/Windows** — a painted host (vello), in progress.
 
-- **Homebrew:**
+It's agent-native: `scripts/agent.mjs` drives any running app (tree, tap, type,
+screenshot, fake clock), and `app.test.contract` tests run unchanged on every
+host. `bun exact.mjs verify web` also audits contrast, hit-target sizes and
+largest-text-size layout.
 
-  ```sh
-  brew install --cask openusage
-  ```
+## What it can already do (verified by building this)
 
-- **Direct download:** grab the latest universal DMG from the
-  [releases page](https://github.com/robinebers/openusage/releases/latest), open it, and drag
-  OpenUsage to your Applications folder.
+- A **menu-bar accessory app**: `host.macos.activationPolicy: "accessory"` gives
+  no Dock tile and no window at launch, and a `button -exact-menu="status"` in
+  the page becomes a real `NSStatusItem` — click runs `focus()` to show the
+  window. `window.keepRunning` hides rather than closes.
+- The dashboard's Priority / All Usage panel: sections, ring progress drawn as
+  SVG, provider icons, tinted amounts, segmented control, right-click menus
+  (`contextPopover` + `contextmenu`), popover menus, grouped-list settings,
+  routing with push/back, `state ... persist`.
+- Provider icons as plain `.svg` assets; system symbols via `image "symbol:x"`.
+- A ticking clock via `task every(30000, …)` + `performanceNow()`.
 
-The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates. Requires macOS 15
-(Sequoia) or later, on Apple Silicon or Intel.
+## What it can't do yet (for this use case)
 
-## Supported Providers
+- **No anchored popover panel.** Exact shows a normal `NSWindow` (380×560 here);
+  OpenUsage's `NSPanel` anchored to the status item can't be written today.
+- **No programmatic quit for accessory apps.** The only Quit is the host's
+  `status-quit` inside a status-item *menu* — and a status item with a menu
+  opens the menu on click instead of running `press`. So this app's click
+  opens the window, and "Quit OpenUsage" is `hideWindow()` (the process stays
+  alive — honest gap).
+- **No real provider wiring attempted.** Exact has Keychain (`storage.keychain`),
+  granted `net.fetch` and an OAuth fixture — a real port would sign in per
+  provider; this experiment ships seeded data matching the screenshots.
+- **Windows tray icon accepted but unbuilt**; menu is a plain `NSMenu`, not a
+  custom SwiftUI menu like OpenUsage's header menu.
 
-- **[Claude](docs/providers.md#claude)**: session, weekly, model limits, extra usage (Enterprise spend), rate-limit resets
-- **[ChatGPT](docs/providers.md#chatgpt)**: session, weekly, Spark, extra usage, credit limit, rate-limit resets, daily tokens
-- **[Cursor](docs/providers.md#cursor)**: total usage, model usage, extra usage, requests, credits, daily spend and tokens
-- **[Amp](docs/providers.md#amp)**: agent usage, orb hours, Amp Free, credits
-- **[Antigravity](docs/providers.md#antigravity)**: Gemini, Argon, and Claude quotas
-- **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing, GitHub Enterprise on GHE.com
-- **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
-- **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
-- **[Muse Code](docs/providers.md#muse-code)**: session, weekly
-- **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
-- **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
-- **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
-- **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches, rate-limit resets
-- **[CLIProxyAPI hubs](docs/cliproxyapi.md)**: every Claude, ChatGPT, Antigravity, Devin, and Grok login on
-  a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server
+## Layout
 
-Add your accounts from the app's Accounts screen. OpenUsage never reads other tools' credentials,
-files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
-[Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
+- `openusage-exact/` — the app (Contract + TypeScript + tests + provider icons)
+- `exact/` — the SDK as a git submodule @ `0104e402`
 
-## Features
-
-- **Menu bar.** The limits closest to running out, at a glance.
-- **Priority.** What's running low, what's used up, and which accounts need you.
-- **All Usage.** Every account and limit in one place, with resets, your pace, and an optional mark
-  where an even pace would be.
-- **Your layout.** Pin the metrics you care about, hide the rest with a right-click, and drag
-  everything into your order.
-- **Unify multiple accounts.** Show your Claude or ChatGPT accounts as one card, with one bar per limit.
-- **Rate-limit resets.** See and spend Claude and ChatGPT resets.
-- **Share.** Copy a picture of your usage to the clipboard.
-- **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
-  it unused.
-- **Priority limits.** Choose how much left turns a limit orange or red, see limits you're burning
-  through too fast while they still have plenty left, and see limits about to reset mostly unused.
-- **Global shortcut.** Toggle the panel from anywhere.
-- **[Command line](docs/cli.md).** Your usage as JSON, for scripts and agents.
-- **[Automatic updates](docs/updates.md).** Signed, notarized updates, with an optional beta channel.
-- **[Proxy support](docs/proxy.md).** Route provider requests through a SOCKS5, HTTP, or HTTPS proxy.
-
-## Documentation
-
-How everything works, in [docs/](docs/README.md):
-
-- [Dashboard](docs/dashboard.md)
-- [Accounts](docs/accounts.md) and [CLIProxyAPI hubs](docs/cliproxyapi.md)
-- [Providers](docs/providers.md)
-- [Menu bar](docs/menu-bar.md)
-- [Settings](docs/settings.md)
-- [Refreshing](docs/refreshing.md)
-- [Command line](docs/cli.md)
-- [Updates](docs/updates.md)
-- [Proxy](docs/proxy.md)
-- [Privacy](docs/privacy.md), including optional daily provider account counts
-
-## License
-
-[MIT](LICENSE)
-
----
-
-<details>
-<summary><strong>Build from source</strong></summary>
+## Run it
 
 ```sh
-swift build                 # debug build
-script/test_quiet.sh        # run the tests without them taking the keyboard or the screen
-./script/build_and_run.sh   # build and launch the dev app from dist/
+git submodule update --init
+cd openusage-exact
+bun scripts/exact.mjs setup     # one-time: toolchains, Hermes, Chromium
+bun exact.mjs web               # the panel in a browser
+bun exact.mjs mac --run         # the menu-bar app on macOS
+bun exact.mjs test web          # the tests
+bun exact.mjs verify web        # screenshots + a11y findings
 ```
 
-`script/test_quiet.sh` takes `swift test` arguments such as `--filter`. The dev app has its own
-bundle identifier, so it runs beside an installed OpenUsage. See [debugging](docs/debugging.md).
+## Deliberate simplifications vs 0.8.0
 
-To learn the code, read the [architecture overview](docs/architecture.md),
-[adding a provider](docs/adding-a-provider.md), and [AGENTS.md](AGENTS.md).
-
-</details>
-
-<details>
-<summary><strong>Releasing</strong></summary>
-
-Create the GitHub Release for the tag as a draft with its notes, then push a `v*` tag on `main` to
-build, sign, notarize, and publish it. A tag without a release that has notes fails before the build.
-
-- A plain tag (`v0.8.0`) ships to everyone.
-- A pre-release tag (`v0.8.0-beta.1`) ships to the beta channel.
-
-The pipeline is [release.yml](.github/workflows/release.yml), and the steps are in the
-`release-swift` skill.
-
-### Release setup (one-time)
-
-The workflow needs these repository secrets (Settings → Secrets and variables → Actions):
-
-| Secret                       | What it is                                                            |
-| ---------------------------- | --------------------------------------------------------------------- |
-| `APPLE_CERTIFICATE`          | base64 of your Developer ID Application `.p12`                        |
-| `APPLE_CERTIFICATE_PASSWORD` | the password set when exporting that `.p12`                           |
-| `APPLE_ID`                   | the Apple ID email used for notarization                              |
-| `APPLE_PASSWORD`             | an app-specific password for that Apple ID                            |
-| `APPLE_TEAM_ID`              | your Apple Developer team ID                                          |
-| `SPARKLE_PUBLIC_KEY`         | base64 EdDSA public key, baked into the build as `SUPublicEDKey`      |
-| `SPARKLE_PRIVATE_KEY`        | base64 EdDSA private key used to sign the DMG                         |
-| `POSTHOG_CLI_API_KEY`        | PostHog personal API key used to upload dSYMs for crash symbolication |
-| `POSTHOG_CLI_PROJECT_ID`     | numeric PostHog project ID the dSYMs upload to                        |
-
-- Export the Developer ID Application certificate, with its private key, from Keychain Access as a
-  `.p12`. Then run `base64 -i DeveloperID.p12 | pbcopy`.
-- Create the app-specific password at appleid.apple.com → Sign-In and Security → App-Specific
-  Passwords.
-- Generate the Sparkle key pair once with Sparkle's `generate_keys` tool. If the two keys don't match,
-  signing is silently skipped.
-- The `POSTHOG_CLI_*` secrets only upload dSYMs so crash reports symbolicate. Without
-  `POSTHOG_CLI_API_KEY`, the workflow skips the upload with a warning and the release still ships.
-  The key comes from PostHog → Settings → Personal API keys, and the project ID is the number in your
-  project URL.
-- Keep the repository public, because Sparkle fetches the DMG and appcast anonymously. After the first
-  release, confirm that Settings → Pages → Source is GitHub Actions; `deploy-pages.yml` publishes `gh-pages`.
-
-</details>
-
-<details>
-<summary><strong>Contributing</strong></summary>
-
-Pull requests are issue-first:
-
-1. Comment on an issue.
-2. Wait for a maintainer to add the `approved` label and assign it to you.
-3. Open your PR with `Fixes #123`.
-
-Automation closes external PRs that skip this. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Report
-security issues privately per [SECURITY.md](SECURITY.md). The OpenUsage name and logo are covered by
-the [trademark policy](TRADEMARK.md).
-
-</details>
+- Priority sections are Pinned / Running Out / Used Up (Lose It, Attention and
+  Burning-Fast grouping are stubbed; the settings toggles exist but are inert).
+- No account reordering, hiding *accounts*, usage-details popover depth,
+  notifications, Sparkle, or real refresh — "Refresh" marks accounts refreshing
+  for 1.5 s, then clears.
+- Settings persist via `state persist`, not UserDefaults.

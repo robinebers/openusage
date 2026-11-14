@@ -1,0 +1,29 @@
+test "the panel loads with priority sections"
+  expect tree has "app"
+  expect text "tab-priority" == "Priority"
+  expect text "tab-usage" == "All Usage"
+  expect tree has "pr-claude-personal-weekly"
+  expect tree has "pr-claude-work-session"
+
+test "All Usage lists the provider cards"
+  tap "tab-usage"
+  expect tree has "card-claude"
+  expect tree has "card-codex"
+  expect tree has "card-devin"
+  expect text "amount-claude-personal-session" == "24%"
+
+test "the footer menu opens Accounts"
+  tap "more"
+  tap "menu-accounts"
+  clock settle
+  expect text "accounts-title" == "Accounts"
+  expect tree has "acct-claude-personal"
+
+test "pinning a metric moves it to Priority"
+  tap "tab-usage"
+  expect tree missing "pr-codex-session"
+  tap "row-codex-session" contextmenu
+  tap "menu-pin"
+  clock settle
+  tap "tab-priority"
+  expect tree has "pr-codex-session"

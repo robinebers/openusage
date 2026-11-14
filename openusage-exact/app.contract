@@ -1,0 +1,527 @@
+// OpenUsage rebuilt in Exact: a menu-bar panel that shows the usage limits of
+// the AI coding accounts a user adds. app.ts answers the seeded data. Colours,
+// fonts and controls are left to each platform where the original leaves them
+// to macOS; layout and the panel's structure are written here.
+use Badge, EmptyState from "exact:content"
+
+routes nav
+  home "/"
+    accounts "/accounts"
+      account "/accounts/:id"
+    add "/add"
+    settings "/settings"
+    about "/about"
+    metric "/metric/:id"
+
+shape Time
+  epochAtZero: number
+  utcOffset: number
+
+shape Page
+  canSharePictures: bool
+
+shape Metric
+  id: string
+  label: string
+  kind: string
+  pctLeft: number
+  resets: number
+  resetsMax: number
+  paceAt: number
+  amountLeft: string
+  amountUsed: string
+  resetInMs: number
+  status: string
+  pinned: bool
+  hidden: bool
+  burningFast: bool
+
+shape Account
+  id: string
+  provider: string
+  name: string
+  plan: string
+  state: string
+  metrics: Metric[]
+
+shape Provider
+  id: string
+  name: string
+  icon: string
+  blurb: string
+  unified: bool
+  added: bool
+  accounts: Account[]
+
+shape PRow
+  id: string
+  icon: string
+  label: string
+  account: string
+  tint: string
+  amountLeft: string
+  amountUsed: string
+  resetInMs: number
+  pctLeft: number
+
+shape Group
+  id: string
+  rows: PRow[]
+
+shape Board
+  menubar: string
+  nextIn: string
+  groups: Group[]
+  providers: Provider[]
+
+shape CatalogProvider
+  id: string
+  name: string
+  icon: string
+  blurb: string
+  added: bool
+
+shape Catalog
+  providers: CatalogProvider[]
+
+shape Ok
+  ok: bool
+
+fn tintColor(t: string): string =
+  t == "red" ? "-exact-system-red" : t == "orange" ? "-exact-system-orange" : "-exact-system-blue"
+fn statusColor(status: string): string =
+  status == "usedup" ? "-exact-system-red" : status == "critical" ? "-exact-system-red" : status == "warning" ? "-exact-system-orange" : "-exact-system-blue"
+fn rel(ms: number): string = (
+  ms <= 0 ? "now"
+  : ms < 3600000 ? `${ceil(ms / 60000)}m`
+  : ms < 172800000 ? (ms % 3600000 >= 30000 ? `${floor(ms / 3600000)}h ${ceil((ms % 3600000) / 60000)}m` : `${floor(ms / 3600000)}h`)
+  : (ms % 86400000 >= 1800000 ? `${floor(ms / 86400000)}d ${floor((ms % 86400000) / 3600000)}h` : `${floor(ms / 86400000)}d`)
+)
+
+component App
+  resource time = exactTime() as shape Time
+  resource page = exactPage() as shape Page
+  state now = 0
+  task boot when now == 0
+    after(1, step)
+  task clock when now > 0
+    every(30000, step)
+  task settleRefresh when refreshingSince > 0
+    after(1500, settle)
+  resource board = board() with time.epochAtZero + now, time.utcOffset as shape Board
+  resource catalog = catalog() as shape Catalog
+
+  state tab = "priority" persist
+  state showLeft = true persist
+  state showIn = true persist
+  state paceMarks = true persist
+  state paceTick = "-exact-tertiary-label" persist
+  state refreshMin = "5" persist
+  state defaultTab = "priority" persist
+  state warningPct = "30" persist
+  state criticalPct = "10" persist
+  state burningFast = true persist
+  state loseIt = true persist
+  state menuId = ""
+  state menuPinned = false
+  state menuProvider = ""
+  state menuStatus = ""
+  state selAccount = ""
+  state selProvider = ""
+  state newName = ""
+  state refreshingSince = 0
+
+  mutation pinnedSet as shape Ok refreshes board
+  mutation hiddenSet as shape Ok refreshes board
+  mutation unifiedSet as shape Ok refreshes board
+  mutation refreshed as shape Ok refreshes board
+  mutation settled as shape Ok refreshes board
+  mutation added as shape Ok refreshes board
+  mutation renamed as shape Ok refreshes board
+  mutation removed as shape Ok refreshes board then closeGone
+
+  action step
+    now = performanceNow()
+  action showTab(t: string)
+    tab = t
+  action flipAmounts
+    showLeft = not showLeft
+  action flipResets
+    showIn = not showIn
+  action openMenu(id: string, pinned: bool, provider: string, status: string)
+    menuId = id
+    menuPinned = pinned
+    menuProvider = provider
+    menuStatus = status
+  action pinMetric
+    send pinnedSet = setPinned(menuId, not menuPinned)
+  action hideMetric
+    send hiddenSet = setHidden(menuId, true)
+  action refreshOne
+    send refreshed = refreshProvider(menuProvider)
+    refreshingSince = performanceNow()
+  action refreshAll
+    send refreshed = refreshAll()
+    refreshingSince = performanceNow()
+  action settle
+    refreshingSince = 0
+    send settled = refreshDone()
+  action openAccounts
+    nav = push(nav, path("accounts"))
+  action openSettings
+    nav = push(nav, path("settings"))
+  action openAbout
+    nav = push(nav, path("about"))
+  action openAdd
+    nav = push(nav, path("add"))
+  action openAccount(id: string, provider: string)
+    selAccount = id
+    selProvider = provider
+    newName = ""
+    nav = push(nav, path("account", id))
+  action openMetric(id: string, provider: string)
+    menuId = id
+    selProvider = provider
+    nav = push(nav, path("metric", id))
+  action addAccount(providerId: string)
+    send added = addAccount(providerId)
+  action editName(v: string)
+    newName = v
+  action saveRename
+    if newName.trim() != ""
+      send renamed = renameAccount(selAccount, newName)
+  action removeSel
+    send removed = removeAccount(selAccount)
+  action closeGone
+    nav = back(nav)
+  action setUnified(p: string, on: bool)
+    send unifiedSet = setUnified(p, on)
+  action setHiddenFor(id: string, on: bool)
+    send hiddenSet = setHidden(id, on)
+  action setPinnedFor(id: string, on: bool)
+    send pinnedSet = setPinned(id, on)
+  action setAmounts(v: string)
+    showLeft = v == "left"
+  action setResets(v: string)
+    showIn = v == "in"
+  action setTabDefault(v: string)
+    defaultTab = v
+  action setRefresh(v: string)
+    refreshMin = v
+  action setWarning(v: string)
+    warningPct = v
+  action setCritical(v: string)
+    criticalPct = v
+  action setPaceMarks(on: bool)
+    paceMarks = on
+  action setPaceTick(v: string)
+    paceTick = v
+  action setBurning(on: bool)
+    burningFast = on
+  action setLoseIt(on: bool)
+    loseIt = on
+  action openPanel
+    focus()
+  action hidePanel
+    hideWindow()
+  action sharePanel
+    share(title="OpenUsage", files=["#panel"])
+  action back
+    nav = back(nav)
+  action follow(url: string)
+    nav = go(nav, url)
+
+  view
+    main navigationKey=`${top(nav).id}` navigationBack="back" navigate=follow testId="app" width="100%" height="100%"
+      for e in stack(nav) key=e.id
+        if e.name == "home"
+          column navigationKey=`${e.id}` navigationScroll="panel-scroll" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background" id="panel"
+            row padding="10px 12px 6px 12px" align-items="center" justify-content="center" gap=10
+              button -exact-menu="status" press=openPanel aria-label=board.menubar testId="status-item" width=24 height=24 padding=0 background-color="transparent"
+                image "assets/icons/openusage.svg" width=18 height=18
+              row role="radiogroup" aria-label="Dashboard Tabs" flex=1 min-width=0
+                button role="radio" aria-checked=(tab == "priority") press=showTab("priority") testId="tab-priority" flex=1
+                  text "Priority"
+                button role="radio" aria-checked=(tab == "usage") press=showTab("usage") testId="tab-usage" flex=1
+                  text "All Usage"
+            scroll id="panel-scroll" flex=1 min-height=0 padding="0px 12px 4px 12px"
+              if tab == "priority"
+                column gap=4
+                  if board.groups.length == 0
+                    column padding="24px 0" align-items="center"
+                      EmptyState(symbol="symbol:sparkles", title="All Clear", message="Nothing is running out.")
+                  for g in board.groups key=g.id
+                    text g.id text-transform="uppercase" font="-exact-caption1" color="-exact-secondary-label" padding="8px 4px 2px 4px"
+                    column background-color="-exact-secondary-grouped-background" border-radius=12 padding="2px 12px"
+                      for r in g.rows key=r.id
+                        row align-items="center" gap=10 padding="7px 0" flex-wrap="wrap" contextPopover="metric-menu" contextmenu=openMenu(r.id, false, "", "") testId=`pr-${r.id}`
+                          column position="relative" width=30 height=30 align-items="center" justify-content="center" flex-shrink=0
+                            svg position="absolute" inset=0 viewBox="0 0 30 30"
+                              circle cx=15 cy=15 r=12.5 stroke="-exact-tertiary-fill" stroke-width=3.5 fill="none"
+                              circle cx=15 cy=15 r=12.5 stroke=tintColor(r.tint) stroke-width=3.5 fill="none" stroke-linecap="round" pathLength=100 stroke-dasharray=`${max(0, min(100, r.pctLeft * 100))} 100` transform="rotate(-90 15 15)"
+                            image r.icon width=15 height=15
+                          column flex=1 min-width=0 gap=1
+                            text r.label font="-exact-subheadline"
+                            text r.account font="-exact-caption1" color="-exact-secondary-label"
+                          column align-items="flex-end" gap=1
+                            button press=flipAmounts padding="4px 0" min-height="1.5rem" background-color="transparent" testId=`amount-${r.id}`
+                              text (showLeft ? `${r.amountLeft} left` : `${r.amountUsed} used`) font="-exact-subheadline" font-variant-numeric="tabular-nums" color=tintColor(r.tint)
+                            if r.resetInMs >= 0
+                              button press=flipResets padding="4px 0" min-height="1.5rem" background-color="transparent" testId=`reset-${r.id}`
+                                text (showIn ? rel(r.resetInMs) : formatDay(time.epochAtZero + now + r.resetInMs, time.epochAtZero + now, time.utcOffset, "day-time")) font="-exact-caption1" color="-exact-secondary-label"
+              if tab == "usage"
+                column gap=10 padding="4px 0 8px 0"
+                  for p in board.providers key=p.id
+                    if p.added
+                      column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=6 testId=`card-${p.id}`
+                        row align-items="center" gap=8
+                          text p.name font="-exact-headline" flex=1
+                          image p.icon width=22 height=22
+                        for a in p.accounts key=a.id
+                          row align-items="center" gap=6 padding="2px 0"
+                            text a.name font="-exact-caption1" color="-exact-secondary-label"
+                            if a.plan != ""
+                              Badge(label=a.plan, tint=none)
+                            if a.state == "refreshing"
+                              progress
+                            if a.state == "warning" or a.state == "stale"
+                              image "symbol:alert" width="0.75rem" height="0.75rem" color="-exact-system-orange"
+                          for m in a.metrics key=m.id
+                            if not m.hidden
+                              row align-items="center" gap=8 flex-wrap="wrap" contextPopover="metric-menu" contextmenu=openMenu(m.id, m.pinned, p.id, m.status) testId=`row-${m.id}`
+                                text m.label font="-exact-footnote" width="5.375rem" flex-shrink=0
+                                if m.kind == "limit" or m.kind == "money"
+                                  column flex=1 min-width=0 height=6 border-radius=3 background-color="-exact-tertiary-fill" position="relative" overflow="hidden"
+                                    column position="absolute" left=0 top=0 bottom=0 width=`${max(0, min(100, m.pctLeft * 100))}%` background-color=statusColor(m.status)
+                                    if m.paceAt >= 0 and paceMarks
+                                      column position="absolute" left=`${m.paceAt * 100}%` top=-1 width=2 height=8 background-color=paceTick
+                                  button press=flipAmounts padding="4px 0" min-height="1.5rem" background-color="transparent" min-width="3.25rem"
+                                    text (showLeft ? m.amountLeft : m.amountUsed) font="-exact-footnote" font-variant-numeric="tabular-nums" color=statusColor(m.status) text-align="right" testId=`amount-${m.id}`
+                                else
+                                  column flex=1
+                                  button press=flipAmounts padding="4px 0" min-height="1.5rem" background-color="transparent"
+                                    text (m.kind == "resets" ? (showLeft ? m.amountLeft : m.amountUsed) : m.amountLeft) font="-exact-footnote" font-variant-numeric="tabular-nums" color="-exact-secondary-label" text-align="right"
+                                if m.resetInMs >= 0
+                                  button press=flipResets padding="4px 0" min-height="1.5rem" background-color="transparent" min-width="2.75rem" testId=`reset-${m.id}`
+                                    text (showIn ? rel(m.resetInMs) : formatDay(time.epochAtZero + now + m.resetInMs, time.epochAtZero + now, time.utcOffset, "list")) font="-exact-caption1" color="-exact-secondary-label" text-align="right"
+            column popover="auto" role="menu" id="metric-menu" padding=4 min-width=190 testId="metric-menu"
+              button role="menuitem" popovertarget="metric-menu" popovertargetaction="hide" press=pinMetric testId="menu-pin"
+                text (menuPinned ? "Unpin from Priority" : "Pin to Priority")
+              button role="menuitem" popovertarget="metric-menu" popovertargetaction="hide" press=hideMetric testId="menu-hide"
+                text "Hide Metric"
+              hr
+              button role="menuitem" popovertarget="metric-menu" popovertargetaction="hide" press=refreshOne testId="menu-refresh"
+                text (menuProvider == "" ? "Refresh" : `Refresh ${menuProvider}`)
+              button role="menuitem" popovertarget="metric-menu" popovertargetaction="hide" press=openMetric(menuId, menuProvider) testId="menu-details"
+                text "Usage Details"
+            row padding="6px 12px 10px 12px" align-items="center" gap=8
+              button press=refreshAll padding=0 background-color="transparent" testId="next-update"
+                text `Next update in ${board.nextIn}` font="-exact-caption1" color="-exact-secondary-label"
+              column flex=1
+              if page.canSharePictures
+                button press=sharePanel aria-label="Share" testId="share" padding="2px 4px"
+                  image "symbol:share" width="0.875rem" height="0.875rem"
+              button popovertarget="more-menu" aria-label="More" testId="more" padding="4px 6px" min-width="1.5rem" min-height="1.5rem"
+                image "symbol:ellipsis" width="0.875rem" height="0.875rem"
+            column popover="auto" role="menu" id="more-menu" padding=4 min-width=200 testId="more-menu"
+              button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=refreshAll testId="menu-refresh-all"
+                text "Refresh All"
+              hr
+              button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=openAccounts testId="menu-accounts"
+                text "Accounts…"
+              button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=openSettings testId="menu-settings"
+                text "Settings…"
+              hr
+              if page.canSharePictures
+                button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=sharePanel testId="menu-share"
+                  text "Share Screenshot…"
+              button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=openAbout testId="menu-about"
+                text "About OpenUsage"
+              button role="menuitem" popovertarget="more-menu" popovertargetaction="hide" press=hidePanel testId="menu-quit"
+                text "Quit OpenUsage"
+
+        if e.name == "accounts"
+          column navigationKey=`${e.id}` navigationScroll="accounts-scroll" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px" gap=8
+              text "Accounts" role="heading" aria-level=1 flex=1 font="-exact-headline" testId="accounts-title"
+              button press=openAdd testId="add-account" aria-label="Add Account"
+                image "symbol:add" width="1rem" height="1rem"
+            scroll id="accounts-scroll" flex=1 min-height=0 padding="0px 12px 12px 12px"
+              column gap=10
+                for p in board.providers key=p.id
+                  if p.added
+                    column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=4
+                      row align-items="center" gap=8
+                        text p.name font="-exact-headline" flex=1
+                        image p.icon width=20 height=20
+                      for a in p.accounts key=a.id
+                        button press=openAccount(a.id, p.id) padding="6px 0" background-color="transparent" testId=`acct-${a.id}`
+                          row align-items="center" gap=8
+                            column flex=1 min-width=0 align-items="flex-start"
+                              text a.name font="-exact-subheadline"
+                              if a.state == "refreshing"
+                                text "Refreshing…" font="-exact-caption1" color="-exact-secondary-label"
+                            if a.plan != ""
+                              Badge(label=a.plan, tint=none)
+                            image "symbol:forward-chevron" width="0.625rem" height="0.625rem"
+
+        if e.name == "account"
+          column navigationKey=`${e.id}` navigationScroll="account-scroll" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px"
+              text "Account" role="heading" aria-level=1 flex=1 font="-exact-headline"
+            scroll id="account-scroll" flex=1 min-height=0 padding="0px 12px 12px 12px"
+              for p in board.providers key=p.id
+                for a in p.accounts key=a.id
+                  if a.id == selAccount
+                    column gap=10
+                      column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=8
+                        row align-items="center" gap=8
+                          input value=(newName == "" ? a.name : newName) input=editName submit=saveRename placeholder="Name" aria-label="Account Name" testId="account-name" flex=1 min-width=0 autocapitalize="words"
+                          if a.plan != ""
+                            Badge(label=a.plan, tint=none)
+                        if a.state == "warning" or a.state == "stale"
+                          row align-items="center" gap=6
+                            image "symbol:alert" width="0.75rem" height="0.75rem" color="-exact-system-orange"
+                            text (a.state == "warning" ? "This account could not refresh." : "Sign-in is out of date.") font="-exact-caption1" color="-exact-system-orange"
+                      column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=4
+                        text "Metrics" text-transform="uppercase" font="-exact-caption1" color="-exact-secondary-label"
+                        for m in a.metrics key=m.id
+                          row align-items="center" gap=8 padding="4px 0" testId=`mrow-${m.id}`
+                            text m.label font="-exact-footnote" flex=1
+                            text "Pin" font="-exact-caption1" color="-exact-secondary-label"
+                            input type="checkbox" switch checked=m.pinned change=setPinnedFor(m.id) aria-label=`Pin ${m.label}` testId=`pin-${m.id}`
+                            text "Hide" font="-exact-caption1" color="-exact-secondary-label"
+                            input type="checkbox" switch checked=m.hidden change=setHiddenFor(m.id) aria-label=`Hide ${m.label}` testId=`hide-${m.id}`
+                      button press=removeSel testId="remove-account" padding="8px 12px" border-radius=10 background-color="-exact-secondary-grouped-background"
+                        text "Remove Account" color="-exact-system-red" font="-exact-subheadline"
+
+        if e.name == "add"
+          column navigationKey=`${e.id}` navigationScroll="add-scroll" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px"
+              text "Add Account" role="heading" aria-level=1 flex=1 font="-exact-headline"
+            scroll id="add-scroll" flex=1 min-height=0 padding="0px 12px 12px 12px"
+              column gap=10
+                for p in catalog.providers key=p.id
+                  column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=6 testId=`add-${p.id}`
+                    row align-items="center" gap=8
+                      image p.icon width=22 height=22
+                      text p.name font="-exact-headline" flex=1
+                      if p.added
+                        Badge(label="Added", tint=some("-exact-system-green"))
+                      else
+                        button press=addAccount(p.id) testId=`signin-${p.id}` padding="4px 10px" border-radius=8 background-color="AccentColor"
+                          text "Add" color="AccentColorText" font="-exact-caption1"
+                    text p.blurb font="-exact-caption1" color="-exact-secondary-label"
+
+        if e.name == "settings"
+          column navigationKey=`${e.id}` navigationScroll="settings" position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px"
+              text "Settings" role="heading" aria-level=1 flex=1 font="-exact-headline"
+            list id="settings" appearance="auto" listStyle="inset-grouped" flex=1 min-height=0
+              section
+                header
+                  text "Display"
+                row
+                  text "Show Amounts"
+                  select value=(showLeft ? "left" : "used") change=setAmounts aria-label="Show Amounts" testId="set-amounts"
+                    option "Left" value="left"
+                    option "Used" value="used"
+                row
+                  text "Reset Format"
+                  select value=(showIn ? "in" : "abs") change=setResets aria-label="Reset Format" testId="set-resets"
+                    option "Countdown" value="in"
+                    option "Absolute" value="abs"
+                row
+                  text "Default Tab"
+                  select value=defaultTab change=setTabDefault aria-label="Default Tab" testId="set-tab"
+                    option "Priority" value="priority"
+                    option "All Usage" value="usage"
+                row
+                  text "Pace Marks"
+                  input type="checkbox" switch checked=paceMarks change=setPaceMarks aria-label="Pace Marks" testId="set-pace"
+                row
+                  text "Pace Tick"
+                  select value=paceTick change=setPaceTick aria-label="Pace Tick" testId="set-pacetick"
+                    option "Subtle" value="-exact-tertiary-label"
+                    option "Strong" value="-exact-label"
+              section
+                header
+                  text "Alerts"
+                row
+                  text "Warning Below"
+                  input type="number" value=warningPct input=setWarning min=0 max=100 step=5 aria-label="Warning Below" testId="set-warning"
+                row
+                  text "Critical Below"
+                  input type="number" value=criticalPct input=setCritical min=0 max=100 step=5 aria-label="Critical Below" testId="set-critical"
+                row
+                  text "Burning Fast"
+                  input type="checkbox" switch checked=burningFast change=setBurning aria-label="Burning Fast" testId="set-burning"
+                row
+                  text "Use It or Lose It"
+                  input type="checkbox" switch checked=loseIt change=setLoseIt aria-label="Use It or Lose It" testId="set-loseit"
+              section
+                header
+                  text "Refresh"
+                row
+                  text "Interval"
+                  select value=refreshMin change=setRefresh aria-label="Refresh Interval" testId="set-refresh"
+                    option "1m" value="1"
+                    option "5m" value="5"
+                    option "15m" value="15"
+                    option "30m" value="30"
+              section
+                header
+                  text "Accounts"
+                for p in board.providers key=p.id
+                  if p.added and p.accounts.length > 1
+                    row
+                      text `Unify ${p.name}`
+                      input type="checkbox" switch checked=p.unified change=setUnified(p.id) aria-label=`Unify ${p.name}` testId=`unify-${p.id}`
+
+        if e.name == "about"
+          column navigationKey=`${e.id}` position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px"
+              text "About" role="heading" aria-level=1 flex=1 font="-exact-headline"
+            column flex=1 align-items="center" justify-content="center" gap=8 padding=24
+              image "assets/icons/openusage.svg" width=48 height=48
+              text "OpenUsage" font="-exact-title2"
+              text "0.8.0-exact" font="-exact-caption1" color="-exact-secondary-label"
+              text "A rewrite experiment built on Expo Exact." font="-exact-footnote" color="-exact-secondary-label" text-align="center"
+
+        if e.name == "metric"
+          column navigationKey=`${e.id}` position="absolute" inset=0 display="flex" flex-direction="column" background-color="-exact-grouped-background"
+            header display="flex" align-items="center" padding="8px 12px"
+              text "Usage Details" role="heading" aria-level=1 flex=1 font="-exact-headline"
+            scroll id="metric-scroll" flex=1 min-height=0 padding="0px 12px 12px 12px"
+              for p in board.providers key=p.id
+                for a in p.accounts key=a.id
+                  for m in a.metrics key=m.id
+                    if m.id == menuId
+                      column gap=10 testId="metric-detail"
+                        column background-color="-exact-secondary-grouped-background" border-radius=12 padding="12px" gap=6
+                          row align-items="center" gap=8
+                            image p.icon width=20 height=20
+                            text m.label font="-exact-headline" flex=1
+                          text `${p.name} · ${a.name}` font="-exact-caption1" color="-exact-secondary-label"
+                          if m.kind == "limit" or m.kind == "money"
+                            column height=8 border-radius=4 background-color="-exact-tertiary-fill" position="relative" overflow="hidden"
+                              column position="absolute" left=0 top=0 bottom=0 width=`${max(0, min(100, m.pctLeft * 100))}%` background-color=statusColor(m.status)
+                              if m.paceAt >= 0 and paceMarks
+                                column position="absolute" left=`${m.paceAt * 100}%` top=-1 width=2 height=10 background-color=paceTick
+                            row
+                              text (showLeft ? `${m.amountLeft} left` : `${m.amountUsed} used`) font="-exact-subheadline" font-variant-numeric="tabular-nums" color=statusColor(m.status) flex=1
+                              if m.resetInMs >= 0
+                                text (showIn ? rel(m.resetInMs) : formatDay(time.epochAtZero + now + m.resetInMs, time.epochAtZero + now, time.utcOffset, "day-time")) font="-exact-subheadline" color="-exact-secondary-label"
+                          else
+                            text m.amountLeft font="-exact-subheadline"
+                          if m.burningFast
+                            row align-items="center" gap=6
+                              image "symbol:alert" width="0.75rem" height="0.75rem" color="-exact-system-orange"
+                              text "Burning fast — ahead of an even pace." font="-exact-caption1" color="-exact-system-orange"
+                        column background-color="-exact-secondary-grouped-background" border-radius=12 padding="10px 12px" gap=4
+                          row align-items="center"
+                            text "Pin to Priority" font="-exact-footnote" flex=1
+                            input type="checkbox" switch checked=m.pinned change=setPinnedFor(m.id) aria-label="Pin to Priority" testId="detail-pin"
+                          row align-items="center"
+                            text "Hide Metric" font="-exact-footnote" flex=1
+                            input type="checkbox" switch checked=m.hidden change=setHiddenFor(m.id) aria-label="Hide Metric" testId="detail-hide"
