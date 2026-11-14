@@ -10,6 +10,9 @@ compute spend from logs or pricing.
   `links`, and `authMethods` (`[.oauth]` or `[.apiKey(keyPage:)]`).
 - Add its icon at `Sources/OpenUsage/Resources/ProviderIcons/<kind>.svg`.
 
+The macOS widget picker uses the accounts exported by the app, so a new provider needs no separate
+widget registration and uses the same mark.
+
 ## 2. Add the sign-in
 
 - API key: `APIKeyLogin` covers it.

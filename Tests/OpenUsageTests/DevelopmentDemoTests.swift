@@ -175,6 +175,39 @@ final class DevelopmentDemoTests: XCTestCase {
         }
     }
 
+    func testDemoSessionDisablesWidgetBridgeAndDoesNotExportSampleAccounts() {
+        let defaults = makeDefaults()
+        let container = DemoSession.makeContainer(defaults: defaults, seed: 42, now: now)
+        XCTAssertNil(container.widgetBridgeCoordinator, "DemoSession must not initialize a WidgetBridgeCoordinator")
+
+        // Shuffling and flushing must remain safe no-ops without any coordinator attached
+        container.demo?.reshuffle()
+        container.flushWidgetBridge()
+    }
+
+    func testWidgetBridgeCoordinatorRejectsDemoBundle() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".app")
+        let contents = tempDir.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let plistURL = contents.appendingPathComponent("Info.plist")
+        let plist: [String: Any] = [
+            "CFBundleIdentifier": DevelopmentDataMode.demoBundleID,
+            "OpenUsageAppGroupIdentifier": "group.test"
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: plistURL)
+
+        let bundle = try XCTUnwrap(Bundle(url: tempDir))
+        let layout = LayoutStore(registry: .from([]), defaults: makeDefaults())
+        let dataStore = WidgetDataStore(registry: .from([]), providers: [], defaults: makeDefaults())
+        let exporter = WidgetBridgeExporter(layout: layout, dataStore: dataStore)
+
+        let coordinator = WidgetBridgeCoordinator.makeDefault(exporter: exporter, bundle: bundle)
+        XCTAssertNil(coordinator, "makeDefault must return nil when bundle is the demo bundle")
+    }
+
     private struct Shown: Equatable {
         let kind: ProviderKind
         let name: String

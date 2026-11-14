@@ -17,13 +17,17 @@ only the provider APIs those accounts need.
 - A [proxy](proxy.md) password stays in your `~/.openusage/config.json`. OpenUsage reads it but never
   writes or logs it.
 
+The [macOS widgets](macos-widgets.md) read a separate local copy of account names and display-ready
+usage from an App Group shared with the app. That copy contains no credentials or detailed errors.
+Removing an account removes its shared values too. Widget data never goes to the analytics service.
+
 ## Privacy Mode
 
 **Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
 While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
 panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
-off, they leave email addresses out. It is off by default. A single still screenshot (⌘⇧3, ⌘⇧4) can't
-be detected, so use the copy button to share a picture.
+off, they leave email addresses out. It is off by default and doesn't hide macOS widgets. A single
+still screenshot (⌘⇧3, ⌘⇧4) can't be detected, so use the copy button to share a picture.
 
 ## Anonymous telemetry
 

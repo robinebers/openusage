@@ -14,6 +14,7 @@ final class AppContainer {
     let hideFromScreenShare: HideFromScreenShareSetting
     let telemetry: TelemetryRecorder
     let hubs: CLIProxyHubSync
+    let widgetBridgeCoordinator: WidgetBridgeCoordinator?
     private(set) var isRefreshingNow = false
     @ObservationIgnored private var providers: [ProviderRuntime]
     @ObservationIgnored private let makeRuntimes: RuntimeFactory
@@ -33,7 +34,8 @@ final class AppContainer {
         http: any HTTPClient = URLSessionHTTPClient(),
         telemetry sink: any TelemetrySink,
         telemetryDefaults: UserDefaults,
-        runtimeFactory: RuntimeFactory? = nil
+        runtimeFactory: RuntimeFactory? = nil,
+        enableWidgetBridge: Bool = true
     ) {
         self.accounts = accounts
         self.defaults = defaults
@@ -75,11 +77,25 @@ final class AppContainer {
             }
         )
         self.telemetry = telemetry
+        let widgetBridge: WidgetBridgeCoordinator?
+        if enableWidgetBridge {
+            widgetBridge = WidgetBridgeCoordinator.makeDefault(
+                exporter: WidgetBridgeExporter(layout: layout, dataStore: dataStore)
+            )
+        } else {
+            widgetBridge = nil
+        }
+        self.widgetBridgeCoordinator = widgetBridge
+        widgetBridge?.start()
         accounts.didChange = { [weak self] in self?.syncAccounts() }
     }
 
     deinit {
         refreshTask?.cancel()
+    }
+
+    func flushWidgetBridge() {
+        widgetBridgeCoordinator?.exportIfChanged()
     }
 
     func resetClaim(for providerID: String) -> ResetClaimService? {
@@ -211,6 +227,7 @@ final class AppContainer {
             popover.customizeProviderID = nil
         }
         dataStore.apply(providers: providers, registry: registry)
+        widgetBridgeCoordinator?.exportIfChanged()
         for runtime in providers where !previous.contains(ObjectIdentifier(runtime)) {
             Task { await dataStore.refresh(providerID: runtime.provider.id, force: true) }
         }
