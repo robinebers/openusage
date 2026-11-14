@@ -125,6 +125,7 @@ How the history is read:
 
 - Sign in with Google in your browser.
 - The card shows the Gemini and Claude pools (5-hour and weekly) and the Argon weekly window.
+- Quota requests identify as the Antigravity hub client so Google includes the separate Argon window.
 - If the project has no quota subscription, the card explains the access issue. If the project
   lookup failed, refresh again.
 
