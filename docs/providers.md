@@ -175,7 +175,8 @@ beyond the included pool).
 ## Ollama
 
 - Paste an API key from [ollama.com/settings/keys](https://ollama.com/settings/keys).
-- The card shows the session, weekly, and monthly windows your plan has.
+- The card shows the session, weekly, and monthly windows your plan has. A free plan has none of
+  them, so its card shows Extra Usage and the usage rows below.
 - Extra Usage shows purchased credits whenever Ollama reports them, even `$0 left`.
 - The right-click menu adds an **API Keys** link.
 

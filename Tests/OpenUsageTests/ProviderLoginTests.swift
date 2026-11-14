@@ -347,6 +347,14 @@ final class ProviderLoginTests: XCTestCase {
         }
     }
 
+    func testOllamaKeyLoginAddsAFreePlanAccount() async throws {
+        let http = RoutingHTTPClient(handler: OllamaFreePlanTests.route(balance: OllamaFreePlanTests.balance))
+
+        let result = try await APIKeyLogin(kind: .ollama, http: http).login(prompt: { _ in }, pastedCode: pastedInput("ollama-key"))
+
+        XCTAssertEqual(result.label, "free@example.com")
+    }
+
     func testAntigravityLoginExchangesCodeAndMapsGoogleProfile() async throws {
         let http = RoutingHTTPClient { request in
             switch request.url.path {
