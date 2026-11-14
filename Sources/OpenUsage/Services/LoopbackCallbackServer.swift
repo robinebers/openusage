@@ -17,7 +17,8 @@ final class LoopbackCallbackServer: @unchecked Sendable {
         self.path = path
     }
 
-    static func start(state: String, port: UInt16? = nil, path: String = "/callback") async throws -> LoopbackCallbackServer {
+    /// `redirectHost` names the loopback address in the redirect URI. Some providers accept only one spelling.
+    static func start(state: String, port: UInt16? = nil, path: String = "/callback", redirectHost: String = "localhost") async throws -> LoopbackCallbackServer {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(
             host: .ipv4(.loopback),
@@ -35,7 +36,7 @@ final class LoopbackCallbackServer: @unchecked Sendable {
                         continuation.resume(throwing: LoginError.listenerFailed("No local port was assigned."))
                         return
                     }
-                    server.redirectURI = "http://localhost:\(port)\(path)"
+                    server.redirectURI = "http://\(redirectHost):\(port)\(path)"
                     continuation.resume()
                 case .failed(let error):
                     listener.stateUpdateHandler = nil

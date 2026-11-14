@@ -80,14 +80,14 @@ struct PriorityItem: Identifiable {
     /// listed while its pace eases would run out after its reset, so it shows the reset instead.
     func runOutText(now: Date) -> String? {
         guard case .burningFast(let runway) = reason, let resetsAt = data.resetsAt,
-              runway < resetsAt.timeIntervalSince(now), let duration = Formatters.compactDuration(runway)
+              runway < resetsAt.timeIntervalSince(now), let duration = Formatters.duration(from: now, to: now.addingTimeInterval(runway))
         else { return nil }
         return "Out in \(duration)"
     }
 
     /// The line under the amount of a limit listed to use before it resets, in place of its reset.
     func resetsInText(now: Date) -> String? {
-        guard case .useItOrLoseIt(let resetsAt) = reason, let duration = Formatters.countdown(to: resetsAt, now: now)
+        guard case .useItOrLoseIt(let resetsAt) = reason, let duration = Formatters.duration(from: now, to: resetsAt)
         else { return nil }
         return "Resets in \(duration)"
     }

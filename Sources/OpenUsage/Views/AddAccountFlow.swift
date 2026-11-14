@@ -153,7 +153,7 @@ final class AddAccountFlow {
 
     func openBrowser() {
         switch prompt {
-        case .browser(let url, _), .browserToken(let url): openURL(url)
+        case .browser(let url, _): openURL(url)
         case .deviceCode(_, let url): openURL(url)
         case nil: break
         }
@@ -231,7 +231,7 @@ final class AddAccountFlow {
         guard !Task.isCancelled else { return }
         self.prompt = prompt
         switch prompt {
-        case .browser(let url, _), .browserToken(let url): openURL(url)
+        case .browser(let url, _): openURL(url)
         case .deviceCode: break
         }
     }

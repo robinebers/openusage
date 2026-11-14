@@ -21,11 +21,10 @@ enum OllamaUsageMapper {
         if let monthly = monthlyLine(included) {
             lines.append(monthly)
         }
-        guard !lines.isEmpty else { throw ProviderError.invalidResponse }
-
         if let purchased = purchasedLine(root["purchased"]) {
             lines.append(purchased)
         }
+        guard !lines.isEmpty else { throw ProviderError.invalidResponse }
         return lines
     }
 

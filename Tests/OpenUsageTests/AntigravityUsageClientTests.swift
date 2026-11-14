@@ -65,6 +65,7 @@ final class AntigravityUsageClientTests: XCTestCase {
 
         XCTAssertEqual(bodies.count, 1)
         XCTAssertEqual(quotaHosts(http), [Self.dailyHost])
+        XCTAssertTrue(try XCTUnwrap(http.requests.first?.headers["User-Agent"]).hasPrefix("antigravity/hub/"))
         let lines = try XCTUnwrap(AntigravityUsageMapper.parseQuotaSummaries(bodies))
         let session = try XCTUnwrap(Self.progress(lines.first { $0.label == AntigravityMetric.sessionLabel }))
         XCTAssertEqual(session.used, 0.035, accuracy: 0.001)

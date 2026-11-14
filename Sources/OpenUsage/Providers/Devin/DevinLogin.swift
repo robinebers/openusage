@@ -1,21 +1,43 @@
 import Foundation
 
-/// Devin accounts sign in through the token page that Windsurf's editor plugins use.
+/// Devin accounts sign in the way the Devin CLI does: PKCE in the browser with a loopback callback, then a
+/// code exchange that returns the session token the Devin API servers take as an API key. Devin accepts
+/// only `http://127.0.0.1:<any port>/callback` as the redirect; it refuses `localhost` and other paths.
 struct DevinLogin: ProviderLogin {
-    static let tokenPageURL = URL(string: "https://windsurf.com/profile")!
-    static let registerURL = URL(string: "https://api.codeium.com/register_user/")!
+    static let authorizeURL = URL(string: "https://app.devin.ai/auth/cli/continue")!
+    static let tokenURL = URL(string: "https://api.devin.ai/auth/cli/token")!
+    static let sessionTokenPrefix = "devin-session-token$"
     var http: any HTTPClient = URLSessionHTTPClient()
 
     func login(prompt: @Sendable (LoginPrompt) async -> Void, pastedCode: AsyncStream<String>) async throws -> (label: String, credential: AccountCredential) {
-        await prompt(.browserToken(Self.tokenPage(state: UUID().uuidString)))
-        var iterator = pastedCode.makeAsyncIterator()
-        guard let value = await iterator.next() else { throw LoginError.cancelled }
-        let pasted = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !pasted.isEmpty else { throw LoginError.invalidCode }
-        var tokens = try await registeredKey(token: pasted) ?? OAuthTokens(accessToken: pasted)
+        let pkce = PKCE.generate()
+        let state = UUID().uuidString
+        let server = try await LoopbackCallbackServer.start(state: state, redirectHost: "127.0.0.1")
+        defer { server.cancel() }
+        var components = URLComponents(url: Self.authorizeURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "redirect_uri", value: server.redirectURI),
+            URLQueryItem(name: "state", value: state),
+            URLQueryItem(name: "prompt", value: "select_account"),
+            URLQueryItem(name: "code_challenge", value: pkce.challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
+        ]
+        await prompt(.browser(components.url!, acceptsPastedCode: false))
+        let code = try await withTaskCancellationHandler { try await server.waitForCode() } onCancel: { server.cancel() }
+
+        let exchange = try await LoginHTTP.postJSON(Self.tokenURL, fields: ["code": code, "code_verifier": pkce.verifier], using: http)
+        guard (200..<300).contains(exchange.statusCode) else {
+            AppLog.error(LogTag.auth("devin"), "code exchange failed with HTTP \(exchange.statusCode)")
+            throw LoginError.failed("Devin didn’t accept the sign-in. Click Try Again to sign in again.")
+        }
+        let token = try LoginHTTP.decode(CLITokenResponse.self, from: exchange).token
+        guard !token.isEmpty else { throw LoginError.invalidResponse }
+        var tokens = OAuthTokens(accessToken: token.hasPrefix(Self.sessionTokenPrefix) ? token : Self.sessionTokenPrefix + token)
+
         let status = try await DevinUsageClient(http: http).fetchUserStatus(tokens)
-        if ProviderError.isAuthFailure(status) {
-            throw LoginError.failed("Windsurf rejected that token. A token works for 5 minutes, so click Try Again to get a new one.")
+        guard (200..<300).contains(status.statusCode) else {
+            AppLog.error(LogTag.auth("devin"), "user status read failed with HTTP \(status.statusCode) after sign-in")
+            throw LoginError.failed("Devin signed you in but didn’t return your account. Click Try Again to sign in again.")
         }
         let user = try LoginHTTP.decode(UserStatusResponse.self, from: status).userStatus
         if let email = user.email {
@@ -23,42 +45,10 @@ struct DevinLogin: ProviderLogin {
         }
         return (user.email ?? "Devin Account", .oauth(tokens))
     }
-
-    private static func tokenPage(state: String) -> URL {
-        var components = URLComponents(url: tokenPageURL, resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "response_type", value: "token"),
-            URLQueryItem(name: "redirect_uri", value: "show-auth-token"),
-            URLQueryItem(name: "state", value: state),
-            URLQueryItem(name: "scope", value: "openid profile email"),
-            URLQueryItem(name: "redirect_parameters_type", value: "query")
-        ]
-        return components.url!
-    }
-
-    /// RegisterUser refuses anything but a token from the page, so after a refusal the pasted value is
-    /// tried as an API key.
-    private func registeredKey(token: String) async throws -> OAuthTokens? {
-        let response = try await LoginHTTP.postJSON(Self.registerURL, fields: ["firebase_id_token": token], using: http)
-        if ProviderError.isAuthFailure(response) { return nil }
-        let registered = try LoginHTTP.decode(RegisterUserResponse.self, from: response)
-        guard !registered.apiKey.isEmpty else { throw LoginError.invalidResponse }
-        var tokens = OAuthTokens(accessToken: registered.apiKey)
-        if let server = registered.apiServerURL, !server.isEmpty {
-            guard let url = URL(string: server), url.scheme == "https", url.host() != nil else { throw LoginError.invalidResponse }
-            tokens.extras[DevinUsageClient.apiServerURLKey] = server
-        }
-        return tokens
-    }
 }
 
-private struct RegisterUserResponse: Decodable {
-    let apiKey: String
-    let apiServerURL: String?
-    enum CodingKeys: String, CodingKey {
-        case apiKey = "api_key"
-        case apiServerURL = "api_server_url"
-    }
+private struct CLITokenResponse: Decodable {
+    let token: String
 }
 
 private struct UserStatusResponse: Decodable {

@@ -19,7 +19,6 @@ widget registration and uses the same mark.
 - Browser OAuth: add a `ProviderLogin` in `Services/BrowserProviderLogins.swift`. Send
   `UUID().uuidString` as the `state`, never the PKCE verifier.
 - Device code: add it in `Services/DeviceProviderLogins.swift` with `DeviceCodePoller`.
-- Pasted token: prompt `.browserToken`, as `DevinLogin` does.
 
 Map the kind in `ProviderLoginCatalog`.
 

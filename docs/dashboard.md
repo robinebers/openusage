@@ -55,8 +55,10 @@ A limit row shows its label, a bar, its amount, and the time until it resets.
 
 - Click any amount, on either tab, to flip every row between used and left. Click any reset to flip
   between a countdown and the exact time. **Settings → Display** has the same two switches.
-- Countdowns update every 30 seconds. A reset a calendar month or more away counts down in months
-  and days, like `3m 12d`.
+- Countdowns update every 30 seconds. They show the largest unit and the next one down, like `45m`,
+  `4h 12m`, `2d 5h`, `17d`, `3mo 17d`, or `1y 2mo`, and leave out a next unit of zero. `m` is minutes and
+  `mo` is calendar months. The same format reads how long ago an account last updated and when a
+  limit burning fast would run out.
 - Hover over a bar to see where your current pace lands at reset. The same pace drives the
   [notifications](settings.md).
 - A tick on the bar marks where it would be by now at an even pace through the window: under Used

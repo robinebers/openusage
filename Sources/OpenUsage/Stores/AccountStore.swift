@@ -18,8 +18,6 @@ final class AccountStore {
     let credentialVault: any CredentialVault
     let hubKeys: any HubKeyVault
     @ObservationIgnored private let makeID: () -> UUID
-    /// The hub accounts whose logins the last listing of their hub lacked.
-    @ObservationIgnored private var unlistedHubAccounts: Set<UUID> = []
 
     init(
         defaults: UserDefaults = .standard,
@@ -187,15 +185,12 @@ final class AccountStore {
     }
 
     /// Makes the hub's mirrored accounts match its login list: a new login is added at the bottom of its
-    /// provider's accounts, a login disabled on the hub is removed, a login gone from the hub is removed
-    /// once two listings in a row lack it, and a renamed one, or one switched to another ChatGPT workspace,
-    /// is relinked. The same listing applied twice changes nothing the second time. Throws when a Keychain
-    /// write fails, after applying the rest.
+    /// provider's accounts, a login disabled on or gone from the hub is removed, and a renamed one, or one
+    /// switched to another ChatGPT workspace, is relinked. The same listing applied twice changes nothing the
+    /// second time. Throws when a Keychain write fails, after applying the rest.
     func mirror(_ logins: [HubLogin], from hubID: UUID) throws {
         guard let hub = hubs.first(where: { $0.id == hubID }) else { return }
-        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts, missingBefore: unlistedHubAccounts)
-        unlistedHubAccounts.subtract(accounts(onHub: hubID).map(\.id))
-        unlistedHubAccounts.formUnion(plan.missing)
+        let plan = HubReconciliation(hub: hub, logins: logins, accounts: accounts)
         guard !plan.isEmpty else { return }
         var failures: [any Error] = []
         var removed = Set<UUID>()
@@ -208,7 +203,6 @@ final class AccountStore {
             }
         }
         accounts.removeAll { removed.contains($0.id) }
-        unlistedHubAccounts.formUnion(Set(plan.removed).subtracting(removed))
         for index in accounts.indices {
             guard let link = plan.relinked[accounts[index].id] else { continue }
             do {

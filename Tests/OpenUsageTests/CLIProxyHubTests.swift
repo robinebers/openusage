@@ -108,10 +108,7 @@ final class CLIProxyHubTests: XCTestCase {
 
         let next = [login("b", "codex", index: "moved"), login("c", "claude", disabled: true), login("d", "claude")]
         try store.mirror(next, from: hub.id)
-        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "a", "b", "d"], "a disabled login disappears and a new one is added last")
-        try store.mirror(next, from: hub.id)
-
-        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "a login two listings lack disappears")
+        XCTAssertEqual(store.accounts.map(\.label), ["Direct", "b", "d"], "gone and disabled logins disappear, and a new one is added last")
         XCTAssertEqual(store.accounts.first { $0.id == b.id }?.hub?.authIndex, "moved", "a renamed hub file is relinked, not re-added")
         XCTAssertEqual(try [a, c].map { try vault.load($0.id) }, [nil, nil], "the gone and disabled logins' credentials are deleted")
 

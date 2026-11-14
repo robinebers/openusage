@@ -39,8 +39,13 @@ OpenUsage reads the hub's login list at launch, when Accounts opens, on **⌘R**
 update in …**), and about once an hour. ⌘R reads the list before usage, so a login turned off on the
 hub is gone right away.
 
+- A read that finds no network, such as right after launch before macOS lets OpenUsage onto the local
+  network, is tried again over about a minute, like a usage read.
+- A read that fails is tried again at the next update, about 5 minutes later.
+- When the hub tells an account its login is gone, OpenUsage reads the list again at once.
+
 - A login added on the hub appears at the bottom of its provider's accounts.
-- A login removed on the hub disappears once two reads in a row miss it.
+- A login removed on the hub disappears at the next read.
 - A login disabled on the hub disappears. Enabled again, it comes back as a new account.
 - A renamed login, or a ChatGPT login on another workspace, keeps its account, name, and Priority
   pins.
@@ -68,7 +73,7 @@ logins turned off on the hub and files that aren't logins, such as `local-models
 | … only allows management from its own machine | Turn on `allow-remote` in the hub's config |
 | … has its management API turned off | Set a management key in the hub's config, or fix the address |
 | … has no working sign-in for this login | Sign the login in again on the hub |
-| This login is no longer on the CLIProxyAPI hub | Nothing. The next read updates the list |
+| This login is no longer on the CLIProxyAPI hub | Nothing. The account leaves once the hub's list drops it |
 | … couldn't reach Claude / ChatGPT | Check the hub's network |
 | Use https for <host> | Connect with https |
 | This hub doesn't use https | Connect with the http address it gives |

@@ -26,6 +26,29 @@ extension HTTPResponse {
     }
 }
 
+/// Plays the browser's part of a loopback sign-in: calls the authorize URL's redirect with its state and a
+/// fake code, and returns the status the app's callback server answered with.
+func completeLoopbackCallback(_ authorizeURL: URL) async -> Int? {
+    guard
+        let items = URLComponents(url: authorizeURL, resolvingAgainstBaseURL: false)?.queryItems,
+        let redirect = items.first(where: { $0.name == "redirect_uri" })?.value,
+        let state = items.first(where: { $0.name == "state" })?.value,
+        var callback = URLComponents(string: redirect)
+    else { return nil }
+    callback.host = "127.0.0.1"
+    callback.queryItems = [
+        URLQueryItem(name: "code", value: "fake-authorization-code"),
+        URLQueryItem(name: "state", value: state)
+    ]
+    guard let url = callback.url else { return nil }
+    do {
+        let (_, response) = try await URLSession.shared.data(from: url)
+        return (response as? HTTPURLResponse)?.statusCode
+    } catch {
+        return nil
+    }
+}
+
 extension HTTPRequest {
     /// Claude's hourly reset-grants check, which shares the usage endpoint's path.
     var isClaudeResetGrantsCheck: Bool { url.query?.contains("cedar_ember=1") == true }

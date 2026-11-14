@@ -103,28 +103,23 @@ struct HubLink: Codable, Hashable, Sendable {
 }
 
 /// What it takes to make a hub's mirrored accounts match its login list, in the listing's order. A login
-/// disabled on the hub counts as gone. A login missing from the list is removed only when the previous
-/// list lacked it too, so a hub that answers mid-restart, or with a list cut short, never erases accounts.
-/// A login listed without an auth index keeps its account as it is.
+/// missing from the list, or disabled on the hub, is gone: CLIProxyAPI loads every login before it starts
+/// listening, so a hub that answers lists them all. A login listed without an auth index keeps its account
+/// as it is.
 struct HubReconciliation {
     var added: [(kind: ProviderKind, label: String, link: HubLink)] = []
     var removed: [UUID] = []
     var relinked: [UUID: HubLink] = [:]
-    /// The accounts whose logins this list lacks for the first time; they stay until the next list agrees.
-    var missing: Set<UUID> = []
 
     var isEmpty: Bool { added.isEmpty && removed.isEmpty && relinked.isEmpty }
 
-    init(hub: CLIProxyHub, logins: [HubLogin], accounts: [Account], missingBefore: Set<UUID>) {
+    init(hub: CLIProxyHub, logins: [HubLogin], accounts: [Account]) {
         let listed = Dictionary(logins.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var mirroredIDs = Set<String>()
         for account in accounts {
             guard let link = account.hub, link.hubID == hub.id else { continue }
-            guard let login = listed[link.loginID] else {
-                if missingBefore.contains(account.id) { removed.append(account.id) } else { missing.insert(account.id) }
-                continue
-            }
-            guard !login.isDisabled, login.kind == account.kind, mirroredIDs.insert(login.id).inserted else {
+            guard let login = listed[link.loginID], !login.isDisabled, login.kind == account.kind,
+                  mirroredIDs.insert(login.id).inserted else {
                 removed.append(account.id)
                 continue
             }

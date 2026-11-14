@@ -172,7 +172,6 @@ private struct BrowserSignInStep: View {
         case .deviceCode:
             enterpriseDomain.map { "Open \($0)/login/device in your browser and enter this code." }
                 ?? "Open the verification page in your browser and enter this code."
-        case .browserToken: "Continue in your browser, then paste the token it shows here."
         case .browser: "Continue in your browser. This sheet closes when you’re signed in."
         case nil: enterpriseDomain.map { "Signing in at \($0)." } ?? "Continue in your browser. This sheet closes when you’re signed in."
         }
@@ -181,7 +180,6 @@ private struct BrowserSignInStep: View {
     private var pasteField: (name: String, footer: String?)? {
         switch flow.prompt {
         case .browser(_, acceptsPastedCode: true): ("Code", "Paste the code here if your browser shows one.")
-        case .browserToken: ("Token", nil)
         case .browser, .deviceCode, nil: nil
         }
     }
@@ -211,15 +209,9 @@ private struct BrowserSignInStep: View {
     private func pastedCodeForm(_ field: (name: String, footer: String?)) -> some View {
         Form {
             Section {
-                Group {
-                    if case .browserToken = flow.prompt {
-                        SecureField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
-                    } else {
-                        TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
-                    }
-                }
-                .onSubmit { flow.submitCode() }
-                .disabled(flow.isCodeSubmitted)
+                TextField(field.name, text: $flow.pastedCode, prompt: Text("Paste \(field.name.lowercased())"))
+                    .onSubmit { flow.submitCode() }
+                    .disabled(flow.isCodeSubmitted)
             } footer: {
                 if let footer = field.footer {
                     Text(footer)
@@ -236,7 +228,7 @@ private struct BrowserSignInStep: View {
             return SheetAction(title: "Change Domain") { flow.changeDomain() }
         }
         return switch flow.prompt {
-        case .browser(let url, _), .browserToken(let url): SheetAction(title: "Copy Link") { copy(url.absoluteString) }
+        case .browser(let url, _): SheetAction(title: "Copy Link") { copy(url.absoluteString) }
         case .deviceCode(let userCode, _): SheetAction(title: "Copy Code") { copy(userCode) }
         case nil: SheetAction(title: "Copy Link", isDisabled: true) {}
         }
