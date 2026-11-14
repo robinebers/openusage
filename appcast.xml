@@ -3,6 +3,34 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.1-beta.1</title>
+            <pubDate>Sat, 14 Nov 2026 03:07:23 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>893</sparkle:version>
+            <sparkle:shortVersionString>0.8.1-beta.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[## v0.8.1-beta.1
+
+### Bug Fixes
+- Antigravity: identify as the Antigravity hub client so Google returns the Argon quota ([#1676](https://github.com/robinebers/openusage/pull/1676)) by @INT31302
+- Devin: sign in the way the Devin CLI does, with a loopback callback ([#1685](https://github.com/robinebers/openusage/pull/1685)) by @robinebers
+- CLIProxyAPI hub: trust a hub listing, retry it, and re-list when a login is gone ([#1680](https://github.com/robinebers/openusage/pull/1680)) by @robinebers
+- Read months as mo, roll into years, and drop zero tails ([#1677](https://github.com/robinebers/openusage/pull/1677)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.0...v0.8.1-beta.1](https://github.com/robinebers/openusage/compare/v0.8.0...v0.8.1-beta.1)
+
+- [e1ffa57](https://github.com/robinebers/openusage/commit/e1ffa5712d8aebcc310c598b8f6b7973ad724919) fix(antigravity): identify as the Antigravity hub client so Google returns the Argon quota (#1676) by @INT31302
+- [c6c14f7](https://github.com/robinebers/openusage/commit/c6c14f78ed4ae42599896c0019daff0f51a61903) fix(devin): sign in the way the Devin CLI does, with a loopback callback (#1685) by @robinebers
+- [e8cf8b5](https://github.com/robinebers/openusage/commit/e8cf8b5bed8d438546e1c4606c150343a3bc3960) fix(cliproxyapi): trust a hub listing, retry it, and re-list when a login is gone (#1680) by @robinebers
+- [905c31d](https://github.com/robinebers/openusage/commit/905c31da77fff7d7973f7484bd5926c95a5046d1) fix(dashboard): read months as mo, roll into years, and drop zero tails (#1677) by @robinebers
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.1-beta.1/OpenUsage-0.8.1-beta.1.dmg" length="20077364" type="application/octet-stream" sparkle:edSignature="iYO/oevmnIREjWd/A/i8wgndjKYoXJrmO6xaOloKlSxYHuVu6VRhC9IMcgMQ9t0Jptb4cZJAPx4VkaeKpcLJCw=="/>
+        </item>
+        <item>
             <title>0.8.0-beta.8</title>
             <pubDate>Wed, 11 Nov 2026 10:05:02 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
