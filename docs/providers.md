@@ -96,6 +96,12 @@ days.
   off (no spend limit, or a $0 one). When the limit is the team's shared pool and not yours, the row
   reads Team Spend.
 - Credits reads `$0 left` when Cursor reports none.
+- A unified account (Cursor, X and Grok merged) has one weekly included pool, so it shows Total Usage
+  for that pool and no Cursor Models, Other Models, or Grok Bot rows. Credits is the balance on the
+  dashboard's Credits card. Extra Usage is the dashboard's Additional usage: what this month's usage
+  past the pool cost, paid from credits. With no monthly limit it shows only that amount, even at $0;
+  with a limit it shows against the limit and resets with the month. It hides when additional usage
+  is off.
 
 Today, Yesterday, and Last 30 Days show what Cursor charged and the tokens it reported, from the
 usage history on Cursor's Usage page. The charge counts only on-demand usage. Included usage and
