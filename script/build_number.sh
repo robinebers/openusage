@@ -20,7 +20,7 @@ LOWER="$({ git tag --points-at HEAD 'v*' | grep -vxF "$TAG" || true; echo "$TAG"
     if (index(core, "-")) { pre = substr(core, index(core, "-") + 1); core = substr(core, 1, index(core, "-") - 1) }
     split(core, v, "."); label = pre; num = 0
     if (match(pre, /[0-9]+$/)) { label = substr(pre, 1, RSTART - 1); num = substr(pre, RSTART) }
-    printf "%09d.%09d.%09d.%d.%s.%09d %s\n", v[1], v[2], v[3], pre == "", label, num, $0
+    printf "%09d.%09d.%09d.%d.%s.%09d %s\n", v[1], v[2], v[3], (pre == ""), label, num, $0
   }' | LC_ALL=C sort | awk -v tag="$TAG" '$2 == tag { print NR - 1 }')"
 
 if [ "$LOWER" -eq 0 ]; then
