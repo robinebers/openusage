@@ -3,6 +3,37 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.1-beta.2</title>
+            <pubDate>Sun, 15 Nov 2026 09:57:43 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>898</sparkle:version>
+            <sparkle:shortVersionString>0.8.1-beta.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[## v0.8.1-beta.2
+
+### Bug Fixes
+- Cursor: read unified accounts (Cursor, X and Grok merged) the way Cursor's dashboard does, so Credits, the weekly pool and Extra Usage show again ([#1693](https://github.com/robinebers/openusage/pull/1693)) by @robinebers
+- Ollama: accept free-plan accounts with no included allowance instead of failing with "invalid response" ([#1689](https://github.com/robinebers/openusage/pull/1689)) by @robinebers
+- Release: give a promoted beta its own build and guard the appcast channel, so a stable release reaches stable users ([#1694](https://github.com/robinebers/openusage/pull/1694), [#1697](https://github.com/robinebers/openusage/pull/1697)) by @robinebers
+
+### Chores
+- Bump posthog-ios from 3.93.4 to 3.94.3 ([#1688](https://github.com/robinebers/openusage/pull/1688)) by @dependabot
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.1-beta.1...v0.8.1-beta.2](https://github.com/robinebers/openusage/compare/v0.8.1-beta.1...v0.8.1-beta.2)
+
+- [4152e02](https://github.com/robinebers/openusage/commit/4152e020252ab35c25bbca5fd9ff830628e995de) fix(release): make build_number.sh run on macOS awk (#1697) by @robinebers
+- [1bfd317](https://github.com/robinebers/openusage/commit/1bfd3175245d85795229826c00ebe136ef536db0) fix(cursor): read unified accounts the way Cursor's dashboard does (#1693) by @robinebers
+- [8d01aaa](https://github.com/robinebers/openusage/commit/8d01aaa3bc077cde246e827ee06f95393bde3925) fix(release): give a promoted beta its own build and guard the appcast channel (#1694) by @robinebers
+- [c0d0a48](https://github.com/robinebers/openusage/commit/c0d0a484b89de78ccaec3846cb5c9318d2f2b83d) chore(deps): bump github.com/posthog/posthog-ios from 3.93.4 to 3.94.3 (#1688) by @dependabot
+- [509c628](https://github.com/robinebers/openusage/commit/509c62824b19fa300895f278eb09926bee1086b2) fix(ollama): accept free-plan accounts with no included allowance (#1689) by @robinebers
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.1-beta.2/OpenUsage-0.8.1-beta.2.dmg" length="20106831" type="application/octet-stream" sparkle:edSignature="d6OZbUfNJh+1bHXQKoAZxN6lYh4KaEFtUjmWNnZLlZcLXtAFP63DttUEwpXV7XpbfmZr34uwi3LFOjhIpzcFCg=="/>
+        </item>
+        <item>
             <title>0.8.1-beta.1</title>
             <pubDate>Sat, 14 Nov 2026 03:07:23 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
