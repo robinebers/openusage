@@ -28,7 +28,8 @@ final class DemoSession {
         let container = AppContainer(
             accounts: store, defaults: defaults, http: DemoHTTPClient(),
             telemetry: DemoTelemetrySink(), telemetryDefaults: defaults,
-            runtimeFactory: { DemoProviderRuntime.make(accounts: $0, existing: $1, read: session.snapshot(for:)) }
+            runtimeFactory: { DemoProviderRuntime.make(accounts: $0, existing: $1, read: session.snapshot(for:)) },
+            enableWidgetBridge: false
         )
         container.demo = session
         session.shuffle(seed: seed ?? pinned ?? .random(in: seeds), now: now)

@@ -57,6 +57,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
   everything into your order.
 - **Unify multiple accounts.** Show your Claude or ChatGPT accounts as one card, with one bar per limit.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
+- **[macOS widgets](docs/macos-widgets.md).** One account's usage on the desktop or in Notification Center.
 - **Share.** Copy a picture of your usage to the clipboard.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
   it unused.
@@ -75,6 +76,7 @@ How everything works, in [docs/](docs/README.md):
 - [Accounts](docs/accounts.md) and [CLIProxyAPI hubs](docs/cliproxyapi.md)
 - [Providers](docs/providers.md)
 - [Menu bar](docs/menu-bar.md)
+- [macOS widgets](docs/macos-widgets.md)
 - [Settings](docs/settings.md)
 - [Refreshing](docs/refreshing.md)
 - [Command line](docs/cli.md)

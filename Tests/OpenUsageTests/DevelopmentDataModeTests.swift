@@ -191,6 +191,47 @@ final class DevelopmentDataModeTests: XCTestCase {
         XCTAssertNil(mode.errorMessage)
     }
 
+    func testDemoStagingStripsWidgetAppGroupAndURLSchemes() {
+        var plist: [String: Any] = [
+            "CFBundleIdentifier": DevelopmentDataMode.normalBundleID,
+            "CFBundleName": "OpenUsage",
+            "CFBundleDisplayName": "OpenUsage",
+            "OpenUsageAppGroupIdentifier": "TEAM123.com.robinebers.openusage.dev.shared",
+            "OpenUsageURLScheme": "openusage-dev",
+            "CFBundleURLTypes": [
+                [
+                    "CFBundleURLName": "com.robinebers.openusage.dev.provider",
+                    "CFBundleURLSchemes": ["openusage-dev"]
+                ]
+            ]
+        ]
+
+        plist["CFBundleIdentifier"] = DevelopmentDataMode.demoBundleID
+        plist["CFBundleName"] = "OpenUsage Demo"
+        plist["CFBundleDisplayName"] = "OpenUsage Demo"
+        plist.removeValue(forKey: "OpenUsageAppGroupIdentifier")
+        plist.removeValue(forKey: "OpenUsageURLScheme")
+        plist.removeValue(forKey: "CFBundleURLTypes")
+
+        XCTAssertEqual(plist["CFBundleIdentifier"] as? String, DevelopmentDataMode.demoBundleID)
+        XCTAssertEqual(plist["CFBundleName"] as? String, "OpenUsage Demo")
+        XCTAssertEqual(plist["CFBundleDisplayName"] as? String, "OpenUsage Demo")
+        XCTAssertNil(plist["OpenUsageAppGroupIdentifier"])
+        XCTAssertNil(plist["OpenUsageURLScheme"])
+        XCTAssertNil(plist["CFBundleURLTypes"])
+    }
+
+    func testStagedDemoInfoPlistOmitsWidgetMetadataAndSchemesIfPresent() throws {
+        let plistURL = URL(fileURLWithPath: "dist/OpenUsage Demo.app/Contents/Info.plist")
+        guard FileManager.default.fileExists(atPath: plistURL.path) else { return }
+        let data = try Data(contentsOf: plistURL)
+        let plist = try XCTUnwrap(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
+        XCTAssertEqual(plist["CFBundleIdentifier"] as? String, DevelopmentDataMode.demoBundleID)
+        XCTAssertNil(plist["OpenUsageAppGroupIdentifier"])
+        XCTAssertNil(plist["OpenUsageURLScheme"])
+        XCTAssertNil(plist["CFBundleURLTypes"])
+    }
+
     private enum LaunchFailure: Error {
         case refused
     }

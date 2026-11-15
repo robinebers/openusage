@@ -9,6 +9,7 @@ How the app behaves. If the app and a page here disagree, that is a bug.
 - [CLIProxyAPI hubs](cliproxyapi.md): the Claude, ChatGPT, Antigravity, Devin, and Grok logins of a
   CLIProxyAPI server
 - [Menu bar](menu-bar.md): what the strip shows
+- [macOS widgets](macos-widgets.md): account usage on the desktop and in Notification Center
 - [Settings](settings.md): every option, and what carries over from 0.7.x
 - [Command line](cli.md): the `openusage` command and its JSON output
 - [Refreshing](refreshing.md): when data updates and what happens when a fetch fails

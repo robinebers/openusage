@@ -32,6 +32,19 @@ struct DashboardContentView: View {
         }
         .scrollPosition($scrollPosition)
         .onChange(of: popover.dashboardTab) { scrollPosition.scrollTo(edge: .top) }
+        // Wait for this scroll view's content to mount and the tab-change reset to finish before
+        // applying the account destination. A request can arrive while Priority or Settings is open.
+        .task(id: popover.dashboardFocusRequestID) { @MainActor in consumeWidgetFocus() }
+    }
+
+    private func consumeWidgetFocus() {
+        guard popover.screen == .dashboard,
+              popover.dashboardTab == .allUsage,
+              let id = popover.dashboardFocusProviderID,
+              layout.displayGroups.contains(where: { $0.provider.id == id }) else { return }
+        let requestID = popover.dashboardFocusRequestID
+        scrollPosition.scrollTo(id: id, anchor: .top)
+        popover.acknowledgeDashboardFocus(requestID: requestID)
     }
 
     @ViewBuilder

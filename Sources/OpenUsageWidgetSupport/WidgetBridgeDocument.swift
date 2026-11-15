@@ -1,0 +1,122 @@
+import Foundation
+
+public struct WidgetBridgeDocument: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let generatedAt: Date
+    public let providers: [WidgetProviderRecord]
+
+    public init(
+        schemaVersion: Int = Self.currentSchemaVersion,
+        generatedAt: Date,
+        providers: [WidgetProviderRecord]
+    ) {
+        self.schemaVersion = schemaVersion
+        self.generatedAt = generatedAt
+        self.providers = providers
+    }
+
+    /// Content that affects rendering. `generatedAt` is deliberately excluded so a clock tick alone
+    /// never causes a disk write or consumes a WidgetKit reload budget.
+    public var semanticContent: SemanticContent {
+        SemanticContent(schemaVersion: schemaVersion, providers: providers)
+    }
+
+    /// Fetch timestamps are persisted on every refresh, but alone do not need an immediate redraw.
+    public var reloadContent: SemanticContent {
+        SemanticContent(schemaVersion: schemaVersion, providers: providers.map { provider in
+            WidgetProviderRecord(
+                id: provider.id, displayName: provider.displayName, iconID: provider.iconID,
+                plan: provider.plan, refreshedAt: nil, health: provider.health, metrics: provider.metrics
+            )
+        })
+    }
+
+    public struct SemanticContent: Hashable, Sendable {
+        public let schemaVersion: Int
+        public let providers: [WidgetProviderRecord]
+    }
+}
+
+public struct WidgetProviderRecord: Codable, Hashable, Sendable, Identifiable {
+    public let id: String
+    public let displayName: String
+    /// Accounts have distinct ids but share their provider's mark.
+    public let iconID: String?
+    public let plan: String?
+    public let refreshedAt: Date?
+    public let health: WidgetProviderHealth
+    public let metrics: [WidgetMetricRecord]
+
+    public init(
+        id: String,
+        displayName: String,
+        iconID: String?,
+        plan: String?,
+        refreshedAt: Date?,
+        health: WidgetProviderHealth,
+        metrics: [WidgetMetricRecord]
+    ) {
+        self.id = id
+        self.displayName = displayName
+        self.iconID = iconID
+        self.plan = plan
+        self.refreshedAt = refreshedAt
+        self.health = health
+        self.metrics = metrics
+    }
+}
+
+public enum WidgetProviderHealth: String, Codable, Hashable, Sendable {
+    case ready
+    case failed
+    case noData
+}
+
+public struct WidgetMetricRecord: Codable, Hashable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let kind: WidgetMetricKind
+    public let headline: String
+    public let detail: String?
+    public let progressFraction: Double?
+    public let resetAt: Date?
+    public let severity: WidgetMetricSeverity
+    public let hasData: Bool
+
+    public init(
+        id: String,
+        title: String,
+        kind: WidgetMetricKind,
+        headline: String,
+        detail: String?,
+        progressFraction: Double?,
+        resetAt: Date?,
+        severity: WidgetMetricSeverity,
+        hasData: Bool
+    ) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.headline = headline
+        self.detail = detail
+        self.progressFraction = progressFraction
+        self.resetAt = resetAt
+        self.severity = severity
+        self.hasData = hasData
+    }
+}
+
+public enum WidgetMetricKind: String, Codable, Hashable, Sendable {
+    case progress
+    case value
+    case status
+}
+
+public enum WidgetMetricSeverity: String, Codable, Hashable, Sendable {
+    case neutral
+    case normal
+    case warning
+    case critical
+}
