@@ -43,19 +43,25 @@ jobs:
         # runner Xcode is fine for the build/sign/notarize steps.
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Resolve tag, version, and channel
+      - name: Resolve tag, version, build, and channel
         id: meta
         run: |
+          set -o pipefail
           TAG="${{ inputs.tag }}"
           [ -z "$TAG" ] && TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
           if [[ "$TAG" == *-* ]]; then CHANNEL=beta; PRERELEASE=true; else CHANNEL=stable; PRERELEASE=false; fi
+          # The commit count, plus a suffix when an earlier release tag already shipped this commit, so a
+          # beta promoted to stable gets its own, higher build and its own appcast item.
+          BUILD="$(git show "$GITHUB_WORKFLOW_SHA:script/build_number.sh" | bash -s -- "$TAG")"
           {
             echo "tag=$TAG"
             echo "version=$VERSION"
+            echo "build=$BUILD"
             echo "channel=$CHANNEL"
             echo "prerelease=$PRERELEASE"
           } >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION (build $BUILD) for the $CHANNEL channel."
 
       # Reads the notes from the tag's GitHub Release, which the release-swift skill creates as a draft
       # before it pushes the tag. Runs before the build so a release without notes stops before anything
@@ -119,6 +125,17 @@ jobs:
             exit 1
           fi
 
+      # generate_appcast keys items by build number: a build the feed already has would be merged into
+      # that item (keeping its channel and title) instead of getting its own. Stop before building.
+      - name: Check the build number is new
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          BUILD: ${{ steps.meta.outputs.build }}
+        run: |
+          git show "$GITHUB_WORKFLOW_SHA:script/check_appcast.py" > "$RUNNER_TEMP/check_appcast.py"
+          [ -f feed/appcast.xml ] || exit 0
+          python3 "$RUNNER_TEMP/check_appcast.py" preflight feed/appcast.xml "$TAG" "$BUILD"
+
       - name: Build, sign, and notarize the DMG
         env:
           SPARKLE_PUBLIC_KEY: ${{ secrets.SPARKLE_PUBLIC_KEY }}
@@ -127,6 +144,7 @@ jobs:
           NOTARY_APP_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           NOTARY_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           OPENUSAGE_VERSION: ${{ steps.meta.outputs.version }}
+          OPENUSAGE_BUILD: ${{ steps.meta.outputs.build }}
         run: ./script/release.sh
 
       # Upload the dSYM produced by release.sh so PostHog can symbolicate crash reports (the in-app
@@ -176,6 +194,8 @@ jobs:
       - name: Generate appcast with Sparkle
         env:
           DMG: OpenUsage-${{ steps.meta.outputs.version }}.dmg
+          TAG: ${{ steps.meta.outputs.tag }}
+          BUILD: ${{ steps.meta.outputs.build }}
           CHANNEL: ${{ steps.meta.outputs.channel }}
           # Per-tag GitHub release asset base. generate_appcast applies this prefix only to the new DMG
           # in feed/; preserved items keep their own (older-tag) URLs.
@@ -185,11 +205,14 @@ jobs:
           GA="$(find .build/artifacts -type f -name generate_appcast 2>/dev/null | head -n1)"
           [ -x "$GA" ] || { echo "generate_appcast not found under .build/artifacts" >&2; exit 1; }
 
-          # How many feed items existed before (to confirm nothing is dropped). 0 on first release.
+          # Keep the feed as it was, so the check below can confirm the new DMG got exactly one new item.
           # Sparkle normally keeps only a few versions per branch; this release feed is intentionally
           # append-only so older installs and the other channel's items remain available.
-          before=0
-          [ -f feed/appcast.xml ] && before=$(grep -c "<item>" feed/appcast.xml || true)
+          before_arg=()
+          if [ -f feed/appcast.xml ]; then
+            cp feed/appcast.xml "$RUNNER_TEMP/appcast.before.xml"
+            before_arg=(--before "$RUNNER_TEMP/appcast.before.xml")
+          fi
 
           cp "dist/$DMG" "feed/$DMG"
 
@@ -208,15 +231,17 @@ jobs:
 
           # Fail loudly if the merge went wrong. The new DMG's enclosure must exist AND carry an EdDSA
           # signature on the same line (generate_appcast silently omits it if SUPublicEDKey doesn't match
-          # the signing key), and the item count must not shrink (a dropped preserved/other-channel entry).
-          after=$(grep -c "<item>" feed/appcast.xml || true)
+          # the signing key), and it must have notes.
           grep -Eq "$DMG\"[^>]*sparkle:edSignature" feed/appcast.xml \
             || { echo "New item for $DMG is missing or unsigned (SUPublicEDKey/private-key mismatch?)." >&2; exit 1; }
           xmllint --xpath "string(//item[enclosure[contains(@url, '/$DMG')]]/description)" feed/appcast.xml \
             | grep '[^[:space:]]' >/dev/null \
             || { echo "New item for $DMG has no release notes in <description>." >&2; exit 1; }
-          [ "$after" -ge "$before" ] || { echo "Appcast item count dropped ($before -> $after) — aborting." >&2; exit 1; }
-          echo "Appcast OK: $before -> $after items."
+          # The new item must be this release on its own channel: title and shortVersionString are the
+          # version, a stable item has no sparkle:channel (a beta item has channel beta), it is the newest
+          # on that channel, and the feed grew by exactly one item. A stable DMG merged into its beta's
+          # item (#1692) fails here instead of shipping to Early Access only.
+          python3 "$RUNNER_TEMP/check_appcast.py" verify feed/appcast.xml "$TAG" --build "$BUILD" "${before_arg[@]}"
 
       - name: Assemble Pages directory
         run: |
