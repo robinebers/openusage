@@ -2,13 +2,14 @@
 """Checks one release tag's item in a Sparkle appcast.
 
   preflight <appcast> <tag> <build>   Before the build: the build number is new to the feed (a rerun of
-                                      the same tag may reuse its own) and newer than every item on the
-                                      tag's channel.
+                                      the same tag may reuse its own) and newer than every item its
+                                      users see (stable: stable items and its own betas; beta: stable
+                                      and beta items).
   verify <appcast> <tag> [--build N] [--before <appcast>]
                                       After generate_appcast, or against the live feed: exactly one item
                                       has this tag's DMG; its title and shortVersionString are the
                                       version; a stable tag has no sparkle:channel and a beta tag has
-                                      channel beta; it is the newest item on that channel. --build also
+                                      channel beta; its build is unique and newest as in preflight. --build also
                                       checks its sparkle:version. --before checks that the feed grew by
                                       exactly one item (or kept its size on a rerun of the same tag).
 
@@ -55,25 +56,33 @@ def release(tag):
     return version, channel, f"/{tag}/OpenUsage-{version}.dmg"
 
 
-def newer_failures(build, others, channel_name):
-    return [
-        f"build {build} is not newer than {other['title']} (build {other['build']}) on the {channel_name} channel"
+def build_failures(build, version, channel, others):
+    # Early Access users get default-channel items too, so a beta must beat every stable and beta item.
+    # A stable must beat every stable item and its own betas, so Early Access users on them move to it.
+    failures = [
+        f"build {build} already shipped as {other['title']} ({other['url']}); generate_appcast merges a new DMG into it"
         for other in others
-        if build_key(other["build"]) >= build_key(build)
+        if build_key(other["build"]) == build_key(build)
     ]
+    rivals = [
+        other for other in others
+        if other["channel"] is None
+        or (channel == "beta" and other["channel"] == "beta")
+        or (channel is None and (other["short"] or "").startswith(f"{version}-"))
+    ]
+    failures += [
+        f"build {build} is not newer than {other['title']} (build {other['build']})"
+        for other in rivals
+        if build_key(other["build"]) > build_key(build)
+    ]
+    return failures
 
 
 def preflight(args):
-    _, channel, dmg = release(args.tag)
+    version, channel, dmg = release(args.tag)
     channel_name = channel or "stable"
-    items = read_items(args.appcast)
-    failures = [
-        f"build {args.build} already shipped as {item['title']} ({item['url']}); a new item would be merged into it"
-        for item in items
-        if build_key(item["build"]) == build_key(args.build) and not item["url"].endswith(dmg)
-    ]
-    others = [item for item in items if item["channel"] == channel and not item["url"].endswith(dmg)]
-    failures += newer_failures(args.build, others, channel_name)
+    others = [item for item in read_items(args.appcast) if not item["url"].endswith(dmg)]
+    failures = build_failures(args.build, version, channel, others)
     return failures, f"build {args.build} is new and the newest on the {channel_name} channel"
 
 
@@ -95,8 +104,7 @@ def verify(args):
         failures.append(f"sparkle:channel is {item['channel']!r}, expected {expected}")
     if args.build is not None and build_key(item["build"]) != build_key(args.build):
         failures.append(f"sparkle:version is {item['build']!r}, expected {args.build!r}")
-    others = [other for other in items if other["channel"] == channel and other is not item]
-    failures += newer_failures(item["build"], others, channel_name)
+    failures += build_failures(item["build"], version, channel, [other for other in items if other is not item])
     if args.before is not None:
         before = read_items(args.before)
         rerun = any(other["url"].endswith(dmg) for other in before)

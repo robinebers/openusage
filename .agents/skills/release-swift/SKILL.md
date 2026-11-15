@@ -12,7 +12,7 @@ Pushing a `v*` tag on `main` runs `.github/workflows/release.yml`, which builds,
 - **Beta (Early Access):** suffixed tag like `v0.7.1-beta.1`. Marked a GitHub pre-release and added to Sparkle's `beta` channel. Only users with Early Access enabled get it; GitHub "Latest" is untouched.
 - **Stable:** plain tag like `v0.7.1`. Marked non-prerelease, becomes GitHub "Latest", and ships to everyone.
 
-The tag IS the version: `v0.7.1-beta.1` becomes `CFBundleShortVersionString = 0.7.1-beta.1`, and `CFBundleVersion` is the git commit count (`script/build_number.sh`). When an earlier release tag already shipped the same commit, as when a beta is promoted to stable, the build gets a suffix: `888`, then `888.1`. Sparkle orders `888 < 888.1 < 889`, so the stable build is a new, higher build with its own appcast item. There are no version files to bump.
+The tag IS the version: `v0.7.1-beta.1` becomes `CFBundleShortVersionString = 0.7.1-beta.1`, and `CFBundleVersion` is the git commit count (`script/build_number.sh`). When a lower release tag already shipped the same commit, as when a beta is promoted to stable, the build gets a suffix: `888`, then `888.1`. Sparkle orders `888 < 888.1 < 889`, so the stable build is a new, higher build with its own appcast item. There are no version files to bump.
 
 ## Cutting a release
 
@@ -62,7 +62,7 @@ gh release create v{version} --draft --target main --title "OpenUsage {version}"
 Before tagging, check that the commit's other release tags (if any) still leave this release a new build number. List them, compute the build CI will use, and check it against the live feed:
 
 ```sh
-git switch main && git pull
+git switch main && git pull --tags
 git tag --points-at HEAD 'v*'
 build="$(script/build_number.sh v{version})" && echo "build $build"
 curl -sf https://robinebers.github.io/openusage/appcast.xml \
