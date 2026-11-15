@@ -15,15 +15,18 @@ extension AccountProviderRuntime {
         }
 
         if planRead.isDue(at: now()) {
-            let fresh = await optionalJSON("plan") { try await client.fetchPlan(accessToken: accessToken) }
+            let plan = await optionalJSON("plan") { try await client.fetchPlan(accessToken: accessToken) }
+            let fresh = plan
                 .flatMap { ($0["planInfo"] as? [String: Any])?["planName"] as? String }
                 .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
             planRead.record(fresh, at: now())
+            cursorMergedRead.record(plan.map { $0["isMerged"] as? Bool == true }, at: now())
         }
         if cursorMembershipRead.isDue(at: now()) {
             cursorMembershipRead.record(CursorUsageMapper.membershipType(in: await readSummary()), at: now())
         }
         let planName = planRead.value
+        let isMerged = cursorMergedRead.value == true
         let membership = cursorMembershipRead.value
         let isOrgSeat = membership.map(CursorUsageMapper.orgMembershipTypes.contains) ?? false
         let displayPlanName = CursorUsageMapper.resolvedPlanName(planInfoName: planName, membershipType: membership)
@@ -44,6 +47,20 @@ extension AccountProviderRuntime {
                       summary: nil, requestUsage: requestUsage, planName: displayPlanName, unavailableMessage: ""
                   ) {
             mapped = requestBased
+        } else if isMerged {
+            mapped = try CursorUsageMapper.mapUsage(
+                usage: usage,
+                planName: planName,
+                creditGrants: nil,
+                stripeBalanceCents: 0,
+                unified: CursorUnifiedBilling(
+                    creditBalance: await optionalJSON("credit balance") {
+                        try await client.fetchComplatCreditBalance(accessToken: accessToken)
+                    },
+                    usageStatus: await optionalJSON("usage status") { try await client.fetchUsageStatus(accessToken: accessToken) }
+                )
+            )
+            mapped.plan = CursorUsageMapper.resolvedPlanLabel(planInfoName: planName, membershipType: membership)
         } else {
             let stripe = await optionalJSON("prepaid-balance") { try await client.fetchStripeBalance(accessToken: accessToken) }
             mapped = try CursorUsageMapper.mapUsage(
@@ -65,7 +82,7 @@ extension AccountProviderRuntime {
             }
         }
 
-        if let grokBot = await optionalJSON("Grok Bot usage", { try await client.fetchGrokBotUsage(accessToken: accessToken) }),
+        if !isMerged, let grokBot = await optionalJSON("Grok Bot usage", { try await client.fetchGrokBotUsage(accessToken: accessToken) }),
            let line = CursorUsageMapper.mapGrokBotUsage(grokBot) {
             mapped.lines.append(line)
         }

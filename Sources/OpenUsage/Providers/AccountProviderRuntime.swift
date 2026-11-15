@@ -12,6 +12,7 @@ final class AccountProviderRuntime: ProviderRuntime {
     var codexResetCreditsRead = SecondaryRead<HTTPResponse>()
     var zaiResetsRead = SecondaryRead<[ZAIReset]>()
     var cursorMembershipRead = SecondaryRead<String>()
+    var cursorMergedRead = SecondaryRead<Bool>()
     let usageLedger = UsageLedger()
     let codexCreditsLedger = UsageLedger()
     var claude: ClaudeAccountState
@@ -62,6 +63,7 @@ final class AccountProviderRuntime: ProviderRuntime {
         codexResetCreditsRead.forget()
         zaiResetsRead.forget()
         cursorMembershipRead.forget()
+        cursorMergedRead.forget()
         usageLedger.forgetLastRead()
         codexCreditsLedger.forgetLastRead()
         claude.forcedReadsPending = true
