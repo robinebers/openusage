@@ -36,6 +36,7 @@ struct LayoutV1Keys {
 /// A 0.7.x account's layout, mapped onto an account added today.
 struct CarriedLayout {
     var hidden: [String]
+    var priorityPins: [String]
     var metricOrder: [String]?
     /// Where the account goes among the others, or nil when 0.7.x saved no place for its provider.
     var providerIndex: Int?
@@ -72,6 +73,7 @@ extension LayoutV1Keys {
         if hidden.count == metrics.count { hidden = [] }
         return CarriedLayout(
             hidden: hidden.map(\.id),
+            priorityPins: metrics.filter { starred.contains($0.key) }.map(\.id),
             metricOrder: metricOrderByProvider?[account].map { ids in
                 Self.keys(of: account, in: ids).compactMap { key in metrics.first { $0.key == key }?.id }
             },

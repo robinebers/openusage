@@ -22,6 +22,35 @@ final class LayoutMigrationTests: XCTestCase {
         XCTAssertEqual(app.hidden(secondClaude), [], "a provider's later accounts start with every metric shown")
     }
 
+    func testZeroSevenMenuBarPinsBecomePriorityPinsOnlyForTheFirstAccount() throws {
+        let app = try MigrationApp(defaults: zeroSevenDefaults())
+        let claude = app.add(.claude)
+        let codex = app.add(.codex)
+        let secondClaude = app.add(.claude)
+        let ollama = app.add(.ollama)
+
+        XCTAssertEqual(app.layout.state.priorityPinIDs, [
+            "\(claude.cardID).weekly", "\(codex.cardID).session", "\(codex.cardID).weekly"
+        ])
+        XCTAssertFalse(app.layout.isMetricPinned("\(secondClaude.cardID).weekly"))
+        XCTAssertFalse(app.layout.isMetricPinned("\(ollama.cardID).session"), "a disabled provider's pins stay ignored")
+        XCTAssertTrue(app.layout.isMetricShown("\(codex.cardID).session"), "menu-bar-only metrics remain visible")
+
+        XCTAssertTrue(app.layout.setMetric("\(claude.cardID).weekly", pinned: false))
+        app.relaunch()
+        XCTAssertFalse(app.layout.isMetricPinned("\(claude.cardID).weekly"), "later unpins must not be undone by migration")
+        XCTAssertTrue(app.layout.isMetricPinned("\(codex.cardID).weekly"))
+    }
+
+    func testZeroSevenPinsForRemovedMetricsAreIgnored() throws {
+        let defaults = try zeroSevenDefaults()
+        defaults.set(["claude@aaaa1111.weekly", "claude@aaaa1111.trend", "claude@aaaa1111.unknown"],
+                     forKey: "openusage.layout.v1.menuBarPins")
+        let app = MigrationApp(defaults: defaults)
+        let claude = app.add(.claude)
+        XCTAssertEqual(app.layout.state.priorityPinIDs, ["\(claude.cardID).weekly"])
+    }
+
     func testZeroSevenHidingSpeaksOnlyForMetricsItHad() throws {
         let app = try MigrationApp(defaults: zeroSevenDefaults())
         XCTAssertEqual(app.hidden(app.add(.grok)), [], "0.7.x showed only Grok metrics that are gone, so no account starts empty")

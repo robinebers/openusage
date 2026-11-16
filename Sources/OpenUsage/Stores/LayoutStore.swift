@@ -45,7 +45,7 @@ final class LayoutStore {
         )
     }
 
-    /// The only account of its provider takes that provider's 0.7.x hidden metrics and order.
+    /// The only account of its provider takes that provider's 0.7.x hidden metrics, pins, and order.
     private func seed(_ provider: Provider, into saved: inout LayoutState) {
         saved.seededProviderIDs.insert(provider.id)
         let metrics = registry.descriptors(for: provider.id)
@@ -56,6 +56,7 @@ final class LayoutStore {
               let carried = LayoutV1Keys(defaults: defaults).carriedOver(to: provider, metrics: metrics, among: others)
         else { return }
         saved.hiddenMetricIDs.formUnion(carried.hidden)
+        saved.priorityPinIDs.formUnion(carried.priorityPins)
         if let order = carried.metricOrder { saved.metricOrderByProvider[provider.id] = order }
         if let index = carried.providerIndex {
             var providers = others.map(\.id)

@@ -107,6 +107,7 @@ The dev build disables these. See [Updates](updates.md).
   key. It never reads a key for a provider you turned off. A rejected key isn't tried again. Other
   failures retry on the next launch. An account you remove later doesn't come back.
 - **Layout.** When you add the only account of a provider that was on in 0.7.x, it takes 0.7.x's
-  hidden metrics, metric order, and provider order. New metrics start shown and go last. Stars don't
-  carry over: the menu bar picks its own limits.
+  hidden metrics, metric order, provider order, and menu-bar pins (as Priority pins). New metrics
+  start shown and go last. Later accounts start unpinned, and later edits to your pins are preserved.
+  Already-migrated accounts are left unchanged; pin any missing metrics manually.
 - **Going back.** OpenUsage never changes or deletes what 0.7.x saved.

@@ -45,7 +45,8 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 
 Add your accounts from the app's Accounts screen. OpenUsage never reads other tools' credentials,
 files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
-[Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x).
+[Upgrading from 0.7.x](docs/settings.md#upgrading-from-07x). Existing menu-bar pins carry over
+when you add the first account of each enabled provider.
 
 ## Features
 
