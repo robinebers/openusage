@@ -52,6 +52,21 @@ final class MenuBarStripTrimTests: XCTestCase {
         }
     }
 
+    func testClassicPairUsesOneIconAndFitsTheMenuBar() throws {
+        var content = MenuBarContent(items: [
+            item("claude.session", "Session", "90%"),
+            item("claude.weekly", "Weekly", "60%"),
+        ])
+        let separate = try XCTUnwrap(MenuBarStripRenderer.image(for: content))
+        content.groupsByProvider = true
+        let grouped = try XCTUnwrap(MenuBarStripRenderer.image(for: content))
+        XCTAssertEqual(content.groups.count, 1)
+        XCTAssertLessThan(grouped.size.width, separate.size.width * 0.7)
+        XCTAssertLessThanOrEqual(grouped.size.height, Self.menuBarHeight)
+        XCTAssertGreaterThan(grouped.size.width, 16, "the values must draw beside the icon")
+        XCTAssertTrue(grouped.isTemplate)
+    }
+
     func testTheItemsAndTheOverflowEachWidenTheStrip() throws {
         let one = MenuBarContent(items: [item("claude.session", "Session", "99%")])
         let two = MenuBarContent(items: [item("claude.session", "Session", "99%"), item("claude.weekly", "Weekly", "87%")])

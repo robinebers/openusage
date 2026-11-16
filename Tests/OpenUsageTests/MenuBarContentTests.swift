@@ -75,49 +75,61 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(strip, MenuBarContent(items: []))
     }
 
+    func testClassicStripGroupsHealthySessionAndWeeklyValuesBesideOneIcon() {
+        var session = limit("Session", used: 10)
+        session.displayMode = .remaining
+        var weekly = limit("Weekly", used: 40)
+        weekly.displayMode = .remaining
+        let strip = content(.upToThree, alwaysShows: true,
+                            account(personal, session, weekly), account(chatGPT, session))
+        XCTAssertTrue(strip.groupsByProvider)
+        XCTAssertEqual(strip.groups.count, 2)
+        XCTAssertEqual(strip.groups[0].items.map(\.value), ["90%", "60%"])
+        XCTAssertEqual(strip.groups[1].items.map(\.value), ["90%"])
+        XCTAssertEqual(strip.overflow, 0)
+    }
+
+    func testClassicUsesSessionAndWeeklyDefaultsInDashboardOrder() {
+        let provider = personal
+        let descriptors = ["extra", "weekly", "session"].map { key in
+            WidgetDescriptor(provider: provider, key: key, metricLabel: key, sample: limit(key, used: 20))
+        }
+        let account = DashboardAccount(provider: provider, lines: descriptors.map {
+            DashboardLine(descriptor: $0, data: $0.sample)
+        })
+        let strip = content(.upToThree, alwaysShows: true, account)
+        XCTAssertEqual(strip.items.map(\.shortLabel), ["weekly", "session"])
+    }
+
+    func testClassicCapCountsProvidersAndKeepsTheirSavedOrderInsteadOfUrgency() {
+        let strip = content(.upToOne, alwaysShows: true,
+                            account(personal, limit("Session", used: 10), limit("Weekly", used: 20)),
+                            account(chatGPT, limit("Session", used: 99)))
+        XCTAssertEqual(strip.items.map(\.id), ["claude@1.Session", "claude@1.Weekly"])
+        XCTAssertEqual(strip.overflow, 1)
+    }
+
+    func testClassicPairCanBeSelectedWithPinsAndUsedUpMetricsRemainVisible() {
+        let strip = content(.upToThree, pinned: ["claude@1.Weekly", "claude@1.Spent"], alwaysShows: true,
+                            account(personal, limit("Session", used: 10), limit("Weekly", used: 20), limit("Spent", used: 100)))
+        // A spent pin moves out of the Pinned section, but remains selected for the strip.
+        XCTAssertEqual(strip.items.map(\.shortLabel), ["Weekly", "Spent"])
+    }
+
+    func testClassicSkipsUnreportedMetricsAndCapsEachProviderAtTwoValues() {
+        var missing = limit("Missing", used: 0)
+        missing.hasData = false
+        let strip = content(.upToThree, alwaysShows: true,
+                            account(personal, missing, limit("A", used: 10), limit("B", used: 20), limit("C", used: 30)))
+        XCTAssertEqual(strip.items.map(\.shortLabel), ["A", "B"])
+        XCTAssertTrue(content(.iconOnly, alwaysShows: true, sevenLimits()).isEmpty)
+    }
+
     func testUsedUpLimitsNeverShowAndNeverCountTowardTheOverflow() {
         let strip = content(.upToOne, account(personal, limit("Spent", used: 100), limit("Spent Too", used: 100),
                                               limit("Low", used: 95), limit("Lower", used: 90)))
         XCTAssertEqual(strip.items.map(\.shortLabel), ["Low"])
         XCTAssertEqual(strip.overflow, 1, "only Lower waits; Spent and Spent Too aren't running out")
-    }
-
-    func testAlwaysShowingListsUsedUpLimitsAfterRunningOutWithoutCountingThemTowardTheOverflow() {
-        let accounts = account(personal, limit("Spent", used: 100), limit("Spent Too", used: 100),
-                               limit("Low", used: 95), limit("Lower", used: 90))
-        let one = content(.upToOne, alwaysShows: true, accounts)
-        XCTAssertEqual(one.items.map(\.shortLabel), ["Low"])
-        XCTAssertEqual(one.overflow, 1, "only Lower waits; Used Up never counts")
-
-        let five = content(.upToFive, alwaysShows: true, accounts)
-        XCTAssertEqual(five.items.map(\.shortLabel), ["Low", "Lower", "Spent", "Spent Too"])
-        XCTAssertEqual(five.items.map(\.value), ["95%", "90%", "100%", "100%"])
-        XCTAssertEqual(five.overflow, 0)
-
-        var left = limit("Spent", used: 100)
-        left.displayMode = .remaining
-        XCTAssertEqual(content(.upToOne, alwaysShows: true, account(personal, left)).items.map(\.value), ["0%"])
-    }
-
-    func testAlwaysShowingWithTheStripFullOfRunningOutLeavesUsedUpOutOfTheCount() {
-        let strip = content(.upToThree, alwaysShows: true,
-                            account(personal, limit("Low", used: 95), limit("Lower", used: 92), limit("Lowest", used: 90),
-                                    limit("Spent", used: 100), limit("Spent Too", used: 100), limit("Spent Three", used: 100)))
-        XCTAssertEqual(strip.items.map(\.shortLabel), ["Low", "Lower", "Lowest"])
-        XCTAssertEqual(strip.overflow, 0)
-        XCTAssertFalse(strip.accessibilityText.contains("more"))
-    }
-
-    func testPinnedLimitsShowWithNothingRunningOutOnlyWhenAlwaysShowing() {
-        let accounts = [account(personal, limit("Session", used: 10), limit("Weekly", used: 40)),
-                        account(chatGPT, limit("Session", used: 20))]
-        let board = PriorityBoard.make(accounts: accounts, pinned: ["claude@1.Weekly", "codex@1.Session"], now: now)
-
-        let strip = MenuBarContentBuilder.build(board: board, limit: .upToThree, alwaysShows: true)
-        XCTAssertEqual(strip.items.map(\.id), ["claude@1.Weekly", "codex@1.Session"])
-        XCTAssertEqual(strip.items.map(\.value), ["40%", "20%"])
-        XCTAssertEqual(strip.overflow, 0)
-        XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToThree), MenuBarContent(items: []), "off, pins stay out")
     }
 
     func testAPinnedMetricWithoutALimitShowsItsAmount() {
@@ -129,44 +141,6 @@ final class MenuBarContentTests: XCTestCase {
         let board = PriorityBoard.make(accounts: [account], pinned: [descriptor.id], now: now)
 
         XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToOne, alwaysShows: true).items.map(\.value), ["$12"])
-    }
-
-    func testAPinnedLimitWithoutAReadingShowsADashAsItsRowDoes() {
-        var weekly = limit("Weekly", used: 0)
-        weekly.hasData = false
-        let strip = content(.upToOne, pinned: ["claude@1.Weekly"], alwaysShows: true, account(personal, weekly))
-        XCTAssertEqual(strip.items.map(\.value), [WidgetData.noDataValue])
-    }
-
-    func testAlwaysShowingFollowsThePriorityTabTopToBottomUpToTheSetting() {
-        var reset = limit("Reset Soon", used: 20)
-        reset.resetsAt = now.addingTimeInterval(6 * 3600)
-        reset.periodDurationMs = 7 * 24 * 3600 * 1000
-        let accounts = [account(personal, limit("Spent", used: 100), reset, limit("Pin B", used: 20), limit("Low", used: 95)),
-                        account(chatGPT, limit("Pin A", used: 10))]
-        let board = PriorityBoard.make(accounts: accounts, pinned: ["codex@1.Pin A", "claude@1.Pin B"], useItOrLoseIt: true, now: now)
-
-        let five = MenuBarContentBuilder.build(board: board, limit: .upToFive, alwaysShows: true)
-        XCTAssertEqual(five.items.map(\.shortLabel), ["Pin B", "Pin A", "Low", "Reset Soon", "Spent"],
-                       "Pinned, Running Out, Use It or Lose It, then Used Up, each in the tab's order")
-        let three = MenuBarContentBuilder.build(board: board, limit: .upToThree, alwaysShows: true)
-        XCTAssertEqual(three.items.map(\.shortLabel), ["Pin B", "Pin A", "Low"])
-        XCTAssertEqual(three.overflow, 1, "Reset Soon waits; Used Up never counts")
-
-        let off = MenuBarContentBuilder.build(board: board, limit: .upToThree)
-        XCTAssertEqual(off.items.map(\.shortLabel), ["Low"], "off, only what's running out")
-        XCTAssertEqual(off.overflow, 0)
-    }
-
-    func testAPinnedLimitThatIsRunningOutShowsOnceUnderPinnedAndStillShowsAsRunningOut() {
-        let accounts = [account(personal, limit("Low", used: 95), limit("Quiet", used: 10), limit("Lower", used: 97))]
-        let pinned: Set<String> = ["claude@1.Low", "claude@1.Quiet"]
-        let always = content(.upToFive, pinned: pinned, alwaysShows: true, accounts[0])
-        XCTAssertEqual(always.items.map(\.shortLabel), ["Low", "Quiet", "Lower"], "Pinned in dashboard order, then Running Out")
-        XCTAssertEqual(always.overflow, 0)
-
-        let off = content(.upToFive, pinned: pinned, accounts[0])
-        XCTAssertEqual(off.items.map(\.shortLabel), ["Lower", "Low"], "off, everything running out, pinned or not, most urgent first")
     }
 
     func testNoAccountsShowTheAppIconEvenWithPins() {

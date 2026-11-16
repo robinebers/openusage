@@ -146,6 +146,8 @@ struct PriorityBoard {
     let summary: Summary
     /// Every account reported and nothing, pinned or not, is running out.
     let showsClearRow: Bool
+    /// All reported dashboard metrics, including healthy limits, in the user's saved order.
+    let reportedMetrics: [PinnedMetric]
 
     /// Multiple running-low limits can change places as their windows age, even without a new reading, and a
     /// limit burning fast can slow off the list.
@@ -207,7 +209,8 @@ struct PriorityBoard {
             usedUp: ranked.filter { $0.reason.section == .usedUp },
             useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt && !$0.isPinned },
             notices: notices, waiting: waiting, summary: summary,
-            showsClearRow: !awaitingUsage && notices.isEmpty && runningOut.isEmpty
+            showsClearRow: !awaitingUsage && notices.isEmpty && runningOut.isEmpty,
+            reportedMetrics: lines.filter { $0.1.isVisible }.map { PinnedMetric(provider: $0.0, line: $0.1) }
         )
     }
 

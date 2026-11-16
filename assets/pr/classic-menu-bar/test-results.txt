@@ -1,0 +1,29 @@
+Xcode 27.2 (27B52), macOS 27.2, Apple Silicon
+
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer OPENUSAGE_EVIDENCE_DIR=/tmp/openusage-pr-evidence script/test_quiet.sh --filter 'MenuBarContentTests|MenuBarStripTrimTests|MenuBarStripGateTests|MenuBarUpdateIconTests|DisplaySettingsTests|PriorityBoardTests|MenuBarEvidenceTests'
+
+Test Suite 'DisplaySettingsTests' started at 2026-11-16 13:55:33.942.
+Test Suite 'DisplaySettingsTests' passed at 2026-11-16 13:55:37.224.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 3.161 (3.282) seconds
+Test Suite 'MenuBarContentTests' started at 2026-11-16 13:55:37.224.
+Test Suite 'MenuBarContentTests' passed at 2026-11-16 13:55:37.898.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.672 (0.673) seconds
+Test Suite 'MenuBarEvidenceTests' started at 2026-11-16 13:55:37.898.
+Test Suite 'MenuBarEvidenceTests' passed at 2026-11-16 13:55:37.969.
+Test Suite 'MenuBarStripGateTests' started at 2026-11-16 13:55:37.969.
+Test Suite 'MenuBarStripGateTests' passed at 2026-11-16 13:55:37.971.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'MenuBarStripTrimTests' started at 2026-11-16 13:55:37.971.
+Test Suite 'MenuBarStripTrimTests' passed at 2026-11-16 13:55:38.011.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.039 (0.040) seconds
+Test Suite 'MenuBarUpdateIconTests' started at 2026-11-16 13:55:38.011.
+Test Suite 'MenuBarUpdateIconTests' passed at 2026-11-16 13:55:38.028.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.017 (0.017) seconds
+Test Suite 'PriorityBoardTests' started at 2026-11-16 13:55:38.028.
+Test Suite 'PriorityBoardTests' passed at 2026-11-16 13:55:38.062.
+	 Executed 24 tests, with 0 failures (0 unexpected) in 0.031 (0.033) seconds
+	 Executed 63 tests, with 0 failures (0 unexpected) in 3.993 (4.120) seconds
+	 Executed 63 tests, with 0 failures (0 unexpected) in 3.993 (4.121) seconds
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.000 (0.001) seconds
+test_quiet: the frontmost app changed from 'Terminal' to 'Activity Monitor' during the run, with no test process in front

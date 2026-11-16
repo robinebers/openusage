@@ -49,7 +49,8 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 
 ## Features
 
-- **Menu bar.** The limits closest to running out, at a glance.
+- **Menu bar.** The limits closest to running out, or enable Always Show In Menu Bar to include healthy
+  limits too, with one platform icon beside one value or two stacked values.
 - **Priority.** What's running low, what's used up, and which accounts need you.
 - **All Usage.** Every account and limit in one place, with resets, your pace, and an optional mark
   where an even pace would be.

@@ -16,10 +16,13 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 
 ## Menu bar icons
 
-- **Max Items In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
-  first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
-- **Always Show In Menu Bar.** The menu bar lists everything Priority does, in its order: Pinned,
-  Running Out, Use It or Lose It, then Used Up. Off by default, showing only what's running out.
+- **Max Items In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 icons. With Always Show on,
+  this counts providers; with it off, individual limits. Others show as a count, like `+7`.
+  The default is Up to 3. See [Menu bar](menu-bar.md).
+- **Always Show In Menu Bar.** The classic 0.7.4 text layout: one icon per provider account with
+  one value or two stacked values, including healthy limits, in your saved order. It uses the classic
+  default metrics where available; dashboard pins select a different pair. Off by default, showing
+  only what's running out.
 
 ## Usage display
 

@@ -1,18 +1,20 @@
 # Menu bar
 
-The strip shows the limits closest to running out, or with Always Show In Menu Bar everything
-Priority lists.
+The menu bar can show a classic provider strip or just the limits needing attention.
 
 - Left-click the icon to open the panel. Right-click (or control-click) it for **Settings** and
   **Quit OpenUsage**.
-- The strip shows the limits [running out](dashboard.md#priority), most urgent first, pinned or not,
-  up to **Settings → Display → Menu Bar Icons → Max Items In Menu Bar** (3 by default).
-- With **Always Show In Menu Bar** on (off by default), it lists everything Priority does, in its
-  order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
-  Priority lists it.
-- Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
-- Limits past that number show as a count, like `+7`. Used Up limits never count. With Always Show
-  In Menu Bar off, only limits running out show or count.
+- Enable **Settings → Display → Always Show In Menu Bar** for the classic 0.7.4 text layout:
+  one provider icon beside one large value or two stacked values, including healthy limits.
+- The classic strip follows your saved provider and metric order. It uses the 0.7.4 default metrics
+  where available (usually Session and Weekly), otherwise the first two reported metrics. Pin metrics
+  in the dashboard to select a different pair for that account. Up to two reported pins show;
+  missing readings are skipped. Values follow **Show Usage As**, including percent left.
+- **Max Items In Menu Bar** limits provider icons in the classic strip. Additional providers show
+  as a count, like `+7`. Multiple accounts keep their own icons and initials unless unified.
+- With Always Show off (the default), only limits running out show, most urgent first. The maximum
+  counts individual limits in this mode, each with a short label and value; remaining running-out
+  limits show as a count. Used Up limits do not show or count in this mode.
 - With nothing to show, or with **App Icon Only**, the strip shows the app icon.
 - With [Privacy Mode](privacy.md#privacy-mode) on, it shows the app icon while your screen
   is shared or recorded.

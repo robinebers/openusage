@@ -45,7 +45,7 @@ final class WidgetDataStore {
         didSet { defaults.set(menuBarLimit.rawValue, forKey: Self.menuBarLimitKey) }
     }
 
-    /// The menu bar lists every Priority section in the tab's order instead of only what's running out.
+    /// The menu bar uses the classic provider strip, including healthy metrics.
     var menuBarAlwaysShows: Bool {
         didSet { defaults.set(menuBarAlwaysShows, forKey: Self.menuBarAlwaysShowsKey) }
     }

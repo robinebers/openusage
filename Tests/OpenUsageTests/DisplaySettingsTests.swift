@@ -34,7 +34,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
 
     func testEachDisplayRowExplainsItselfInAnInfoTooltipInsteadOfASecondLine() async throws {
         try await assertExplainedByInfoIcons(.display, [
-            "Show icons in the menu bar even if not requiring your attention yet", "Where usage would be at an even pace",
+            "Show provider icons with up to two usage values each, even when limits are healthy", "Where usage would be at an even pace",
             "Show usage limits as if all accounts were one",
         ])
     }

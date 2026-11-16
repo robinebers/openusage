@@ -104,7 +104,7 @@ struct SettingsScreen: View {
             PriorityIconsPreview()
             picker("Max Items In Menu Bar", selection: $dataStore.menuBarLimit, options: MenuBarLimit.allCases.map { ($0, $0.label) })
             Toggle(isOn: $dataStore.menuBarAlwaysShows) {
-                titled("Always Show In Menu Bar", info: "Show icons in the menu bar even if not requiring your attention yet")
+                titled("Always Show In Menu Bar", info: "Show provider icons with up to two usage values each, even when limits are healthy")
             }
             .disabled(dataStore.menuBarLimit == .iconOnly)
         } header: {
@@ -318,7 +318,7 @@ struct PriorityIconsPreview: View {
         (.copilot, nil, "Credits", "7%"),
     ]
 
-    static func sample(limit: MenuBarLimit) -> MenuBarContent {
+    static func sample(limit: MenuBarLimit, classic: Bool = false) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
         let shown = samples.prefix(limit.count).enumerated().map { index, sample in
             MenuBarContent.Item(
@@ -329,11 +329,18 @@ struct PriorityIconsPreview: View {
                 value: sample.value
             )
         }
+        if classic {
+            let paired = shown.flatMap { item in
+                [item, MenuBarContent.Item(id: "\(item.id).weekly", provider: item.provider,
+                                          label: "Weekly", shortLabel: "Weekly", value: "62%")]
+            }
+            return MenuBarContent(items: paired, overflow: samples.count - shown.count, groupsByProvider: true)
+        }
         return MenuBarContent(items: shown, overflow: samples.count - shown.count)
     }
 
     var body: some View {
-        let content = Self.sample(limit: dataStore.menuBarLimit)
+        let content = Self.sample(limit: dataStore.menuBarLimit, classic: dataStore.menuBarAlwaysShows)
         Color.primary
             .frame(height: Self.height)
             .mask {
