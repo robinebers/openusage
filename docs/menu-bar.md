@@ -9,7 +9,8 @@ Priority lists.
   up to **Settings → Display → Menu Bar Icons → Max Items In Menu Bar** (3 by default).
 - With **Always Show In Menu Bar** on (off by default), it lists everything Priority does, in its
   order: Pinned, Running Out, Use It or Lose It, then Used Up. A pinned limit shows once, where
-  Priority lists it.
+  Priority lists it. If none of those has anything (nothing pinned or running low), it shows every limit
+  with a reading in dashboard order instead, so the option never leaves just the app icon.
 - Each limit shows the provider's mark, a short name, and its value. An account can appear more than once.
 - Limits past that number show as a count, like `+7`. Used Up limits never count. With Always Show
   In Menu Bar off, only limits running out show or count.

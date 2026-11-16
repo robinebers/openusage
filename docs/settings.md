@@ -19,7 +19,8 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 - **Max Items In Menu Bar.** App Icon Only, or Up to 1 through Up to 5 limits, closest to running out
   first. Others show as a count, like `+7`. The default is Up to 3. See [Menu bar](menu-bar.md).
 - **Always Show In Menu Bar.** The menu bar lists everything Priority does, in its order: Pinned,
-  Running Out, Use It or Lose It, then Used Up. Off by default, showing only what's running out.
+  Running Out, Use It or Lose It, then Used Up. With nothing in those sections, it lists every limit with a reading instead.
+  Off by default, showing only what's running out.
 
 ## Usage display
 

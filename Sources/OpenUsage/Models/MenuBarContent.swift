@@ -28,12 +28,17 @@ enum MenuBarContentBuilder {
     private static let genericWords: Set<String> = ["models", "bot", "usage"]
 
     /// Only what's running out, or with `alwaysShows` every section of the Priority tab in its order, top to bottom.
+    /// With `alwaysShows` and nothing in any section (nothing pinned, nothing running low), the limits that have a
+    /// reading show in dashboard order instead, so the option never leaves the strip as just the app icon.
     static func build(board: PriorityBoard, limit: MenuBarLimit, alwaysShows: Bool = false) -> MenuBarContent {
         guard limit != .iconOnly else { return MenuBarContent(items: []) }
-        let counted = alwaysShows
+        var counted = alwaysShows
             ? board.pinned.map { ($0.provider, $0.line) } + (board.attention + board.useItOrLoseIt).map { ($0.provider, $0.line) }
             : board.runningOut.map { ($0.provider, $0.line) }
         let usedUp = alwaysShows ? board.usedUp.map { ($0.provider, $0.line) } : []
+        if alwaysShows, counted.isEmpty, usedUp.isEmpty {
+            counted = board.quiet.map { ($0.provider, $0.line) }
+        }
         let shown = (counted + usedUp).prefix(limit.count).map { provider, line in
             let label = line.data.title
             return MenuBarContent.Item(

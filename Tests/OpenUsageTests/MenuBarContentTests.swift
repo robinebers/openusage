@@ -120,6 +120,34 @@ final class MenuBarContentTests: XCTestCase {
         XCTAssertEqual(MenuBarContentBuilder.build(board: board, limit: .upToThree), MenuBarContent(items: []), "off, pins stay out")
     }
 
+    func testAlwaysShowingWithNothingPinnedOrRunningOutFallsBackToLimitsWithAReading() {
+        let accounts = [account(personal, limit("Session", used: 10), limit("Weekly", used: 40)),
+                        account(chatGPT, limit("Session", used: 20))]
+        let strip = content(.upToThree, alwaysShows: true, accounts[0], accounts[1])
+        XCTAssertEqual(strip.items.map(\.id), ["claude@1.Session", "claude@1.Weekly", "codex@1.Session"], "dashboard order")
+        XCTAssertEqual(strip.items.map(\.value), ["10%", "40%", "20%"])
+        XCTAssertEqual(strip.overflow, 0)
+
+        let one = content(.upToOne, alwaysShows: true, accounts[0], accounts[1])
+        XCTAssertEqual(one.items.map(\.id), ["claude@1.Session"])
+        XCTAssertEqual(one.overflow, 2)
+
+        XCTAssertEqual(content(.upToThree, accounts[0], accounts[1]), MenuBarContent(items: []), "off, nothing needs the user")
+        XCTAssertEqual(content(.iconOnly, alwaysShows: true, accounts[0]), MenuBarContent(items: []), "App Icon Only wins")
+    }
+
+    func testTheQuietFallbackLeavesOutLimitsWithoutAReadingAndStepsAsideForAnyListedLimit() {
+        var waiting = limit("Weekly", used: 0)
+        waiting.hasData = false
+        XCTAssertEqual(content(.upToThree, alwaysShows: true, account(personal, waiting)), MenuBarContent(items: []))
+
+        let listed = content(.upToThree, alwaysShows: true, account(personal, limit("Quiet", used: 10), limit("Low", used: 95)))
+        XCTAssertEqual(listed.items.map(\.shortLabel), ["Low"], "once something is listed, quiet limits stay out")
+        let pinned = content(.upToThree, pinned: ["claude@1.Quiet"], alwaysShows: true,
+                             account(personal, limit("Quiet", used: 10), limit("Other", used: 20)))
+        XCTAssertEqual(pinned.items.map(\.shortLabel), ["Quiet"], "a pin keeps the strip to what Priority lists")
+    }
+
     func testAPinnedMetricWithoutALimitShowsItsAmount() {
         let provider = Provider(id: "openrouter", kind: .openrouter)
         let descriptor = WidgetDescriptor.values(key: "balance", provider: provider, title: "Balance")

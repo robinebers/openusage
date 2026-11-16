@@ -110,6 +110,14 @@ struct PinnedMetric: Identifiable {
     var data: WidgetData { line.data }
 }
 
+/// A limit with a reading that Priority leaves unlisted because nothing about it needs the user yet.
+struct QuietMetric: Identifiable {
+    let provider: Provider
+    let line: DashboardLine
+
+    var id: String { line.id }
+}
+
 /// The limits that need the user, most urgent first, for the menu bar and the Priority tab.
 struct PriorityBoard {
     enum Summary: Equatable {
@@ -140,6 +148,9 @@ struct PriorityBoard {
     let usedUp: [PriorityItem]
     /// Limits with over half left that reset within a day, soonest reset first. In the menu bar only with Always Show In Menu Bar on.
     let useItOrLoseIt: [PriorityItem]
+    /// Limits with a reading that no section lists, in dashboard order. The menu bar falls back to these with
+    /// Always Show In Menu Bar on and nothing in the sections above, so the strip is never just the app icon.
+    let quiet: [QuietMetric]
     let notices: [AccountNotice]
     /// Accounts with no first reading yet, in dashboard order. Each shows as a skeleton row under the rest.
     let waiting: [Provider]
@@ -170,7 +181,9 @@ struct PriorityBoard {
             let item = PriorityItem.Reason(line, now: now, burningFast: burningFast, useItOrLoseIt: useItOrLoseIt).map {
                 PriorityItem(provider: provider, line: line, reason: $0, isPinned: isPinned)
             }
-            return (pin: isPinned ? PinnedMetric(provider: provider, line: line, item: item) : nil, item: item)
+            let isQuiet = !isPinned && item == nil && line.data.hasData && line.data.isBounded
+            return (pin: isPinned ? PinnedMetric(provider: provider, line: line, item: item) : nil, item: item,
+                    quiet: isQuiet ? QuietMetric(provider: provider, line: line) : nil)
         }
         let ranked = readings.compactMap(\.item).enumerated().sorted { lhs, rhs in
             let (left, right) = (lhs.element.reason.rank, rhs.element.reason.rank)
@@ -206,6 +219,7 @@ struct PriorityBoard {
             attention: runningOut.filter { !$0.isPinned },
             usedUp: ranked.filter { $0.reason.section == .usedUp },
             useItOrLoseIt: ranked.filter { $0.reason.section == .useItOrLoseIt && !$0.isPinned },
+            quiet: readings.compactMap(\.quiet),
             notices: notices, waiting: waiting, summary: summary,
             showsClearRow: !awaitingUsage && notices.isEmpty && runningOut.isEmpty
         )
