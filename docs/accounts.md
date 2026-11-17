@@ -8,14 +8,15 @@ on the dashboard.
 1. Click **Add New Account**.
 2. Pick a provider. Copilot first asks for **Sign In with GitHub** (your own seat) or
    **Organization Billing** (an organization's credits and spend). **Sign In with GitHub** then asks
-   for a domain: leave it blank for github.com, or enter your company's GHE.com address.
+   for a domain: leave it blank for github.com, or enter your company's GHE.com address. OpenCode
+   first asks for **Sign In with OpenCode** (the Console device code) or **Use an API Key**.
 3. Finish the sign-in:
 
 | Sign-in | Providers | What to do |
 |---|---|---|
 | Browser | Claude, ChatGPT, Cursor, Antigravity, Devin | Sign in in the browser that opens. If it shows a code, paste it and click **Continue**. |
 | Device code | Amp, Copilot, Grok, Muse Code, OpenCode | Copy the code, click **Open Browser**, and enter it if the page doesn't fill it in. |
-| API key | Ollama, OpenRouter, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. |
+| API key | Ollama, OpenCode, OpenRouter, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. |
 | Organization billing | Copilot | Enter the organization and a token from an owner or billing manager, and click **Add Account**. |
 
 If a sign-in fails, click **Try Again**.

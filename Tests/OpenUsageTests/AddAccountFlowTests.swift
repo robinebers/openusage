@@ -111,6 +111,44 @@ final class AddAccountFlowTests: XCTestCase {
         XCTAssertEqual(try vault.load(account.id), .apiKey("github_pat_1"))
     }
 
+    func testOpenCodeAsksForAMethodAndAnAPIKeyAddsTheAccount() async throws {
+        let vault = InMemoryCredentialVault()
+        let store = makeStore(vault: vault)
+        var started: [ProviderAuthMethod] = []
+        let flow = AddAccountFlow(store: store, openURL: { _ in }) { kind, method, _, _ in
+            started.append(method)
+            return StubLogin { input in
+                var iterator = input.makeAsyncIterator()
+                let key = await iterator.next() ?? ""
+                return (kind.displayName, .apiKey(key))
+            }
+        }
+        flow.choose(.opencodeGo)
+        XCTAssertNil(flow.method, "OpenCode asks how to add it")
+        XCTAssertFalse(flow.isWorking, "choosing OpenCode must not start the Console sign-in")
+
+        let keyMethod = try XCTUnwrap(ProviderKind.opencodeGo.authMethods.first { if case .apiKey = $0 { true } else { false } })
+        flow.choose(keyMethod)
+        XCTAssertFalse(flow.isWorking, "the key step waits for a key")
+        flow.apiKey = "sk-opencode"
+        flow.addKey()
+        try await waitUntil { flow.isFinished }
+
+        XCTAssertEqual(started, [keyMethod])
+        let account = try XCTUnwrap(store.accounts.first)
+        XCTAssertEqual(account.kind, .opencodeGo)
+        XCTAssertEqual(account.label, "OpenCode Account")
+        XCTAssertEqual(try vault.load(account.id), .apiKey("sk-opencode"))
+    }
+
+    func testOpenCodeSignInIsListedBeforeTheAPIKey() {
+        XCTAssertEqual(ProviderKind.opencodeGo.authMethods.first, .oauth)
+        XCTAssertEqual(ProviderKind.opencodeGo.authMethods.count, 2)
+        XCTAssertTrue(ProviderLoginCatalog.login(for: .opencodeGo, method: .oauth, organization: "", domain: .github) is OpenCodeLogin)
+        let keyMethod = ProviderKind.opencodeGo.authMethods[1]
+        XCTAssertTrue(ProviderLoginCatalog.login(for: .opencodeGo, method: keyMethod, organization: "", domain: .github) is APIKeyLogin)
+    }
+
     func testBackStopsTheSignInAndReturnsToTheListWithTheProviderSelected() async throws {
         let store = makeStore()
         let url = try XCTUnwrap(URL(string: "https://example.com/authorize"))

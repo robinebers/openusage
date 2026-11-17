@@ -23,7 +23,7 @@ How each provider signs in and what its card shows.
 | Grok | Device code (xAI) | Weekly, Extra Usage |
 | Muse Code | Device code (Meta) | Session, Weekly |
 | Ollama | API key | Session, Weekly, Monthly, Extra Usage, Today, Yesterday, Last 30 Days, Requests |
-| OpenCode | Device code (OpenCode Console) | Session, Weekly, Monthly |
+| OpenCode | Device code (OpenCode Console), or an API key | Session, Weekly, Monthly |
 | OpenRouter | Management API key, or a standard API key | Balance, Today, Yesterday, This Week, This Month, Prior 30 Days, Key Limit, Budget, Free Requests |
 | Z.ai | API key | Session, Weekly, Web Searches, Limit Resets |
 
@@ -200,9 +200,9 @@ UTC day, and on ⌘R.
 - The card shows the session, weekly, and monthly caps, and the plan the Console names: Go, Go Plus, or
   Go Teams. If the plan read fails, the card keeps its caps and shows no plan until the next try an hour
   later.
-- An account added earlier with an API key keeps reading its caps but shows no plan, since the key can't
-  read it. Its page offers **Sign In Again…**, which switches it to the sign-in and keeps its name, order,
-  and settings.
+- If you only have an API key, choose **Use an API Key** instead. The card shows the same caps but no
+  plan, since the key can't read it. The account's page offers **Sign In Again…**, which switches it to
+  the Console sign-in and keeps its name, order, and settings.
 
 ## OpenRouter
 
