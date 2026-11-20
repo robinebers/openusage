@@ -222,7 +222,7 @@ struct SettingsScreen: View {
         #endif
         Section {
             Toggle(isOn: $hideFromScreenShare.isEnabled) {
-                titled("Privacy Mode", info: "Hide usage and account names from screenshots and recordings")
+                titled("Privacy Mode", info: "Hide usage and account names from screen recordings")
             }
             Toggle(isOn: Binding(
                 get: { container.telemetry.isEnabled },

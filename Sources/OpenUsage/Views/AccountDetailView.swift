@@ -203,7 +203,7 @@ struct AccountDetailView: View {
         if container.accounts.account(cardID: providerID) != nil {
             removalError = container.accounts.lastError ?? "The account could not be removed."
         } else {
-            withAnimation(Motion.navigation) { popover.customizeProviderID = nil }
+            popover.customizeProviderID = nil
         }
     }
 }

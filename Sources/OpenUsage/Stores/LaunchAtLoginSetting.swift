@@ -6,7 +6,7 @@ import ServiceManagement
 final class LaunchAtLoginSetting {
     static let failureMessage = "macOS wouldn't update Launch at Login. Check System Settings → Login Items."
 
-    private(set) var isEnabled: Bool
+    private(set) var isEnabled = false
     private(set) var errorMessage: String?
 
     private let currentStatus: () -> Bool
@@ -24,7 +24,6 @@ final class LaunchAtLoginSetting {
     ) {
         self.currentStatus = currentStatus
         self.setSystemEnabled = setEnabled
-        self.isEnabled = currentStatus()
     }
 
     func refreshStatus() {
