@@ -45,6 +45,7 @@ final class DevinLoginTests: XCTestCase {
         XCTAssertEqual(redirect.path, "/callback", "Devin refuses any other callback path")
         XCTAssertEqual(query["prompt"], "select_account")
         XCTAssertEqual(query["code_challenge_method"], "S256")
+        XCTAssertEqual(query["cli_pkce_marker"], "1", "#1716: the Devin CLI sends it, and the Windsurf sign-in Devin hands a signed-out browser to carries it")
         XCTAssertEqual(callback.value, 200)
 
         XCTAssertEqual(http.requests.map(\.url.absoluteString), [tokenURL, defaultStatusURL])
