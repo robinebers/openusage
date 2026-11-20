@@ -26,7 +26,7 @@ struct HubDetailView: View {
                             VStack(spacing: 0) {
                                 ForEach(providers) { provider in
                                     AccountListRow(provider: provider, grip: { EmptyView() }) {
-                                        withAnimation(Motion.navigation) { popover.customizeProviderID = provider.id }
+                                        popover.customizeProviderID = provider.id
                                     }
                                 }
                             }
@@ -81,7 +81,7 @@ struct HubDetailView: View {
         if container.accounts.hubs.contains(where: { $0.id == hubID }) {
             removalError = container.accounts.lastError ?? "The hub could not be removed."
         } else {
-            withAnimation(Motion.navigation) { popover.customizeHubID = nil }
+            popover.customizeHubID = nil
         }
     }
 }

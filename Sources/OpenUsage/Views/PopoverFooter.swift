@@ -26,6 +26,7 @@ struct PopoverFooter: View {
                 .padding(.horizontal, 4)
             } else if screen == .accounts, popover.customizeProviderID == nil, popover.customizeHubID == nil {
                 addAccountButton
+                    .transition(.asymmetric(insertion: .opacity.animation(Motion.navigation), removal: .identity))
             } else {
                 EmptyView()
             }
