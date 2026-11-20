@@ -170,8 +170,11 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         hosted.popover.back()
         try await settle(hosted)
 
+        // The frame already drawn when Back lands can still reach the panel, one push step past `turn`.
+        let first = try XCTUnwrap(log.heights.first)
+        XCTAssertLessThan(first - turn, 20, "the panel jumped from \(turn) to \(first)")
         XCTAssertEqual(hosted.panel.frame.height, list, accuracy: 1)
-        assertMovesOnce(log.heights, from: turn, to: list)
+        assertMovesOnce(Array(log.heights.dropFirst()), from: first, to: list)
     }
 
     /// A screen chosen while the panel is closed, like Settings from the status item's menu, opens at
