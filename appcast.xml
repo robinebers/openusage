@@ -3,6 +3,33 @@
     <channel>
         <title>OpenUsage</title>
         <item>
+            <title>0.8.1-beta.3</title>
+            <pubDate>Fri, 20 Nov 2026 06:40:45 +0000</pubDate>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>901</sparkle:version>
+            <sparkle:shortVersionString>0.8.1-beta.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[## v0.8.1-beta.3
+
+### Bug Fixes
+- Settings: the popover no longer stutters after Settings was opened once; the Launch at Login check now runs only when Settings opens. Thanks @kennnyq ([#1724](https://github.com/robinebers/openusage/pull/1724)) by @robinebers
+- Panel: going to Accounts and opening or leaving an account now resizes the panel in one smooth motion instead of dipping or jumping. Thanks @kennnyq ([#1725](https://github.com/robinebers/openusage/pull/1725)) by @robinebers
+- Devin: sign-in now sends the marker the Devin CLI sends, for browsers that aren't signed in to Devin yet. Thanks @jro7 ([#1723](https://github.com/robinebers/openusage/pull/1723)) by @robinebers
+- Privacy Mode: the tooltip now says it hides usage and account names from screen recordings ([#1724](https://github.com/robinebers/openusage/pull/1724)) by @robinebers
+
+---
+
+### Changelog
+**Full Changelog**: [v0.8.1-beta.2...v0.8.1-beta.3](https://github.com/robinebers/openusage/compare/v0.8.1-beta.2...v0.8.1-beta.3)
+
+- [53f70b3](https://github.com/robinebers/openusage/commit/53f70b396698656cb5e1e3f59c40d1b86d6b5296) fix(devin): send cli_pkce_marker on sign-in (#1723) by @robinebers
+- [21d935f](https://github.com/robinebers/openusage/commit/21d935f8fabad37fde13ea36e1637e448c9976ca) fix(panel): resize once with screen slides and account pages (#1725) by @robinebers
+- [e288b3d](https://github.com/robinebers/openusage/commit/e288b3dae00429b4bad10ba03e720fda06f8f987) fix(settings): stop the Launch at Login check on every popover redraw (#1724) by @robinebers
+
+]]></description>
+            <enclosure url="https://github.com/robinebers/openusage/releases/download/v0.8.1-beta.3/OpenUsage-0.8.1-beta.3.dmg" length="20116535" type="application/octet-stream" sparkle:edSignature="UNCqY4Au63ieJQ1XbTBnIxmVL3GII3bel/lJAa/0H/QK1k1WdOq2LW/QglR6Bo8NFfpHNcn3a2j+68RujNPOBw=="/>
+        </item>
+        <item>
             <title>0.8.1-beta.2</title>
             <pubDate>Sun, 15 Nov 2026 09:57:43 +0000</pubDate>
             <sparkle:channel>beta</sparkle:channel>
