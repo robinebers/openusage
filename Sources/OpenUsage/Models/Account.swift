@@ -69,7 +69,9 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
 
     var authMethods: [ProviderAuthMethod] {
         switch self {
-        case .claude, .codex, .cursor, .amp, .antigravity, .devin, .grok, .muse, .opencodeGo: [.oauth]
+        case .codex, .cursor, .amp, .antigravity, .devin, .grok, .muse, .opencodeGo: [.oauth]
+        // A long-lived token from `claude setup-token` is pasted like a key. See `refreshClaudeToken`.
+        case .claude: [.oauth, .apiKey(keyPage: URL(string: "https://code.claude.com/docs/en/authentication")!)]
         case .copilot: [.oauth, .organizationToken]
         case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
         case .openrouter: [.apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)]

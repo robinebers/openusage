@@ -10,6 +10,7 @@ final class DuplicateLoginTests: XCTestCase {
 
         let flow = flow(store) { Self.claude(identity: "acct/org") }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.errorMessage != nil }
 
         XCTAssertEqual(flow.errorMessage, "This account is already added as Work.")
@@ -23,6 +24,7 @@ final class DuplicateLoginTests: XCTestCase {
 
         let flow = flow(store) { Self.claude(identity: "acct/other-org") }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.isFinished }
         XCTAssertEqual(store.accounts.count, 2)
     }
@@ -35,6 +37,7 @@ final class DuplicateLoginTests: XCTestCase {
 
         let flow = flow(store) { Self.claude(identity: "acct/org") }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.isFinished || flow.errorMessage != nil }
 
         XCTAssertEqual(flow.errorMessage, "OpenUsage couldn't check the saved sign-in for Work. Check Keychain access and try again.")
@@ -117,6 +120,7 @@ final class DuplicateLoginTests: XCTestCase {
 
         let flow = flow(store) { .oauth(OAuthTokens(accessToken: "b")) }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.isFinished }
         XCTAssertEqual(store.accounts.count, 2)
     }

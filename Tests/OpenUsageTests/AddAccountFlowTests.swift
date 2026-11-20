@@ -14,6 +14,7 @@ final class AddAccountFlowTests: XCTestCase {
                 : StubLogin { _ in ("claude@example.com", .oauth(OAuthTokens(accessToken: "access"))) }
         }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.errorMessage != nil }
         XCTAssertEqual(flow.errorMessage, LoginError.invalidCode.localizedDescription)
         XCTAssertTrue(store.accounts.isEmpty)
@@ -163,6 +164,7 @@ final class AddAccountFlowTests: XCTestCase {
             }
         }
         flow.choose(.claude)
+        flow.choose(.oauth)
         try await waitUntil { flow.errorMessage != nil }
         XCTAssertEqual(opened, [url], "the browser opens when the sign-in asks for it")
 

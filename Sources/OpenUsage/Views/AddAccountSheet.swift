@@ -83,10 +83,16 @@ private struct MethodChoiceStep: View {
         SheetHeader(
             provider: provider,
             title: "Add \(provider.displayName)",
-            message: "Sign in to your own seat, or add your organization’s billing with a token."
+            message: provider == .claude
+                ? "Sign in with your browser, or paste a long-lived token from claude setup-token."
+                : "Sign in to your own seat, or add your organization’s billing with a token."
         )
         ChoiceList(items: provider.authMethods, selection: $selection, choose: { flow.choose($0) }) { method in
-            Text(method == .organizationToken ? "Organization Billing" : "Sign In with GitHub")
+            switch method {
+            case .organizationToken: Text("Organization Billing")
+            case .apiKey: Text("Long-Lived Token")
+            case .oauth: Text(provider == .copilot ? "Sign In with GitHub" : "Sign In with Browser")
+            }
         }
         CancelRow(cancel: cancel)
     }
@@ -255,12 +261,15 @@ private struct APIKeyStep: View {
         SheetHeader(
             provider: provider,
             title: "Add \(provider.displayName)",
-            message: "Enter an API key from your \(provider.displayName) account. It’s stored in your Keychain.",
-            link: Link("Get Your API Key", destination: keyPage)
+            message: provider == .claude
+                ? "Paste a long-lived token from claude setup-token. It shows the limits Claude reports with a "
+                    + "small request, and it’s stored in your Keychain."
+                : "Enter an API key from your \(provider.displayName) account. It’s stored in your Keychain.",
+            link: Link(provider == .claude ? "About Long-Lived Tokens" : "Get Your API Key", destination: keyPage)
         )
         Form {
             Section {
-                SecureField("API Key", text: $flow.apiKey, prompt: Text("Required"))
+                SecureField(provider == .claude ? "Token" : "API Key", text: $flow.apiKey, prompt: Text("Required"))
                     .onSubmit { flow.addKey() }
                 TextField("Name", text: $flow.accountName, prompt: Text(provider.displayName))
                     .onSubmit { flow.addKey() }

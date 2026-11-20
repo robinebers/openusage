@@ -57,6 +57,8 @@ and add it again.
 
 - Sign in through claude.ai in your browser. If the browser shows a code instead of returning to the
   app, paste it into the sheet.
+- Or paste a long-lived token from `claude setup-token`. It shows only the Session, Weekly, and Fable
+  limits Claude reports, read with one small model request per refresh. See [Accounts](accounts.md#add-an-account).
 - The card reads the plan (Pro, Max, or Ultra) once an hour. Ultra has no 5-hour limit, so it has no
   Session row.
 - Extra Usage shows spend against the monthly limit, or the amount spent when there is no limit, in

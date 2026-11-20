@@ -8,7 +8,8 @@ on the dashboard.
 1. Click **Add New Account**.
 2. Pick a provider. Copilot first asks for **Sign In with GitHub** (your own seat) or
    **Organization Billing** (an organization's credits and spend). **Sign In with GitHub** then asks
-   for a domain: leave it blank for github.com, or enter your company's GHE.com address.
+   for a domain: leave it blank for github.com, or enter your company's GHE.com address. Claude first
+   asks for **Sign In with Browser** or **Long-Lived Token**.
 3. Finish the sign-in:
 
 | Sign-in | Providers | What to do |
@@ -17,6 +18,13 @@ on the dashboard.
 | Device code | Amp, Copilot, Grok, Muse Code, OpenCode | Copy the code, click **Open Browser**, and enter it if the page doesn't fill it in. |
 | API key | Ollama, OpenRouter, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. |
 | Organization billing | Copilot | Enter the organization and a token from an owner or billing manager, and click **Add Account**. |
+| Long-lived token | Claude | Paste a token from `claude setup-token` and click **Add Account**. |
+
+A Claude long-lived token can't read Claude's usage page, so OpenUsage sends one small model request
+per refresh and reads the limits Claude reports with it. It shows the Session, Weekly, and Fable limits
+Claude reports and no plan, Sonnet limit, extra usage, or resets. The request goes to Fable, whose
+answer carries the Fable limit. To replace the token, remove the
+account and add it again.
 
 If a sign-in fails, click **Try Again**.
 
