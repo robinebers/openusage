@@ -258,6 +258,7 @@ struct HostedPopover {
     let popover: PopoverState
     let defaults: UserDefaults
     let dataStore: WidgetDataStore
+    let accounts: AccountStore
 
     @MainActor
     func open() {
@@ -307,7 +308,7 @@ extension QuietWindowTestCase {
             MenuBarPopover.clampHeight = nil
         }
         QuietTestProcess.show(panel, in: self)
-        return HostedPopover(panel: panel, host: hosting, popover: container.popover, defaults: defaults, dataStore: container.dataStore)
+        return HostedPopover(panel: panel, host: hosting, popover: container.popover, defaults: defaults, dataStore: container.dataStore, accounts: store)
     }
 }
 

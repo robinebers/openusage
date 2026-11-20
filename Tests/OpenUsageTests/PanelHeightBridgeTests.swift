@@ -74,7 +74,7 @@ final class PanelHeightBridgeTests: XCTestCase {
             firstApply.fulfill()
         }
 
-        _ = PanelHeightModifier(height: 640).effectValue(size: CGSize(width: 320, height: 640))
+        _ = PanelHeightModifier(from: 640, to: 640, progress: 1).effectValue(size: CGSize(width: 320, height: 640))
 
         await fulfillment(of: [firstApply], timeout: 1)
         XCTAssertEqual(applied, [640])
