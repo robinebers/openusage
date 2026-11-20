@@ -58,7 +58,8 @@ final class AppContainer {
             registry: registry,
             providers: providers,
             cache: ProviderSnapshotCache(userDefaults: defaults),
-            defaults: defaults
+            defaults: defaults,
+            exchangeRateClient: ExchangeRateClient(http: http)
         )
         self.providers = providers
         self.layout = layout

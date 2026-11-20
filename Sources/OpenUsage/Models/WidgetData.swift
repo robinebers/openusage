@@ -22,6 +22,7 @@ struct WidgetData: Hashable {
     var values: [MetricValue] = []
     var sessionStartSignal: SessionStartSignal?
     var showsPaceMarks = true
+    var displayCurrency: DisplayCurrency?
 
     enum SessionStartSignal: Hashable {
         /// Antigravity supplies reset dates for untouched windows. Only exact zero usage marks them fresh.
@@ -92,7 +93,7 @@ struct WidgetData: Hashable {
         guard hasData else { return Self.noDataValue }
         if let valueTextOverride { return valueTextOverride }
         if let first = values.first {
-            return MetricFormatter.number(first.number, kind: first.kind, style: .row, currencyCode: first.currencyCode)
+            return MetricFormatter.number(first.number, kind: first.kind, style: .row, currencyCode: first.currencyCode, in: displayCurrency)
         }
         return format(displayedValue)
     }
@@ -101,12 +102,12 @@ struct WidgetData: Hashable {
         guard hasData else { return Self.noDataValue }
         if let valueTextOverride { return valueTextOverride }
         if let first = values.first {
-            return MetricFormatter.number(first.number, kind: first.kind, style: .tray, currencyCode: first.currencyCode)
+            return MetricFormatter.number(first.number, kind: first.kind, style: .tray, currencyCode: first.currencyCode, in: displayCurrency)
         }
         if kind == .percent, let limit, limit > 0 {
             return MetricFormatter.number(displayedValue / limit * 100, kind: .percent, style: .tray)
         }
-        return MetricFormatter.number(displayedValue, kind: kind, style: .tray, currencyCode: currencyCode)
+        return MetricFormatter.number(displayedValue, kind: kind, style: .tray, currencyCode: currencyCode, in: displayCurrency)
     }
 
     var unboundedDetail: String {
@@ -117,11 +118,11 @@ struct WidgetData: Hashable {
         guard hasData else { return [Self.noDataDetail] }
         if let valueTextOverride { return [valueTextOverride] }
         if values.count == 1, values[0].kind == .dollars, let word = unboundedValueWord {
-            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row, currencyCode: values[0].currencyCode)) \(word)"]
+            return ["\(MetricFormatter.number(values[0].number, kind: .dollars, style: .row, currencyCode: values[0].currencyCode, in: displayCurrency)) \(word)"]
         }
         if !values.isEmpty {
             let hasDollars = values.contains { $0.kind == .dollars }
-            return values.filter { !hasDollars || $0.label != "credits" }.map { MetricFormatter.string(for: $0, style: .row) }
+            return values.filter { !hasDollars || $0.label != "credits" }.map { MetricFormatter.string(for: $0, style: .row, in: displayCurrency) }
         }
         return ["\(valueText) \(unboundedValueWord ?? displayMode.label.lowercased())"]
     }
@@ -147,7 +148,7 @@ struct WidgetData: Hashable {
     }
 
     private func format(_ value: Double) -> String {
-        MetricFormatter.number(value, kind: kind, style: .row, currencyCode: currencyCode)
+        MetricFormatter.number(value, kind: kind, style: .row, currencyCode: currencyCode, in: displayCurrency)
     }
 }
 

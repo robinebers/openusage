@@ -169,7 +169,9 @@ extension WidgetDataStore {
         now: @escaping () -> Date = Date.init,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         // None by default: their waits are real time and would outlive the test, so an offline failure counts at once.
-        offlineRetryDelays: [TimeInterval] = []
+        offlineRetryDelays: [TimeInterval] = [],
+        // Offline by default, so a test that picks a display currency never reads real rates.
+        exchangeRateClient: ExchangeRateClient = ExchangeRateClient(http: RoutingHTTPClient { _ in .json("", status: 503) })
     ) -> WidgetDataStore {
         WidgetDataStore(
             registry: registry ?? .from(runtimes),
@@ -178,7 +180,8 @@ extension WidgetDataStore {
             defaults: defaults,
             now: now,
             providerRefreshTimeout: providerRefreshTimeout,
-            offlineRetryDelays: offlineRetryDelays
+            offlineRetryDelays: offlineRetryDelays,
+            exchangeRateClient: exchangeRateClient
         )
     }
 }

@@ -16,7 +16,7 @@ on the dashboard.
 |---|---|---|
 | Browser | Claude, ChatGPT, Cursor, Antigravity, Devin | Sign in in the browser that opens. If it shows a code, paste it and click **Continue**. |
 | Device code | Amp, Copilot, Grok, Muse Code, OpenCode | Copy the code, click **Open Browser**, and enter it if the page doesn't fill it in. |
-| API key | Ollama, OpenRouter, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. |
+| API key | DeepSeek, Ollama, OpenRouter, Plivo, Z.ai | Create a key on the linked page, paste it, and click **Add Account**. Plivo takes its Auth ID and Auth Token as `AUTH_ID:AUTH_TOKEN`. |
 | Organization billing | Copilot | Enter the organization and a token from an owner or billing manager, and click **Add Account**. |
 | Long-lived token | Claude | Paste a token from `claude setup-token` and click **Add Account**. |
 
@@ -48,6 +48,12 @@ its right-click menu. Return saves and Esc cancels.
 
 An account's page has a switch, a pin, and a drag handle for each metric. See
 [Hiding, pinning, and ordering metrics](dashboard.md#hiding-pinning-and-ordering-metrics).
+
+## Pick an account's currency
+
+An account that shows money has a **Currency** picker on its page. Leave it at Same as Settings, or
+pick As Reported or a currency such as Indian Rupee for that account alone. See
+[Currency](settings.md#currency).
 
 ## Replace an API key
 

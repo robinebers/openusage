@@ -9,6 +9,7 @@ private let ollamaBalance = #"{"included":{"balance_usd":72.5,"allowance_usd":10
 final class ProviderErrorBoundaryTests: XCTestCase {
     private static let keyedKinds: [(ProviderKind, AccountCredential)] = [
         (.copilot, .oauth(OAuthTokens(accessToken: "token"))),
+        (.deepseek, .apiKey("key")),
         (.devin, .oauth(OAuthTokens(accessToken: "key"))),
         (.ollama, .apiKey("key")),
         (.opencodeGo, .oauth(OAuthTokens(accessToken: "token"))),

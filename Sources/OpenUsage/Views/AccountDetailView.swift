@@ -20,6 +20,7 @@ struct AccountDetailView: View {
             VStack(alignment: .leading, spacing: PanelMetrics.sectionSpacing) {
                 if let host = provider.hubHost {
                     metricsCard
+                    currencyRow
                     infoRow(icon: CLIProxyHub.markID, "Managed by \(host)")
                 } else {
                     let problem = dataStore.problem(for: providerID)
@@ -30,6 +31,7 @@ struct AccountDetailView: View {
                         signInAgainRow
                     }
                     metricsCard
+                    currencyRow
                     if let domain = provider.domain {
                         infoRow(icon: provider.icon, "Signed in at \(domain)")
                     }
@@ -61,6 +63,29 @@ struct AccountDetailView: View {
                     metricRow(metric)
                 }
             }
+            .cardSurface()
+        }
+    }
+
+    /// The account's own currency for money, in place of the one in Settings, while the account shows money.
+    @ViewBuilder
+    private var currencyRow: some View {
+        let showsMoney = layout.orderedSupportedMetrics(for: providerID).contains { metric in
+            let data = dataStore.data(for: metric)
+            return data.hasData && (data.values.isEmpty ? data.kind == .dollars : data.values.contains { $0.kind == .dollars })
+        }
+        if showsMoney {
+            let settings = dataStore.displayCurrencyCode.map(DisplayCurrency.name(for:)) ?? "As Reported"
+            Picker("Currency", selection: Binding(
+                get: { dataStore.accountCurrencyCodes[providerID] },
+                set: { dataStore.accountCurrencyCodes[providerID] = $0 }
+            )) {
+                Text("Same as Settings (\(settings))").tag(String?.none)
+                Text("As Reported").tag(String?.some(""))
+                ForEach(DisplayCurrency.choices, id: \.self) { Text(DisplayCurrency.label(for: $0)).tag(String?.some($0)) }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, PanelMetrics.controlRowPadding)
             .cardSurface()
         }
     }
@@ -111,7 +136,7 @@ struct AccountDetailView: View {
 
     private static func replacedField(_ account: Account) -> String? {
         switch account.authMethod {
-        case .apiKey: "API Key"
+        case .apiKey: account.kind.keyFieldName
         case .organizationToken: "Token"
         case .oauth: nil
         }

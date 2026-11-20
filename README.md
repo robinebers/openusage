@@ -33,12 +33,14 @@ The app updates itself with signed, notarized [Sparkle](docs/updates.md) updates
 - **[Amp](docs/providers.md#amp)**: agent usage, orb hours, Amp Free, credits
 - **[Antigravity](docs/providers.md#antigravity)**: Gemini, Argon, and Claude quotas
 - **[Copilot](docs/providers.md#copilot)**: credits, extra usage, chat, completions, organization billing, GitHub Enterprise on GHE.com
+- **[DeepSeek](docs/providers.md#deepseek)**: balance
 - **[Devin](docs/providers.md#devin)**: daily and weekly quota, extra usage
 - **[Grok](docs/providers.md#grok)**: weekly limit, extra usage
 - **[Muse Code](docs/providers.md#muse-code)**: session, weekly
 - **[Ollama](docs/providers.md#ollama)**: session, weekly, monthly, extra usage, daily usage and tokens
 - **[OpenCode](docs/providers.md#opencode)**: session, weekly, monthly
 - **[OpenRouter](docs/providers.md#openrouter)**: balance, spend, key limit, budget
+- **[Plivo](docs/providers.md#plivo)**: credits
 - **[Z.ai](docs/providers.md#zai)**: session, weekly, web searches, rate-limit resets
 - **[CLIProxyAPI hubs](docs/cliproxyapi.md)**: every Claude, ChatGPT, Antigravity, Devin, and Grok login on
   a [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) server
@@ -58,6 +60,7 @@ files, or logs. See [Accounts](docs/accounts.md). Coming from 0.7.x? See
 - **Unify multiple accounts.** Show your Claude or ChatGPT accounts as one card, with one bar per limit.
 - **Rate-limit resets.** See and spend Claude and ChatGPT resets.
 - **Share.** Copy a picture of your usage to the clipboard.
+- **Any currency.** Show amounts in your own currency, such as INR, at the ECB's daily rates.
 - **Notifications.** A heads-up before a limit runs out, or before a weekly limit resets with most of
   it unused.
 - **Priority limits.** Choose how much left turns a limit orange or red, see limits you're burning

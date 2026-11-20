@@ -271,7 +271,7 @@ final class WidgetDataStoreTests: XCTestCase {
         store.meterStyle = .remaining
         let remaining = store.data(for: descriptor)
         XCTAssertFalse(remaining.isBounded)
-        XCTAssertEqual(remaining.unboundedDetail, "$7.9K left")
+        XCTAssertEqual(remaining.unboundedDetail, "$7,909.64 left")
 
         store.meterStyle = .used
         let used = store.data(for: descriptor)
@@ -292,7 +292,7 @@ final class WidgetDataStoreTests: XCTestCase {
         await store.refreshAll()
 
         let data = store.data(for: descriptor)
-        XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1.2K spent")))
+        XCTAssertEqual(data.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("$1,234.56 spent")))
     }
 
     func testClaudesExtraUsageReadsInTheBillingCurrency() async throws {
@@ -317,7 +317,7 @@ final class WidgetDataStoreTests: XCTestCase {
         XCTAssertEqual(capped.menuBarValue, "€12")
 
         let uncapped = try await data(#"{"is_enabled":true,"used_credits":1500,"monthly_limit":null,"currency":"JPY","decimal_places":0}"#)
-        XCTAssertEqual(uncapped.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("¥1.5K spent")))
+        XCTAssertEqual(uncapped.dashboardRow(), DashboardRowModel(label: "Extra Usage", mark: .value("¥1,500 spent")))
     }
 
     func testAClaudeAccountWithNoFiveHourWindowHasNoSessionRow() async throws {

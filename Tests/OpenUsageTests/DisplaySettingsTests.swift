@@ -24,7 +24,7 @@ final class DisplaySettingsTests: QuietWindowTestCase {
     func testDisplayHoldsMenuBarIconsThenUsageThenUnifyAccounts() async throws {
         try await assertHeadingsAndPickers(.display, [
             "Menu Bar Icons", MenuBarLimit.upToThree.label, "Usage", WidgetDisplayMode.remaining.label, ResetDisplayMode.relative.label,
-            "Unify Accounts",
+            "Currency", "As Reported", "Unify Accounts",
         ])
     }
 

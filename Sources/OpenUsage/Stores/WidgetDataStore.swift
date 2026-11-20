@@ -7,8 +7,10 @@ final class WidgetDataStore {
     @ObservationIgnored private var registry: WidgetRegistry
     @ObservationIgnored private var providersByID: [String: ProviderRuntime]
     private let cache: ProviderSnapshotCache
-    private let defaults: UserDefaults
-    private let now: () -> Date
+    let defaults: UserDefaults
+    let now: () -> Date
+    @ObservationIgnored let exchangeRateClient: ExchangeRateClient
+    @ObservationIgnored var exchangeRatesRead: Task<Void, Never>?
     private let providerRefreshTimeout: TimeInterval
     private let offlineRetryDelays: [TimeInterval]
 
@@ -21,6 +23,9 @@ final class WidgetDataStore {
     private static let priorityBurningFastKey = "priorityBurningFast"
     private static let priorityUseItOrLoseItKey = "priorityUseItOrLoseIt"
     private static let paceMarksKey = "paceMarks"
+    private static let displayCurrencyKey = "displayCurrency"
+    private static let accountCurrenciesKey = "accountCurrencies"
+    static let exchangeRatesKey = "exchangeRates"
     private static let slowProviderRefreshThreshold: TimeInterval = 10
     static let defaultProviderRefreshTimeout: TimeInterval = 120
 
@@ -72,6 +77,26 @@ final class WidgetDataStore {
         didSet { defaults.set(showsPaceMarks, forKey: Self.paceMarksKey) }
     }
 
+    /// The currency money shows in, or nil for what each provider reports. See `DisplayCurrency`.
+    var displayCurrencyCode: String? {
+        didSet {
+            defaults.set(displayCurrencyCode, forKey: Self.displayCurrencyKey)
+            if displayCurrencyCode != nil { Task { await refreshExchangeRates() } }
+        }
+    }
+
+    /// Each account's own currency, by account id, in place of `displayCurrencyCode`; an empty code shows
+    /// what the provider reports.
+    var accountCurrencyCodes: [String: String] {
+        didSet {
+            defaults.set(accountCurrencyCodes, forKey: Self.accountCurrenciesKey)
+            Task { await refreshExchangeRates() }
+        }
+    }
+
+    var exchangeRates: ExchangeRates?
+    var exchangeRatesFailed = false
+
     /// The limits that were burning fast at their last reading, with their window's reset. See `BurningFast`.
     private(set) var burningFastWindows: [String: Date] = [:]
 
@@ -88,6 +113,7 @@ final class WidgetDataStore {
         now: @escaping () -> Date = Date.init,
         providerRefreshTimeout: TimeInterval = WidgetDataStore.defaultProviderRefreshTimeout,
         offlineRetryDelays: [TimeInterval] = RefreshSetting.offlineRetryDelays,
+        exchangeRateClient: ExchangeRateClient = ExchangeRateClient(http: URLSessionHTTPClient()),
     ) {
         precondition(providerRefreshTimeout > 0)
         self.registry = registry
@@ -97,6 +123,7 @@ final class WidgetDataStore {
         self.now = now
         self.providerRefreshTimeout = providerRefreshTimeout
         self.offlineRetryDelays = offlineRetryDelays
+        self.exchangeRateClient = exchangeRateClient
         self.meterStyle = defaults.enumValue(forKey: Self.meterStyleKey, default: .remaining)
         self.resetDisplayMode = defaults.enumValue(forKey: Self.resetDisplayModeKey, default: .relative)
         self.menuBarLimit = defaults.enumValue(forKey: Self.menuBarLimitKey, default: .upToThree)
@@ -108,6 +135,9 @@ final class WidgetDataStore {
         self.showsBurningFast = defaults.object(forKey: Self.priorityBurningFastKey) as? Bool ?? true
         self.showsUseItOrLoseIt = defaults.object(forKey: Self.priorityUseItOrLoseItKey) as? Bool ?? true
         self.showsPaceMarks = defaults.object(forKey: Self.paceMarksKey) as? Bool ?? false
+        self.displayCurrencyCode = defaults.string(forKey: Self.displayCurrencyKey)
+        self.accountCurrencyCodes = defaults.dictionary(forKey: Self.accountCurrenciesKey) as? [String: String] ?? [:]
+        self.exchangeRates = Self.savedExchangeRates(in: defaults)
         let ids = Set(registry.providers.map(\.id))
         self.snapshots = cache.load().filter { ids.contains($0.key) }
         for (id, snapshot) in snapshots { providersByID[id]?.restore(snapshot) }
@@ -134,7 +164,9 @@ final class WidgetDataStore {
     private func refreshPass(_ providerIDs: [String], force: Bool) async {
         let start = ProcessInfo.processInfo.systemUptime
         AppLog.notice(.refresh, "batch start (\(providerIDs.count) providers, force=\(force))")
+        async let rates: Void = refreshExchangeRates()
         let outcomes = await refresh(providerIDs: providerIDs, force: force)
+        await rates
         lastRefreshAt = now()
         let durationMs = durationMilliseconds(since: start)
         let refreshed = outcomes.count { $0 == .refreshed }
@@ -317,6 +349,7 @@ final class WidgetDataStore {
         result.priorityLimits = priorityLimits
         result.resetDisplayMode = resetDisplayMode
         result.showsPaceMarks = showsPaceMarks
+        result.displayCurrency = displayCurrency(for: descriptor)
         return result
     }
 

@@ -295,12 +295,14 @@ final class LimitsEnvelopeTests: XCTestCase {
             "amp": ["agentUsage", "orbHours", "free", "credits"],
             "antigravity": ["geminiSession", "geminiWeekly", "argonWeekly", "nonGeminiSession", "nonGeminiWeekly"],
             "copilot": ["premiumCredits", "extraUsage", "chat", "completions"],
+            "deepseek": ["balance"],
             "devin": ["daily", "weekly", "extraUsageBalance"],
             "grok": ["weekly"],
             "muse": ["session", "weekly"],
             "ollama": ["session", "weekly", "monthly", "purchasedCredits"],
             "opencode": ["session", "weekly", "monthly"],
             "openrouter": ["balance", "keyLimit"],
+            "plivo": ["credits"],
             "zai": ["session", "weekly", "webSearches", "rateLimitResets"]
         ]
 

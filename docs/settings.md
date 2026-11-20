@@ -30,6 +30,21 @@ Alerts, and Advanced. Changes apply at once. Hover the ⓘ beside a setting to s
 
 Click a limit's amount or reset on the dashboard to flip either one.
 
+## Currency
+
+- **Show Amounts In.** As Reported (the default) shows each provider's own currency. Pick US Dollar,
+  Euro, British Pound, Indian Rupee, Chinese Yuan, Japanese Yen, Canadian Dollar, or Australian
+  Dollar to convert every amount on the dashboard and in the menu bar.
+- Amounts convert at the European Central Bank's daily reference rates, read from
+  [Frankfurter](https://frankfurter.dev) every six hours while a currency is picked. Until the first
+  rates arrive, or if they can't be read, amounts show as reported.
+- Plivo's dollars show at a fixed ₹80 each in Indian Rupee, with or without the ECB's rates.
+- An account's page has its own **Currency** picker: Same as Settings, As Reported, or any of the
+  currencies above. Its pick takes the place of this setting for that account.
+- Dashboard rows show the exact amount, such as `₹10,083.20`. Rupees group in lakhs (`₹1,00,000`).
+  The menu bar shortens amounts over 1,000, such as `₹10.1K`.
+- The [command line](cli.md) keeps each provider's own currency.
+
 ## Unify Accounts
 
 - **Claude** and **ChatGPT.** Show the provider's accounts as one card, with each limit once. Off by

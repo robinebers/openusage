@@ -8,7 +8,7 @@ final class MetricFormatterTests: XCTestCase {
         XCTAssertEqual(MetricFormatter.number(129.81, kind: .dollars, style: .tray), "$130")
         XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .tray), "$2.1K")
         XCTAssertEqual(MetricFormatter.number(40.76, kind: .dollars, style: .row), "$40.76")
-        XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .row), "$2.1K")
+        XCTAssertEqual(MetricFormatter.number(2059.07, kind: .dollars, style: .row), "$2,059.07", "a row shows the exact amount")
     }
 
     func testCountsAbbreviateInTrayAndRow() {

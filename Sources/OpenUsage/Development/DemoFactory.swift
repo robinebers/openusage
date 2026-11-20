@@ -189,12 +189,14 @@ enum DemoFactory {
         case .amp: ["Free", "Megawatt"]
         case .antigravity: ["AI Pro", "AI Ultra"]
         case .copilot: account.organization == nil ? ["Free", "Pro", "Pro+"] : ["Business", "Enterprise"]
+        case .deepseek: []
         case .devin: ["Core", "Team"]
         case .grok: ["SuperGrok", "SuperGrok Heavy"]
         case .muse: ["Free", "Pro"]
         case .ollama: ["Free", "Pro", "Max"]
         case .opencodeGo: ["Go", "Go Plus", "Go Teams"]
         case .openrouter: ["Pay As You Go"]
+        case .plivo: ["Prepaid", "Postpaid"]
         case .zai: ["Lite", "Pro", "Max"]
         }
     }

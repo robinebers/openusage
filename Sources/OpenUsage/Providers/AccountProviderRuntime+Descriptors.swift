@@ -107,6 +107,11 @@ extension AccountProviderRuntime {
                 .boundedCount(key: "completions", provider: provider, title: "Completions", limit: 0)
                     .exportingLimit("completions", unit: "percent")
             ]
+        case .deepseek:
+            [
+                .values(key: "balance", provider: provider, title: "Balance", valueWord: "left")
+                    .exportingLimit("balance", kind: .balance, unit: "usd", source: .value(kind: .dollars))
+            ]
         case .devin:
             [
                 .percent(key: "daily", provider: provider, title: "Daily", metricLabel: "Daily quota")
@@ -166,6 +171,11 @@ extension AccountProviderRuntime {
                     .exportingLimit("keyLimit", unit: "usd"),
                 .boundedDollars(key: "budget", provider: provider, title: "Budget", limit: 100),
                 .boundedCount(key: "freeRequests", provider: provider, title: "Free Requests", limit: 50)
+            ]
+        case .plivo:
+            [
+                .values(key: "credits", provider: provider, title: "Credits", valueWord: "left")
+                    .exportingLimit("credits", kind: .balance, unit: "usd", source: .value(kind: .dollars))
             ]
         case .zai:
             [

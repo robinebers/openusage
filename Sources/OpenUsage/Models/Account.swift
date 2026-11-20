@@ -14,12 +14,14 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
     case amp
     case antigravity
     case copilot
+    case deepseek
     case devin
     case grok
     case muse
     case ollama
     case opencodeGo = "opencode"
     case openrouter
+    case plivo
     case zai
 
     var displayName: String {
@@ -30,12 +32,14 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .amp: "Amp"
         case .antigravity: "Antigravity"
         case .copilot: "Copilot"
+        case .deepseek: "DeepSeek"
         case .devin: "Devin"
         case .grok: "Grok"
         case .muse: "Muse Code"
         case .ollama: "Ollama"
         case .opencodeGo: "OpenCode"
         case .openrouter: "OpenRouter"
+        case .plivo: "Plivo"
         case .zai: "Z.ai"
         }
     }
@@ -52,6 +56,9 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .antigravity: []
         case .copilot: [.init(label: "Status Page", url: URL(string: "https://www.githubstatus.com/")!),
                         .init(label: "Usage Dashboard", url: URL(string: "https://github.com/settings/billing")!)]
+        case .deepseek: [.init(label: "Status Page", url: URL(string: "https://status.deepseek.com/")!),
+                         .init(label: "Usage Dashboard", url: URL(string: "https://platform.deepseek.com/usage")!),
+                         .init(label: "API Keys", url: URL(string: "https://platform.deepseek.com/api_keys")!)]
         case .devin: [.init(label: "Usage Dashboard", url: URL(string: "https://app.devin.ai/settings/plans")!)]
         case .grok: [.init(label: "Usage Dashboard", url: URL(string: "https://grok.com/?_s=usage")!)]
         case .muse: [.init(label: "Usage Dashboard", url: URL(string: "https://dev.meta.ai/usage")!)]
@@ -62,6 +69,8 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         case .openrouter: [.init(label: "Status Page", url: URL(string: "https://status.openrouter.ai/")!),
                            .init(label: "Usage Dashboard", url: URL(string: "https://openrouter.ai/activity")!),
                            .init(label: "Credits", url: URL(string: "https://openrouter.ai/settings/credits")!)]
+        case .plivo: [.init(label: "Status Page", url: URL(string: "https://status.plivo.com/")!),
+                      .init(label: "Console", url: URL(string: "https://console.plivo.com/dashboard/")!)]
         case .zai: [.init(label: "Usage Dashboard", url: URL(string: "https://z.ai/manage-apikey/coding-plan/personal/my-plan")!),
                     .init(label: "API Keys", url: URL(string: "https://z.ai/manage-apikey/apikey-list")!)]
         }
@@ -73,10 +82,18 @@ enum ProviderKind: String, Codable, CaseIterable, Sendable {
         // A long-lived token from `claude setup-token` is pasted like a key. See `refreshClaudeToken`.
         case .claude: [.oauth, .apiKey(keyPage: URL(string: "https://code.claude.com/docs/en/authentication")!)]
         case .copilot: [.oauth, .organizationToken]
+        case .deepseek: [.apiKey(keyPage: URL(string: "https://platform.deepseek.com/api_keys")!)]
         case .ollama: [.apiKey(keyPage: URL(string: "https://ollama.com/settings/keys")!)]
         case .openrouter: [.apiKey(keyPage: URL(string: "https://openrouter.ai/settings/management-keys")!)]
+        case .plivo: [.apiKey(keyPage: URL(string: "https://console.plivo.com/dashboard/")!)]
         case .zai: [.apiKey(keyPage: URL(string: "https://z.ai/manage-apikey/apikey-list")!)]
         }
+    }
+
+    /// What the API-key sheet and the account's page call the pasted secret. Plivo signs requests with an
+    /// Auth ID and an Auth Token, pasted together as `AUTH_ID:AUTH_TOKEN`.
+    var keyFieldName: String {
+        self == .plivo ? "Auth ID and Token" : "API Key"
     }
 }
 

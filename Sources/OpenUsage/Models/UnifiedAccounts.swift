@@ -93,7 +93,8 @@ extension WidgetData {
             WidgetData(
                 title: data.title, kind: data.kind, currencyCode: data.currencyCode, used: used, limit: limit * scale,
                 displayMode: data.displayMode, priorityLimits: data.priorityLimits, resetDisplayMode: data.resetDisplayMode,
-                resetsAt: readings.compactMap(\.resetsAt).min(), showsPaceMarks: data.showsPaceMarks
+                resetsAt: readings.compactMap(\.resetsAt).min(), showsPaceMarks: data.showsPaceMarks,
+                displayCurrency: data.displayCurrency
             )
         }
         let pooled = reading(used: used * scale)

@@ -11,8 +11,8 @@ openusage codex@1a2b3c4d   # one account, by its id
 ```
 
 - The argument is an account id (the `providers` key in the output) or a provider kind: `claude`,
-  `codex`, `cursor`, `amp`, `antigravity`, `copilot`, `devin`, `grok`, `muse`, `ollama`, `opencode`,
-  `openrouter`, `zai`. Anything else is an error.
+  `codex`, `cursor`, `amp`, `antigravity`, `copilot`, `deepseek`, `devin`, `grok`, `muse`, `ollama`,
+  `opencode`, `openrouter`, `plivo`, `zai`. Anything else is an error.
 - `--force` from 0.7.x is accepted and does nothing. The command says so on stderr.
 
 ## Install on `PATH`
@@ -85,7 +85,7 @@ Each resource is one value with a `unit`:
 - `unit` follows the provider's live format. Cursor `totalUsage` is `percent`, or `requests` on
   request-based Enterprise plans. Copilot `premiumCredits` is `percent` on paid plans, or a
   `credits` count on org-managed seats that only report personal usage. Claude `extraUsage` is the
-  account's billing currency, such as `usd` or `eur`.
+  account's billing currency, such as `usd` or `eur`. DeepSeek `balance` is `cny` or `usd`.
 
 A failed refresh doesn't change the output. The app shows the failure, with its reason in the
 account's right-click menu.
@@ -100,12 +100,14 @@ account's right-click menu.
 | Amp | `agentUsage`, `orbHours`, `free`, `credits` |
 | Antigravity | `geminiSession`, `geminiWeekly`, `argonWeekly`, `nonGeminiSession`, `nonGeminiWeekly` |
 | Copilot | `premiumCredits`, `extraUsage`, `chat`, `completions`; an organization account: `orgCredits`, `orgSpend` |
+| DeepSeek | `balance` |
 | Devin | `daily`, `weekly`, `extraUsageBalance` |
 | Grok | `weekly` |
 | Muse Code | `session`, `weekly` |
 | Ollama | `session`, `weekly`, `monthly`, `purchasedCredits` |
 | OpenCode | `session`, `weekly`, `monthly` |
 | OpenRouter | `balance`, `keyLimit` |
+| Plivo | `credits` |
 | Z.ai | `session`, `weekly`, `webSearches`, `rateLimitResets` |
 
 - ChatGPT `credits` is `0` when the balance is empty, and absent when ChatGPT reports no balance.

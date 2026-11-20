@@ -264,13 +264,19 @@ private struct APIKeyStep: View {
             message: provider == .claude
                 ? "Paste a long-lived token from claude setup-token. It shows the limits Claude reports with a "
                     + "small request, and it’s stored in your Keychain."
+                : provider == .plivo
+                ? "Enter your Plivo Auth ID and Auth Token as AUTH_ID:AUTH_TOKEN. They’re stored in your Keychain."
                 : "Enter an API key from your \(provider.displayName) account. It’s stored in your Keychain.",
-            link: Link(provider == .claude ? "About Long-Lived Tokens" : "Get Your API Key", destination: keyPage)
+            link: Link(provider == .claude ? "About Long-Lived Tokens" : "Get Your \(provider.keyFieldName)", destination: keyPage)
         )
         Form {
             Section {
-                SecureField(provider == .claude ? "Token" : "API Key", text: $flow.apiKey, prompt: Text("Required"))
-                    .onSubmit { flow.addKey() }
+                SecureField(
+                    provider == .claude ? "Token" : provider.keyFieldName,
+                    text: $flow.apiKey,
+                    prompt: Text(provider == .plivo ? "AUTH_ID:AUTH_TOKEN" : "Required")
+                )
+                .onSubmit { flow.addKey() }
                 TextField("Name", text: $flow.accountName, prompt: Text(provider.displayName))
                     .onSubmit { flow.addKey() }
             } footer: {

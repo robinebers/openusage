@@ -118,6 +118,18 @@ struct SettingsScreen: View {
             }
         }
         Section {
+            picker(
+                "Show Amounts In", selection: $dataStore.displayCurrencyCode,
+                options: [(String?.none, "As Reported")] + DisplayCurrency.choices.map { (Optional($0), DisplayCurrency.label(for: $0)) }
+            )
+        } header: {
+            Text("Currency")
+        } footer: {
+            if let currencyNote {
+                SettingsNote(currencyNote)
+            }
+        }
+        Section {
             ForEach(ProviderKind.unifiable, id: \.self) { kind in
                 Toggle(isOn: Binding(
                     get: { layout.unifiesAccounts(of: kind) },
@@ -132,6 +144,19 @@ struct SettingsScreen: View {
         } header: {
             titled("Unify Accounts", info: "Show usage limits as if all accounts were one")
         }
+    }
+
+    private var currencyNote: String? {
+        guard let code = dataStore.displayCurrencyCode else { return nil }
+        let plivo = DisplayCurrency.fixedRates(for: .plivo, in: code).isEmpty ? "" : " Plivo converts at ₹80 a dollar."
+        guard let rates = dataStore.exchangeRates else {
+            return dataStore.exchangeRatesFailed
+                ? "Exchange rates couldn't be loaded, so amounts show as each provider reports them.\(plivo)"
+                : "Loading exchange rates…"
+        }
+        let day = OpenUsageISO8601.date(from: "\(rates.day)T00:00:00Z")
+            .map { $0.formatted(Date.FormatStyle(timeZone: .gmt).month(.abbreviated).day()) } ?? rates.day
+        return "Converted at the European Central Bank's rates for \(day).\(plivo) An account's page can pick its own currency."
     }
 
     @ViewBuilder
