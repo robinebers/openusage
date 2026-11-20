@@ -19,7 +19,7 @@ only the provider APIs those accounts need.
 
 ## Privacy Mode
 
-**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screen recordings.
 While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
 panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
 off, they leave email addresses out. It is off by default. A single still screenshot (⌘⇧3, ⌘⇧4) can't
