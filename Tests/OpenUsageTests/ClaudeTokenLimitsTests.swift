@@ -53,6 +53,20 @@ final class ClaudeTokenLimitsTests: XCTestCase {
         ])
     }
 
+    @MainActor
+    func testAnHourlySlotSendsATokenAccountNothing() async throws {
+        let account = Account(kind: .claude, label: "Work")
+        let vault = InMemoryCredentialVault()
+        try vault.save(.apiKey("token"), for: account.id)
+        let runtime = AccountProviderRuntime(account: account, vault: vault, http: RoutingHTTPClient { request in
+            XCTFail("sent \(request.url)")
+            return .json("{}")
+        })
+        let snapshot = ProviderSnapshot(providerID: runtime.provider.id, displayName: runtime.provider.displayName, lines: [])
+        let updated = await runtime.refreshHourlyReads(of: snapshot)
+        XCTAssertNil(updated)
+    }
+
     func testARefusedTokenAsksForAReplacement() {
         XCTAssertThrowsError(try ClaudeUsageMapper.mapLimitHeaders(response(401))) {
             XCTAssertEqual($0 as? ProviderError, .keyRejected("Claude rejected the token."))

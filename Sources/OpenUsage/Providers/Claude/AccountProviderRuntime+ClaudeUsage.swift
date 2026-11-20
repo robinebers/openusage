@@ -51,10 +51,11 @@ extension AccountProviderRuntime {
     /// logged, so a plan that never arrives can be traced.
     func refreshHourlyReads(of snapshot: ProviderSnapshot) async -> ProviderSnapshot? {
         guard account.kind == .claude else { return nil }
-        // A long-lived token can't read the profile, so it has no plan to look up.
-        if case .apiKey? = try? await loadCredential() { return nil }
         let tag = LogTag.plugin("claude")
         let launched = claude.session == nil ? try? await loadCredential() : nil
+        // A long-lived token can't read the profile, so it has no plan to look up. Only a sign-in opens a
+        // session, so a token account is always caught here.
+        if case .apiKey? = launched { return nil }
         guard let session = claude.session ?? launched.map({ claudeSession(for: $0) }) else {
             AppLog.notice(tag, "\(account.cardID) hourly plan read skipped: no stored sign-in")
             return nil
