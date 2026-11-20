@@ -262,6 +262,8 @@ report. The account's right-click menu starts with the reason.
 
 - **Sign-in expired.** Use **Sign In Again…** on the account's page.
 - **Rejected the API key.** Use **Replace API Key…** on the account's page.
+- **Can't read this account's saved sign-in.** A different version of OpenUsage saved it. Update
+  OpenUsage, or remove the account and add it again.
 - **Rate limited** and HTTP errors clear on a later refresh. See [Refreshing](refreshing.md).
 - Accounts from a CLIProxyAPI hub have their own messages. See
   [CLIProxyAPI hubs](cliproxyapi.md#when-something-goes-wrong).

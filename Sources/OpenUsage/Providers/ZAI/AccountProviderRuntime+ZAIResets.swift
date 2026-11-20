@@ -31,7 +31,7 @@ extension AccountProviderRuntime {
         let apiKey: String
         let current: [ZAIReset]
         do {
-            guard case .apiKey(let key) = try await loadCredential() else { throw ProviderError.invalidResponse }
+            guard case .apiKey(let key) = try await loadCredential() else { throw unreadableCredential }
             apiKey = key
             current = try await readZAIResets(apiKey: apiKey)
         } catch {

@@ -52,6 +52,24 @@ final class ProviderErrorBoundaryTests: XCTestCase {
         }
     }
 
+    func testASavedCredentialOfAnotherKindSaysSoWithoutAskingTheProvider() async throws {
+        let mismatched: [(ProviderKind, AccountCredential)] = [
+            (.codex, .apiKey("key")),
+            (.openrouter, .oauth(OAuthTokens(accessToken: "token")))
+        ]
+        for (kind, credential) in mismatched {
+            let snapshot = try await refresh(kind, credential: credential) { request in
+                XCTFail("\(kind) sent \(request.url)")
+                return .json("{}")
+            }
+            XCTAssertEqual(
+                snapshot.failure?.message,
+                "This version of OpenUsage can't read this account's saved sign-in. Update OpenUsage, or remove the account and add it again.",
+                "\(kind)"
+            )
+        }
+    }
+
     func testAServerErrorNamesItsStatus() async throws {
         for (kind, credential) in Self.keyedKinds {
             let snapshot = try await refresh(kind, credential: credential) { _ in .json("<html>down</html>", status: 503) }

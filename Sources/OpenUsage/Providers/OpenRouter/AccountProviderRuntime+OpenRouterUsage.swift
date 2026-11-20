@@ -2,7 +2,7 @@ import Foundation
 
 extension AccountProviderRuntime {
     func refreshOpenRouter(_ credential: AccountCredential) async throws -> ProviderUsage {
-        guard case .apiKey(let apiKey) = credential else { throw ProviderError.invalidResponse }
+        guard case .apiKey(let apiKey) = credential else { throw unreadableCredential }
         let client = OpenRouterUsageClient(http: http)
         let key = try await client.key(apiKey: apiKey, now: now())
         switch key.kind {

@@ -6,7 +6,7 @@ extension AccountProviderRuntime {
     static let cursorRefreshLead: TimeInterval = 7 * 86_400
 
     func cursorTokens(_ credential: AccountCredential) async throws -> OAuthTokens {
-        guard case .oauth(var tokens) = credential else { throw ProviderError.invalidResponse }
+        guard case .oauth(var tokens) = credential else { throw unreadableCredential }
         let hadExpiry = tokens.expiresAt != nil
         tokens.expiresAt = tokens.expiresAt ?? ProviderParse.jwtExpiry(tokens.accessToken)
         guard let expiresAt = tokens.expiresAt else { return tokens }
