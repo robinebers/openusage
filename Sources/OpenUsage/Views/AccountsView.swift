@@ -12,8 +12,7 @@ struct AccountsView: View {
     var body: some View {
         PopoverScrollView {
             content
-                .animation(pageAnimation, value: popover.customizeProviderID)
-                .animation(pageAnimation, value: popover.customizeHubID)
+                .animation(pageAnimation, value: popover.accountsPage)
                 .padding(.horizontal, PanelMetrics.margin)
                 .padding(.top, DashboardContentView.barGap)
                 .padding(.bottom, popover.customizeProviderID == nil && popover.customizeHubID == nil ? 0 : PanelMetrics.margin)

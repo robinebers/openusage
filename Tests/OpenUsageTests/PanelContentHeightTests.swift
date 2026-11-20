@@ -94,11 +94,11 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         let start = hosted.panel.frame.height
         let log = HeightLog(hosted.panel)
         hosted.popover.toggle(.accounts)
-        try await Task.sleep(for: .milliseconds(60))
+        try await Task.sleep(for: .milliseconds(120))
         _ = hosted.accounts.add(kind: .claude, label: "Team", credential: .apiKey("key"))
         try await settle(hosted)
 
-        assertNeverPasses(log.heights, from: start, to: hosted.panel.frame.height)
+        assertMovesOnce(log.heights, from: start, to: hosted.panel.frame.height)
     }
 
     /// The panel takes its height in one step for 300 ms after it opens. A slide the user started in
@@ -118,7 +118,7 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         try await settle(hosted)
 
         XCTAssertGreaterThan(log.heights.count - corrected, 3, "the panel jumped: \(log.heights)")
-        assertNeverPasses(log.heights, from: start, to: hosted.panel.frame.height)
+        assertMovesOnce(log.heights, from: start, to: hosted.panel.frame.height)
     }
 
     /// Opening an account and going back change the panel's height in one motion. The list's footer
@@ -153,20 +153,42 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         assertMovesOnce(log.heights, from: account, to: hosted.panel.frame.height)
     }
 
+    /// Going back while an account page is still opening turns the panel around from the height it is
+    /// at, rather than first jumping to the account page's full height.
+    func testGoingBackMidPushTurnsAroundWhereThePanelIs() async throws {
+        let hosted = try await openWithController(accounts: ["Personal"])
+        try await waitUntil { self.fitsContent(hosted) }
+        hosted.popover.toggle(.accounts)
+        try await settle(hosted)
+        let list = hosted.panel.frame.height
+        let id = try XCTUnwrap(hosted.accounts.accounts.first).cardID
+
+        hosted.popover.customizeProviderID = id
+        try await waitUntil { hosted.panel.frame.height > list + 40 }
+        let turn = hosted.panel.frame.height
+        let log = HeightLog(hosted.panel)
+        hosted.popover.back()
+        try await settle(hosted)
+
+        XCTAssertEqual(hosted.panel.frame.height, list, accuracy: 1)
+        assertMovesOnce(log.heights, from: turn, to: list)
+    }
+
+    /// A screen chosen while the panel is closed, like Settings from the status item's menu, opens at
+    /// its height in one step, as the dashboard does.
+    func testOpeningOnAnotherScreenTakesItsHeightInOneStep() async throws {
+        let log = HeightLog(nil)
+        let hosted = try await openWithController(accounts: ["Personal", "Work"], screen: .accounts, log: log)
+        _ = hosted.accounts.add(kind: .claude, label: "Team", credential: .apiKey("key"))
+        try await settle(hosted)
+
+        XCTAssertLessThanOrEqual(log.heights.count, 2, "the panel animated open: \(log.heights)")
+    }
+
     /// Waits out the slide or page push, then until the panel fits its page.
     private func settle(_ hosted: HostedPopover) async throws {
         try await Task.sleep(for: .milliseconds(400))
         try await waitUntil { scrollViews(in: hosted.host).count == 1 && self.fitsContent(hosted) }
-    }
-
-    /// The panel stays between where it started and where it ends.
-    private func assertNeverPasses(_ heights: [CGFloat], from start: CGFloat, to end: CGFloat, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertGreaterThan(heights.count, 0, "the panel never resized", file: file, line: line)
-        XCTAssertEqual(heights.last ?? start, end, accuracy: 1, file: file, line: line)
-        let range = (min(start, end) - 1)...(max(start, end) + 1)
-        if let past = heights.first(where: { !range.contains($0) }) {
-            XCTFail("the panel went to \(past), past \(end): \([start] + heights)", file: file, line: line)
-        }
     }
 
     /// The panel heads straight for its end height: each step is toward it and none passes it.
@@ -192,7 +214,7 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         return (document.frame.height + page.contentInsets.top + page.contentInsets.bottom).rounded()
     }
 
-    private func openWithController(accounts: [String]) async throws -> HostedPopover {
+    private func openWithController(accounts: [String], screen: PopoverScreen? = nil, log: HeightLog? = nil) async throws -> HostedPopover {
         let hosted = try await hostPopover(accounts: accounts)
         let popover = hosted.popover
         let controller = PanelHeightController(
@@ -204,7 +226,9 @@ final class PanelContentHeightTests: QuietWindowTestCase {
         let button = NSRect(x: visible.minX + 100, y: (NSScreen.screens.map(\.frame.maxY).max() ?? 0) + 3_000, width: 20, height: 20)
         // The closed popover draws first, as it does from launch, so the view sees the panel open.
         hosted.host.layoutSubtreeIfNeeded()
+        if let screen { popover.screen = screen }
         controller.prepareForOpening(below: button, tab: .priority)
+        log?.watch(hosted.panel)
         hosted.open()
         XCTAssertEqual(hosted.panel.frame.maxY, (button.minY - PanelGeometry.topGap).rounded(.down))
         XCTAssertFalse(NSScreen.screens.contains { $0.frame.intersects(hosted.panel.frame) })
@@ -218,7 +242,11 @@ private final class HeightLog {
     private(set) var heights: [CGFloat] = []
     nonisolated(unsafe) private var observer: NSObjectProtocol?
 
-    init(_ panel: NSWindow) {
+    init(_ panel: NSWindow?) {
+        if let panel { watch(panel) }
+    }
+
+    func watch(_ panel: NSWindow) {
         observer = NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: panel, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.heights.append(panel.frame.height) }
         }

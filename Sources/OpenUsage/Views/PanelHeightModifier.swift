@@ -10,6 +10,20 @@ import os
 /// Only `progress` animates, so a new `to` mid-motion moves where the motion ends instead of starting
 /// a second animation that would add to the first and overshoot.
 struct PanelHeightModifier: GeometryEffect {
+    struct Presented: Sendable {
+        var height: CGFloat = 0
+        var progress: CGFloat = 1
+    }
+
+    /// The height and progress last drawn, so a new target or a new motion continues from where the
+    /// panel is rather than from where it was headed.
+    nonisolated static var presented: Presented {
+        get { presentedState.withLock { $0 } }
+        set { presentedState.withLock { $0 = newValue } }
+    }
+
+    private static let presentedState = OSAllocatedUnfairLock(initialState: Presented())
+
     var from: CGFloat
     var to: CGFloat
     var progress: CGFloat
@@ -20,13 +34,18 @@ struct PanelHeightModifier: GeometryEffect {
         get { progress }
         set {
             progress = newValue
-            PanelHeightBridge.push(height)
+            present()
         }
     }
 
     func effectValue(size: CGSize) -> ProjectionTransform {
-        PanelHeightBridge.push(height)
+        present()
         return ProjectionTransform()
+    }
+
+    private func present() {
+        Self.presented = Presented(height: height, progress: progress)
+        PanelHeightBridge.push(height)
     }
 }
 

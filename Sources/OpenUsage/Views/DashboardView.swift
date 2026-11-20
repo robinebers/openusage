@@ -17,6 +17,9 @@ struct DashboardView: View {
     @State private var didEstablishHeight = false
     @State private var measuredIdeal = MeasuredPanelHeights()
     @State private var isOpening = false
+    /// The `popover.screenSlideID` the panel opened on. A screen chosen while the panel was closed, like
+    /// Settings from the status item's menu, slides as the panel opens and keeps the opening window.
+    @State private var openingSlideID = 0
     @State private var slideProgress: CGFloat = 1
     @State private var animatedSlideID = 0
     /// The `popover.screenSlideID` whose slide has ended. Until the store's id lands here the pager keeps
@@ -69,6 +72,7 @@ struct DashboardView: View {
                 if shown {
                     if let target = heightTarget(for: popover.screen) { setHeightTarget(target, immediately: true) }
                     isOpening = true
+                    openingSlideID = popover.screenSlideID
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(300))
                         isOpening = false
@@ -85,19 +89,16 @@ struct DashboardView: View {
                 if screen == .settings { hasVisitedSettings = true }
                 if screen == .accounts { Task { await container.hubs.syncDue(maxAge: 60) } }
             }
-            .onChange(of: popover.customizeProviderID) {
-                reorderLift = nil
-                slideHeightWithPage()
-            }
-            .onChange(of: popover.customizeHubID) { slideHeightWithPage() }
+            .onChange(of: popover.customizeProviderID) { reorderLift = nil }
+            .onChange(of: popover.accountsPage) { slideHeightWithPage() }
             // Each screen switch: pin to the outgoing screen for one render, then slide to the incoming
             // one on the next runloop tick. `slideProgress` drives the page offset and the panel's height,
             // so the screens slide and the panel resizes on one curve.
             .onChange(of: popover.screenSlideID) { _, id in
                 guard id != 0 else { return }
-                // A slide the user starts ends the opening window so it animates; the slide back to the
-                // dashboard when the panel closes leaves the next opening alone.
-                if popover.popoverShown { isOpening = false }
+                // A slide the user starts on the open panel ends the opening window so it animates. The
+                // slide back to the dashboard when the panel closes leaves the next opening alone.
+                if popover.popoverShown, id != openingSlideID { isOpening = false }
                 if reduceAnimations {
                     animatedSlideID = id
                     settledSlideID = id
@@ -126,21 +127,32 @@ struct DashboardView: View {
     }
 
     /// Heads the panel for `target`. Outside a slide or page push it gets there in one step, like a
-    /// native window; during one it gets there with the motion. With `immediately`, or before the
-    /// panel has a height, it is there at once.
+    /// native window. During one, the start is moved so the panel goes on from the height it is at and
+    /// still arrives with the motion. With `immediately`, or before the panel has a height, it is there
+    /// at once.
     private func setHeightTarget(_ target: CGFloat, immediately: Bool = false) {
-        if immediately || !didEstablishHeight { slideStartHeight = target }
-        didEstablishHeight = true
-        animatedHeight = target
+        defer {
+            didEstablishHeight = true
+            animatedHeight = target
+        }
+        let presented = PanelHeightModifier.presented
+        guard !immediately, didEstablishHeight, presented.height > 0, presented.progress < 1 else {
+            slideStartHeight = target
+            return
+        }
+        slideStartHeight = (presented.height - target * presented.progress) / (1 - presented.progress)
     }
 
-    /// Pins the panel to its current height and the pager to the outgoing screen for one render. The
+    /// Pins the panel to the height it is at and the pager to the outgoing screen for one render. The
     /// caller animates `slideProgress` to 1 on the next runloop tick: setting 0 then 1 in the same
     /// closure collapses to a no-op, since SwiftUI animates from the last committed value.
     private func restartSlideProgress() {
+        // SwiftUI adds what is left of a running motion to the new one, so the drawn progress drops by
+        // the 1 it was headed for, not to 0. A motion interrupted midway goes on from where it is.
+        PanelHeightModifier.presented.progress -= 1
         withAnimation(nil) {
-            slideStartHeight = animatedHeight
             slideProgress = 0
+            setHeightTarget(animatedHeight)
         }
     }
 
@@ -279,18 +291,13 @@ struct DashboardView: View {
             .panelBars {
                 if includeChrome {
                     PopoverTopBar(screen: screen)
-                        .animation(pageAnimation, value: openPage)
+                        .animation(pageAnimation, value: popover.accountsPage)
                 }
             } bottom: {
                 if includeChrome {
                     PopoverFooter(screen: screen)
                 }
             }
-    }
-
-    /// The account or hub page Accounts shows, if any.
-    private var openPage: [String?] {
-        [popover.customizeProviderID, popover.customizeHubID?.uuidString]
     }
 
     /// How an account or hub page and its header swap in. The page changes without a transaction
