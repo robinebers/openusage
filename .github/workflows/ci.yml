@@ -24,7 +24,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      # release.yml computes CFBundleVersion with script/build_number.sh on macOS (BSD awk, bash 3.2).
+      - name: Test release build numbers
+        run: |
+          check() {
+            git worktree add --quiet --detach "$RUNNER_TEMP/build-number" "$1"
+            actual="$(cd "$RUNNER_TEMP/build-number" && "$GITHUB_WORKSPACE/script/build_number.sh" "$2")"
+            git worktree remove --force "$RUNNER_TEMP/build-number"
+            [ "$actual" = "$3" ] || { echo "build_number.sh $2 at $1 printed '$actual', expected $3" >&2; exit 1; }
+          }
+          check 35e88e93^ v0.8.0 887
+          check 35e88e93 v0.8.0-beta.8 888
+          check 35e88e93 v0.8.0 888.1
 
       - name: Build
         run: swift build

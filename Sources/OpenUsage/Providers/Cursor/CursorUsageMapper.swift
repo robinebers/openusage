@@ -39,6 +39,13 @@ struct CursorPlanUsageFacts {
     }
 }
 
+/// What an account whose Cursor, X and Grok plans are merged reports in place of credit grants, the
+/// Stripe balance and the on-demand spend limit.
+struct CursorUnifiedBilling {
+    var creditBalance: [String: Any]?
+    var usageStatus: [String: Any]?
+}
+
 enum CursorUsageMapper {
     static let billingPeriodMs = MetricPeriod.monthMs
 
@@ -70,7 +77,8 @@ enum CursorUsageMapper {
         usage: [String: Any],
         planName: String?,
         creditGrants: [String: Any]?,
-        stripeBalanceCents: Double
+        stripeBalanceCents: Double,
+        unified: CursorUnifiedBilling? = nil
     ) throws -> ProviderUsage {
         let facts = CursorPlanUsageFacts(usage: usage)
         guard facts.isEnabled,
@@ -87,7 +95,11 @@ enum CursorUsageMapper {
 
         var lines: [MetricLine] = []
         var lineTitles: [String: String] = [:]
-        appendCredits(creditGrants: creditGrants, stripeBalanceCents: stripeBalanceCents, to: &lines)
+        if let unified {
+            appendUnifiedCredits(unified.creditBalance, to: &lines)
+        } else {
+            appendCredits(creditGrants: creditGrants, stripeBalanceCents: stripeBalanceCents, to: &lines)
+        }
 
         let planUsedCents = ProviderParse.number(planUsage["totalSpend"])
             ?? ((facts.limit ?? 0) - (ProviderParse.number(planUsage["remaining"]) ?? 0))
@@ -124,6 +136,11 @@ enum CursorUsageMapper {
             }
         } else {
             lines.append(.percent("Total usage", totalUsagePercent, resetsAt: cycle.resetsAt, periodMs: cycle.periodDurationMs))
+        }
+
+        if let unified {
+            appendAdditionalUsage(unified.usageStatus, to: &lines)
+            return ProviderUsage(plan: planLabel(planName), lines: lines, lineTitles: lineTitles)
         }
 
         if let autoPercentUsed = ProviderParse.number(planUsage["autoPercentUsed"]) {
@@ -230,6 +247,48 @@ enum CursorUsageMapper {
         lines.append(.values(
             label: "Credits",
             values: [MetricValue(number: ProviderParse.centsToDollars(remainingCents), kind: .dollars)]
+        ))
+    }
+
+    /// The dashboard's Credits card. Cursor leaves out a zero balance.
+    private static func appendUnifiedCredits(_ balance: [String: Any]?, to lines: inout [MetricLine]) {
+        guard let balance else { return }
+        let remainingCents = max(0, ProviderParse.number(balance["usdRemainingCents"]) ?? 0)
+        lines.append(.values(
+            label: "Credits",
+            values: [MetricValue(number: ProviderParse.centsToDollars(remainingCents), kind: .dollars)]
+        ))
+    }
+
+    /// The dashboard's Additional usage card: this month's spend past the weekly included pool, paid from
+    /// credits. It is off when Cursor says so or the limit is $0, and has no bar when there is no limit.
+    private static func appendAdditionalUsage(_ status: [String: Any]?, to lines: inout [MetricLine]) {
+        guard let status,
+              (status["availability"] as? String ?? "available") == "available",
+              let monthly = status["monthlyUsage"] as? [String: Any],
+              monthly["additionalUsageOff"] as? Bool != true
+        else { return }
+        let limitCents = ProviderParse.number(monthly["limitCents"])
+        guard limitCents != 0 else { return }
+        let used = ProviderParse.centsToDollars(max(0, ProviderParse.number(monthly["usedCents"]) ?? 0))
+        guard let limitCents, limitCents > 0 else {
+            lines.append(.values(label: "On-demand", values: [MetricValue(number: used, kind: .dollars)]))
+            return
+        }
+        let resetsAt = (monthly["resetsAt"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        let start = (monthly["periodStart"] as? String).flatMap(OpenUsageISO8601.date(from:))
+        let periodMs = if let start, let resetsAt, resetsAt > start {
+            Int(resetsAt.timeIntervalSince(start) * 1000)
+        } else {
+            MetricPeriod.monthMs
+        }
+        lines.append(.progress(
+            label: "On-demand",
+            used: used,
+            limit: ProviderParse.centsToDollars(limitCents),
+            format: .dollars,
+            resetsAt: resetsAt,
+            periodDurationMs: periodMs
         ))
     }
 

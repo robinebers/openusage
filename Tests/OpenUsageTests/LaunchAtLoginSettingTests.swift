@@ -5,6 +5,24 @@ import XCTest
 
 @MainActor
 final class LaunchAtLoginSettingTests: XCTestCase {
+    func testCreatingTheSettingMakesNoStatusCheckAndTheFirstRefreshShowsALoginItemThatIsOn() {
+        var statusChecks = 0
+        let setting = LaunchAtLoginSetting(
+            currentStatus: {
+                statusChecks += 1
+                return true
+            },
+            setEnabled: { _ in XCTFail("Creating or refreshing the setting must not update the login item") }
+        )
+
+        XCTAssertEqual(statusChecks, 0)
+
+        setting.refreshStatus()
+
+        XCTAssertEqual(statusChecks, 1)
+        XCTAssertTrue(setting.isEnabled)
+    }
+
     func testFailedChangeRollsBackWithoutMakingASecondSystemCall() {
         let systemEnabled = false
         var requestedValues: [Bool] = []

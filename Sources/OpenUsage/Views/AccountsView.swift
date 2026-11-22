@@ -4,12 +4,15 @@ struct AccountsView: View {
     @Environment(PopoverState.self) private var popover
     let reorderSpaceName: String
     @Binding var reorderLift: ReorderLift?
+    /// Inside the scroll view, so the scroll view's insets for the bars don't animate with the page.
+    let pageAnimation: Animation?
 
     @State private var frameStore = ReorderFrameStore()
 
     var body: some View {
         PopoverScrollView {
             content
+                .animation(pageAnimation, value: popover.accountsPage)
                 .padding(.horizontal, PanelMetrics.margin)
                 .padding(.top, DashboardContentView.barGap)
                 .padding(.bottom, popover.customizeProviderID == nil && popover.customizeHubID == nil ? 0 : PanelMetrics.margin)

@@ -23,7 +23,7 @@ Removing an account removes its shared values too. Widget data never goes to the
 
 ## Privacy Mode
 
-**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screenshots and recordings.
+**Settings → Advanced → Privacy → Privacy Mode** hides usage and account names from screen recordings.
 While your screen is shared or recorded, the menu bar shows the app icon instead of your usage and the
 panel blurs account names. While it's on, copied usage pictures blur every account name; while it's
 off, they leave email addresses out. It is off by default and doesn't hide macOS widgets. A single

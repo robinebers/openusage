@@ -9,10 +9,17 @@ struct DashboardView: View {
     @Environment(PopoverState.self) private var popover
     @Environment(\.reduceAnimations) private var reduceAnimations
     @State private var reorderLift: ReorderLift?
+    /// The height the panel is headed for. During a slide or page push it gets there with
+    /// `slideProgress`, from `slideStartHeight`, so a late or corrected report only moves where the
+    /// motion ends; otherwise the panel takes it in one step.
     @State private var animatedHeight: CGFloat = 0
+    @State private var slideStartHeight: CGFloat = 0
     @State private var didEstablishHeight = false
     @State private var measuredIdeal = MeasuredPanelHeights()
     @State private var isOpening = false
+    /// The `popover.screenSlideID` the panel opened on. A screen chosen while the panel was closed, like
+    /// Settings from the status item's menu, slides as the panel opens and keeps the opening window.
+    @State private var openingSlideID = 0
     @State private var slideProgress: CGFloat = 1
     @State private var animatedSlideID = 0
     /// The `popover.screenSlideID` whose slide has ended. Until the store's id lands here the pager keeps
@@ -29,7 +36,7 @@ struct DashboardView: View {
             .frame(width: PanelMetrics.width)
             .frame(maxHeight: .infinity, alignment: .top)
             .background(Theme.panelBody)
-            .modifier(PanelHeightModifier(height: animatedHeight))
+            .modifier(PanelHeightModifier(from: slideStartHeight, to: animatedHeight, progress: slideProgress))
             .overlay(alignment: .topLeading) {
                 if let reorderLift {
                     ReorderLiftPreview(lift: reorderLift)
@@ -63,11 +70,9 @@ struct DashboardView: View {
             )
             .onChange(of: popover.popoverShown) { _, shown in
                 if shown {
-                    if let target = heightTarget(for: popover.screen) {
-                        didEstablishHeight = true
-                        animatedHeight = target
-                    }
+                    if let target = heightTarget(for: popover.screen) { setHeightTarget(target, immediately: true) }
                     isOpening = true
+                    openingSlideID = popover.screenSlideID
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(300))
                         isOpening = false
@@ -85,59 +90,80 @@ struct DashboardView: View {
                 if screen == .accounts { Task { await container.hubs.syncDue(maxAge: 60) } }
             }
             .onChange(of: popover.customizeProviderID) { reorderLift = nil }
-            // Each screen switch: pin to the outgoing screen for one render (`slideProgress = 0`),
-            // then spring to the incoming one on the next runloop tick. Deferring the animation one
-            // tick is what makes it animate — setting 0 then 1 in the same closure collapses to a
-            // no-op (SwiftUI animates from the last *committed* value). `slideProgress` drives the
-            // page offset so the screens slide between modes on one spring.
+            .onChange(of: popover.accountsPage) { slideHeightWithPage() }
+            // Each screen switch: pin to the outgoing screen for one render, then slide to the incoming
+            // one on the next runloop tick. `slideProgress` drives the page offset and the panel's height,
+            // so the screens slide and the panel resizes on one curve.
             .onChange(of: popover.screenSlideID) { _, id in
                 guard id != 0 else { return }
+                // A slide the user starts on the open panel ends the opening window so it animates. The
+                // slide back to the dashboard when the panel closes leaves the next opening alone.
+                if popover.popoverShown, id != openingSlideID { isOpening = false }
                 if reduceAnimations {
                     animatedSlideID = id
                     settledSlideID = id
                     slideProgress = 1
-                    if let target = heightTarget(for: popover.screen) {
-                        didEstablishHeight = true
-                        animatedHeight = target
-                    }
+                    if let target = heightTarget(for: popover.screen) { setHeightTarget(target, immediately: true) }
                     return
                 }
-                slideProgress = 0
+                restartSlideProgress()
                 animatedSlideID = id
                 let destination = popover.screen
                 Task { @MainActor in
-                    let coTarget: CGFloat? = heightTarget(for: destination)
-                        ?? (animatedHeight > 0 ? animatedHeight : nil)
-                    if coTarget != nil { didEstablishHeight = true }
+                    if let target = heightTarget(for: destination) { setHeightTarget(target) }
                     withAnimation(Motion.navigation, completionCriteria: .removed) {
                         slideProgress = 1
-                        if let coTarget { animatedHeight = coTarget }
                     } completion: {
                         settledSlideID = id
-                        guard let target = heightTarget(for: popover.screen) else { return }
-                        if !didEstablishHeight {
-                            didEstablishHeight = true
-                            animatedHeight = target
-                        } else if abs(target - animatedHeight) > 1 {
-                            withAnimation(Motion.navigation) { animatedHeight = target }
-                        }
                     }
                 }
             }
-            // A screen mounted by the slide can measure before its bars are inset (macOS 15 does), so the
-            // slide's co-target may be short: follow the corrected height mid-slide, not after it.
+            // A page measures again as it lays out, and the first report of a page the slide mounts comes
+            // before its bars are inset. Each report only moves where the panel is headed.
             .onChange(of: measuredIdeal[popover.screen, popover.dashboardTab]) { _, _ in
                 guard let target = heightTarget(for: popover.screen) else { return }
-                if !didEstablishHeight {
-                    didEstablishHeight = true
-                    animatedHeight = target
-                } else if isOpening || !isSliding {
-                    // Outside a screen slide the panel takes its new size in one step, like a native window.
-                    animatedHeight = target
-                } else if abs(target - animatedHeight) > 1 {
-                    withAnimation(Motion.navigation) { animatedHeight = target }
-                }
+                setHeightTarget(target, immediately: isOpening)
             }
+    }
+
+    /// Heads the panel for `target`. Outside a slide or page push it gets there in one step, like a
+    /// native window. During one, the start is moved so the panel goes on from the height it is at and
+    /// still arrives with the motion. With `immediately`, or before the panel has a height, it is there
+    /// at once.
+    private func setHeightTarget(_ target: CGFloat, immediately: Bool = false) {
+        defer {
+            didEstablishHeight = true
+            animatedHeight = target
+        }
+        let presented = PanelHeightModifier.presented
+        guard !immediately, didEstablishHeight, presented.height > 0, presented.progress < 1 else {
+            slideStartHeight = target
+            return
+        }
+        slideStartHeight = (presented.height - target * presented.progress) / (1 - presented.progress)
+    }
+
+    /// Pins the panel to the height it is at and the pager to the outgoing screen for one render. The
+    /// caller animates `slideProgress` to 1 on the next runloop tick: setting 0 then 1 in the same
+    /// closure collapses to a no-op, since SwiftUI animates from the last committed value.
+    private func restartSlideProgress() {
+        // SwiftUI adds what is left of a running motion to the new one, so the drawn progress drops by
+        // the 1 it was headed for, not to 0. A motion interrupted midway goes on from where it is.
+        PanelHeightModifier.presented.progress -= 1
+        withAnimation(nil) {
+            slideProgress = 0
+            setHeightTarget(animatedHeight)
+        }
+    }
+
+    /// Opening or leaving an account or hub page moves the panel to the new page's height in one
+    /// motion along with the page. A page change that comes with a screen slide rides that slide.
+    private func slideHeightWithPage() {
+        guard !reduceAnimations, !isSliding else { return }
+        restartSlideProgress()
+        Task { @MainActor in
+            withAnimation(Motion.navigation) { slideProgress = 1 }
+        }
     }
 
     private func resetTransientState() {
@@ -265,12 +291,21 @@ struct DashboardView: View {
             .panelBars {
                 if includeChrome {
                     PopoverTopBar(screen: screen)
+                        .animation(pageAnimation, value: popover.accountsPage)
                 }
             } bottom: {
                 if includeChrome {
                     PopoverFooter(screen: screen)
                 }
             }
+    }
+
+    /// How an account or hub page and its header swap in. The page changes without a transaction
+    /// animation and only the page and header animate, so the bars' space switches in the same frame as
+    /// the page and the panel resizes once with it instead of following the footer as it shrinks or
+    /// grows. During a screen slide the page swaps at once, as the rest of the outgoing screen does.
+    private var pageAnimation: Animation? {
+        isSliding ? nil : Motion.navigation
     }
 
     private func heightTarget(for screen: PopoverScreen) -> CGFloat? {
@@ -289,7 +324,8 @@ struct DashboardView: View {
         case .accounts:
             AccountsView(
                 reorderSpaceName: Self.reorderSpace,
-                reorderLift: $reorderLift
+                reorderLift: $reorderLift,
+                pageAnimation: pageAnimation
             )
         case .settings:
             SettingsScreen()

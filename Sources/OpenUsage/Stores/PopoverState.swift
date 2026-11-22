@@ -15,6 +15,13 @@ enum PopoverScreen: Hashable, Sendable {
     }
 }
 
+/// The page Accounts shows: its list, or an account's or a hub's page.
+enum AccountsPage: Hashable, Sendable {
+    case list
+    case account(String)
+    case hub(UUID)
+}
+
 enum SettingsTab: Hashable, Sendable, CaseIterable {
     case general, display, alerts, advanced
 
@@ -61,11 +68,16 @@ final class PopoverState {
     /// The CLIProxyAPI hub whose page Accounts shows. An account opened from it goes back to it.
     var customizeHubID: UUID?
     var isAddingAccount = false
-    private(set) var dashboardFocusProviderID: String?
-    private(set) var dashboardFocusRequestID = 0
+    var accountsPage: AccountsPage {
+        if let customizeProviderID { return .account(customizeProviderID) }
+        if let customizeHubID { return .hub(customizeHubID) }
+        return .list
+    }
     /// The account the Add Account sheet signs in again, in place of adding a new one.
     var signingInAgainProviderID: String?
     var dashboardTab = DashboardTab.priority
+    private(set) var dashboardFocusProviderID: String?
+    private(set) var dashboardFocusRequestID = 0
     var settingsTab = SettingsTab.general
     /// Whether the popover is on-screen. `StatusItemController` flips it at its show/hide chokepoints,
     /// synchronously with `makeKeyAndOrderFront`/`orderOut`, and `DashboardView` re-seeds the panel
@@ -79,11 +91,11 @@ final class PopoverState {
     @discardableResult
     func back() -> Bool {
         if customizeProviderID != nil {
-            withAnimation(Motion.navigation) { customizeProviderID = nil }
+            customizeProviderID = nil
             return true
         }
         if customizeHubID != nil {
-            withAnimation(Motion.navigation) { customizeHubID = nil }
+            customizeHubID = nil
             return true
         }
         guard screen != .dashboard else { return false }
@@ -96,7 +108,8 @@ final class PopoverState {
     }
 
     func openAccounts(_ providerID: String?) {
-        withAnimation(Motion.modeSwitch) {
+        // Accounts animates page changes locally so the footer inset switches immediately.
+        withAnimation(screen == .accounts ? nil : Motion.modeSwitch) {
             customizeProviderID = providerID
             customizeHubID = nil
             screen = .accounts

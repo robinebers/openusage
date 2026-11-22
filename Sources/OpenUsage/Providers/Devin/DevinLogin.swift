@@ -20,7 +20,8 @@ struct DevinLogin: ProviderLogin {
             URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "prompt", value: "select_account"),
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
-            URLQueryItem(name: "code_challenge_method", value: "S256")
+            URLQueryItem(name: "code_challenge_method", value: "S256"),
+            URLQueryItem(name: "cli_pkce_marker", value: "1")
         ]
         await prompt(.browser(components.url!, acceptsPastedCode: false))
         let code = try await withTaskCancellationHandler { try await server.waitForCode() } onCancel: { server.cancel() }

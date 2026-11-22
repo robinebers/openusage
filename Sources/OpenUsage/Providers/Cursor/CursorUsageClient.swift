@@ -11,6 +11,8 @@ struct CursorUsageClient: Sendable {
     static let planURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetPlanInfo")!
     static let refreshURL = URL(string: "https://api2.cursor.sh/oauth/token")!
     static let creditsURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCreditGrantsBalance")!
+    static let complatCreditBalanceURL = URL(string: "https://api2.cursor.sh/aiserver.v1.DashboardService/GetComplatCreditBalance")!
+    static let usageStatusURL = URL(string: "https://cursor.com/api/dashboard/v2/usage-status?scope=user")!
     static let restUsageURL = URL(string: "https://cursor.com/api/usage")!
     static let usageSummaryURL = URL(string: "https://cursor.com/api/usage-summary")!
     static let stripeURL = URL(string: "https://cursor.com/api/auth/stripe")!
@@ -42,6 +44,16 @@ struct CursorUsageClient: Sendable {
 
     func fetchCredits(accessToken: String) async throws -> HTTPResponse {
         try await connectPost(Self.creditsURL, accessToken: accessToken)
+    }
+
+    /// The prepaid credit balance of an account whose Cursor, X and Grok plans are merged.
+    func fetchComplatCreditBalance(accessToken: String) async throws -> HTTPResponse {
+        try await connectPost(Self.complatCreditBalanceURL, accessToken: accessToken)
+    }
+
+    /// The month's additional usage and its limit, as the dashboard's Additional usage card shows them.
+    func fetchUsageStatus(accessToken: String) async throws -> HTTPResponse? {
+        try await sessionGet(Self.usageStatusURL, accessToken: accessToken)
     }
 
     func fetchRequestBasedUsage(accessToken: String) async throws -> HTTPResponse? {
