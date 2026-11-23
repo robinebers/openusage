@@ -18,6 +18,7 @@ struct DashboardProviderSection<Header: View, Account: View>: View {
             .padding(.top, DashboardGrid.cardTopPadding)
             .padding(.bottom, DashboardGrid.cardBottomPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .sharingDashboardColumns()
             .cardSurface()
         }
         .contentShape(Rectangle())

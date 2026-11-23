@@ -11,6 +11,8 @@ struct DashboardMetricRow: View {
     /// The account the label names, blurred with the other names while Hide From Screen Share is on.
     var account: Provider?
 
+    @Environment(\.dashboardColumns) private var columns
+
     static let font: Font = .system(size: 12)
     static let resetFont: Font = .system(size: 11)
 
@@ -20,14 +22,19 @@ struct DashboardMetricRow: View {
             case .bar(let fill, let severity, let value, let reset, let isUsedUp):
                 HStack(spacing: DashboardGrid.columnGap) {
                     label
-                        .frame(width: DashboardGrid.labelWidth, alignment: .leading)
+                        .background { label.fixedSize().hidden().reportingDashboardColumn(\.label) }
+                        .frame(width: labelWidth, alignment: .leading)
                     LevelIndicator(fill: fill, severity: severity, paceMark: model.paceMark)
                         .frame(height: DashboardGrid.levelHeight)
                         .hoverTooltip(paceTooltip)
                     valueText(value, severity: severity)
-                        .frame(width: DashboardGrid.valueWidth, alignment: .trailing)
-                    resetText(reset, isUsedUp: isUsedUp)
-                        .frame(width: model.showsClockTimes ? DashboardGrid.clockResetWidth : DashboardGrid.resetWidth, alignment: .trailing)
+                        .reportingDashboardColumn(\.value)
+                        .frame(width: columns?.value, alignment: .trailing)
+                    if reset != nil || (columns?.reset ?? 0) > 0 {
+                        resetText(reset, isUsedUp: isUsedUp)
+                            .reportingDashboardColumn(\.reset)
+                            .frame(width: columns?.reset, alignment: .trailing)
+                    }
                 }
                 .opacity(model.isFaded ? 0.5 : 1)
             case .value(let text, let detail, let severity):
@@ -55,6 +62,11 @@ struct DashboardMetricRow: View {
         .font(Self.font)
         .frame(maxWidth: .infinity, minHeight: DashboardGrid.rowHeight, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+
+    /// The widest label shown with this row, up to the lane a long name truncates in.
+    private var labelWidth: CGFloat {
+        min(columns?.label ?? DashboardGrid.labelWidth, DashboardGrid.labelWidth)
     }
 
     @ViewBuilder
@@ -104,7 +116,7 @@ struct DashboardMetricRow: View {
         }
     }
 
-    /// Blank when there's no reset, so the row's bar keeps the same length as its neighbours.
+    /// Blank when there's no reset but a neighbour has one, so the row's bar keeps the same length as theirs.
     @ViewBuilder
     private func resetText(_ reset: String?, isUsedUp: Bool) -> some View {
         let text = Text(reset ?? "")

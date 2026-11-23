@@ -15,7 +15,6 @@ enum DashboardGrid {
     static let labelWidth: CGFloat = 90
     static let valueWidth: CGFloat = 52
     static let resetWidth: CGFloat = 56
-    static let clockResetWidth: CGFloat = 80
 
     static let headerFont: Font = .system(size: 15, weight: .semibold)
     static let planFont: Font = .system(size: 10, weight: .medium)

@@ -8,8 +8,6 @@ struct DashboardRowModel: Equatable {
 
     var label: String
     let mark: Mark
-    /// Clock times run wider than countdowns, so they get the wider reset lane.
-    var showsClockTimes = false
     /// Where the bar would reach by now at an even pace, or nil when it has no mark.
     var paceMark: Double?
 
@@ -36,7 +34,6 @@ extension WidgetData {
                 reset: compactResetText(now: now),
                 isUsedUp: meterState(now: now) == .spent
             ),
-            showsClockTimes: resetDisplayMode == .absolute,
             paceMark: paceMark(now: now)
         )
     }

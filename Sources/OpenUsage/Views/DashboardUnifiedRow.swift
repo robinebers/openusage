@@ -71,6 +71,7 @@ struct UnifiedLimitDetail: View {
                     DashboardMetricRow(model: row(of: member, now: context.date), account: member.provider)
                 }
             }
+            .sharingDashboardColumns()
             .padding(14)
             .frame(width: 310)
         }

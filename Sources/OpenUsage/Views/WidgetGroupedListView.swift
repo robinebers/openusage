@@ -186,6 +186,7 @@ struct WidgetGroupedListView: View {
             lift: $reorderLift,
             makeLift: { value in
                 let preview = DashboardMetricRow(model: line.data.dashboardRow())
+                    .sharingDashboardColumns()
                     .padding(.horizontal, DashboardGrid.cardPadding)
                     .liftedRowSurface()
                 return ReorderLift.make(id: line.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
@@ -207,6 +208,7 @@ struct WidgetGroupedListView: View {
             makeLift: { value in
                 let preview = DashboardAccountRows(account: account, plan: dataStore.plan(for: account.id),
                                                    hasSiblingAccounts: family.accounts.count > 1)
+                    .sharingDashboardColumns()
                     .padding(DashboardGrid.cardPadding)
                     .liftedRowSurface()
                 return ReorderLift.make(id: account.id, preview: AnyView(preview), value: value, frames: frameStore.frames)
