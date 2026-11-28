@@ -17,7 +17,7 @@ let package = Package(
         // behind other apps for menu-bar (dockless) apps (sparkle-project/Sparkle#2889).
         .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.4"),
         // Anonymous usage analytics and mandatory crash reporting (official first-party Swift SDK).
-        .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.62.0")
+        .package(url: "https://github.com/PostHog/posthog-ios.git", from: "4.0.9")
     ],
     targets: [
         .target(
